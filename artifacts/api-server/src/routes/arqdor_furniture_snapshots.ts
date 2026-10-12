@@ -14,7 +14,7 @@ const furniture=z.object({id:z.string().min(1).max(160),tenantId:z.string(),proj
  parts:z.array(part).max(2000),bounds:z.object({id:z.string(),roomId:z.string(),xMm:number,yMm:number,widthMm:number.positive(),depthMm:number.positive(),rotationDeg:z.union([z.literal(0),z.literal(90),z.literal(180),z.literal(270)])}),
  status:z.literal("local-draft")}).passthrough();
 const payload=z.object({schemaVersion:z.literal(1),tenantId:z.string().min(1),projectId:z.string().min(1),roomId:z.string().min(1),
- revision:z.string().min(1).max(160),baseRevision:z.string().min(1).max(160).nullable().optional(),createdAt:z.string().datetime({offset:true}),furniture:z.array(furniture).max(500)}).strict();
+ revision:z.string().min(1).max(160),geometryRevision:z.string().min(1).max(160),baseRevision:z.string().min(1).max(160).nullable().optional(),createdAt:z.string().datetime({offset:true}),furniture:z.array(furniture).max(500)}).strict();
 const scope=(req:Request)=>req.user?.tenantId;
 const footprint=(b:{widthMm:number;depthMm:number;rotationDeg:0|90|180|270})=>b.rotationDeg===90||b.rotationDeg===270?{w:b.depthMm,d:b.widthMm}:{w:b.widthMm,d:b.depthMm};
 const overlaps=(a:{xMm:number;yMm:number;widthMm:number;depthMm:number;rotationDeg:0|90|180|270},b:{xMm:number;yMm:number;widthMm:number;depthMm:number;rotationDeg:0|90|180|270})=>{
@@ -64,17 +64,17 @@ router.put("/arqdor/projects/:id/furniture/:roomId",async(req:Request,res:Respon
   const context=project.contextBlob;
   if(!context||typeof context!=="object"||Array.isArray(context))return res.status(409).json({error:"Contexto do projeto inválido"});
   const authoritative=(context as Record<string,unknown>).furnitureGeometryV1;
-  let geometryRevision:string|null=null;
-  if(authoritative!==undefined){
-   const validation=validateBimFurnitureFootprints(authoritative,roomId,data.furniture.map(f=>f.bounds));
-   if(!validation.ok)return res.status(422).json({error:"Geometria BIM rejeitou posicionamento",reason:validation.reason});
-   geometryRevision=validation.revision;
-  }
+  if(authoritative===undefined)return res.status(409).json({error:"Geometria BIM oficial ausente; publicação arquitetônica necessária antes de salvar"});
+  const validation=validateBimFurnitureFootprints(authoritative,roomId,data.furniture.map(f=>f.bounds));
+  if(!validation.ok)return res.status(422).json({error:"Geometria BIM rejeitou posicionamento",reason:validation.reason});
+  const geometryRevision=validation.revision;
+  if(data.furniture.length>0&&!(req.body as Record<string,unknown>).geometryRevision)return res.status(409).json({error:"Revisão BIM obrigatória; recarregue o ambiente"});
+  if((req.body as Record<string,unknown>).geometryRevision!==geometryRevision)return res.status(409).json({error:"Revisão arquitetônica desatualizada"});
   const records=await db.update(arqdorWorkspaceProjectsTable)
    .set({contextBlob:sql`jsonb_set(jsonb_set(COALESCE(${arqdorWorkspaceProjectsTable.contextBlob}, '{}'::jsonb), '{furnitureSnapshots}', CASE WHEN jsonb_typeof(${arqdorWorkspaceProjectsTable.contextBlob}->'furnitureSnapshots')='object' THEN ${arqdorWorkspaceProjectsTable.contextBlob}->'furnitureSnapshots' ELSE '{}'::jsonb END, true), ARRAY['furnitureSnapshots', ${roomId}]::text[], ${JSON.stringify(normalized)}::jsonb, true)`,updatedAt:new Date()})
    .where(and(eq(arqdorWorkspaceProjectsTable.id,projectId),eq(arqdorWorkspaceProjectsTable.tenantId,tenantId),
     sql`jsonb_typeof(${arqdorWorkspaceProjectsTable.contextBlob}) = 'object'`,
-    sql`(${geometryRevision}::text IS NULL AND ${arqdorWorkspaceProjectsTable.contextBlob}->'furnitureGeometryV1' IS NULL OR ${arqdorWorkspaceProjectsTable.contextBlob} #>> '{furnitureGeometryV1,revision}' = ${geometryRevision})`,
+    sql`(${arqdorWorkspaceProjectsTable.contextBlob} #>> '{furnitureGeometryV1,revision}') = ${geometryRevision}`,
     sql`(jsonb_typeof(${arqdorWorkspaceProjectsTable.contextBlob}->'furnitureSnapshots') IS NULL OR jsonb_typeof(${arqdorWorkspaceProjectsTable.contextBlob}->'furnitureSnapshots') = 'object')`,
     sql`(${arqdorWorkspaceProjectsTable.contextBlob} #>> ARRAY['furnitureSnapshots', ${roomId}, 'revision']::text[]) IS NOT DISTINCT FROM ${expected}`)).returning({id:arqdorWorkspaceProjectsTable.id});
   if(!records.length)return res.status(409).json({error:"Projeto não encontrado ou mobiliário alterado por outro usuário; recarregue antes de salvar"});
