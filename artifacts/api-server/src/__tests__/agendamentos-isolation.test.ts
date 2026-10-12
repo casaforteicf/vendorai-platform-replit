@@ -358,6 +358,22 @@ describe("member ownership authorization — agendamentos", () => {
     expect(mockDbInsert).not.toHaveBeenCalled();
   });
 
+  it("rejects editing an owned appointment after its calendar grant is revoked", async () => {
+    const ownedCalendarRecord = { ...recordOwnedByTenantB, responsavelId: memberId, agendaId: "calendar-revoked" };
+    // First query fetches the appointment, second fetches the calendar.
+    // Neither an owner match nor a grant is returned.
+    const query = (rows: MockRow[]) => ({
+      from: () => ({ where: () => ({ limit: async () => rows }) }),
+    });
+    mockDbSelect.mockReturnValueOnce(query([ownedCalendarRecord]))
+      .mockReturnValueOnce(query([{ id: "calendar-revoked", ownerUserId: "different-user" }]))
+      .mockReturnValueOnce(query([]));
+    const res = await request(app).patch(`/api/agendamentos/${RECORD_ID}`)
+      .set("Authorization", `Bearer ${memberToken}`).send({ tipo: "consulta" });
+    expect(res.status).toBe(403);
+    expect(mockDbUpdate).not.toHaveBeenCalled();
+  });
+
   it("allows a member to edit their own appointment", async () => {
     setupSelectReturning([{ ...recordOwnedByTenantB, responsavelId: memberId }]);
     setupUpdateReturning([{ ...recordOwnedByTenantB, responsavelId: memberId, tipo: "consulta" }]);
