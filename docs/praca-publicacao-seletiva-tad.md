@@ -39,3 +39,9 @@ Nenhum recurso real é ativado por esta entrega isolada.
 - As rotas de criação e alteração de serviço rejeitam opt-in com categoria em branco ou serviço desativado, mantendo o isolamento tenant.
 - Não foi criada nova vitrine ou categoria pública: a ocultação de categorias vazias ainda precisa da API efetiva do Praça.ai.
 - Pendência: taxonomia global canônica de serviços (categorias atuais são livres), revisão de aprovação/moderação, validação integral do payload de serviços e teste de integração.
+
+## Lote 05 — árvore de categorias públicas
+- Criado `artifacts/api-server/src/lib/pracaPublicTaxonomy.ts` com projeção independente de banco para contagem de anúncios elegíveis, incluindo ascendentes na navegação.
+- Categorias irmãs vazias, categorias inativas/não aprovadas, ancestrais inválidos e ciclos não entram na navegação.
+- Testes de unidade em `pracaPublicTaxonomy.test.ts` ainda não executados.
+- NÃO existe endpoint público integrado a esta função ainda. Requer descoberta/implantação da consulta canônica de anúncios (produtos + serviços) sem expor dados internos.
