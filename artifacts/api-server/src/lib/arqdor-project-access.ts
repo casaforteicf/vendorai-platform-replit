@@ -58,3 +58,16 @@ export async function canAccessArqdorProjectViaObra(
     .limit(1);
   return Boolean(obra);
 }
+
+// A positive result here is narrow evidence of access via a linked lead or obra;
+// it is NOT a complete project ACL. Keep this evaluator opt-in until independent
+// grants for project owners, admins, collaborators and unlinked projects exist.
+export async function canAccessArqdorLinkedProject(
+  req: Request,
+  tenantId: string,
+  projectId: string,
+): Promise<boolean> {
+  if (!tenantId || !projectId || !req.user?.sub || req.user.tenantId !== tenantId) return false;
+  if (await canAccessArqdorProjectViaLead(req, tenantId, projectId)) return true;
+  return canAccessArqdorProjectViaObra(req, tenantId, projectId);
+}
