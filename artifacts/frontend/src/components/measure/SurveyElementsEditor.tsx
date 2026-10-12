@@ -4,6 +4,7 @@ import { Input } from "@/components/ui/input";
 import SurveyPlanPreview from "./SurveyPlanPreview";
 import { convertSurveyToArqdor } from "./convertSurveyToArqdor";
 import { queueSurvey, readPendingSurvey, clearPendingSurvey } from "./offlineSurveyQueue";
+import { withPhotoTabLock } from "./photoTabLock";
 
 export type SurveyElement = {
   id: string;
@@ -83,11 +84,12 @@ export default function SurveyElementsEditor({ elements, photos, draftKey, disab
     setSaving(true);
     setFeedback("");
     try {
+      await withPhotoTabLock("survey:" + storageKey, async () => {
       const pending = await readPendingSurvey(storageKey);
       if (pending && !dirty) {
         setOfflinePending(true);
         setFeedback("Existe cópia offline pendente. Recupere e confira as medições antes de salvar.");
-        return;
+        throw new Error("Recupere a cópia offline antes de sincronizar.");
       }
       // Persist first: network failures, HTTP conflicts and tab closures must not lose survey edits.
       await queueSurvey(storageKey, items);
@@ -101,6 +103,7 @@ export default function SurveyElementsEditor({ elements, photos, draftKey, disab
       setOfflinePending(false);
       setDirty(false);
       sessionStorage.removeItem(storageKey);
+      });
       setFeedback("Levantamento sincronizado no checklist.");
     } catch (error) {
       setOfflinePending(true);
