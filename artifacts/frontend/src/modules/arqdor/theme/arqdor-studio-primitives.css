@@ -162,3 +162,20 @@
 .arqdor-studio-ui .arqdor-legacy-right-panel .arqdor-render-material-picker:hover {background:var(--arq2-raised);border-color:var(--arq2-accent);}
 .arqdor-studio-ui .arqdor-legacy-right-panel .arqdor-render-material-picker:focus-visible {outline:2px solid var(--arq2-focus);outline-offset:2px;}
 @media(pointer:coarse) {.arqdor-studio-ui .arqdor-legacy-right-panel .arqdor-render-material-picker {min-height:44px;}}
+
+/* UI-17 — Studio IA Copilot inside Render inspector. */
+.arqdor-studio-ui .arqdor-legacy-right-panel .arqdor-studio-copilot {
+  background:var(--arq2-surface);
+  border-top:1px solid var(--arq2-border);
+}
+.arqdor-studio-ui .arqdor-legacy-right-panel .arqdor-studio-copilot > button:focus-visible,
+.arqdor-studio-ui .arqdor-legacy-right-panel .arqdor-studio-copilot button:focus-visible {
+  outline:2px solid var(--arq2-focus);
+  outline-offset:2px;
+}
+.arqdor-studio-ui .arqdor-legacy-right-panel .arqdor-studio-copilot .arqdor-render-tech-field {
+  background:var(--arq2-panel) !important;
+  color:var(--arq2-text) !important;
+  border:1px solid var(--arq2-border) !important;
+  border-radius:6px !important;
+}
