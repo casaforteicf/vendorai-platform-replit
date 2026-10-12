@@ -33,7 +33,7 @@ export function validateDraft(draft: LocalDraft, authorized: DraftScope, current
   }
   if (!Number.isFinite(Date.parse(draft.savedAt))) throw new Error("OFFLINE_INVALID_TIMESTAMP");
 }
-function aad(scope: DraftScope, operationId: string): Uint8Array {
+function aad(scope: DraftScope, operationId: string): Uint8Array<ArrayBuffer> {
   return new TextEncoder().encode(JSON.stringify([scope.userId, scope.tenantId, scope.projectId, scope.contextId, operationId, 1]));
 }
 export async function encryptLocalDraft(
@@ -41,8 +41,8 @@ export async function encryptLocalDraft(
 ): Promise<EncryptedDraft> {
   validateDraft(draft, authorized, current);
   if (key.algorithm.name !== "AES-GCM" || !key.usages.includes("encrypt")) throw new Error("OFFLINE_INVALID_KEY");
-  const iv = crypto.getRandomValues(new Uint8Array(12));
-  const bytes = new TextEncoder().encode(JSON.stringify(draft));
+  const iv = crypto.getRandomValues(new Uint8Array(new ArrayBuffer(12)));
+  const bytes = new Uint8Array(new TextEncoder().encode(JSON.stringify(draft)));
   const ciphertext = await crypto.subtle.encrypt(
     { name: "AES-GCM", iv, additionalData: aad(draft.scope, draft.change.operationId) }, key, bytes,
   );
@@ -59,7 +59,7 @@ export async function decryptLocalDraft(
   if (key.algorithm.name !== "AES-GCM" || !key.usages.includes("decrypt")) throw new Error("OFFLINE_INVALID_KEY");
   const decrypted = await crypto.subtle.decrypt(
     { name: "AES-GCM", iv: new Uint8Array(encrypted.iv),
-      additionalData: aad(encrypted.scope, encrypted.operationId) }, key, new Uint8Array(encrypted.ciphertext),
+      additionalData: aad(encrypted.scope, encrypted.operationId) }, key, new Uint8Array(new Uint8Array(encrypted.ciphertext)),
   );
   const draft = JSON.parse(new TextDecoder().decode(decrypted)) as LocalDraft;
   if (draft.change.operationId !== encrypted.operationId ||
