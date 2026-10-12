@@ -820,6 +820,15 @@ router.patch("/agendamentos/:id", async (req, res) => {
 
   const data = parsed.data;
 
+  // A revocation must also prevent subsequent calendar-bound edits, even
+  // when this member still owns the internal appointment record.
+  const effectiveCalendarId = data.agendaId === null ? null : (data.agendaId ?? existing.agendaId);
+  if (!isAdminPatch && effectiveCalendarId &&
+      (!req.user?.sub || !(await hasAgendaAccess(effectiveCalendarId, existing.tenantId, req.user.sub)))) {
+    res.status(403).json({ error: "Acesso ao calendario revogado ou nao autorizado" });
+    return;
+  }
+
   // Reassignments (including clearing the responsible user) require admin privileges.
   if (!isAdminPatch && data.responsavelId !== undefined && data.responsavelId !== existing.responsavelId) {
     res.status(403).json({ error: "Somente administradores podem transferir o responsável do agendamento" });
