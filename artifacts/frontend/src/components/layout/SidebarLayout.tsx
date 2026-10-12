@@ -4,6 +4,7 @@ import { useLocation } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
 import { loadVerifiedContexts } from "@/lib/unifiedContextsApi";
 import { ContextSwitcher } from "./ContextSwitcher";
+import { PwaInstallPrompt } from "./PwaInstallPrompt";
 
 import {
   getGetBusinessProfileByTenantQueryKey,
@@ -20,6 +21,8 @@ const MessagingMediaPlanBridge = lazy(() => import("@/components/marketing/Messa
 
 // UI-01 is opt-in and remains off in all existing deployments unless explicitly enabled.
 const UI01_CONTEXT_NAV_ENABLED = import.meta.env.VITE_UI01_CONTEXT_NAV === "true";
+// Install prompt is opt-in: disabled for existing tenants until device QA.
+const MULTI02_PWA_INSTALL_ENABLED = import.meta.env.VITE_MULTI02_PWA_INSTALL === "true";
 
 const MARKETING_ROUTE_HINTS = ["marketing", "campanh", "content", "conteudo", "media", "midia", "ads", "anuncio", "analytics", "site", "landing", "video", "planej"];
 
@@ -632,6 +635,7 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
           />
         </div>
       ) : null}
+      {MULTI02_PWA_INSTALL_ENABLED ? <PwaInstallPrompt /> : null}
       {children}
       {marketingContext ? (
         <Suspense fallback={null}>

@@ -14,6 +14,7 @@ import { useState, useEffect, useRef, useCallback, Suspense, lazy } from 'react'
 import { createContext, useContext, useMemo } from 'react'
 import { ArqCopilot }            from '../copilot/ui/ArqCopilot'
 import { WorkspaceProvider, useWorkspaceProject } from './WorkspaceContext'
+import { ArqdorDraftRecoveryPanel } from './ArqdorDraftRecoveryPanel'
 import { useArqProject, type ArqProjectState } from '../hooks/useArqProject'
 import { RenderProgressModal } from './project-experience/ProjectHomePhoenix'
 import { computeNextAction }     from './project-experience/ProjectHome'
@@ -830,7 +831,7 @@ function WorkspaceInner() {
   }, [])
 
   // AIE score
-  const { projectCtx } = useWorkspaceProject()
+  const { projectCtx, saveError: workspaceSaveError } = useWorkspaceProject()
   const aieResult    = useMemo(() => runAIE(projectCtx), [projectCtx])
   const overallScore = aieResult.scores.overall
   const badgeColor   = scoreColor(overallScore)
@@ -908,6 +909,12 @@ function WorkspaceInner() {
         overflow:'hidden', color:PHX.text,
       }}>
         <style>{CSS}</style>
+        <ArqdorDraftRecoveryPanel />
+        {workspaceSaveError && (
+          <div role="alert" style={{ flexShrink:0, padding:'8px 14px', background:'#7f1d1d', color:'#fee2e2', fontSize:12, fontWeight:700 }}>
+            {workspaceSaveError}
+          </div>
+        )}
         {arqState.error && (
           <div role="alert" style={{
             flexShrink:0, padding:'8px 14px', background:'#7f1d1d', color:'#fee2e2',
