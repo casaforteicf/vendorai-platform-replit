@@ -4,7 +4,7 @@ import {FurnitureWebGLPreview} from "./FurnitureWebGLPreview";
 import {findFurnitureObstacleClashes} from "../../shared/furniture-obstacle-clashes";
 import {createFurnitureSnapshot,restoreFurnitureSnapshot} from "../../shared/furniture-project-snapshot";
 import type {InteriorEnvironment} from "./interior-environment";
-import {closedRoomPolygon,furnitureInsidePolygon} from "../../shared/furniture-room-polygon";
+import {localRoomPolygon,furnitureInsidePolygon} from "../../shared/furniture-room-polygon";
 import type {CabinetDraft} from "../../shared/parametric-cabinet-core";
 import {insertCabinetDraft,repositionPlacedCabinet,removePlacedCabinet,revisePlacedCabinet,type PlacedCabinet} from "../../shared/placed-cabinet-draft";
 
@@ -25,8 +25,9 @@ export function FurniturePlacementPanel({environment,draft}:{environment:Interio
   const ys=environment.walls.flatMap(w=>[w.y1,w.y2]);
   const width=Math.round((Math.max(...xs)-Math.min(...xs))*1000);
   const depth=Math.round((Math.max(...ys)-Math.min(...ys))*1000);
-  const polygon=closedRoomPolygon(environment.walls.map(w=>({a:{x:Math.round(w.x1*1000),y:Math.round(w.y1*1000)},b:{x:Math.round(w.x2*1000),y:Math.round(w.y2*1000)}})));
-  const ready=!!polygon&&Math.min(...polygon.map(p=>p.x))===0&&Math.min(...polygon.map(p=>p.y))===0&&Number.isFinite(width)&&Number.isFinite(depth)&&width>0&&depth>0;
+  const localGeometry=localRoomPolygon(environment.walls.map(w=>({a:{x:Math.round(w.x1*1000),y:Math.round(w.y1*1000)},b:{x:Math.round(w.x2*1000),y:Math.round(w.y2*1000)}})));
+  const polygon=localGeometry?.polygon??null;
+  const ready=!!localGeometry&&Number.isFinite(width)&&Number.isFinite(depth)&&width>0&&depth>0;
   const heightLimitMm=environment.walls.length?Math.round(Math.min(...environment.walls.map(w=>w.heightM))*1000):null;
   const [x,setX]=useState(100),[y,setY]=useState(100);
   const [selectedId,setSelectedId]=useState<string|null>(null);
@@ -157,7 +158,7 @@ export function FurniturePlacementPanel({environment,draft}:{environment:Interio
   }
   return <section className="rounded-xl border bg-white p-4">
     <h3 className="font-semibold">Móveis na planta</h3>{dirty&&<p role="status" className="text-xs text-amber-700">Alterações locais não salvas{conflicted?" · conflito com outra edição":""}</p>}<button type="button" onClick={exportDraft} disabled={!roomItems.length} className="mt-1 rounded border px-2 py-1 text-xs">Exportar rascunho JSON</button><label className="ml-2 inline-flex cursor-pointer rounded border px-2 py-1 text-xs">Importar rascunho JSON<input type="file" accept=".json,application/json" className="sr-only" disabled={busy||!savedTenantId} onChange={e=>{void importDraft(e.target.files?.[0]);e.target.value="";}}/></label>
-    <p className="text-xs text-amber-700">Prévia 2D; pode salvar no projeto existente. Validação de engenharia pendente.</p>{!ready&&<p role="alert" className="text-xs text-red-700">Contorno aberto, autointersectado ou com origem deslocada: verifique as paredes do ambiente.</p>}
+    <p className="text-xs text-amber-700">Prévia 2D; pode salvar no projeto existente. Validação de engenharia pendente.</p>{!ready&&<p role="alert" className="text-xs text-red-700">Contorno aberto ou autointersectado: verifique as paredes do ambiente.</p>}
     {draft&&<p className="text-xs">Armário {draft.parameters.widthMm} × {draft.parameters.depthMm} mm · {draft.parts.length} tipos de peças.</p>}
     {ready?<><div className="grid grid-cols-2 gap-2">
       {([["X (mm)",x,setX],["Y (mm)",y,setY]] as const).map(([label,value,change])=><label key={label} className="text-xs">{label}<input type="number" className="w-full rounded border p-2" value={value} onChange={e=>change(Number(e.target.value))}/></label>)}
