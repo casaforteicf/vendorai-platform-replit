@@ -2,6 +2,7 @@ import { flushSync } from "react-dom";
 import { conceptReferenceSize } from "./conceptReferenceImage";
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import "./planner5d-reference.css";
+import "./arqdor-concept-studio.css";
 import {
   ArrowLeft,
   ArrowRight,
@@ -6216,7 +6217,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
   ]);
 
   return (
-    <div className="arqdor-reference-ui min-h-screen bg-muted/30">
+    <div className="arqdor-reference-ui arqdor-concept-studio min-h-screen bg-muted/30">
       {projectMaster && step !== RESULT_STEP && (
         <div className="fixed inset-0 z-[250] grid place-items-center bg-slate-950/55 p-4 backdrop-blur-sm">
           <div className="w-full max-w-lg rounded-3xl border border-emerald-200 bg-white p-6 shadow-2xl">
