@@ -48,10 +48,10 @@ export function ServiceHome({ name, isAdmin, arqdorVisible = false, erpVisible =
           <div className="flex items-center gap-2 text-sm font-semibold"><CalendarDays className="h-4 w-4 text-primary" /> Agenda</div>
           <p className="mt-2 text-sm text-muted-foreground">Ver compromissos e prazos</p>
         </Link>
-        <Link href="/leads" className="rounded-xl border bg-card p-4 hover:border-primary/50">
+        {allowed.has("crm") && <Link href="/leads" className="rounded-xl border bg-card p-4 hover:border-primary/50">
           <div className="flex items-center gap-2 text-sm font-semibold"><Sparkles className="h-4 w-4 text-primary" /> Atenção comercial</div>
           <p className="mt-2 text-sm text-muted-foreground">{unassignedLeads == null ? "Conferir leads" : unassignedLeads > 0 ? `${unassignedLeads} lead(s) sem responsável` : "Nenhum lead sem responsável"}</p>
-        </Link>
+        </Link>}
       </div>
       <div>
         <h2 className="mb-3 text-base font-semibold">Meus serviços</h2>
