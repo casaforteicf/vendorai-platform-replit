@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
+import "./arqdor-construction-studio.css";
 import { useAuth } from "@/contexts/AuthContext";
 import { useWorkspaceProject } from "../WorkspaceContext";
 
@@ -251,7 +252,7 @@ export default function ArqdorConstructionWorkspace({ arqState, onNavigate }: Pr
   if (!obra) return <Empty>Não foi possível vincular uma obra a este projeto.</Empty>;
 
   return (
-    <div className="min-h-screen bg-[#f7f7f8] text-slate-950">
+    <div className="arqdor-construction-studio min-h-screen bg-[#f7f7f8] text-slate-950">
       <div className="mx-auto flex w-full max-w-[1760px] flex-col gap-5 px-5 py-6 lg:px-8">
         <header className="rounded-[34px] border border-slate-100 bg-white p-5 shadow-sm">
           <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
