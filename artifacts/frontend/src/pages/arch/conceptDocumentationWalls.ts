@@ -1,7 +1,7 @@
 import { rectangularSolidCells } from "./conceptArchitecturalSlabVoids";
 import type { DrawingPrimitive } from "./conceptArchitecturalSections";
 export type DocumentationWall = { id: string; floor: number; x1: number; y1: number; x2: number; y2: number; thickness?: number };
-export type DocumentationOpening = { id: string; wallId: string; floor: number; type: "door" | "window"; offset: number; width?: number; height?: number; sillHeight?: number };
+export type DocumentationOpening = { id: string; wallId: string; floor: number; type: "door" | "window"; offset: number; width?: number; height?: number; sillHeight?: number; openingStyle?: "hinged" | "sliding" | "fixed" | "tilt_turn"; leafCount?: number; frameProfile?: string; glassType?: string; manufacturer?: string; catalogProductId?: string };
 /** Plan cut at 1.20 m; offset is normalized along the wall, at opening centre. */
 export function documentationWallPlan(walls: readonly DocumentationWall[], openings: readonly DocumentationOpening[], floor: number): DrawingPrimitive[] {
  const result: DrawingPrimitive[] = [];

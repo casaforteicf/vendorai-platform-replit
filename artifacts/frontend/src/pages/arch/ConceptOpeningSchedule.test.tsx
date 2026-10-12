@@ -12,3 +12,12 @@ it("refreshes warning when geometry changes and retains empty-state export guard
  rerender(<ConceptOpeningSchedule walls={walls} openings={[]}/>);
  expect(screen.getByRole("button",{name:"Exportar quadro de esquadrias CSV"}).hasAttribute("disabled")).toBe(true);
 });
+
+it("shows registered specifications and missing values in expandable details",()=>{
+ const walls=[{id:"w",floor:0,x1:0,y1:0,x2:4,y2:0}];
+ render(<ConceptOpeningSchedule walls={walls} openings={[{id:"j",wallId:"w",floor:0,type:"window",offset:0.5,manufacturer:"Marca registrada",openingStyle:"sliding",leafCount:2}]}/>);
+ expect(screen.getByText("Marca registrada")).toBeTruthy();
+ expect(screen.getByText("Correr")).toBeTruthy();
+ expect(screen.getByText("Não vinculado")).toBeTruthy();
+ expect(screen.getByText("Ver especificação").closest("details")).toBeTruthy();
+});

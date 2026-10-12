@@ -29,3 +29,12 @@ it("detects collisions and duplicate IDs while allowing touching edges",()=>{
  expect(documentationOpeningRows(walls,[base,{...base,id:"d2",offset:0.75}]).every(r=>r.status==="Informado")).toBe(true);
  expect(documentationOpeningRows(walls,[base,{...base}])[0].status).toBe("ID duplicado");
 });
+
+it("preserves authored specifications and exports them without guessing missing products",()=>{
+ const opening={id:"d",wallId:"w",floor:0,type:"door" as const,offset:0.5,width:1,height:2.1,sillHeight:0,openingStyle:"sliding" as const,leafCount:2,manufacturer:"Fornecedor",frameProfile:"PVC",glassType:"Laminado",catalogProductId:"product-1"};
+ const row=documentationOpeningRows(walls,[opening])[0];
+ expect(row).toMatchObject({manufacturer:"Fornecedor",frameProfile:"PVC",glassType:"Laminado",catalogProductId:"product-1",leafCount:2,openingStyle:"sliding"});
+ const csv=documentationOpeningCsv(walls,[opening]);
+ expect(csv).toContain('"Produto vinculado"');expect(csv).toContain('"product-1"');
+ expect(documentationOpeningRows(walls,[{...opening,manufacturer:undefined,catalogProductId:undefined,leafCount:0}])[0]).toMatchObject({manufacturer:"",catalogProductId:"",leafCount:null});
+});
