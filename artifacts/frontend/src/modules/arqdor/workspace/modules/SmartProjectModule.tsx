@@ -442,14 +442,44 @@ export default function SmartProjectModule({ arqState, onNavigate, projectId }: 
     ) ? (new URLSearchParams(window.location.search).get("tab") as "especificacoes" | "medicoes" | "quantitativos" | "orcamento" | "documentacao") : "overview"
   );
 
-  const project = useMemo(() => getCurrentProject(arqState, projectId), [arqState, projectId]);
+  const contextProject = useMemo(() => getCurrentProject(arqState, projectId), [arqState, projectId]);
+  const [loadedProject, setLoadedProject] = useState<ProjectLike | null>(null);
+  const [projectLoading, setProjectLoading] = useState(false);
+  const [projectError, setProjectError] = useState<string | null>(null);
+  useEffect(() => {
+    setLoadedProject(null);
+    setProjectError(null);
+    if (!projectId) { setProjectLoading(false); return; }
+    const controller = new AbortController();
+    setProjectLoading(true);
+    const token = localStorage.getItem("vendorai_token");
+    fetch(`/api/arch/projetos/${encodeURIComponent(projectId)}`, {
+      signal: controller.signal,
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    }).then(async response => {
+      if (!response.ok) throw new Error(`Não foi possível abrir o projeto (HTTP ${response.status}).`);
+      return response.json();
+    }).then(data => {
+      if (!controller.signal.aborted) {
+        const record = data.projeto;
+        if (!record || String(record.id) !== projectId) throw new Error("A API retornou um projeto diferente do solicitado.");
+        setLoadedProject({ ...record, ambientes: Array.isArray(data.ambientes) ? data.ambientes : record.ambientes });
+      }
+    }).catch(cause => {
+      if (!controller.signal.aborted) setProjectError(cause instanceof Error ? cause.message : "Falha ao carregar projeto.");
+    }).finally(() => {
+      if (!controller.signal.aborted) setProjectLoading(false);
+    });
+    return () => controller.abort();
+  }, [projectId]);
+  const project = projectId ? (loadedProject?.id === projectId ? loadedProject : null) : contextProject;
   const progress = useMemo(() => getProjectProgress(project), [project]);
   const timeline = useMemo(() => buildTimeline(project), [project]);
   const radar = useMemo(() => buildRadar(project), [project]);
   const environments = project?.ambientes || [];
 
   if (!project) {
-    if (projectId) return <section className="p-6 text-sm text-slate-700" role="status">O projeto solicitado ainda não está disponível no contexto atual. Reabra-o pela lista de projetos para evitar visualizar ou editar dados de outro projeto.</section>;
+    if (projectId) return <section className="p-6 text-sm text-slate-700" role="status">{projectLoading ? "Carregando projeto solicitado…" : projectError ?? "Projeto não encontrado ou indisponível. Verifique o acesso e selecione-o novamente."}</section>;
     return <EmptyProject onNavigate={onNavigate} />;
   }
 
