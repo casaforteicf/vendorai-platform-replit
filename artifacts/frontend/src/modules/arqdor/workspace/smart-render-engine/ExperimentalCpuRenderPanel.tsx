@@ -20,9 +20,10 @@ export function ExperimentalCpuRenderPanel({options}:Props){
  const [completed,setCompleted]=useState(false);
  const [history,setHistory]=useState<Array<{image:string;label:string}>>([]);
  const [comparison,setComparison]=useState<string|null>(null);
+ const [latestCompletedImage,setLatestCompletedImage]=useState<string|null>(null);
  const historySequence=useRef(0);
  useEffect(()=>()=>{generation.current++;job.current?.cancel();job.current=null;},[]);
- useEffect(()=>{generation.current++;job.current?.cancel();job.current=null;setProgress(0);setCompleted(false);setHistory([]);historySequence.current=0;setComparison(null);setStatus("Cena alterada — renderizar novamente");},[options]);
+ useEffect(()=>{generation.current++;job.current?.cancel();job.current=null;setProgress(0);setCompleted(false);setHistory([]);historySequence.current=0;setComparison(null);setLatestCompletedImage(null);setStatus("Cena alterada — renderizar novamente");},[options]);
  const stop=()=>{generation.current++;job.current?.cancel();job.current=null;setCompleted(false);setStatus("Cancelado");};
  const exportPng=()=>{
   if(!completed||!canvas.current||job.current)return;
@@ -59,7 +60,7 @@ export function ExperimentalCpuRenderPanel({options}:Props){
     onFrame:ev=>{if(currentGeneration!==generation.current)return;context.putImageData(new ImageData(new Uint8ClampedArray(ev.rgba),ev.width,ev.height),0,0);},
     onDone:()=>{if(currentGeneration!==generation.current)return;job.current=null;setProgress(100);setCompleted(true);setStatus("Concluído (experimental)");
       const image=canvas.current?.toDataURL("image/png");
-      if(image){const version=++historySequence.current;setHistory(old=>[{image,label:`Prévia ${version} · ${samples} passagens`},...old].slice(0,3));}
+      if(image){setLatestCompletedImage(image);const version=++historySequence.current;setHistory(old=>[{image,label:`Prévia ${version} · ${samples} passagens`},...old].slice(0,3));}
     },
     onError:error=>{if(currentGeneration!==generation.current)return;job.current=null;setStatus("Falha: "+error);}
    },{mode:"diffuse",samples,denoise:denoise?0.5:0});
@@ -95,8 +96,11 @@ export function ExperimentalCpuRenderPanel({options}:Props){
    <div className="flex flex-wrap gap-2">{history.map((entry,index)=><button key={index} type="button" onClick={()=>setComparison(entry.image)} className="rounded border p-1 text-xs">
     <img src={entry.image} alt={entry.label} className="h-14 w-20 object-cover"/>{entry.label}
    </button>)}</div>
-   {comparison && <div><button type="button" onClick={()=>setComparison(null)} className="text-xs underline">Fechar comparação</button>
-    <img src={comparison} alt="Prévia anterior para comparação" className="w-full max-w-sm rounded"/></div>}
+   {comparison && <div className="space-y-2"><button type="button" onClick={()=>setComparison(null)} className="text-xs underline">Fechar comparação</button>
+    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+     <figure><figcaption className="text-xs text-slate-600">Versão selecionada</figcaption><img src={comparison} alt="Prévia selecionada" className="w-full rounded border"/></figure>
+     {latestCompletedImage && <figure><figcaption className="text-xs text-slate-600">Última versão concluída</figcaption><img src={latestCompletedImage} alt="Última prévia concluída" className="w-full rounded border"/></figure>}
+    </div></div>}
   </div>
  </section>;
 }
