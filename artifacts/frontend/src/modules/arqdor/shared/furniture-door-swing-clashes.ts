@@ -17,11 +17,13 @@ export function furnitureDoorSwingClashes(bounds:FurnitureBounds,walls:readonly 
  const rotated=bounds.rotationDeg===90||bounds.rotationDeg===270;
  const width=rotated?bounds.depthMm:bounds.widthMm,depth=rotated?bounds.widthMm:bounds.depthMm;
  if(![bounds.xMm,bounds.yMm,width,depth].every(Number.isFinite)||width<=0||depth<=0)throw Error("Invalid furniture footprint");
- const margin=leafThicknessMm/2;
- const l=bounds.xMm-margin,t=bounds.yMm-margin,r=bounds.xMm+width+margin,b=bounds.yMm+depth+margin;
  return openings.filter(o=>{
   if(o.kind!=="door")return false;
-  const arc=doorSwingFootprint(walls,o,90);
+  const thickness=o.leafThicknessMm??leafThicknessMm;
+  if(!Number.isFinite(thickness)||thickness<=0||thickness>200)throw Error("Invalid door leaf thickness");
+  const margin=thickness/2;
+  const l=bounds.xMm-margin,t=bounds.yMm-margin,r=bounds.xMm+width+margin,b=bounds.yMm+depth+margin;
+  const arc=doorSwingFootprint(walls,o,Math.min(360,Math.max(90,Math.ceil((o.openingAngleDeg??90)*2))));
   const wall=walls.find(w=>w.id===o.wallId)!;
   const dx=wall.x2-wall.x1,dy=wall.y2-wall.y1,len=Math.hypot(dx,dy);
   const minX=Math.min(...walls.flatMap(w=>[w.x1,w.x2])),minY=Math.min(...walls.flatMap(w=>[w.y1,w.y2]));
