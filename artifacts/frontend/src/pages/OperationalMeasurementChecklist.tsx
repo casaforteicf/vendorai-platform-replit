@@ -212,10 +212,14 @@ export default function OperationalMeasurementChecklist() {
 
   async function complete() {
     if (!data?.run) return;
+    const signerName = window.prompt("Nome do responsável pelo aceite técnico:");
+    if (signerName === null) return;
+    if (signerName.trim().length < 3) { setError("Informe o nome do responsável com pelo menos 3 caracteres."); return; }
+    if (!window.confirm("Confirmo que revisei o levantamento. Este aceite autenticado não equivale a assinatura digital certificada. Concluir?")) return;
     setBusy("complete");
     setError(null);
     try {
-      const run = await api(`/api/operational-checklists/runs/${data.run.id}/complete`, { method: "POST", body: "{}" });
+      const run = await api(`/api/operational-checklists/runs/${data.run.id}/complete`, { method: "POST", body: JSON.stringify({ acknowledged: true, signerName: signerName.trim() }) });
       setData((prev) => prev ? { ...prev, run } : prev);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Não foi possível concluir.");
