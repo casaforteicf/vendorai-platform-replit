@@ -328,37 +328,38 @@ function EmptyProject({ onNavigate }: { onNavigate?: (module: string) => void })
 }
 
 
-type TechnicalMeasurement = {
-  id: string; name?: string | null; ambiente_id?: string | null; status?: string | null;
-  width_mm?: string | number | null; height_mm?: string | number | null;
-  depth_mm?: string | number | null; length_mm?: string | number | null;
-  measurement_source?: string | null; measurement_revision?: string | null;
+type TechnicalObject = {
+  id: string; name?: string|null; category?: string|null; ambiente_id?: string|null; status?: string|null;
+  width_mm?: string|number|null; height_mm?: string|number|null; depth_mm?: string|number|null;
+  length_mm?: string|number|null; measurement_source?: string|null; measurement_revision?: string|null;
+  quantity?: string|number|null; unit?: string|null; quantity_source?: string|null;
+  area_m2?: string|number|null; volume_m3?: string|number|null;
+  material_name?: string|null; product_name?: string|null;
 };
-function ProjectMeasurements({ projectId }: { projectId: string | null }) {
-  const [items, setItems] = useState<TechnicalMeasurement[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  useEffect(() => {
-    setItems([]);
-    setError(null);
-    if (!projectId) return;
-    const ctrl = new AbortController();
-    setLoading(true);
-    const token = localStorage.getItem("vendorai_token");
-    fetch(`/api/arch/spec-objects?projectId=${encodeURIComponent(projectId)}`, {
-      signal: ctrl.signal, headers: token ? { Authorization: `Bearer ${token}` } : {},
-    }).then(async response => {
-      if (!response.ok) throw new Error(`Não foi possível consultar as medidas (HTTP ${response.status}).`);
+type TechnicalSnapshot = { items:TechnicalObject[]; loading:boolean; error:string|null };
+function useProjectTechnicalObjects(projectId: string|null): TechnicalSnapshot {
+  const [snapshot,setSnapshot] = useState<TechnicalSnapshot>({items:[],loading:false,error:null});
+  useEffect(()=>{
+    if(!projectId){setSnapshot({items:[],loading:false,error:null});return;}
+    const controller=new AbortController();
+    setSnapshot({items:[],loading:true,error:null});
+    const token=localStorage.getItem("vendorai_token");
+    fetch(`/api/arch/spec-objects?projectId=${encodeURIComponent(projectId)}`,{
+      signal:controller.signal,cache:"no-store",headers:token?{Authorization:`Bearer ${token}`}:{},
+    }).then(async response=>{
+      if(!response.ok)throw new Error(`Falha ao consultar objetos técnicos (HTTP ${response.status}).`);
       return response.json();
-    }).then(data => {
-      if (!ctrl.signal.aborted) setItems(Array.isArray(data.items) ? data.items : []);
-    }).catch(reason => {
-      if (!ctrl.signal.aborted) setError(reason instanceof Error ? reason.message : "Falha ao carregar as medidas.");
-    }).finally(() => {
-      if (!ctrl.signal.aborted) setLoading(false);
+    }).then(data=>{
+      if(!controller.signal.aborted)setSnapshot({items:Array.isArray(data.items)?data.items:[],loading:false,error:null});
+    }).catch(cause=>{
+      if(!controller.signal.aborted)setSnapshot({items:[],loading:false,error:cause instanceof Error?cause.message:"Falha na consulta técnica."});
     });
-    return () => ctrl.abort();
-  }, [projectId]);
+    return ()=>controller.abort();
+  },[projectId]);
+  return snapshot;
+}
+function ProjectMeasurements({ projectId, snapshot }: {projectId:string|null; snapshot:TechnicalSnapshot}) {
+  const {items,loading,error}=snapshot;
   const measured = items.filter(item => [item.width_mm,item.height_mm,item.depth_mm,item.length_mm].some(v => v != null));
   const format = (value: number | string | null | undefined) => value == null ? "—" : `${Number(value).toLocaleString("pt-BR")} mm`;
   return <section className="min-w-0 rounded-2xl border border-slate-200 bg-slate-50 p-4 md:p-5" aria-label="Medições técnicas do projeto">
@@ -383,33 +384,8 @@ function ProjectMeasurements({ projectId }: { projectId: string | null }) {
 }
 
 
-type QuantityObject = {
-  id:string; name?:string|null; category?:string|null; ambiente_id?:string|null;
-  quantity?:string|number|null; unit?:string|null; quantity_source?:string|null;
-  area_m2?:string|number|null; volume_m3?:string|number|null;
-  material_name?:string|null; product_name?:string|null;
-  measurement_source?:string|null; status?:string|null;
-};
-function ProjectQuantities({projectId}:{projectId:string|null}) {
-  const [items,setItems] = useState<QuantityObject[]>([]);
-  const [loading,setLoading] = useState(false);
-  const [error,setError] = useState<string|null>(null);
-  useEffect(()=>{
-    setItems([]); setError(null);
-    if(!projectId){setLoading(false);return;}
-    const controller=new AbortController();
-    setLoading(true);
-    const token=localStorage.getItem("vendorai_token");
-    fetch(`/api/arch/spec-objects?projectId=${encodeURIComponent(projectId)}`,{
-      signal:controller.signal,headers:token?{Authorization:`Bearer ${token}`}:{},
-    }).then(async response=>{
-      if(!response.ok)throw new Error(`Falha na consulta (HTTP ${response.status}).`);
-      return response.json();
-    }).then(data=>{if(!controller.signal.aborted)setItems(Array.isArray(data.items)?data.items:[]);})
-      .catch(cause=>{if(!controller.signal.aborted)setError(cause instanceof Error?cause.message:"Não foi possível carregar quantitativos.");})
-      .finally(()=>{if(!controller.signal.aborted)setLoading(false);});
-    return ()=>controller.abort();
-  },[projectId]);
+function ProjectQuantities({projectId,snapshot}:{projectId:string|null;snapshot:TechnicalSnapshot}) {
+  const {items,loading,error}=snapshot;
   const fmt=(x:string|number|null|undefined)=>x==null?"Não informado":Number.isFinite(Number(x))?Number(x).toLocaleString("pt-BR",{maximumFractionDigits:3}):"Valor inválido";
   const withQuantity=items.filter(x=>x.quantity!=null && Number.isFinite(Number(x.quantity)));
   return <section aria-label="Quantitativos e materiais do projeto" className="min-w-0 rounded-2xl bg-slate-50 p-4 md:p-5">
@@ -477,6 +453,7 @@ export default function SmartProjectModule({ arqState, onNavigate, projectId }: 
   const timeline = useMemo(() => buildTimeline(project), [project]);
   const radar = useMemo(() => buildRadar(project), [project]);
   const environments = project?.ambientes || [];
+  const technicalSnapshot = useProjectTechnicalObjects(project?.id ?? null);
 
   if (!project) {
     if (projectId) return <section className="p-6 text-sm text-slate-700" role="status">{projectLoading ? "Carregando projeto solicitado…" : projectError ?? "Projeto não encontrado ou indisponível. Verifique o acesso e selecione-o novamente."}</section>;
@@ -599,9 +576,9 @@ export default function SmartProjectModule({ arqState, onNavigate, projectId }: 
               </section>
             ) : null}
 
-            {activeTab === "quantitativos" ? <ProjectQuantities projectId={project.id ?? null} /> : null}
+            {activeTab === "quantitativos" ? <ProjectQuantities projectId={project.id ?? null} snapshot={technicalSnapshot} /> : null}
 
-            {activeTab === "medicoes" ? <ProjectMeasurements projectId={project.id ?? null} /> : null}
+            {activeTab === "medicoes" ? <ProjectMeasurements projectId={project.id ?? null} snapshot={technicalSnapshot} /> : null}
 
             {activeTab === "especificacoes" ? (
               <div className="min-w-0 overflow-hidden rounded-2xl bg-slate-950" style={{ minHeight: 540 }}>
