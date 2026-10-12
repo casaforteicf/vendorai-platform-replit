@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import { ui20ServiceForPath } from "@/lib/ui20ServiceRoutes";
 import { getUi20VisibleServices, type Ui20Module } from "@/lib/ui20ServiceVisibility";
 import { Link, useLocation } from "wouter";
 import { Bot, BriefcaseBusiness, Building2, CircleHelp, House, Megaphone, Ruler, Settings2, Store, Users } from "lucide-react";
@@ -34,9 +35,8 @@ export function ServiceTabsBar({ arqdorVisible, erpVisible, modules, isAdmin, lo
     const allowed = getUi20VisibleServices({ modules, isAdmin, arqdorEligible: arqdorVisible, loading });
     return services.filter((item) => allowed.has(item.id) && (item.id !== "erp" || erpVisible));
   }, [modules, isAdmin, arqdorVisible, erpVisible, loading]);
-  const current = visible.find((item) => item.paths.some((path) =>
-    pathname === path || (path !== "/" && pathname.startsWith(path + "/"))
-  ))?.id;
+  const detected = ui20ServiceForPath(pathname);
+  const current = visible.some((item) => item.id === detected) ? detected : "home";
 
   return (
     <nav aria-label="Serviços do Vendor.ai" data-ui20-service-tabs="true"
