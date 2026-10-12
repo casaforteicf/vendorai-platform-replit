@@ -205,3 +205,12 @@ Esse teste estrutural não acessa rede, não modifica arquivos e não conta como
 - Criado teste estático `artifacts/frontend/scripts/test-arqdor-acl-editor.mjs`; **ainda sem execução comprovada**. Este fluxo não equivale a offline completo.
 - **Bloqueios antes de ativar:** migrações 024/025 e owner provisionado; ciclo de vida de revisões ao alternar/criar projeto; fila de alterações durante um envio em voo; revisão do comportamento do editor sob falhas; limites e privacidade do IndexedDB; testes React/build, multiaba/multissessão, PostgreSQL, Contabo e UX de recuperação. Flag backend e frontend devem permanecer desligadas; no estado atual a abertura de projetos sem membership seria negada.
 - PR draft, sem merge, homologação ou deploy.
+
+
+## MULTI-08.4 — Fila de salvamentos do editor
+- `WorkspaceContext.tsx` mantém agora um único envio ativo e a última alteração pendente, processando-a após a confirmação da revisão anterior; não descarta silenciosamente alterações recebidas enquanto há PUT em voo.
+- Falhas de rede com confirmação incerta e HTTP 409/401/403 bloqueiam novos envios automáticos, para não sobrescrever projetos ou repetir operações sem confirmação.
+- Troca do projeto ativo interrompe a fila e invalida a revisão local, exigindo nova abertura autorizada; respostas anteriores não atualizam a revisão do projeto recém-selecionado.
+- Teste estático de contrato ampliado. **Não há prova de teste React, browser, PostgreSQL, multiaba ou execução da suíte** nesta sessão.
+- **Pendências críticas**: persistir fila em IndexedDB com isolamento, evitar efeitos colaterais dentro de updater React, fluxo de retomada após erro, ciclo completo de troca/criação de projeto, snapshot/ACL e flags em homologação. O conteúdo pendente atualmente só reside na memória da aba; não é garantia de salvamento offline.
+- PR draft, sem merge, migração ou publicação.
