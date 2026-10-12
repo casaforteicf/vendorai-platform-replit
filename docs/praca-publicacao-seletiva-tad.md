@@ -78,3 +78,10 @@ Nenhum recurso real é ativado por esta entrega isolada.
 - Não confunde exibição de serviços com liberação de acesso; módulos não habilitados seguem ocultos.
 - A navegação só ocorre quando houver habilitação, permissão efetiva e rota auditada.
 - O fluxo principal do aplicativo continua inalterado e a tela não é redirecionamento pós-login.
+
+## Lote 08 — inventário privado de preparação
+- Endpoint autenticado `GET /api/tenants/:tenantId/praca-ai/preparacao`, sujeito aos guards globais e ao escopo do tenant.
+- Lista somente itens com opt-in explícito, com sinal de preparação para revisão (não equivale a anúncio aprovado/publicado).
+- Não fornece dados confidenciais de clientes, custos ou projetos. Não ativa vitrine pública.
+- Serviços ainda precisam mapear texto livre de categoria para taxonomia oficial Praça.ai.
+- Pendente executar build/testes e confirmar tabelas/colunas em homologação; API pública e aprovação continuam bloqueadas.
