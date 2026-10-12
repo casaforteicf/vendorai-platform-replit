@@ -121,11 +121,12 @@ export function RenderStudioSidebar({
           const done = index < currentIndex;
           const clickable = index <= currentIndex;
           return (
-            <button
-              className="arqdor-studio-step"
+            <StudioToolButton
+              className="arqdor-studio-step arqdor-render-step"
               data-step-number={String(index + 1).padStart(2, "0")}
               key={item.id}
               onClick={() => { if (clickable) onStepClick(item.id); }}
+              active={active}
               aria-current={active ? "step" : undefined}
               disabled={!clickable}
               title={!clickable ? "Complete as etapas anteriores primeiro" : done ? `Voltar para ${item.label}` : undefined}
@@ -134,7 +135,7 @@ export function RenderStudioSidebar({
               <span style={{ fontSize: 12, color: active ? C.accent : done ? C.green : C.dim, width: 14, flexShrink: 0, textAlign: "center" }}>{done ? "✓" : item.icon}</span>
               <span style={{ fontSize: 11, fontWeight: active ? 700 : 400, color: active ? C.accentText : done ? C.text : C.muted }}>{item.label}</span>
               {active && <span style={{ marginLeft: "auto", width: 5, height: 5, borderRadius: "50%", background: C.accent }} />}
-            </button>
+            </StudioToolButton>
           );
         })}
       </div>
