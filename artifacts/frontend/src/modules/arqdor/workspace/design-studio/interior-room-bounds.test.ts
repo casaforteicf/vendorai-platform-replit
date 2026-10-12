@@ -1,5 +1,5 @@
 import {describe,it,expect} from "vitest";
-import {buildRectangularRoom,rectangularFurnitureRoomBounds,fromPreProjectRoom} from "./interior-environment";
+import {buildRectangularRoom,rectangularFurnitureRoomBounds,fromPreProjectRoom,wallOpeningClearances} from "./interior-environment";
 describe("verified BIM room footprint for cabinet placement",()=>{
  it("accepts a genuine four-wall rectangular environment",()=>{
   const room=buildRectangularRoom({name:"Sala",widthM:4,depthM:3,heightM:2.7,thicknessM:.14});
@@ -17,5 +17,12 @@ describe("verified BIM room footprint for cabinet placement",()=>{
  });
  it("rejects invalid architectural opening clearances",()=>{
   expect(()=>fromPreProjectRoom("p",{id:"room",widthM:4,depthM:3,heightM:2.7,openingClearances:[{id:"door-1",xMm:0,yMm:0,widthMm:-1,depthMm:900}]})).toThrow();
+ });
+ it("derives a door clearance from an identified wall",()=>{
+  const env=fromPreProjectRoom("project",{id:"room",widthM:4,depthM:3,heightM:2.7,wallOpenings:[{id:"door",wallId:"preview-wall-1",offsetM:1,widthM:.9,clearanceM:.9}]});
+  expect(env.obstacles?.find(o=>o.id==="door")).toMatchObject({kind:"opening-clearance",xMm:1000,widthMm:900});
+ });
+ it("rejects openings whose offsets exceed the wall length",()=>{
+  expect(()=>fromPreProjectRoom("project",{id:"room",widthM:4,depthM:3,heightM:2.7,wallOpenings:[{id:"door",wallId:"preview-wall-1",offsetM:3.8,widthM:.9,clearanceM:.9}]})).toThrow();
  });
 });
