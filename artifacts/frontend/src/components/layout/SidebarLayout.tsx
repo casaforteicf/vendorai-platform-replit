@@ -88,7 +88,7 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
   // o token, e voltando 403 (tela em branco no app).
   const effectiveTenantId = user?.tenantId ?? "";
 
-  const { data: tenantNavModules = [], isLoading: tenantNavModulesLoading } = useQuery<TenantNavModule[]>({
+  const { data: tenantNavModules = [], isSuccess: tenantNavModulesReady } = useQuery<TenantNavModule[]>({
     queryKey: ["tenant-nav-modules", effectiveTenantId],
     enabled: !!effectiveTenantId && !!token,
     staleTime: 60_000,
@@ -101,7 +101,7 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
       const response = await fetch(`/api/tenants/${effectiveTenantId}/nav-modules`, {
         headers: { Authorization: `Bearer ${freshToken}` },
       });
-      if (!response.ok) return [];
+      if (!response.ok) throw new Error("Não foi possível verificar os módulos autorizados");
       return response.json();
     },
   });
@@ -621,7 +621,7 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
   const shellContent = (
     <>
       {UI20_SERVICE_TABS_ENABLED && !isPureSuperAdmin ? (
-        <ServiceTabsBar arqdorVisible={arqdorVisible} erpVisible={erpEntitled} modules={tenantNavModules} loading={tenantNavModulesLoading} isAdmin={user?.platformRole === "super_admin" || user?.userFunction === "administrador"} />
+        <ServiceTabsBar arqdorVisible={arqdorVisible} erpVisible={erpEntitled} modules={tenantNavModules} loading={!tenantNavModulesReady} isAdmin={user?.platformRole === "super_admin" || user?.userFunction === "administrador"} />
       ) : null}
       <Suspense fallback={null}>
         {adsContext ? <AdsMediaPlanContextBanner pathname={location} /> : null}
