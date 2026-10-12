@@ -297,3 +297,6 @@ Ao receber erro de concorrencia do servidor, editor de elementos tecnicos manté
 - Mostra JSON lado a lado dos elementos diferentes e exige escolha explicita local/servidor para cada elemento. Ausencia de um elemento e representada como exclusao.
 - Mesclagem e guardada no IndexedDB antes de atualizar a tela. Todos os elementos diferentes e aberturas vinculadas a paredes alteradas perdem a marca verified e devem ser conferidos novamente. Nenhum salvamento automatico no servidor ao mesclar.
 - Versao do servidor atualizada no retorno da consulta e apos PATCH. Permanecem testes de compilacao, integracao, race entre revisao consultada e gravacao e auditoria de merge. Sem homologacao, merge na main ou deploy.
+
+## Lote 52 — evidencias locais de resolucao de conflitos (12/10/2026)
+A mesclagem assistida agora grava no rascunho IndexedDB a data e escolhas locais/remotas por ID, lista de elementos alterados e contagem das duas versoes. Quando o editor salva novamente, carrega adiante estes metadados do rascunho. Exportacao avisa que os dados ainda nao sao homologados. Esta e uma evidencia LOCAL, nao log de auditoria imutavel nem prova de assinatura. Faltam historico persistido no servidor, testes e homologacao. Sem deploy.
