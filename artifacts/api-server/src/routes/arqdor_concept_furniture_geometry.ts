@@ -14,6 +14,7 @@ export function conceptRoomFurnitureGeometry(room:ConceptRoom,walls:readonly Con
  const eps=0.001;
  for(const wall of walls){
   if(!wall.id||wallMap.has(wall.id)||![wall.x1,wall.x2,wall.y1,wall.y2].every(Number.isFinite))throw Error("Parede inválida");
+  if(!Number.isInteger(wall.floor)||wall.floor<0)throw Error("Pavimento inválido");
   const vertical=Math.abs(wall.x1-wall.x2)<eps,horizontal=Math.abs(wall.y1-wall.y2)<eps;
   if(!horizontal&&!vertical)throw Error("Paredes oblíquas exigem BIM completo");
   if(Math.hypot(wall.x2-wall.x1,wall.y2-wall.y1)<eps)throw Error("Parede sem comprimento");
@@ -24,7 +25,8 @@ export function conceptRoomFurnitureGeometry(room:ConceptRoom,walls:readonly Con
   if(left<x-eps||right>x+width+eps||top<y-eps||bottom>y+depth+eps)throw Error("Parede fora do ambiente");
   const tx=Math.max(0,Math.round((left-x-thickness/2)*1000)),ty=Math.max(0,Math.round((top-y-thickness/2)*1000));
   const rx=Math.min(w,Math.round((right-x+thickness/2)*1000)),by=Math.min(d,Math.round((bottom-y+thickness/2)*1000));
-  if(rx>tx&&by>ty)zones.push({id:"wall:"+wall.id,xMm:tx,yMm:ty,widthMm:rx-tx,depthMm:by-ty});
+  if(rx<=tx||by<=ty)throw Error("Parede fora da área útil");
+  zones.push({id:"wall:"+wall.id,xMm:tx,yMm:ty,widthMm:rx-tx,depthMm:by-ty});
   wallMap.set(wall.id,wall);
  }
  for(const opening of openings){
