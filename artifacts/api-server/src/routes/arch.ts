@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { openingBudgetPlan, openingBudgetMutations } from "../lib/arch-opening-budget.js";
+import { openingBudgetPlan, openingBudgetMutations, openingBudgetGeometryIssues } from "../lib/arch-opening-budget.js";
 import { architecturalModelError } from "../lib/arch-concept-model-validation.js";
 import { preserveArchitecturalSnapshot } from "../lib/arch-concept-configuration.js";
 import { Router, type Request, type IRouter } from "express";
@@ -5056,11 +5056,7 @@ router.post("/arch/concept-projects/:id/opening-budget", authenticate, async (re
     const products = ids.length ? await tx.select().from(produtosCatalogoTable).where(and(eq(produtosCatalogoTable.tenantId, tid), eq(produtosCatalogoTable.ativo, true), inArray(produtosCatalogoTable.id, ids))) : [];
     const plan = openingBudgetPlan(conceptId, source, products, Date.now());
     const walls = Array.isArray(config.customWalls) ? config.customWalls : [];
-    for (const opening of source) {
-      const wall = walls.find((w: any) => w.id === opening.wallId && w.floor === opening.floor);
-      const length = wall ? Math.hypot(wall.x2 - wall.x1, wall.y2 - wall.y1) : NaN;
-      if (!Number.isFinite(length) || length <= 0 || opening.offset * length - Number(opening.width) / 2 < -1e-8 || opening.offset * length + Number(opening.width) / 2 > length + 1e-8 || Number(opening.sillHeight) + Number(opening.height) > 2.8 + 1e-8) plan.issues.push(opening.id + ": confira o encaixe na parede.");
-    }
+    plan.issues.push(...openingBudgetGeometryIssues(source, walls));
     const projectId = concept.archProjetoId;
     const [project] = projectId ? await tx.select({ id: archProjetosTable.id }).from(archProjetosTable).where(and(eq(archProjetosTable.id, projectId), eq(archProjetosTable.tenantId, tid))).limit(1) : [];
     const existing = project ? await tx.select().from(archOrcamentoItensTable).where(eq(archOrcamentoItensTable.projetoId, project.id)) : [];
