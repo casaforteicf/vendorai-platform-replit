@@ -88,13 +88,13 @@ export function RenderStudioRightPanel({
         <div style={{ width: 300, flexShrink: 0, background: D.surface, borderLeft: `1px solid ${D.border}`, display: "flex", flexDirection: "column", overflow: "hidden" }}>
           <div style={{ display: "flex", borderBottom: `1px solid ${D.border}`, flexShrink: 0 }}>
             {(["propriedades", "camadas"] as const).map((t) => (
-              <button key={t} onClick={() => setTab(t)} aria-selected={tab === t} style={{ flex: 1, padding: "10px 0", fontSize: 11, fontWeight: tab === t ? 700 : 400, color: tab === t ? D.purpleText : D.muted, background: "none", border: "none", borderBottom: tab === t ? `2px solid ${D.purple}` : "2px solid transparent", cursor: "pointer", marginBottom: -1 }}>
+              <button key={t} type="button" role="tab" id={`arqdor-render-tab-${t}`} aria-controls="arqdor-render-tab-content" onClick={() => setTab(t)} aria-selected={tab === t} style={{ flex: 1, padding: "10px 0", fontSize: 11, fontWeight: tab === t ? 700 : 400, color: tab === t ? "#4AC59A" : D.muted, background: "none", border: "none", borderBottom: tab === t ? "2px solid #176D59" : "2px solid transparent", cursor: "pointer", marginBottom: -1 }}>
                 {t.charAt(0).toUpperCase() + t.slice(1)}
               </button>
             ))}
           </div>
 
-          <div className="arqdor-properties-scroll" style={{ flex: 1, overflowY: "auto", padding: 12, display: "flex", flexDirection: "column", gap: 10 }}>
+          <div id="arqdor-render-tab-content" role="tabpanel" aria-labelledby={`arqdor-render-tab-${tab}`} className="arqdor-properties-scroll" style={{ flex: 1, overflowY: "auto", padding: 12, display: "flex", flexDirection: "column", gap: 10 }}>
 
             {/* P2-15: Camadas — dados reais */}
             {tab === "camadas" && (
@@ -170,7 +170,7 @@ export function RenderStudioRightPanel({
                         {opt}
                       </button>
                     ))}
-                    <input value={AMBIENTE_OPTIONS.includes(ambiente) ? "" : ambiente} onChange={(e) => setAmbiente(e.target.value)} placeholder="Outro ambiente…" aria-label="Tipo de ambiente personalizado" style={inputStyle} />
+                    <input className="arqdor-render-tech-field" value={AMBIENTE_OPTIONS.includes(ambiente) ? "" : ambiente} onChange={(e) => setAmbiente(e.target.value)} placeholder="Outro ambiente…" aria-label="Tipo de ambiente personalizado" style={inputStyle} />
                     {ambiente.trim() && <div className="arqdor-env-cta"><DkBtn onClick={onNextStep}>→ Continuar</DkBtn></div>}
                   </div>
                 )}
@@ -237,7 +237,7 @@ export function RenderStudioRightPanel({
                         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 7 }}>
                           <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                             <span style={{ fontSize: 9, fontWeight: 700, color: D.dim, textTransform: "uppercase" }}>Estilo</span>
-                            <select value={visualStyle} onChange={(e) => setVisualStyle(e.target.value as RenderStudioVisualStyle)} style={inputStyle}>
+                            <select className="arqdor-render-tech-field" value={visualStyle} onChange={(e) => setVisualStyle(e.target.value as RenderStudioVisualStyle)} style={inputStyle}>
                               <option value="original">Original</option>
                               <option value="contemporary">Contemporâneo</option>
                               <option value="minimalist">Minimalista</option>
@@ -246,7 +246,7 @@ export function RenderStudioRightPanel({
                           </label>
                           <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                             <span style={{ fontSize: 9, fontWeight: 700, color: D.dim, textTransform: "uppercase" }}>Iluminação</span>
-                            <select value={lightingProfile} onChange={(e) => setLightingProfile(e.target.value as RenderStudioLightingProfile)} style={inputStyle}>
+                            <select className="arqdor-render-tech-field" value={lightingProfile} onChange={(e) => setLightingProfile(e.target.value as RenderStudioLightingProfile)} style={inputStyle}>
                               <option value="natural">Natural</option>
                               <option value="balanced">Equilibrada</option>
                               <option value="more_light">Mais luz</option>
@@ -277,7 +277,7 @@ export function RenderStudioRightPanel({
                         <DkBtn variant="secondary" onClick={onStartRender} small>↺ Gerar nova versão deste ambiente</DkBtn>
                         <div style={{ display: "flex", flexDirection: "column", gap: 5, padding: "7px 8px", borderRadius: 7, background: D.card, border: `1px solid ${D.border}` }}>
                           <div style={{ fontSize: 10, fontWeight: 700, color: D.text }}>🎬 Gerar vídeo de 5s deste render</div>
-                          <select value={videoMovement} onChange={(e) => setVideoMovement(e.target.value as VideoMovement)} style={inputStyle}>
+                          <select className="arqdor-render-tech-field" value={videoMovement} onChange={(e) => setVideoMovement(e.target.value as VideoMovement)} style={inputStyle}>
                             <option value="cinematic_micro_movement">Movimento cinematográfico suave</option>
                             <option value="zoom_in_soft">Zoom in suave</option>
                             <option value="zoom_out_soft">Zoom out suave</option>
@@ -376,7 +376,7 @@ export function RenderStudioRightPanel({
                         {/* P2-16: Material library */}
                         {melhoriaMode === "change-material" && (
                           <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                            <button onClick={onOpenMaterialLib} style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 10px", borderRadius: 7, background: D.card, border: `1px solid ${D.border}`, cursor: "pointer", fontSize: 11, color: D.text }}>
+                            <button type="button" onClick={onOpenMaterialLib} className="arqdor-render-material-picker" aria-label={selectedMaterial ? `Alterar material: ${selectedMaterial.nome}` : "Abrir biblioteca de materiais"}>
                               <span style={{ fontSize: 14 }}>▦</span>
                               {selectedMaterial ? (
                                 <><span style={{ fontWeight: 700, flex: 1 }}>{selectedMaterial.nome}</span><span style={{ fontSize: 9, color: D.dim }}>{selectedMaterial.categoria}</span></>
@@ -405,7 +405,7 @@ export function RenderStudioRightPanel({
                           </div>
                         )}
 
-                        <textarea value={melhoriaPrompt} onChange={(e: any) => setMelhoriaPrompt(e.target.value)}
+                        <textarea className="arqdor-render-tech-field" value={melhoriaPrompt} onChange={(e: any) => setMelhoriaPrompt(e.target.value)}
                           placeholder={melhoriaMode === "change-material" ? (selectedMaterial ? `Aplicar ${selectedMaterial.nome} na região selecionada…` : "Descreva o material desejado…") : melhoriaMode === "change-lighting" ? "Ex: iluminação natural, tarde, luz suave…" : "Ex: melhorar texturas, sombras, acabamento…"}
                           rows={3} aria-label="Instrução de melhoria" style={{ ...inputStyle, resize: "vertical" }} />
 
@@ -488,7 +488,7 @@ export function RenderStudioRightPanel({
                         </div>
                         <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                           <label style={{ fontSize: 10, fontWeight: 700, color: D.dim, letterSpacing: "0.06em", textTransform: "uppercase" }}>Observação (opcional)</label>
-                          <textarea value={approvalNote} onChange={(e: any) => setApprovalNote(e.target.value)} placeholder="Ex: aprovado com ressalva de cor de piso…" rows={2} aria-label="Observação de aprovação" style={{ ...inputStyle, resize: "vertical" }} />
+                          <textarea className="arqdor-render-tech-field" value={approvalNote} onChange={(e: any) => setApprovalNote(e.target.value)} placeholder="Ex: aprovado com ressalva de cor de piso…" rows={2} aria-label="Observação de aprovação" style={{ ...inputStyle, resize: "vertical" }} />
                         </div>
                         <DkBtn disabled={loading} onClick={onApprove} variant="success">
                           {loading ? "Aprovando…" : "✓ Aprovar este render"}

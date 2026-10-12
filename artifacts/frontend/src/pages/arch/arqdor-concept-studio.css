@@ -1,0 +1,59 @@
+/* ARQDOR-UI-03 — Concept Studio 2.0 workspace shell.
+   Deliberately scoped: do not recolor technical drawings, photos or project material swatches. */
+.arqdor-concept-studio {
+  --arq-bg: #171F22;
+  --arq-surface: #20282A;
+  --arq-panel: #263034;
+  --arq-border: #3A4649;
+  --arq-text: #EEF2EF;
+  --arq-muted: #AAB8B5;
+  --arq-accent: #176D59;
+  font-family: Inter, "IBM Plex Sans", "Segoe UI", sans-serif;
+  font-size: 12px;
+}
+.arqdor-concept-studio :where(button,input,select,textarea) {
+  font-family: inherit;
+}
+.arqdor-concept-studio :where(button,input,select,textarea):focus-visible {
+  outline: 2px solid #4AC59A;
+  outline-offset: 2px;
+}
+.arqdor-concept-studio :where(button[aria-pressed="true"],button[data-state="active"],[role="tab"][aria-selected="true"]) {
+  border-color: #176D59;
+}
+@media (prefers-reduced-motion: reduce) {
+  .arqdor-concept-studio *, .arqdor-concept-studio *::before, .arqdor-concept-studio *::after {
+    transition-duration: .01ms !important;
+    animation-duration: .01ms !important;
+  }
+}
+
+
+/* UI-04: compact architectural editor chrome; keep project canvas and modal legibility intact. */
+@media (min-width: 1024px) {
+  .arqdor-concept-studio > main > section > div:first-child {
+    min-height: 52px;
+    gap: 8px;
+    padding: 8px 12px;
+    background: var(--arq-surface);
+    border-color: var(--arq-border);
+  }
+  .arqdor-concept-studio > main > section > div:first-child > div:first-child .text-slate-950 {
+    color: var(--arq-text);
+    font-size: 12px;
+  }
+  .arqdor-concept-studio > main > section > div:first-child > div:first-child .text-slate-500 {
+    color: var(--arq-muted);
+    font-size: 11px;
+  }
+  .arqdor-concept-studio > main > section > div:first-child .bg-orange-500 {
+    background-color: var(--arq-accent);
+    box-shadow: none;
+  }
+}
+.arqdor-concept-studio :where(button):disabled {
+  cursor: not-allowed;
+}
+.arqdor-concept-studio :where([role="tab"], button)[aria-selected="true"] {
+  outline-color: #4AC59A;
+}
