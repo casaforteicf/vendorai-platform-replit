@@ -157,6 +157,7 @@ export function RenderStudioMaterialLibraryModal({ isOpen, onClose, onSelect }: 
 }) {
   const [items, setItems] = useState<MaterialLibraryItem[]>([]);
   const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState(false);
   const [search, setSearch] = useState("");
   const [categoria, setCategoria] = useState("");
   const [showImporter, setShowImporter] = useState(false);
@@ -181,6 +182,7 @@ export function RenderStudioMaterialLibraryModal({ isOpen, onClose, onSelect }: 
 
   async function loadItems() {
     setLoading(true);
+    setLoadError(false);
     const params = new URLSearchParams({ limit: "100" });
     if (search) params.set("busca", search);
     if (categoria) params.set("categoria", categoria);
@@ -192,6 +194,7 @@ export function RenderStudioMaterialLibraryModal({ isOpen, onClose, onSelect }: 
       }
     } catch {
       setItems([]);
+      setLoadError(true);
     } finally {
       setLoading(false);
     }
@@ -540,7 +543,13 @@ export function RenderStudioMaterialLibraryModal({ isOpen, onClose, onSelect }: 
 
             <div style={{ flex: 1, overflowY: "auto", padding: 20 }}>
               {loading && <div style={{ display: "flex", justifyContent: "center", padding: 32 }}><DkSpinner size={32} /></div>}
-              {!loading && items.length === 0 && (
+              {!loading && loadError && (
+                <div role="alert" style={{ textAlign: "center", padding: 24, color: D.muted }}>
+                  <p>Não foi possível carregar a Biblioteca de Materiais.</p>
+                  <button type="button" onClick={() => void loadItems()} style={{ marginTop: 12, color: "#4AC59A", cursor: "pointer" }}>Tentar novamente</button>
+                </div>
+              )}
+              {!loading && !loadError && items.length === 0 && (
                 <div style={{ textAlign: "center", padding: 32, color: D.muted }}>
                   <div style={{ fontSize: 32, marginBottom: 8, opacity: 0.3 }}>▦</div>
                   <div style={{ fontSize: 13, marginBottom: 4 }}>Nenhum material encontrado</div>
