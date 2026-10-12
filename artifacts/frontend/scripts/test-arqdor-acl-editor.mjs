@@ -34,9 +34,11 @@ test("MULTI-08.4 serializes requests and stops on switching projects", () => {
   assert.match(source, /writeBlockedRef\.current = true/);
 });
 
-test("MULTI-09 plaintext draft saving is blocked until vault integration", () => {
+test("MULTI-09 protected draft writing requires an unlocked vault", () => {
   assert.match(source, /VITE_MULTI09_LOCAL_DRAFTS === 'true'/);
   assert.match(source, /if \(USE_LOCAL_DRAFTS\)/);
-  assert.match(source, /Rascunho offline seguro ainda não configurado/);
+  assert.match(source, /storeEncryptedArqdorDraft\(/);
+  assert.match(source, /const phrase = draftPhraseRef\.current/);
+  assert.match(source, /Cofre bloqueado ou autorização inválida/);
   assert.doesNotMatch(source, /saveArqdorDraft\(/);
 });
