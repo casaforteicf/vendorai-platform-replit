@@ -33,3 +33,29 @@ export function fromPreProjectRoom(projectId:string,room:{id:string;nome?:string
   return {source:"preproject",projectId,roomId:room.id,name:room.nome||room.name||room.titulo||"Ambiente",
     walls,sourceRevision:revision,persistStatus:"draft-only"};
 }
+
+/** Only allow furniture placement in rooms with a verified axis-aligned rectangular boundary.
+ * Irregular BIM rooms must use the polygon-aware placement engine, not a bounding box.
+ */
+export function rectangularFurnitureRoomBounds(environment:InteriorEnvironment):{id:string;widthMm:number;depthMm:number}|null{
+ const walls=environment.walls;
+ if(walls.length!==4)return null;
+ const xs=walls.flatMap(w=>[w.x1,w.x2]),ys=walls.flatMap(w=>[w.y1,w.y2]);
+ if(![...xs,...ys].every(Number.isFinite))return null;
+ const minX=Math.min(...xs),maxX=Math.max(...xs),minY=Math.min(...ys),maxY=Math.max(...ys);
+ if(Math.abs(minX)>1e-6||Math.abs(minY)>1e-6||maxX<=0||maxY<=0)return null;
+ const corners=new Set(["0,0",maxX+",0",maxX+","+maxY,"0,"+maxY]);
+ const seen=new Set<string>();
+ for(const wall of walls){
+  const from=wall.x1+","+wall.y1,to=wall.x2+","+wall.y2;
+  if(!corners.has(from)||!corners.has(to)||from===to||
+    !(Math.abs(wall.x1-wall.x2)<1e-6||Math.abs(wall.y1-wall.y2)<1e-6))return null;
+  const edge=[from,to].sort().join("|");
+  if(seen.has(edge))return null;
+  seen.add(edge);
+ }
+ if(seen.size!==4)return null;
+ const expected=[["0,0",maxX+",0"],[maxX+",0",maxX+","+maxY],[maxX+","+maxY,"0,"+maxY],["0,"+maxY,"0,0"]].map(pair=>pair.sort().join("|"));
+ if(expected.some(edge=>!seen.has(edge)))return null;
+ return {id:environment.roomId,widthMm:Math.round(maxX*1000),depthMm:Math.round(maxY*1000)};
+}
