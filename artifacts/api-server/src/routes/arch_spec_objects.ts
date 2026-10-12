@@ -1164,7 +1164,28 @@ archSpecObjectsRouter.post("/arch/spec-objects/bulk-from-render", async (req, re
 archSpecObjectsRouter.patch("/arch/spec-objects/:id", async (req, res, next) => {
   try {
     const tId = tenantId(req);
-    const item = await updateSpecObject(req.params["id"]!, tId, req.body as Partial<SpecObjectPayload>);
+    const patch = req.body as Partial<SpecObjectPayload> & { expectedUpdatedAt?: string };
+    if (patch.status === "sent-to-budget") {
+      res.status(409).json({ error: "Use a ação de envio ao orçamento, que exige aprovação técnica.", code: "TECHNICAL_APPROVAL_REQUIRED" });
+      return;
+    }
+    if (patch.expectedUpdatedAt !== undefined) {
+      const expected = new Date(patch.expectedUpdatedAt);
+      if (Number.isNaN(expected.getTime())) {
+        res.status(400).json({ error: "expectedUpdatedAt inválido" });
+        return;
+      }
+      const values: unknown[] = [req.params["id"]!];
+      let where = "id = $1";
+      if (tId) { values.push(tId); where += ` AND tenant_id = ${values.length}`; }
+      const previous = await pool.query(`SELECT updated_at FROM arch_spec_objects WHERE ${where} LIMIT 1`, values);
+      if (!previous.rows.length) { res.status(404).json({ error: "SpecObject não encontrado" }); return; }
+      if (new Date(previous.rows[0].updated_at).getTime() !== expected.getTime()) {
+        res.status(409).json({ error: "O componente mudou desde sua última leitura. Recarregue antes de editar.", code: "TECHNICAL_REVISION_CONFLICT" });
+        return;
+      }
+    }
+    const item = await updateSpecObject(req.params["id"]!, tId, patch);
     if (!item) {
       res.status(404).json({ error: "SpecObject não encontrado" });
       return;
