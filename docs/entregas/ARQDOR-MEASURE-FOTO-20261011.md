@@ -248,3 +248,6 @@ Componente de impressao pode renderizar fotos com URLs temporarias retornadas pe
 
 ## Lote 36 - aceite tecnico autenticado
 Conclusao exige confirmacao explicita e nome do responsavel (minimo 3 caracteres), associado ao usuario autenticado e horario no headerSnapshot. Impressao mostra o registro de aceite. Nao e assinatura digital certificada nem aceite juridico externo. Atualizacao usa comparacao de versao por updatedAt para evitar conclusao sobre checklist alterado por outra operacao. Pendente: testes de compilacao e integracao, assinatura formal com cliente, aceite por parte externa e homologacao. Sem merge/deploy de producao.
+
+## Lote 37 - ciencia presencial de terceiro
+API autenticada permite ao operador registrar declaracao de ciencia presencial apenas apos conclusao do levantamento: nome, vinculo com a obra, operador identificado e horario. Nao e assinatura independente do terceiro. Impede registro duplicado para a mesma revisao, usa controle de versao por updatedAt e verifica tenant. Botao na tela e registro no relatorio impresso. Pendente: portal seguro para aceite externo, assinatura eletronica verificada e testes de compilacao e integracao. Sem homologacao e sem publicacao.
