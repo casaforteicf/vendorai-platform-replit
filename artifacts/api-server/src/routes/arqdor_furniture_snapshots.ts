@@ -7,8 +7,8 @@ import {authenticate} from "../middlewares/auth.js";
 const router=Router();
 router.use("/arqdor/projects/:id/furniture",authenticate);
 const number=z.number().finite();
-const part=z.object({id:z.string().min(1),tenantId:z.string().min(1),projectId:z.string().min(1),furnitureId:z.string().min(1),materialId:z.string().trim().min(1),widthMm:number.positive(),lengthMm:number.positive(),quantity:z.number().int().positive()}).passthrough();
-const furniture=z.object({id:z.string().min(1),tenantId:z.string(),projectId:z.string(),roomId:z.string(),
+const part=z.object({id:z.string().min(1).max(160),tenantId:z.string().min(1),projectId:z.string().min(1),furnitureId:z.string().min(1),materialId:z.string().trim().min(1),widthMm:number.positive().max(500000),lengthMm:number.positive().max(500000),quantity:z.number().int().positive().max(100000)}).passthrough();
+const furniture=z.object({id:z.string().min(1).max(160),tenantId:z.string(),projectId:z.string(),roomId:z.string(),
  parameters:z.object({furnitureId:z.string().min(1),tenantId:z.string().min(1),projectId:z.string().min(1),roomId:z.string().min(1),widthMm:number.positive(),depthMm:number.positive(),heightMm:number.positive().optional()}).passthrough(),
  parts:z.array(part).max(2000),bounds:z.object({id:z.string(),roomId:z.string(),xMm:number,yMm:number,widthMm:number.positive(),depthMm:number.positive(),rotationDeg:z.union([z.literal(0),z.literal(90),z.literal(180),z.literal(270)])}),
  status:z.literal("local-draft")}).passthrough();
@@ -54,7 +54,7 @@ router.put("/arqdor/projects/:id/furniture/:roomId",async(req:Request,res:Respon
  try{
   const expected=data.baseRevision??null;
   const records=await db.update(arqdorWorkspaceProjectsTable)
-   .set({contextBlob:sql`jsonb_set(jsonb_set(COALESCE(${arqdorWorkspaceProjectsTable.contextBlob}, '{}'::jsonb), '{furnitureSnapshots}', COALESCE(${arqdorWorkspaceProjectsTable.contextBlob}->'furnitureSnapshots','{}'::jsonb), true), ARRAY['furnitureSnapshots', ${roomId}]::text[], ${JSON.stringify(normalized)}::jsonb, true)`,updatedAt:new Date()})
+   .set({contextBlob:sql`jsonb_set(jsonb_set(COALESCE(${arqdorWorkspaceProjectsTable.contextBlob}, '{}'::jsonb), '{furnitureSnapshots}', CASE WHEN jsonb_typeof(${arqdorWorkspaceProjectsTable.contextBlob}->'furnitureSnapshots')='object' THEN ${arqdorWorkspaceProjectsTable.contextBlob}->'furnitureSnapshots' ELSE '{}'::jsonb END, true), ARRAY['furnitureSnapshots', ${roomId}]::text[], ${JSON.stringify(normalized)}::jsonb, true)`,updatedAt:new Date()})
    .where(and(eq(arqdorWorkspaceProjectsTable.id,projectId),eq(arqdorWorkspaceProjectsTable.tenantId,tenantId),
     sql`(${arqdorWorkspaceProjectsTable.contextBlob} #>> ARRAY['furnitureSnapshots', ${roomId}, 'revision']::text[]) IS NOT DISTINCT FROM ${expected}`)).returning({id:arqdorWorkspaceProjectsTable.id});
   if(!records.length)return res.status(409).json({error:"Projeto não encontrado ou mobiliário alterado por outro usuário; recarregue antes de salvar"});
