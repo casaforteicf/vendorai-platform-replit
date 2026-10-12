@@ -39,7 +39,7 @@ router.put("/arqdor/projects/:id/members/:userId", async (req, res) => {
   try {
     const result = await db.transaction(async tx => {
       const [project] = await tx.select({ id: arqdorWorkspaceProjectsTable.id }).from(arqdorWorkspaceProjectsTable)
-        .where(and(eq(arqdorWorkspaceProjectsTable.tenantId, tenantId), eq(arqdorWorkspaceProjectsTable.id, projectId))).limit(1);
+        .where(and(eq(arqdorWorkspaceProjectsTable.tenantId, tenantId), eq(arqdorWorkspaceProjectsTable.id, projectId))).for("update");
       if (!project) return "not-found" as const;
       const [user] = await tx.select({ id: usersTable.id }).from(usersTable)
         .where(and(eq(usersTable.id, userId), eq(usersTable.tenantId, tenantId), eq(usersTable.active, true))).limit(1);
@@ -72,6 +72,9 @@ router.delete("/arqdor/projects/:id/members/:userId", async (req, res) => {
   try {
     // Atomic guard: owners can never be deleted by this route, including under concurrency.
     const removed = await db.transaction(async tx => {
+      const [project] = await tx.select({ id: arqdorWorkspaceProjectsTable.id }).from(arqdorWorkspaceProjectsTable)
+        .where(and(eq(arqdorWorkspaceProjectsTable.tenantId, tenantId), eq(arqdorWorkspaceProjectsTable.id, projectId))).for("update");
+      if (!project) return [];
       const deleted = await tx.delete(arqdorWorkspaceMembersTable).where(and(
         eq(arqdorWorkspaceMembersTable.tenantId, tenantId),
         eq(arqdorWorkspaceMembersTable.projectId, projectId),
