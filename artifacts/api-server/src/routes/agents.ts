@@ -464,6 +464,21 @@ async function handleSchedulerProcess(req: Request, res: Response): Promise<void
       }
     }
 
+    if (!schedulerIsAdmin && resolvedAgendaId) {
+      const callerId = req.user?.sub;
+      const [currentCalendar] = await db.select({ ownerUserId: agendasTable.ownerUserId })
+        .from(agendasTable)
+        .where(and(eq(agendasTable.id, resolvedAgendaId), eq(agendasTable.tenantId, tenantId))).limit(1);
+      const [currentGrant] = callerId ? await db.select({ userId: agendaAccessGrantsTable.userId })
+        .from(agendaAccessGrantsTable)
+        .where(and(eq(agendaAccessGrantsTable.agendaId, resolvedAgendaId),
+          eq(agendaAccessGrantsTable.tenantId, tenantId), eq(agendaAccessGrantsTable.userId, callerId))).limit(1) : [];
+      if (!callerId || !currentCalendar || (currentCalendar.ownerUserId !== callerId && !currentGrant)) {
+        res.status(403).json({ error: "Permissao de calendario revogada" });
+        return;
+      }
+    }
+
     const titulo = agendamentoInput.titulo ?? `Reunião com ${ctx.lead.nome}`;
     const [ag] = await db
       .insert(agendamentosTable)
