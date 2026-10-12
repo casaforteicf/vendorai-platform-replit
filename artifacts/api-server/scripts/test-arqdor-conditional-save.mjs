@@ -47,3 +47,12 @@ test("member conditional save requires feature flag and atomic membership check"
   assert.match(code, /req\.user\.sub/);
   assert.doesNotMatch(code, /onConflictDoUpdate/);
 });
+
+test("member save locks project before conditional update", () => {
+  const begin = source.indexOf('router.put("/arqdor/projects/:id/member-conditional"');
+  const end = source.indexOf('router.put("/arqdor/projects/:id/conditional"', begin);
+  const code = source.slice(begin, end);
+  assert.match(code, /db\.transaction\(async tx =>/);
+  assert.match(code, /\.for\("update"\)/);
+  assert.match(code, /return tx\.update\(arqdorWorkspaceProjectsTable\)/);
+});
