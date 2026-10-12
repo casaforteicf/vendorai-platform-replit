@@ -828,6 +828,7 @@ export function SidebarLayout({ children, arqdorVisible = false }: { children: R
       items.some((item) => location === item.href || (item.href !== "/" && location.startsWith(item.href)));
     return (
       <>
+        <NavItem item={{ name: "Voltar à TAD Central", href: "/tad", icon: LayoutDashboard }} onNavigate={onNavigate} />
         {homeNav.map((item) => (
           <NavItem key={item.href} item={item} onNavigate={onNavigate} />
         ))}

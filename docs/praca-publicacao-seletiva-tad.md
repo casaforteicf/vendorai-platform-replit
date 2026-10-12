@@ -102,3 +102,10 @@ Nenhum recurso real é ativado por esta entrega isolada.
 - CRM conserva leads, negócios, empresas, pipelines, prospector, conversas e operações comerciais específicas; Arqdor, Marketing, ERP, IA e Administração já tinham grupos distintos no menu legado.
 - O próximo passo é aplicar shells por ambiente da TAD, sem remover nem desativar as rotas legadas e sem quebrar atalhos históricos.
 - Pendência de QA: compilar, confirmar que Agenda não duplica e auditar permissões efetivas antes de alterar pós-login.
+
+## TAD — entrada após login (branch, NÃO publicada)
+- Login normal com usuário autenticado redireciona para `/tad`; contas `partner` mantêm `/partner`.
+- Hosts de homologação retornam por padrão à `/tad`, preservando caminhos específicos válidos de retorno.
+- `/tad` usa `FullscreenProtectedRoute` para evitar o menu CRM ao selecionar serviços.
+- Sidebar legado ganha entrada `Voltar à TAD Central`, preservando as rotas existentes.
+- O domínio app.appvendorai.com só mudará após homologação, merge e deploy autorizados. O launcher ainda precisa de permissão individual integrada para liberar links; não declarar pronto.

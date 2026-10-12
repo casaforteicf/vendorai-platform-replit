@@ -598,7 +598,7 @@ function PublicRoute({ component: Component }: any) {
 
   useEffect(() => {
     if (!isLoading && token && user) {
-      setLocation(user.platformRole === "partner" ? "/partner" : "/dashboard");
+      setLocation(user.platformRole === "partner" ? "/partner" : "/tad");
     }
   }, [token, user, isLoading, setLocation]);
 
@@ -649,7 +649,7 @@ function AppRoutes() {
         <Route path="/app"><RedirectPage to="/" /></Route>
         <Route path="/app/"><RedirectPage to="/" /></Route>
         <Route path="/dashboard"><ProtectedRoute component={Dashboard} /></Route>
-        <Route path="/tad"><ProtectedRoute component={TadCentralRoute} /></Route>
+        <Route path="/tad"><FullscreenProtectedRoute component={TadCentralRoute} /></Route>
         <Route path="/trabalho/:id"><ProtectedRoute component={LeadWorkspace} /></Route>
         <Route path="/trabalho"><ProtectedRoute component={WorkCenterHome} /></Route>
         <Route path="/leads/import-config"><ProtectedRoute component={ImportConfig} /></Route>
