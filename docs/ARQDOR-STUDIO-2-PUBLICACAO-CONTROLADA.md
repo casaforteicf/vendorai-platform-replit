@@ -61,3 +61,9 @@ Enviar: SHA testado, relação de arquivos alterados, resultado completo de type
 - Avaliadores de projeto em `artifacts/api-server/src/lib/arqdor-project-access.ts` presentes, porém não conectados. Não impor ACL parcial a projetos sem lead ou obra: definir política de propriedade, participantes e papel administrativo primeiro e aplicar com testes negativos por recurso.
 - Protocolo de validação: executar comandos reais do documento no ambiente de trabalho autorizado, registrar logs e SHA; testar Render/Concept, cache entre sessões, assinaturas de URLs, multitenancy e responsividade antes da decisão de publicação.
 - Sem aprovação explícita de versão homologada, **não realizar merge ou deploy**.
+
+## Correção incremental de autorização e situação de build
+- Adicionado `canAccessArqdorLinkedProject` no módulo `arqdor-project-access.ts`: combina apenas permissões comprovadas por lead ou responsável de obra, com negação conservadora por padrão.
+- **Não conectar o avaliador a todas as rotas ainda:** projetos sem lead/obra, administradores, colaboradores, convidados e modelos Concept precisam de regra oficial e testes. A instalação indiscriminada negaria acessos legítimos.
+- Tentativa real de `vendi_contabo_operate(build, ARQDOR-3494)` falhou no comando SSH/operador. Verificação anterior retornou `LOT_NOT_REGISTERED`. Não há evidência de build aprovado e não houve deploy.
+- Próximo executor com acesso ao host deve registrar o lote no operador autorizado, fornecer SHA exato, rodar gates de compilação, testes e homologação isolada. Não improvisar registro alterando o banco ou scripts em produção.
