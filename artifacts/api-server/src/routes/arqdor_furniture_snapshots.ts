@@ -1,7 +1,7 @@
 import {Router,type Request,type Response} from "express";
 import {z} from "zod/v4";
-import {db,arqdorWorkspaceProjectsTable} from "@workspace/db";
-import {and,eq,sql} from "drizzle-orm";
+import {db,arqdorWorkspaceProjectsTable,archConceptProjectsTable} from "@workspace/db";
+import {and,eq,or,sql} from "drizzle-orm";
 import {authenticate} from "../middlewares/auth.js";
 import {validateBimFurnitureFootprints} from "./arqdor_furniture_bim_geometry.js";
 /** Only mount under the globally authenticated API router. No whole-context overwrite. */
@@ -36,6 +36,38 @@ router.get("/arqdor/projects/:id/furniture",async(req:Request,res:Response)=>{
   const geometryRevision=geometry&&typeof geometry==="object"&&!Array.isArray(geometry)&&typeof (geometry as Record<string,unknown>).revision==="string"?(geometry as Record<string,string>).revision:null;
   return res.json({tenantId,furnitureSnapshots:stored??{},geometryRevision});
  }catch(e){console.error("furniture get",e);return res.status(500).json({error:"Falha ao carregar mobiliário"});}
+});
+/** Opt-in bootstrap from tenant-owned Concept rectangles only.
+ * Projects with explicit custom walls/openings require the full BIM publisher instead.
+ */
+router.post("/arqdor/projects/:id/furniture/geometry-from-concept",async(req:Request,res:Response)=>{
+ const tenantId=scope(req),projectId=String(req.params.id);
+ if(!tenantId)return res.status(401).json({error:"Tenant obrigatório"});
+ try{
+  const [concept]=await db.select().from(archConceptProjectsTable)
+   .where(and(eq(archConceptProjectsTable.tenantId,tenantId),or(eq(archConceptProjectsTable.id,projectId),eq(archConceptProjectsTable.archProjetoId,projectId)))).limit(1);
+  if(!concept)return res.status(404).json({error:"Concept vinculado não encontrado"});
+  const config=concept.configuration;
+  if((config.customWalls?.length??0)>0||(config.customOpenings?.length??0)>0||Object.keys(concept.openingOverrides??{}).length>0)
+   return res.status(422).json({error:"Geometria personalizada exige publicação BIM completa"});
+  const rooms:Record<string,{outline:Array<{xMm:number;yMm:number}>;exclusions:never[]}>= {};
+  if(!Array.isArray(concept.rooms)||concept.rooms.length===0||concept.rooms.length>150)return res.status(422).json({error:"Ambientes Concept inválidos"});
+  for(const room of concept.rooms){
+   const {id,x,y,width,depth}=room;
+   if(typeof id!=="string"||!id||rooms[id]||![x,y,width,depth].every(Number.isFinite)||width<=0||depth<=0||width>500||depth>500)
+    return res.status(422).json({error:"Ambiente Concept sem geometria retangular válida"});
+   const x0=Math.round(x*1000),y0=Math.round(y*1000),x1=Math.round((x+width)*1000),y1=Math.round((y+depth)*1000);
+   rooms[id]={outline:[{xMm:x0,yMm:y0},{xMm:x1,yMm:y0},{xMm:x1,yMm:y1},{xMm:x0,yMm:y1}],exclusions:[]};
+  }
+  const revision=concept.id+":"+concept.updatedAt.toISOString();
+  const geometry={schemaVersion:1 as const,source:"bim-server" as const,revision,rooms};
+  const [saved]=await db.update(arqdorWorkspaceProjectsTable)
+   .set({contextBlob:sql`jsonb_set(${arqdorWorkspaceProjectsTable.contextBlob},'{furnitureGeometryV1}',${JSON.stringify(geometry)}::jsonb,true)`,updatedAt:new Date()})
+   .where(and(eq(arqdorWorkspaceProjectsTable.id,projectId),eq(arqdorWorkspaceProjectsTable.tenantId,tenantId),
+    sql`jsonb_typeof(${arqdorWorkspaceProjectsTable.contextBlob})='object'`)).returning({id:arqdorWorkspaceProjectsTable.id});
+  if(!saved)return res.status(404).json({error:"Workspace não encontrado"});
+  return res.json({published:true,geometryRevision:revision,rooms:Object.keys(rooms).length});
+ }catch(error){console.error("furniture concept geometry",error);return res.status(500).json({error:"Falha ao publicar geometria Concept"});}
 });
 router.put("/arqdor/projects/:id/furniture/:roomId",async(req:Request,res:Response)=>{
  const tenantId=scope(req),projectId=String(req.params.id),roomId=String(req.params.roomId);
