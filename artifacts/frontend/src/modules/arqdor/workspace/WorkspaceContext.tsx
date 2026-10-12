@@ -57,6 +57,9 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const initialLoadDone = useRef(false)
   const remoteRevisionRef = useRef<string | null>(null)
   const saveInFlightRef = useRef(false)
+  const latestPendingRef = useRef<ProjectContext | null>(null)
+  const activeProjectRef = useRef<string | null>(null)
+  const writeBlockedRef = useRef(false)
 
   // ── Load on mount ───────────────────────────────────────────────────────────
   useEffect(() => {
@@ -69,6 +72,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     const storedId = localStorage.getItem(STORAGE_KEY)
     if (!storedId) return  // Nenhum projeto salvo — exibe tela de boas-vindas
 
+    activeProjectRef.current = storedId
     setIsInitializing(true)
     fetch(`${BASE}/arqdor/projects/${encodeURIComponent(storedId)}${USE_PROJECT_ACL ? '/snapshot' : ''}`, { headers: authHeaders(), cache: 'no-store' })
       .then(async res => {
@@ -90,6 +94,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
               setLoadError('Resposta de projeto inválida. Salvamento bloqueado.')
               return
             }
+            if (activeProjectRef.current !== storedId) return
             remoteRevisionRef.current = data.revision
             ctx = data.contextBlob as ProjectContext
           } else {
@@ -113,48 +118,82 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       })
   }, [])
 
-  // ── Debounced save ──────────────────────────────────────────────────────────
+  // ── Debounced, single-flight save (MULTI-08.4) ────────────────────────────
+  // Keep the newest pending context while a request is in flight; never issue
+  // overlapping writes using the same revision.
+  const flushPending = useCallback(async () => {
+    if (saveInFlightRef.current || writeBlockedRef.current) return
+    saveInFlightRef.current = true
+    setSaving(true)
+    try {
+      while (latestPendingRef.current && !writeBlockedRef.current) {
+        const ctx = latestPendingRef.current
+        latestPendingRef.current = null
+        if (activeProjectRef.current !== ctx.id || !getToken()) {
+          writeBlockedRef.current = true
+          setSaveError('Sessão ou projeto alterado. Salvamento interrompido; preserve suas alterações.')
+          break
+        }
+        const expectedRevision = remoteRevisionRef.current
+        if (USE_PROJECT_ACL && !expectedRevision) {
+          writeBlockedRef.current = true
+          setSaveError('Sem revisão autorizada para este projeto. Exporte suas alterações.')
+          break
+        }
+        try {
+          const response = await fetch(`${BASE}/arqdor/projects/${encodeURIComponent(ctx.id)}${USE_PROJECT_ACL ? '/member-conditional' : ''}`, {
+            method: 'PUT',
+            headers: authHeaders(),
+            body: JSON.stringify(USE_PROJECT_ACL ? { expectedRevision, contextBlob: ctx } : ctx),
+          })
+          if (response.status === 409 || response.status === 401 || response.status === 403) {
+            writeBlockedRef.current = true
+            setSaveError('Conflito de versão, sessão expirada ou acesso revogado. Exporte as alterações antes de sair.')
+            break
+          }
+          if (!response.ok) throw new Error(`Save failed: HTTP ${response.status}`)
+          if (USE_PROJECT_ACL) {
+            const saved = await response.json() as { id?: string; revision?: string }
+            if (saved.id !== ctx.id || typeof saved.revision !== 'string') throw new Error('Invalid acknowledgment')
+            if (activeProjectRef.current !== ctx.id) {
+              writeBlockedRef.current = true
+              setSaveError('Projeto alterado durante o envio. Verifique a gravação antes de continuar.')
+              break
+            }
+            remoteRevisionRef.current = saved.revision
+          }
+          if (!latestPendingRef.current) setSaveError(null)
+        } catch {
+          // Delivery may have reached the server: do NOT retry blindly.
+          writeBlockedRef.current = true
+          setSaveError('Não foi possível confirmar a gravação. Preserve ou exporte o projeto antes de sair.')
+          break
+        }
+      }
+    } finally {
+      saveInFlightRef.current = false
+      setSaving(false)
+    }
+  }, [])
+
   const persistCtx = useCallback((ctx: ProjectContext) => {
-    const tok = getToken()
-    if (!tok || !ctx.id?.trim()) {
+    if (!ctx.id?.trim() || !getToken()) {
       setSaveError('Projeto ou sessão inválidos. As alterações não foram enviadas.')
       return
     }
-
+    if (activeProjectRef.current && activeProjectRef.current !== ctx.id) {
+      if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
+      latestPendingRef.current = null
+      remoteRevisionRef.current = null
+      writeBlockedRef.current = USE_PROJECT_ACL
+      setSaveError('Projeto alterado. Reabra-o para obter uma revisão autorizada antes de salvar.')
+    }
+    activeProjectRef.current = ctx.id
+    if (writeBlockedRef.current) return
+    latestPendingRef.current = ctx
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
-    saveTimerRef.current = setTimeout(async () => {
-      if (USE_PROJECT_ACL && (!remoteRevisionRef.current || saveInFlightRef.current)) {
-        setSaveError('Salvamento protegido indisponível ou ocupado. Preserve seu projeto antes de sair.')
-        return
-      }
-      saveInFlightRef.current = true
-      setSaving(true)
-      try {
-        const response = await fetch(`${BASE}/arqdor/projects/${encodeURIComponent(ctx.id)}${USE_PROJECT_ACL ? '/member-conditional' : ''}`, {
-          method: 'PUT',
-          headers: authHeaders(),
-          body: JSON.stringify(USE_PROJECT_ACL ? { expectedRevision: remoteRevisionRef.current, contextBlob: ctx } : ctx),
-        })
-        if (response.status === 409) {
-          setSaveError('Conflito com outra sessão ou acesso revogado. Exporte seu projeto antes de sair.')
-          return
-        }
-        if (!response.ok) throw new Error(`Save failed: HTTP ${response.status}`)
-        if (USE_PROJECT_ACL) {
-          const saved = await response.json() as { id?: string; revision?: string }
-          if (saved.id !== ctx.id || typeof saved.revision !== 'string') throw new Error('Invalid save acknowledgment')
-          remoteRevisionRef.current = saved.revision
-        }
-        setSaveError(null)
-      } catch {
-        // Do not pretend the server saved a draft when the network or API rejected it.
-        setSaveError('Não foi possível salvar as alterações no servidor. Copie ou exporte seu trabalho antes de sair.')
-      } finally {
-        saveInFlightRef.current = false
-        setSaving(false)
-      }
-    }, SAVE_DEBOUNCE_MS)
-  }, [])
+    saveTimerRef.current = setTimeout(() => { void flushPending() }, SAVE_DEBOUNCE_MS)
+  }, [flushPending])
 
   // ── Setter exposed to modules ───────────────────────────────────────────────
   // When the incoming context has the same ID as the current one (e.g. a partial
