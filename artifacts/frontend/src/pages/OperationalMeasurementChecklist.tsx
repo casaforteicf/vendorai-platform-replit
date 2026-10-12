@@ -158,7 +158,11 @@ export default function OperationalMeasurementChecklist() {
       method: "POST",
       body: JSON.stringify({ name: file.name, contentType: file.type, dataBase64: base64, uploadId }),
     });
-    setPhotoAccess((prev) => ({ ...prev, [itemId]: [...(prev[itemId] ?? []), { storageUrl: result.storageUrl, accessUrl: result.accessUrl }] }));
+    // A photo upload mutates the server checklist revision; refresh before saving dimensions.
+    const fresh = await api(`/api/operational-checklists/deals/${dealId}/current`);
+    if (!fresh.run || fresh.run.id !== data.run.id) throw new Error("A revisão do checklist mudou após o envio. Recarregue antes de salvar cotas.");
+    setData(fresh);
+    setPhotoAccess((prev) => ({ ...prev, [itemId]: [...(prev[itemId] ?? []).filter(photo => photo.storageUrl !== result.storageUrl), { storageUrl: result.storageUrl, accessUrl: result.accessUrl }] }));
     return { storageUrl: result.storageUrl, accessUrl: result.accessUrl };
   }
 
