@@ -88,6 +88,7 @@ export function AgendarReuniaoModal({
   const { data: agendas = [] } = useListAgendas(tenantId);
   const { data: users = [] }   = useListTenantUsers(tenantId);
   const selectedAgenda         = agendas.find((agenda) => agenda.id === selectedAgendaId) ?? agendas[0];
+  const canUseMeet = Boolean(selectedAgenda?.id && selectedAgenda?.googleCalendarId);
   const createAgendamento      = useCreateAgendamento();
 
   const effectiveParticipanteIds = isAdmin ? participanteIds : (ownUserId ? [ownUserId] : []);
@@ -100,7 +101,7 @@ export function AgendarReuniaoModal({
     setLoadingSlots(true);
 
     const params = new URLSearchParams({ date, duracao });
-    if (isAdmin && selectedAgenda?.id) params.set("agendaId", selectedAgenda.id);
+    if (selectedAgenda?.id) params.set("agendaId", selectedAgenda.id);
     if (effectiveParticipanteIds.length) params.set("responsavelIds", effectiveParticipanteIds.join(","));
 
     const token = localStorage.getItem("vendorai_token");
@@ -124,8 +125,8 @@ export function AgendarReuniaoModal({
       setParticipanteIds(isAdmin ? (responsavelId ? [responsavelId] : []) : (ownUserId ? [ownUserId] : []));
       setClientesExtras([]);
       setEnviarCliente(true);
-      setSelectedAgendaId(isAdmin ? (agendas[0]?.id ?? "") : "");
-      setModalidade(isAdmin ? "meet" : "presencial");
+      setSelectedAgendaId(agendas[0]?.id ?? "");
+      setModalidade("presencial");
       setDate(tomorrowISO());
       setDuracao("30");
       setObservacoes("");
@@ -136,6 +137,10 @@ export function AgendarReuniaoModal({
   function handleConfirm() {
     if (!isAdmin && !ownUserId) {
       toast({ title: "Identidade do usuário indisponível", variant: "destructive" });
+      return;
+    }
+    if (modalidade === "meet" && !canUseMeet) {
+      toast({ title: "Selecione um calendário Google autorizado", variant: "destructive" });
       return;
     }
     if (!selectedSlot) {
@@ -173,10 +178,10 @@ export function AgendarReuniaoModal({
           tenantId,
           dealId,
           leadId,
-          agendaId: isAdmin ? (selectedAgenda?.id ?? undefined) : undefined,
+          agendaId: selectedAgenda?.id ?? undefined,
           responsavelId: resolvedResponsavelId ?? undefined,
           tipo: "reuniao",
-          gerarMeet: isAdmin && modalidade === "meet",
+          gerarMeet: modalidade === "meet" && canUseMeet,
           titulo: `Reunião com ${leadNome}`,
           dataHoraInicio: new Date(selectedSlot.start) as any,
           dataHoraFim: new Date(selectedSlot.end) as any,
@@ -217,7 +222,7 @@ export function AgendarReuniaoModal({
           <div className="space-y-2">
             <Label>Tipo</Label>
             <div className="flex gap-2">
-              {(["presencial", ...(isAdmin ? ["meet" as const] : []), "ligacao"] as Modalidade[]).map((m) => {
+              {(["presencial", ...(canUseMeet ? ["meet" as const] : []), "ligacao"] as Modalidade[]).map((m) => {
                 const label = m === "presencial" ? "Presencial" : m === "meet" ? "Google Meet" : "Ligação";
                 const Icon  = m === "meet" ? Video : m === "ligacao" ? Phone : MapPin;
                 return (
