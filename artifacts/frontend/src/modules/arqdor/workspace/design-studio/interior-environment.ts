@@ -13,11 +13,14 @@ export type InteriorEnvironment={
 export type WallOpening={id:string;wallId:string;offsetM:number;widthM:number;clearanceM:number;kind?:"door"|"window";hinge?:"start"|"end";swing?:"left"|"right";openingAngleDeg?:number;leafThicknessMm?:number};
 export function wallOpeningClearances(walls:InteriorWall[],openings:WallOpening[]):InteriorObstacle[]{
  const minX=Math.min(...walls.flatMap(w=>[w.x1,w.x2])),minY=Math.min(...walls.flatMap(w=>[w.y1,w.y2]));
+ const openingIds=new Set<string>();
  return openings.map(o=>{
+  if(!o||typeof o.id!=="string"||!o.id||openingIds.has(o.id))throw Error("Duplicate or missing opening identity");
+  openingIds.add(o.id);
   const w=walls.find(w=>w.id===o.wallId);
   if(!w||!o.id||![o.offsetM,o.widthM,o.clearanceM].every(Number.isFinite)||o.offsetM<0||o.widthM<=0||o.clearanceM<=0)throw Error("Invalid opening");
   const dx=w.x2-w.x1,dy=w.y2-w.y1,len=Math.hypot(dx,dy);
-  if(len<=0||o.offsetM+o.widthM>len||Math.abs(dx)>0.000001&&Math.abs(dy)>0.000001)throw Error("Unsupported opening wall");
+  if(!Number.isFinite(len)||len<=0||!Number.isFinite(w.thicknessM)||w.thicknessM<=0||o.offsetM+o.widthM>len||Math.abs(dx)>0.000001&&Math.abs(dy)>0.000001)throw Error("Unsupported opening wall");
   const x=w.x1+dx/len*o.offsetM,y=w.y1+dy/len*o.offsetM;
   const x2=w.x1+dx/len*(o.offsetM+o.widthM),y2=w.y1+dy/len*(o.offsetM+o.widthM);
   const pad=o.clearanceM+w.thicknessM/2;
