@@ -675,4 +675,40 @@ router.post("/operational-checklists/runs/:runId/complete", async (req, res) => 
   res.json(updated);
 });
 
+
+const externalAcknowledgementSchema = z.object({
+  signerName: z.string().trim().min(3).max(160),
+  signerRole: z.string().trim().min(3).max(120),
+  declaration: z.literal(true),
+  notes: z.string().trim().max(1500).optional(),
+});
+
+// Internal operator records an in-person acknowledgement. This is NOT a public signing endpoint.
+router.post("/operational-checklists/runs/:runId/external-acknowledgement", async (req, res) => {
+  const parsed = externalAcknowledgementSchema.safeParse(req.body ?? {});
+  if (!parsed.success) return void res.status(422).json({ error: "Identificação e declaração de ciência são obrigatórias." });
+  if (!req.user?.sub) return void res.status(401).json({ error: "Autenticação obrigatória." });
+  const [run] = await db.select().from(operationalChecklistRunsTable)
+    .where(eq(operationalChecklistRunsTable.id, String(req.params.runId))).limit(1);
+  if (!run) return void res.status(404).json({ error: "Levantamento não encontrado." });
+  if (!canAccessTenant(req, run.tenantId)) return void res.status(403).json({ error: "Acesso negado." });
+  if (run.status !== "concluido") return void res.status(409).json({ error: "Conclua a conferência técnica antes de registrar ciência externa." });
+  if (run.headerSnapshot.externalAcknowledgement) return void res.status(409).json({ error: "Ciência externa já registrada para esta revisão." });
+  const record = {
+    signerName: parsed.data.signerName,
+    signerRole: parsed.data.signerRole,
+    declaredByOperatorId: req.user.sub,
+    declaredAt: new Date().toISOString(),
+    notes: parsed.data.notes ?? null,
+    type: "in_person_operator_recorded",
+    meaning: "Registro informado por operador autenticado; nao constitui assinatura digital nem identidade verificada do terceiro.",
+  };
+  const [updated] = await db.update(operationalChecklistRunsTable)
+    .set({ headerSnapshot: { ...run.headerSnapshot, externalAcknowledgement: record }, updatedAt: new Date() })
+    .where(and(eq(operationalChecklistRunsTable.id, run.id), eq(operationalChecklistRunsTable.updatedAt, run.updatedAt), eq(operationalChecklistRunsTable.status, "concluido")))
+    .returning();
+  if (!updated) return void res.status(409).json({ error: "Levantamento alterado por outra operação. Recarregue." });
+  return void res.json(updated);
+});
+
 export default router;
