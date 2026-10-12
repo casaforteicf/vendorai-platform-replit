@@ -52,6 +52,9 @@ router.post("/arqdor/projects/:id/furniture/geometry-from-concept",async(req:Req
    return res.status(422).json({error:"Geometria personalizada exige publicação BIM completa"});
   const rooms:Record<string,{outline:Array<{xMm:number;yMm:number}>;exclusions:never[]}>= {};
   if(!Array.isArray(concept.rooms)||concept.rooms.length===0||concept.rooms.length>150)return res.status(422).json({error:"Ambientes Concept inválidos"});
+  // Multiple rooms can have auto-generated circulation openings not represented in this rectangle-only contract.
+  // Fail closed until the full wall/opening geometry publisher is available.
+  if(concept.rooms.length!==1)return res.status(422).json({error:"Projeto com múltiplos ambientes exige publicação BIM completa de portas e circulação"});
   for(const room of concept.rooms){
    const {id,x,y,width,depth}=room;
    if(typeof id!=="string"||!id||rooms[id]||![x,y,width,depth].every(Number.isFinite)||width<=0||depth<=0||width>500||depth>500)
