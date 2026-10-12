@@ -251,3 +251,6 @@ Conclusao exige confirmacao explicita e nome do responsavel (minimo 3 caracteres
 
 ## Lote 37 - ciencia presencial de terceiro
 API autenticada permite ao operador registrar declaracao de ciencia presencial apenas apos conclusao do levantamento: nome, vinculo com a obra, operador identificado e horario. Nao e assinatura independente do terceiro. Impede registro duplicado para a mesma revisao, usa controle de versao por updatedAt e verifica tenant. Botao na tela e registro no relatorio impresso. Pendente: portal seguro para aceite externo, assinatura eletronica verificada e testes de compilacao e integracao. Sem homologacao e sem publicacao.
+
+## Lote 38 — preparacao de convite para aceite remoto
+API interna autenticada gera token aleatorio de 256 bits, grava somente SHA-256, destinatario, emissor, revisao e validade de 1 a 72 horas. Token retornado apenas na emissao com Cache-Control no-store. API interna permite revogar convite; atualizacao do JSONB protege contra concorrencia via updatedAt. NAO EXISTE AINDA rota publica de aceite nem identidade verificada, portanto convite NAO DEVE SER ENVIADO A CLIENTES. Necessarios verificacao de identidade, limitacao de tentativas, auditoria imutavel, consumo atomico do token, testes de compilacao, integracao e homologacao. Sem deploy.
