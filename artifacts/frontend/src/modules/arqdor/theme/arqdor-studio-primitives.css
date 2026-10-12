@@ -143,3 +143,22 @@
 @media(pointer:coarse){
   .arqdor-studio-ui .arqdor-legacy-right-panel :is(input,select).arqdor-render-tech-field {min-height:44px;}
 }
+
+/* UI-16 — material selection uses the common inspector visual language. */
+.arqdor-studio-ui .arqdor-legacy-right-panel .arqdor-render-material-picker {
+  display:flex;
+  align-items:center;
+  gap:8px;
+  width:100%;
+  padding:8px 10px;
+  border-radius:6px;
+  border:1px solid var(--arq2-border);
+  background:var(--arq2-surface);
+  color:var(--arq2-text);
+  text-align:left;
+  font-size:11px;
+  cursor:pointer;
+}
+.arqdor-studio-ui .arqdor-legacy-right-panel .arqdor-render-material-picker:hover {background:var(--arq2-raised);border-color:var(--arq2-accent);}
+.arqdor-studio-ui .arqdor-legacy-right-panel .arqdor-render-material-picker:focus-visible {outline:2px solid var(--arq2-focus);outline-offset:2px;}
+@media(pointer:coarse) {.arqdor-studio-ui .arqdor-legacy-right-panel .arqdor-render-material-picker {min-height:44px;}}
