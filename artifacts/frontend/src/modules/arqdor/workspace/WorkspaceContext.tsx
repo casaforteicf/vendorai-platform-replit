@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, useMemo, useEffect, useCallback, useRef } from 'react'
 import type { ReactNode } from 'react'
 import { useAuth } from '../../../contexts/AuthContext'
+import { storeEncryptedArqdorDraft } from '../../../lib/arqdorEncryptedVault'
 import type { Project } from '../../../pages/arch/arqdor/domain/arqdor-domain-types'
 import type { ArchProject } from '../../../pages/arch/arqdor-types'
 import type { ProjectContext, ProjectObject, ProjectMaterial } from '../engines/aie/aie-types'
@@ -45,6 +46,8 @@ export interface WorkspaceContextValue {
   saving:         boolean
   loadError:      string | null
   saveError:      string | null
+  unlockDraftSaving: (phrase: string) => void
+  applyRecoveredDraft: (ctx: ProjectContext) => void
 }
 
 export const WorkspaceContext = createContext<WorkspaceContextValue | null>(null)
@@ -66,6 +69,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const latestPendingRef = useRef<ProjectContext | null>(null)
   const activeProjectRef = useRef<string | null>(null)
   const writeBlockedRef = useRef(false)
+  const draftPhraseRef = useRef<string | null>(null)
   const authorizedDraftScopeRef = useRef<{ tenantId: string; userId: string; contextId: string; projectId: string } | null>(null)
 
   // ── Load on mount ───────────────────────────────────────────────────────────
@@ -147,11 +151,27 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
         }
         const expectedRevision = remoteRevisionRef.current
         if (USE_LOCAL_DRAFTS) {
-          // The current IndexedDB draft store is plaintext. Refuse writes
-          // until the encrypted vault has a recoverable key and unlock UI.
-          writeBlockedRef.current = true
-          setSaveError('Rascunho offline seguro ainda não configurado. Exporte seu projeto antes de sair.')
-          break
+          const scope = authorizedDraftScopeRef.current
+          const identity = identityRef.current
+          const phrase = draftPhraseRef.current
+          if (!scope || !identity || !phrase || scope.projectId !== ctx.id ||
+              scope.userId !== identity.userId || scope.tenantId !== identity.tenantId || !expectedRevision) {
+            writeBlockedRef.current = true
+            setSaveError('Cofre bloqueado ou autorização inválida. Exporte o trabalho antes de sair.')
+            break
+          }
+          try {
+            await storeEncryptedArqdorDraft({
+              scope, savedAt: new Date().toISOString(), content: ctx,
+              change: { operationId: crypto.randomUUID(), projectId: ctx.id,
+                baseRevision: expectedRevision, kind: 'geometry' },
+            }, scope, { projectId: ctx.id, contextId: scope.contextId,
+              revision: expectedRevision, capabilities: ['studio_2d'] }, phrase)
+          } catch {
+            writeBlockedRef.current = true
+            setSaveError('Não foi possível confirmar a gravação criptografada. Exporte o projeto.')
+            break
+          }
         }
         if (USE_PROJECT_ACL && !expectedRevision) {
           writeBlockedRef.current = true
@@ -204,6 +224,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       latestPendingRef.current = null
       remoteRevisionRef.current = null
       authorizedDraftScopeRef.current = null
+      draftPhraseRef.current = null
       writeBlockedRef.current = USE_PROJECT_ACL
       setSaveError('Projeto alterado. Reabra-o para obter uma revisão autorizada antes de salvar.')
     }
@@ -231,9 +252,21 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => () => { if (saveTimerRef.current) clearTimeout(saveTimerRef.current) }, [])
 
+  const unlockDraftSaving = useCallback((phrase: string) => {
+    if (phrase.length < 12) return
+    draftPhraseRef.current = phrase
+    if (USE_LOCAL_DRAFTS && authorizedDraftScopeRef.current) writeBlockedRef.current = false
+  }, [])
+  const applyRecoveredDraft = useCallback((ctx: ProjectContext) => {
+    if (!USE_LOCAL_DRAFTS || !ctx.id || activeProjectRef.current !== ctx.id ||
+        !authorizedDraftScopeRef.current || saveInFlightRef.current) return
+    // Local-only preview. A subsequent save requires the vault to be unlocked.
+    setProjectCtxState(ctx)
+    persistCtx(ctx)
+  }, [persistCtx])
   const value = useMemo<WorkspaceContextValue>(
-    () => ({ projectCtx, isRealProject, isInitializing, setProjectCtx, saving, loadError, saveError }),
-    [projectCtx, isRealProject, isInitializing, setProjectCtx, saving, loadError, saveError],
+    () => ({ projectCtx, isRealProject, isInitializing, setProjectCtx, saving, loadError, saveError, unlockDraftSaving, applyRecoveredDraft }),
+    [projectCtx, isRealProject, isInitializing, setProjectCtx, saving, loadError, saveError, unlockDraftSaving, applyRecoveredDraft],
   )
 
   return (
