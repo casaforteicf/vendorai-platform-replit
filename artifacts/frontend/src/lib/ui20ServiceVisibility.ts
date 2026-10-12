@@ -15,19 +15,19 @@ export function getUi20VisibleServices(input: {
   visible.add("crm");
   visible.add("marketing");
   visible.add("marketplace");
-  if (isAdmin) visible.add("settings");
-  const permitted = (key: string) => {
+  if (isAdmin && permittedModule("settings")) visible.add("settings");
+  function permittedModule(key: string) {
     const row = modules.find((module) => module.moduleKey === key);
     return Boolean(row?.isEnabled && row.commerciallyEntitled !== false);
-  };
+  }
   const notExplicitlyDisabled = (key: string) =>
     !modules.some((module) => module.moduleKey === key && (module.hasOverride === true && !module.isEnabled || module.commerciallyEntitled === false));
-  if (permitted("financeiro")) visible.add("erp");
-  if (arqdorEligible && notExplicitlyDisabled("arch")) visible.add("arqdor");
-  // IA is paid/permissioned: never infer access from an absent module record.
-  if (permitted("agents")) visible.add("ia");
-  for (const [service, key] of [["crm", "leads"], ["marketing", "marketing"], ["marketplace", "marketplace"]] as const) {
-    if (!notExplicitlyDisabled(key)) visible.delete(service);
-  }
+  if (permittedModule("financeiro")) visible.add("erp");
+  if (arqdorEligible && permittedModule("arch")) visible.add("arqdor");
+  // Real NAV_MODULE_CATALOG keys; never infer IA access from missing entries.
+  if (["sdr", "vendor_brain", "knowledge_graph"].some(permittedModule)) visible.add("ia");
+  if (!permittedModule("leads")) visible.delete("crm");
+  if (!["content", "campaigns", "analytics", "content_autopilot"].some(permittedModule)) visible.delete("marketing");
+  // /marketplace is distinct from Praça.AI. No catalog key exists for this public workspace.
   return visible;
 }
