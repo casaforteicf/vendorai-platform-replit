@@ -27,3 +27,33 @@
     animation-duration: .01ms !important;
   }
 }
+
+
+/* UI-04: compact architectural editor chrome; keep project canvas and modal legibility intact. */
+@media (min-width: 1024px) {
+  .arqdor-concept-studio > main > section > div:first-child {
+    min-height: 52px;
+    gap: 8px;
+    padding: 8px 12px;
+    background: var(--arq-surface);
+    border-color: var(--arq-border);
+  }
+  .arqdor-concept-studio > main > section > div:first-child > div:first-child .text-slate-950 {
+    color: var(--arq-text);
+    font-size: 12px;
+  }
+  .arqdor-concept-studio > main > section > div:first-child > div:first-child .text-slate-500 {
+    color: var(--arq-muted);
+    font-size: 11px;
+  }
+  .arqdor-concept-studio > main > section > div:first-child .bg-orange-500 {
+    background-color: var(--arq-accent);
+    box-shadow: none;
+  }
+}
+.arqdor-concept-studio :where(button):disabled {
+  cursor: not-allowed;
+}
+.arqdor-concept-studio :where([role="tab"], button)[aria-selected="true"] {
+  outline-color: #4AC59A;
+}
