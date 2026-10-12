@@ -26,6 +26,7 @@ vi.mock("@workspace/db", () => ({
     update: mockDbUpdate,
     delete: mockDbDelete,
     insert: mockDbInsert,
+    transaction: async (callback: (tx: unknown) => Promise<unknown>) => callback({ insert: mockDbInsert }),
   },
   agendaAccessGrantsTable: { agendaId: "agendaId", tenantId: "tenantId", userId: "userId" },
   agendasTable: { id: "id", tenantId: "tenantId", ownerUserId: "ownerUserId", googleRefreshToken: "googleRefreshToken" },
