@@ -129,6 +129,8 @@ export default function Dashboard() {
       {import.meta.env.VITE_UI20_SERVICE_TABS === "true" ? (
         <ServiceHome
           name={user?.name ?? ""}
+          tenantId={tenantId}
+          userId={user?.id ?? ""}
           isAdmin={user?.platformRole === "super_admin" || user?.userFunction === "administrador"}
           modules={ui20NavQuery.data}
           overdueTasks={official?.operation?.overdueTasks}
