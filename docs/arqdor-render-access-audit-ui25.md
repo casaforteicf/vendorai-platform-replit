@@ -32,3 +32,14 @@ Data: 2026-10-12. Escopo: leitura de código na branch do PR #3494; **não é te
 - Auditoria estática parcial feita.
 - **Sem alterações de autorização do servidor**, migração de banco, merge ou deploy.
 - Pendentes: encontrar o verificador canônico de acesso por projeto, cobrir as demais rotas, criar testes integrados multi-tenant/intra-tenant e homologar.
+
+## UI-26 — rastreamento da política canônica (12/10/2026)
+
+Evidências adicionais de leitura estática:
+- `lib/db/src/schema/arch_projetos.ts` declara `tenantId`, vínculos opcionais `leadId`, `dealId`, `obraId`, `arquitetoResponsavel` (texto) e token de portal, mas **não declara um ACL explícito de membros/permissões** nesse modelo.
+- `artifacts/api-server/src/routes/arqdor_model_files.ts` verifica JWT (`req.user.sub`), tenant e existência do projeto em `archProjetosTable` antes de listar arquivos. Essa verificação é de **pertença ao tenant**, não prova permissão individual ao projeto.
+- Busca no código por `requireProjectAccess` e `canAccessProject` não retornou função canônica com esses nomes; isso **não prova ausência** de política de autorização em outros serviços.
+
+**Decisão:** não introduzir guard de projeto improvisado baseado em `arquitetoResponsavel` (campo de nome livre) nem bloquear indiscriminadamente usuários legítimos. Antes de modificar o backend, rastrear regras do CRM/obra/projeto vinculados e decidir explicitamente a política autorizada para admin, profissional responsável, equipe, convidados e portal. Se não existir ACL persistido confiável, isso requer definição de modelo e migração homologada.
+
+Critério adicional de aceitação: testes integrados com dois usuários do mesmo tenant — um autorizado e outro não — em histórico, render individual, geração de URL assinada e modelo GLB, além de isolamento entre tenants.
