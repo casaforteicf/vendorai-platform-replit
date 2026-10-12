@@ -27,9 +27,9 @@ export type SurveyElement = {
   note?: string | null;
   verified: boolean;
 };
-type Props = { elements: SurveyElement[]; photos: string[]; draftKey: string; disabled?: boolean; onSave: (items: SurveyElement[]) => Promise<void> };
+type Props = { elements: SurveyElement[]; photos: string[]; draftKey: string; disabled?: boolean; onSave: (items: SurveyElement[]) => Promise<void>; onFetchLatest?: () => Promise<SurveyElement[]> };
 const types: SurveyElement["elementType"][] = ["wall","door","window","column","beam","electrical","plumbing","gas","other"];
-export default function SurveyElementsEditor({ elements, photos, draftKey, disabled = false, onSave }: Props) {
+export default function SurveyElementsEditor({ elements, photos, draftKey, disabled = false, onSave, onFetchLatest }: Props) {
   const storageKey = "arqdor-measure-session:" + draftKey;
   const [recovery] = useState<{ items: SurveyElement[]; editedAt: string } | null>(() => {
     try {
@@ -72,6 +72,9 @@ export default function SurveyElementsEditor({ elements, photos, draftKey, disab
   const [offlinePending, setOfflinePending] = useState(false);
   const [feedback, setFeedback] = useState("");
   const [serverConflict, setServerConflict] = useState(false);
+  const [remoteItems, setRemoteItems] = useState<SurveyElement[] | null>(null);
+  const [mergeChoices, setMergeChoices] = useState<Record<string, "local" | "remote">>({});
+  const [loadingRemote, setLoadingRemote] = useState(false);
   const [showDraft, setShowDraft] = useState(false);
   const [reviewConfirmed, setReviewConfirmed] = useState(false);
   useEffect(() => {
@@ -125,6 +128,48 @@ export default function SurveyElementsEditor({ elements, photos, draftKey, disab
         ? error.message + " — mantenha a cópia offline e revise antes de tentar novamente."
         : "Falha ao salvar. Confira se os dados foram preservados no dispositivo.");
     } finally { setSaving(false); }
+  }
+  async function compareWithServer() {
+    if (!onFetchLatest) { setFeedback("Consulta da versão atual indisponível."); return; }
+    setLoadingRemote(true);
+    try {
+      const latest = await onFetchLatest();
+      setRemoteItems(latest);
+      setMergeChoices({});
+      setFeedback("Compare os elementos e escolha uma versão para cada diferença.");
+    } catch (error) {
+      setFeedback(error instanceof Error ? error.message : "Falha ao consultar servidor.");
+    } finally { setLoadingRemote(false); }
+  }
+  async function applyReviewedMerge() {
+    if (!remoteItems || disabled || saving) return;
+    const localById = new Map(items.map(entry => [entry.id, entry]));
+    const remoteById = new Map(remoteItems.map(entry => [entry.id, entry]));
+    const allIds = Array.from(new Set([...localById.keys(), ...remoteById.keys()]));
+    const changed = allIds.filter(id => JSON.stringify(localById.get(id) ?? null) !== JSON.stringify(remoteById.get(id) ?? null));
+    if (changed.some(id => !mergeChoices[id])) { setFeedback("Escolha uma versão para todos os elementos diferentes."); return; }
+    const next = allIds.flatMap(id => {
+      const chosen = changed.includes(id) && mergeChoices[id] === "local" ? localById.get(id) : remoteById.get(id);
+      if (!chosen) return [];
+      return [{ ...chosen, verified: changed.includes(id) ? false : chosen.verified }];
+    });
+    // A modified wall invalidates any linked opening regardless of where the opening originated.
+    const changedWalls = new Set(next.filter(entry => entry.elementType === "wall" && changed.includes(entry.id)).map(entry => entry.id));
+    const reconciled = next.map(entry => entry.wallId && changedWalls.has(entry.wallId) ? { ...entry, verified: false } : entry);
+    if (!window.confirm("Aplicar a mesclagem revisada? Elementos alterados perderão a conferência técnica e precisarão ser conferidos novamente.")) return;
+    try {
+      await queueSurvey(storageKey, reconciled);
+      setItems(reconciled);
+      setDirty(true);
+      setReviewConfirmed(false);
+      setOfflinePending(true);
+      setServerConflict(false);
+      setRemoteItems(null);
+      setMergeChoices({});
+      setFeedback("Mesclagem guardada offline. Revise todas as alterações e confira novamente antes de sincronizar.");
+    } catch {
+      setFeedback("Não foi possível guardar a mesclagem offline; nenhuma alteração foi aplicada.");
+    }
   }
   function reviseElement(entry: SurveyElement) {
     if (disabled || saving) return;
@@ -204,6 +249,29 @@ export default function SurveyElementsEditor({ elements, photos, draftKey, disab
     {items.map((entry)=><div key={entry.id} className="flex flex-wrap items-center justify-between gap-2 border-t pt-2 text-sm"><span>{entry.roomName} · {entry.elementType} · {entry.label} · {entry.widthMm ?? "—"} × {entry.heightMm ?? "—"} mm {entry.verified ? "· Conferido" : "· Pendente"}</span><div className="flex gap-2"><Button size="sm" variant="outline" disabled={disabled || saving} onClick={()=>reviseElement(entry)}>Revisar medidas</Button><Button size="sm" variant="outline" disabled={disabled} onClick={()=>{setDirty(true);setItems(old=>old.map(e=>e.id===entry.id?{...e,verified:!e.verified}:e));}}>{entry.verified?"Reabrir":"Marcar conferido"}</Button><Button size="sm" variant="ghost" disabled={disabled} onClick={()=>{setDirty(true);setItems(old=>old.filter(e=>e.id!==entry.id));}}>Excluir</Button></div></div>)}
     {serverConflict && <div className="rounded border border-amber-500 p-3 text-sm" role="alert">
       <p>Outra pessoa alterou este levantamento. A cópia local foi preservada. Exporte as medições e compare com a versão atual do servidor antes de reconciliar.</p>
+      <Button size="sm" variant="outline" disabled={loadingRemote || !onFetchLatest} onClick={() => { void compareWithServer(); }}>{loadingRemote ? "Consultando..." : "Comparar com servidor"}</Button>
+      {remoteItems && <div className="space-y-2 rounded border p-2" aria-label="Comparação de versões">
+        <p className="font-medium">Comparação por elemento — selecione a versão a manter em cada diferença</p>
+        {Array.from(new Set([...items.map(e => e.id), ...remoteItems.map(e => e.id)])).filter(id =>
+          JSON.stringify(items.find(e => e.id === id) ?? null) !== JSON.stringify(remoteItems.find(e => e.id === id) ?? null)
+        ).map(id => {
+          const local = items.find(e => e.id === id);
+          const remote = remoteItems.find(e => e.id === id);
+          return <div key={id} className="rounded border p-2 space-y-1">
+            <p className="font-medium">{local?.label ?? remote?.label ?? id} · {local?.roomName ?? remote?.roomName}</p>
+            <div className="grid gap-2 sm:grid-cols-2">
+              <pre className="max-h-32 overflow-auto whitespace-pre-wrap break-all rounded bg-muted p-2 text-xs">Local: {JSON.stringify(local ?? null, null, 2)}</pre>
+              <pre className="max-h-32 overflow-auto whitespace-pre-wrap break-all rounded bg-muted p-2 text-xs">Servidor: {JSON.stringify(remote ?? null, null, 2)}</pre>
+            </div>
+            <select aria-label={"Escolher versão do elemento " + id} className="rounded border bg-background px-2 py-1" value={mergeChoices[id] ?? ""} onChange={event => setMergeChoices(prev => ({...prev,[id]:event.target.value as "local" | "remote"}))}>
+              <option value="">Escolha obrigatória</option>
+              <option value="local">Manter versão local {local ? "" : "(excluir)"}</option>
+              <option value="remote">Manter versão do servidor {remote ? "" : "(excluir)"}</option>
+            </select>
+          </div>;
+        })}
+        <Button size="sm" variant="outline" onClick={() => { void applyReviewedMerge(); }}>Guardar mesclagem para nova conferência</Button>
+      </div>}
       <Button size="sm" variant="outline" onClick={() => {
         const url = URL.createObjectURL(new Blob([JSON.stringify({schemaVersion:1,source:"arqdor_measure_conflict",draftKey,items,exportedAt:new Date().toISOString()},null,2)],{type:"application/json"}));
         const link = document.createElement("a"); link.href=url; link.download="arqdor-measure-conflito.json"; link.click(); URL.revokeObjectURL(url);
