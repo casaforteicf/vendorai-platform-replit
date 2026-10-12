@@ -437,8 +437,9 @@ function ProjectQuantities({projectId}:{projectId:string|null}) {
 }
 export default function SmartProjectModule({ arqState, onNavigate, projectId }: SmartProjectModuleProps) {
   const [activeTab, setActiveTab] = useState<"overview" | "ambientes" | "timeline" | "briefing" | "especificacoes" | "medicoes" | "quantitativos" | "orcamento" | "documentacao">(() =>
-    typeof window !== "undefined" && new URLSearchParams(window.location.search).get("tab") === "especificacoes"
-      ? "especificacoes" : "overview"
+    typeof window !== "undefined" && (["especificacoes", "medicoes", "quantitativos", "orcamento", "documentacao"] as const).includes(
+      new URLSearchParams(window.location.search).get("tab") as "especificacoes"
+    ) ? (new URLSearchParams(window.location.search).get("tab") as "especificacoes" | "medicoes" | "quantitativos" | "orcamento" | "documentacao") : "overview"
   );
 
   const project = useMemo(() => getCurrentProject(arqState, projectId), [arqState, projectId]);
@@ -563,7 +564,7 @@ export default function SmartProjectModule({ arqState, onNavigate, projectId }: 
               <section className="min-w-0 overflow-hidden rounded-2xl bg-white" aria-label="Orçamento técnico do projeto">
                 <p className="px-4 pt-4 text-xs text-slate-600">Orçamento integrado ao projeto, utilizando o motor comercial existente. Confira medidas, composições e valores antes de aprovar ou enviar à execução.</p>
                 <Suspense fallback={<p className="p-5 text-sm text-slate-600">Carregando orçamento…</p>}>
-                  <RealBudgetEngineStudio arqState={arqState} onNavigate={onNavigate} />
+                  <RealBudgetEngineStudio arqState={{ ...arqState, currentProject: project, projectId: project.id }} onNavigate={onNavigate} />
                 </Suspense>
               </section>
             ) : null}
