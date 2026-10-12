@@ -9,9 +9,8 @@ const MAPPING: Record<string, LauncherModule> = {
   obras: "obras", financeiro: "erp", praca_ai: "marketplace_casa", settings: "configuracoes", analytics: "inteligencia",
 };
 /**
- * Conservative gateway: tenant navigation flags only indicate ENABLEMENT,
- * not a user's effective permission. No sensitive module link is granted
- * Verified tenant enablement and individual permission checks are both required.
+ * TAD central: require both tenant entitlement and verified user permission.
+ * Failed authorization checks must never expose a clickable module.
  */
 export default function TadCentralRoute() {
   const { user, token } = useAuth();

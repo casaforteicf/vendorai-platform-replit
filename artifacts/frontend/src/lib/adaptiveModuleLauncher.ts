@@ -27,7 +27,7 @@ export const LAUNCHER_MODULES: readonly LauncherModuleInfo[] = [
   { key: "marketplace_casa", title: "Marketplace Casa", route: null, audiences: ["consumer", "professional", "business"] },
   { key: "parceiros", title: "Parceiros", route: null, audiences: ["professional", "business"] },
   { key: "portal_cliente", title: "Portal do Cliente", route: null, audiences: ["consumer"] },
-  { key: "inteligencia", title: "Inteligência", route: null, audiences: ["professional", "business"] },
+  { key: "inteligencia", title: "Inteligência", route: "/analytics", audiences: ["professional", "business"] },
   { key: "agentes_ia", title: "Agentes IA", route: null, audiences: ["professional", "business"] },
   { key: "configuracoes", title: "Configurações", route: "/configuracoes", audiences: ["business"] },
 ] as const;
