@@ -1,6 +1,11 @@
+import { AuthContext } from "@/contexts/AuthContext";
+import { useExperimentalRenderCapture } from "../../modules/arqdor/workspace/smart-render-engine/use-experimental-render-capture";
+import { ExperimentalCpuRenderPanel } from "../../modules/arqdor/workspace/smart-render-engine/ExperimentalCpuRenderPanel";
+import type { RenderSceneSnapshot } from "../../modules/arqdor/workspace/smart-render-engine/render-scene-contract";
+import type { GeometryTransfer } from "../../modules/arqdor/workspace/smart-render-engine/render-geometry-export";
 import type { SiteFrontSide } from "./conceptSitePlacement";
 import { buildFacadeMeshBoxes, facadeBoxFaces } from "./conceptFacadeMeshes";
-import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type WheelEvent as ReactWheelEvent } from "react";
+import { useContext, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type WheelEvent as ReactWheelEvent } from "react";
 import { Layers3, Maximize2, RotateCcw, RotateCw, Sparkles, ZoomIn, ZoomOut } from "lucide-react";
 import type { OpeningMarker, WallSegment } from "./conceptGeometry";
 import type { ClosedSpace } from "./conceptWallNetwork";
@@ -38,6 +43,14 @@ export type ConceptModelLevel = {
 };
 
 type Props = {
+  arqdorProjectId?: string;
+  /** Restricted laboratory feature; host must supply both opt-in and explicit permission. */
+  experimentalCpuRenderEnabled?: boolean;
+  experimentalCpuRenderAuthorized?: boolean;
+  renderCaptureToken?: number;
+  onRenderSceneSnapshot?: (snapshot: RenderSceneSnapshot) => void;
+  onRenderGeometryExport?: (geometry: GeometryTransfer) => void;
+  onRenderCaptureError?: (message: string) => void;
   lotWidth: number;
   lotDepth: number;
   activeFloor: number;
@@ -573,6 +586,13 @@ function roofBounds(level: ConceptModelLevel | undefined) {
 }
 
 export default function ConceptModel3D({
+  arqdorProjectId,
+  experimentalCpuRenderEnabled = false,
+  experimentalCpuRenderAuthorized = false,
+  renderCaptureToken,
+  onRenderSceneSnapshot,
+  onRenderGeometryExport,
+  onRenderCaptureError,
   lotWidth,
   lotDepth,
   activeFloor,
@@ -608,6 +628,26 @@ export default function ConceptModel3D({
   onSavedTourPointActivate,
   onRenderView,
 }: Props) {
+  // Public/embedded 3D viewers can render without an authentication provider.
+  const auth=useContext(AuthContext);
+  const token=auth?.token;
+  const user=auth?.user;
+  const [serverCpuRenderAccess,setServerCpuRenderAccess] = useState(false);
+  useEffect(()=>{
+    setServerCpuRenderAccess(false);
+    if (!experimentalCpuRenderEnabled || !experimentalCpuRenderAuthorized ||
+        !token || !user?.tenantId || user.platformRole !== "super_admin") return;
+    let cancelled=false;
+    const controller=new AbortController();
+    fetch(`/api/tenants/${encodeURIComponent(user.tenantId)}/arqdor-cpu-render-access`,{
+      headers:{Authorization:`Bearer ${token}`},signal:controller.signal,cache:"no-store",
+    }).then(response=>response.ok?response.json():{enabled:false})
+      .then(payload=>{if(!cancelled)setServerCpuRenderAccess(payload?.enabled===true);})
+      .catch(()=>{if(!cancelled)setServerCpuRenderAccess(false);});
+    return ()=>{cancelled=true;controller.abort();};
+  },[experimentalCpuRenderEnabled,experimentalCpuRenderAuthorized,token,user?.tenantId,user?.platformRole]);
+  const allowExperimentalCpu = experimentalCpuRenderEnabled && experimentalCpuRenderAuthorized && serverCpuRenderAccess;
+  const experimentalCapture = useExperimentalRenderCapture();
   const [rotation, setRotation] = useState(35);
   const [zoom, setZoom] = useState(1.32);
   const [panX, setPanX] = useState(0);
@@ -1647,7 +1687,23 @@ export default function ConceptModel3D({
         </button>
       </div>
 
+      {allowExperimentalCpu && (
+        <div className="absolute left-4 top-4 z-30 max-w-sm space-y-2 rounded-xl bg-white/95 p-3 shadow-lg">
+          <button type="button" onClick={experimentalCapture.requestCapture}
+            className="rounded-lg bg-slate-900 px-3 py-2 text-xs font-semibold text-white">
+            Capturar cena para prévia física experimental
+          </button>
+          {experimentalCapture.error && <p role="alert" className="text-xs text-red-700">{experimentalCapture.error}</p>}
+          {experimentalCapture.options && <ExperimentalCpuRenderPanel options={experimentalCapture.options} tenantId={user?.tenantId} authToken={token ?? undefined} arqdorProjectId={arqdorProjectId} />}
+        </div>
+      )}
       <ConceptWebGLScene
+        renderSceneSnapshotToken={allowExperimentalCpu ? experimentalCapture.renderCaptureToken : renderCaptureToken}
+        renderGeometryExportToken={allowExperimentalCpu ? experimentalCapture.renderCaptureToken : renderCaptureToken}
+        onRenderSceneSnapshot={allowExperimentalCpu ? experimentalCapture.onRenderSceneSnapshot : onRenderSceneSnapshot}
+        onRenderGeometryExport={allowExperimentalCpu ? experimentalCapture.onRenderGeometryExport : onRenderGeometryExport}
+        onRenderSceneSnapshotError={allowExperimentalCpu ? experimentalCapture.onRenderCaptureError : onRenderCaptureError}
+        onRenderGeometryExportError={allowExperimentalCpu ? experimentalCapture.onRenderCaptureError : onRenderCaptureError}
         facadeDesign={facadeDesign}
         frontSide={frontSide}
         lotWidth={lotWidth}
