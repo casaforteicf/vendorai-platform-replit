@@ -13,4 +13,12 @@ describe("door sweep clash detection",()=>{
  it("ignores fixed window openings when evaluating door sweep",()=>{
   expect(furnitureDoorSwingClashes(furniture(1100,400),walls,[{...opening,kind:"window"}])).toEqual([]);
  });
+ it("supports a limited opening angle without blocking positions reached only at 90 degrees",()=>{
+  const narrow={...opening,openingAngleDeg:20};
+  expect(furnitureDoorSwingClashes(furniture(1100,400),walls,[narrow])).toEqual([]);
+  expect(furnitureDoorSwingClashes(furniture(1100,400),walls,[opening])).toContain("door");
+ });
+ it("rejects invalid leaf thickness",()=>{
+  expect(()=>furnitureDoorSwingClashes(furniture(1100,400),walls,[{...opening,leafThicknessMm:-5}])).toThrow();
+ });
 });
