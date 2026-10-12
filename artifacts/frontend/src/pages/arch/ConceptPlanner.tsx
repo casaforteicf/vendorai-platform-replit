@@ -1,6 +1,7 @@
 import { flushSync } from "react-dom";
 import { conceptReferenceSize } from "./conceptReferenceImage";
 import { compareArqdorSnapshots } from "@/lib/arqdorConflictCompare";
+import { conceptAutosaveIfMatchHeader, isConceptAutosaveConflict } from "@/lib/conceptAutosaveRevisionGate";
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import "./planner5d-reference.css";
 import {
@@ -1834,12 +1835,12 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
           method: targetId ? "PATCH" : "POST",
           headers: {
             "Content-Type": "application/json",
-            ...(revisionAutosaveEnabled && targetId && conceptRevisionRef.current ? { "If-Match": conceptRevisionRef.current } : {}),
+            ...conceptAutosaveIfMatchHeader(revisionAutosaveEnabled, targetId, conceptRevisionRef.current),
           },
           body: JSON.stringify(payload),
         },
       );
-      if (revisionAutosaveEnabled && response.status === 409) {
+      if (isConceptAutosaveConflict(revisionAutosaveEnabled, response.status)) {
         revisionConflictRef.current = true;
         setRevisionConflictPreview(null);
         try {
