@@ -10,7 +10,7 @@ export type InteriorEnvironment={
   walls:InteriorWall[];obstacles?:InteriorObstacle[];sourceRevision?:string;sourceFileName?:string;
   persistStatus:"draft-only";
 };
-export type WallOpening={id:string;wallId:string;offsetM:number;widthM:number;clearanceM:number};
+export type WallOpening={id:string;wallId:string;offsetM:number;widthM:number;clearanceM:number;kind?:"door"|"window";hinge?:"start"|"end";swing?:"left"|"right"};
 export function wallOpeningClearances(walls:InteriorWall[],openings:WallOpening[]):InteriorObstacle[]{
  const minX=Math.min(...walls.flatMap(w=>[w.x1,w.x2])),minY=Math.min(...walls.flatMap(w=>[w.y1,w.y2]));
  return openings.map(o=>{
@@ -21,6 +21,7 @@ export function wallOpeningClearances(walls:InteriorWall[],openings:WallOpening[
   const x=w.x1+dx/len*o.offsetM,y=w.y1+dy/len*o.offsetM;
   const x2=w.x1+dx/len*(o.offsetM+o.widthM),y2=w.y1+dy/len*(o.offsetM+o.widthM);
   const pad=o.clearanceM+w.thicknessM/2;
+  if(o.kind==="door"&&(!o.hinge||!o.swing))throw Error("Door swing parameters required");
   return {id:o.id,kind:"opening-clearance" as const,xMm:Math.round((Math.min(x,x2)-minX-(Math.abs(dx)<0.000001?pad:0))*1000),yMm:Math.round((Math.min(y,y2)-minY-(Math.abs(dy)<0.000001?pad:0))*1000),widthMm:Math.round((Math.abs(dx)<0.000001?pad*2:Math.abs(x2-x))*1000),depthMm:Math.round((Math.abs(dy)<0.000001?pad*2:Math.abs(y2-y))*1000)};
  });
 }
