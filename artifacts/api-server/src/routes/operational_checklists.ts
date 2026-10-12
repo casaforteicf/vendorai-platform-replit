@@ -656,7 +656,7 @@ router.post("/operational-checklists/runs/:runId/complete", async (req, res) => 
     completedBy: req.user?.sub ?? null,
     completedAt: new Date(),
     updatedAt: new Date(),
-  }).where(and(eq(operationalChecklistRunsTable.id, run.id), eq(operationalChecklistRunsTable.status, "em_andamento"))).returning();
+  }).where(and(eq(operationalChecklistRunsTable.id, run.id), eq(operationalChecklistRunsTable.status, "em_andamento"), eq(operationalChecklistRunsTable.updatedAt, run.updatedAt))).returning();
   if (!updated) return void res.status(409).json({error:"Conferência já concluída ou alterada por outra operação."});
 
   if (run.leadId) {
