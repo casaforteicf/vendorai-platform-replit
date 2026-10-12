@@ -77,13 +77,21 @@ export default function SurveyElementsEditor({ elements, photos, draftKey, disab
     setFeedback("Medições recuperadas. Revise e sincronize quando conectado.");
   }
   async function saveWithOfflineFallback() {
+    if (saving || disabled) return;
     setSaving(true);
     setFeedback("");
     try {
-      if (!navigator.onLine) {
-        await queueSurvey(storageKey, items);
+      const pending = await readPendingSurvey(storageKey);
+      if (pending && !dirty) {
         setOfflinePending(true);
-        setFeedback("Sem conexão. Medições guardadas neste dispositivo; não sincronizadas.");
+        setFeedback("Existe cópia offline pendente. Recupere e confira as medições antes de salvar.");
+        return;
+      }
+      // Persist first: network failures, HTTP conflicts and tab closures must not lose survey edits.
+      await queueSurvey(storageKey, items);
+      setOfflinePending(true);
+      if (!navigator.onLine) {
+        setFeedback("Sem conexão. Medições guardadas no dispositivo; não sincronizadas.");
         return;
       }
       await onSave(items);
@@ -93,15 +101,10 @@ export default function SurveyElementsEditor({ elements, photos, draftKey, disab
       sessionStorage.removeItem(storageKey);
       setFeedback("Levantamento sincronizado no checklist.");
     } catch (error) {
-      if (error instanceof TypeError || !navigator.onLine) {
-        try {
-          await queueSurvey(storageKey, items);
-          setOfflinePending(true);
-          setFeedback("Falha de rede. Levantamento guardado no dispositivo para envio manual.");
-        } catch { setFeedback("Erro de rede e armazenamento offline indisponível. Mantenha esta página aberta."); }
-      } else {
-        setFeedback(error instanceof Error ? error.message : "Não foi possível sincronizar. Os dados não foram sobrescritos.");
-      }
+      setOfflinePending(true);
+      setFeedback(error instanceof Error
+        ? error.message + " — mantenha a cópia offline e revise antes de tentar novamente."
+        : "Falha ao salvar. Confira se os dados foram preservados no dispositivo.");
     } finally { setSaving(false); }
   }
   function reviseElement(entry: SurveyElement) {
