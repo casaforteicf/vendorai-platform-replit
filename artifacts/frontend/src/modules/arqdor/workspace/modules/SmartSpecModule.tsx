@@ -564,6 +564,7 @@ export function SmartSpecModule({
 }) {
   const [renders,      setRenders]      = useState<GalleryRender[]>([])
   const [loadingRenders, setLoadingRenders] = useState(false)
+  const [renderAvailability, setRenderAvailability] = useState<string | null>(null)
   const [selRender,    setSelRender]    = useState<GalleryRender | null>(null)
   const [spec,         setSpec]         = useState<Specification | null>(null)
   const [items,        setItems]        = useState<SpecItem[]>([])
@@ -590,6 +591,7 @@ export function SmartSpecModule({
     let cancelled = false
 
     if (!effectiveProjectId) {
+      setRenderAvailability(null)
       setRenders([])
       setSelRender(null)
       setSpec(null)
@@ -598,6 +600,7 @@ export function SmartSpecModule({
       return
     }
 
+    setRenderAvailability(null)
     setRenders([])
     setSelRender(null)
     setSpec(null)
@@ -635,6 +638,10 @@ export function SmartSpecModule({
           .sort((a: GalleryRender, b: GalleryRender) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
 
         setRenders(approved)
+        const allVersions = Array.isArray(data?.versions) ? data.versions : []
+        setRenderAvailability(approved.length > 0 ? null : allVersions.length > 0
+          ? "Há versões no histórico, mas nenhuma atende aos critérios de render concluído, aprovado e disponível."
+          : "Nenhum render foi localizado no histórico deste projeto.")
         if (approved.length === 0) {
           setSelRender(null)
           setSpec(null)
@@ -650,6 +657,7 @@ export function SmartSpecModule({
       .catch((cause: unknown) => {
         if (cancelled) return
         setRenders([])
+        setRenderAvailability("Falha na consulta do histórico de renderizações.")
         setSelRender(null)
         setSpec(null)
         setItems([])
@@ -895,7 +903,7 @@ export function SmartSpecModule({
                 <div style={{ padding:'20px 10px', textAlign:'center', color:T.dim, fontSize:11 }}>
                   <div style={{ fontSize:24, marginBottom:6 }}>🎬</div>
                   {effectiveProjectId
-                    ? 'Este projeto ainda não possui um render aprovado.'
+                    ? renderAvailability ?? 'Este projeto ainda não possui um render aprovado.'
                     : 'Selecione um projeto para continuar.'}
                   <br/>
                   {effectiveProjectId && (
