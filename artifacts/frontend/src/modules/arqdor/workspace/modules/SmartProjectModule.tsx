@@ -22,6 +22,7 @@ type ProjectLike = {
   totalRenders?: number;
   ambientes?: EnvironmentLike[];
   renders?: unknown[];
+  dossieProjeto?: { arquivos?: Array<{ id:string; nome:string; url:string; tipo:string; ambienteId?:string|null; createdAt?:string; size?:number }> };
   updatedAt?: string;
   updated_at?: string;
   createdAt?: string;
@@ -431,7 +432,7 @@ function ProjectQuantities({projectId}:{projectId:string|null}) {
   </section>;
 }
 export default function SmartProjectModule({ arqState, onNavigate, projectId }: SmartProjectModuleProps) {
-  const [activeTab, setActiveTab] = useState<"overview" | "ambientes" | "timeline" | "briefing" | "especificacoes" | "medicoes" | "quantitativos" | "orcamento">(() =>
+  const [activeTab, setActiveTab] = useState<"overview" | "ambientes" | "timeline" | "briefing" | "especificacoes" | "medicoes" | "quantitativos" | "orcamento" | "documentacao">(() =>
     typeof window !== "undefined" && new URLSearchParams(window.location.search).get("tab") === "especificacoes"
       ? "especificacoes" : "overview"
   );
@@ -513,6 +514,7 @@ export default function SmartProjectModule({ arqState, onNavigate, projectId }: 
                 ["medicoes", "Medições"],
                 ["quantitativos", "Quantitativos"],
                 ["orcamento", "Orçamento"],
+                ["documentacao", "Documentação"],
                 ["timeline", "Timeline"],
                 ["briefing", "Briefing"],
               ].map(([key, label]) => (
@@ -531,6 +533,26 @@ export default function SmartProjectModule({ arqState, onNavigate, projectId }: 
                 </button>
               ))}
             </nav>
+
+            {activeTab === "documentacao" ? (
+              <section className="min-w-0 rounded-2xl border border-slate-200 bg-slate-50 p-4 md:p-5" aria-label="Documentação do projeto">
+                <h3 className="text-lg font-semibold text-slate-900">Documentação e anexos</h3>
+                <p className="mt-2 text-sm text-slate-600">Arquivos do dossiê existente do projeto. Para enviar ou editar anexos, utilize a página de detalhes do projeto; esta aba apenas consulta os registros disponíveis.</p>
+                <div className="mt-4 grid gap-3">
+                  {(project.dossieProjeto?.arquivos ?? []).map(arquivo => (
+                    <div key={arquivo.id} className="min-w-0 rounded-xl border border-slate-200 bg-white p-3">
+                      <p className="break-words text-sm font-semibold text-slate-900">{arquivo.nome}</p>
+                      <p className="mt-1 text-xs text-slate-500">{arquivo.tipo} · {arquivo.ambienteId ? `Ambiente: ${arquivo.ambienteId}` : "Documento geral"} · {arquivo.createdAt ? new Date(arquivo.createdAt).toLocaleDateString("pt-BR") : "Data não informada"}</p>
+                      {arquivo.url && /^(https?:\\/\\/|\\/)/i.test(arquivo.url) && (
+                        <a className="mt-2 inline-block break-all text-sm font-medium text-violet-700 underline" href={arquivo.url} target="_blank" rel="noopener noreferrer">Abrir arquivo</a>
+                      )}
+                    </div>
+                  ))}
+                </div>
+                {(project.dossieProjeto?.arquivos ?? []).length === 0 && <p className="mt-4 text-sm text-slate-500">Nenhum anexo disponível no contexto atual. O dossiê completo pode ser consultado nos detalhes do projeto.</p>}
+                <p className="mt-4 text-xs text-amber-700">Controle de revisões e histórico imutável de documentos ainda não integrados nesta aba.</p>
+              </section>
+            ) : null}
 
             {activeTab === "orcamento" ? (
               <section className="min-w-0 overflow-hidden rounded-2xl bg-white" aria-label="Orçamento técnico do projeto">
