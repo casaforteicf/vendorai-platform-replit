@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { ArrowLeft, Camera, CheckCircle2, Printer, RefreshCw, Ruler, TriangleAlert } from "lucide-react";
 import PhotoMeasureEditor from "@/components/measure/PhotoMeasureEditor";
+import MeasurementPrintReport from "@/components/measure/MeasurementPrintReport";
 import SurveyElementsEditor, { type SurveyElement } from "@/components/measure/SurveyElementsEditor";
 
 type ItemStatus = "nao_conferido" | "conferido" | "divergente" | "nao_executado" | "resolvido";
