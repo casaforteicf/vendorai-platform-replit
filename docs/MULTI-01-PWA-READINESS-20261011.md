@@ -183,3 +183,10 @@ Esse teste estrutural não acessa rede, não modifica arquivos e não conta como
 - Teste estrutural ampliado `artifacts/api-server/scripts/test-arqdor-conditional-save.mjs`.
 - **Ainda NÃO homologado e NÃO plenamente protegido contra corrida com revogação concorrente**: snapshot MVCC do statement pode observar membro enquanto uma transação de revogação está em curso. Antes da liberação, serializar alteração de membros e escrita do projeto (e.g. lock consistente por projeto ou mecanismo equivalente), além de testes PostgreSQL reais de revogação simultânea.
 - Migrações 024/025 continuam sem aplicação. UI/IndexedDB ainda não chamam a nova rota. Ainda faltam limites de payload, ACL de leitura e retorno de revision do GET, atribuição inicial de owner, testes e CI, homologação e publicação controlada.
+
+
+## MULTI-08.1 — Bloqueio de rotas legadas ao ativar ACL
+- Alteradas as rotas legadas `GET /arqdor/projects/:id`, `PUT /arqdor/projects/:id` e a rota administrativa `PUT /arqdor/projects/:id/conditional` para **responder 403** quando `ARQDOR_PROJECT_ACL_ENABLED=true`. Com a flag desligada (padrão), comportamento antigo permanece.
+- Protege contra desvio da nova ACL por meio das rotas antigas, mas **não é liberação do recurso**: ligar a flag agora bloqueia o carregamento e o autosave do editor atual! Antes de habilitar, criar endpoints de leitura (snapshot com contexto/revisão atômicos) e escrita com ACL, adaptar frontend para eles, definir provisionamento de proprietário e executar testes de banco reais.
+- Teste de contrato estático adicionado em `test-arqdor-conditional-save.mjs`, sem execução confirmada.
+- Nenhuma migração executada, merge ou produção alterados.
