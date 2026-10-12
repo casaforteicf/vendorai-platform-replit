@@ -17,13 +17,13 @@ export interface LauncherModuleInfo {
 
 export const LAUNCHER_MODULES: readonly LauncherModuleInfo[] = [
   { key: "crm", title: "CRM", route: "/leads", audiences: ["professional", "business"] },
-  { key: "marketing", title: "Marketing", route: "/marketing", audiences: ["business"] },
+  { key: "marketing", title: "Marketing", route: "/content", audiences: ["business"] },
   { key: "omnichannel", title: "Omnichannel", route: "/conversations", audiences: ["professional", "business"] },
   { key: "agenda", title: "Agenda", route: "/agenda", audiences: ["professional", "business"] },
   { key: "arqdor", title: "Arqdor", route: "/arch", audiences: ["professional", "business"] },
   { key: "obras", title: "Obras e Serviços", route: "/obras", audiences: ["professional", "business"] },
   { key: "pdv", title: "PDV", route: null, audiences: ["business"] },
-  { key: "erp", title: "ERP", route: null, audiences: ["business"] },
+  { key: "erp", title: "ERP", route: "/erp", audiences: ["business"] },
   { key: "marketplace_casa", title: "Marketplace Casa", route: null, audiences: ["consumer", "professional", "business"] },
   { key: "parceiros", title: "Parceiros", route: null, audiences: ["professional", "business"] },
   { key: "portal_cliente", title: "Portal do Cliente", route: null, audiences: ["consumer"] },
