@@ -361,6 +361,51 @@ function useProjectTechnicalObjects(projectId: string|null): TechnicalSnapshot {
   },[projectId]);
   return snapshot;
 }
+type TechnicalApprovalEntry = {
+  id:string; approval_context?:string|null; decision?:string|null;
+  actor_name?:string|null; project_revision?:string|null; created_at?:string|null; note?:string|null;
+};
+function TechnicalApprovalHistory({objectId}:{objectId:string}) {
+  const [expanded,setExpanded]=useState(false);
+  const [entries,setEntries]=useState<TechnicalApprovalEntry[]>([]);
+  const [loading,setLoading]=useState(false);
+  const [error,setError]=useState<string|null>(null);
+  useEffect(()=>{
+    setEntries([]);setError(null);
+    if(!expanded)return;
+    const controller=new AbortController();
+    setLoading(true);
+    const token=localStorage.getItem("vendorai_token");
+    fetch(`/api/arch/spec-objects/${encodeURIComponent(objectId)}/approvals`,{
+      signal:controller.signal,cache:"no-store",
+      headers:token?{Authorization:`Bearer ${token}`}:{},
+    }).then(async response=>{
+      if(!response.ok)throw new Error(`Histórico indisponível (HTTP ${response.status})`);
+      return response.json();
+    }).then(data=>{
+      if(!controller.signal.aborted)setEntries(Array.isArray(data.approvals)?data.approvals:[]);
+    }).catch(cause=>{
+      if(!controller.signal.aborted)setError(cause instanceof Error?cause.message:"Não foi possível consultar aprovações.");
+    }).finally(()=>{if(!controller.signal.aborted)setLoading(false);});
+    return ()=>controller.abort();
+  },[objectId,expanded]);
+  return <div className="mt-2">
+    <button type="button" aria-expanded={expanded} onClick={()=>setExpanded(value=>!value)}
+      className="rounded border border-slate-200 px-2 py-1 text-xs font-medium text-slate-700">
+      {expanded?"Ocultar aprovações":"Ver histórico de aprovações"}
+    </button>
+    {expanded&&<div className="mt-2 grid gap-2" aria-live="polite">
+      {loading&&<p className="text-xs text-slate-600">Consultando histórico…</p>}
+      {error&&<p role="alert" className="text-xs text-red-700">{error}</p>}
+      {!loading&&!error&&entries.length===0&&<p className="text-xs text-slate-500">Nenhuma decisão registrada.</p>}
+      {entries.map(entry=><div key={entry.id} className="break-words rounded bg-slate-50 p-2 text-xs text-slate-700">
+        <strong>{entry.approval_context||"Aprovação"}: {entry.decision||"sem decisão"}</strong>
+        <p>Responsável: {entry.actor_name||"não informado"} · Revisão: {entry.project_revision||"—"} · {entry.created_at?new Date(entry.created_at).toLocaleString("pt-BR"):"Data não informada"}</p>
+        {entry.note&&<p className="mt-1">{entry.note}</p>}
+      </div>)}
+    </div>}
+  </div>;
+}
 function TechnicalProvenance({item}:{item:TechnicalObject}) {
   const links = [
     ["Objeto BIM",item.source_object_id], ["Origem",item.source_type],
@@ -375,6 +420,7 @@ function TechnicalProvenance({item}:{item:TechnicalObject}) {
       Aprovação técnica: {item.technical_approval_status === "approved" ? "aprovada" : "pendente ou não registrada"}
     </span>
     {!item.source_object_id && <span className="rounded bg-amber-50 px-2 py-1 text-[11px] text-amber-800">Sem vínculo BIM identificado</span>}
+    <TechnicalApprovalHistory objectId={item.id} />
   </div>;
 }
 function ProjectMeasurements({ projectId, snapshot }: {projectId:string|null; snapshot:TechnicalSnapshot}) {
