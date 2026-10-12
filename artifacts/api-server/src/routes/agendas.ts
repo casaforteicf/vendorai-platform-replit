@@ -1,7 +1,7 @@
 import { Router, type IRouter } from "express";
 import { and, eq } from "drizzle-orm";
 import { z } from "zod/v4";
-import { db, agendasTable, insertAgendaSchema, updateAgendaSchema } from "@workspace/db";
+import { db, agendasTable, agendaAccessGrantsTable, usersTable, insertAgendaSchema, updateAgendaSchema } from "@workspace/db";
 import {
   buildAuthUrl,
   exchangeCodeAndStore,
@@ -287,6 +287,58 @@ router.post("/agendas/:id/google/disconnect", async (req, res) => {
 
   await auditGoogleCalendar(req, existing.tenantId, existing.id, before, null, "excluir");
   res.json(updated);
+});
+
+
+const grantBodySchema = z.object({ userId: z.string().min(1) });
+
+/** Administrative management only; grants do not themselves bypass route authorization. */
+router.get("/agendas/:id/access", async (req, res) => {
+  const [agenda] = await db.select({ id: agendasTable.id, tenantId: agendasTable.tenantId })
+    .from(agendasTable).where(eq(agendasTable.id, String(req.params.id))).limit(1);
+  if (!agenda) return res.status(404).json({ error: "Agenda not found" });
+  if (!req.user || !["super_admin", "tenant_admin"].includes(req.user.platformRole) ||
+      (req.user.platformRole !== "super_admin" && req.user.tenantId !== agenda.tenantId)) {
+    return res.status(403).json({ error: "Admin access required" });
+  }
+  const grants = await db.select({ userId: agendaAccessGrantsTable.userId, grantedBy: agendaAccessGrantsTable.grantedBy, createdAt: agendaAccessGrantsTable.createdAt })
+    .from(agendaAccessGrantsTable)
+    .where(and(eq(agendaAccessGrantsTable.agendaId, agenda.id), eq(agendaAccessGrantsTable.tenantId, agenda.tenantId)));
+  return res.json(grants);
+});
+
+router.post("/agendas/:id/access", async (req, res) => {
+  const body = grantBodySchema.safeParse(req.body);
+  if (!body.success) return res.status(422).json({ error: "userId is required" });
+  const [agenda] = await db.select({ id: agendasTable.id, tenantId: agendasTable.tenantId })
+    .from(agendasTable).where(eq(agendasTable.id, String(req.params.id))).limit(1);
+  if (!agenda) return res.status(404).json({ error: "Agenda not found" });
+  if (!req.user || !["super_admin", "tenant_admin"].includes(req.user.platformRole) ||
+      (req.user.platformRole !== "super_admin" && req.user.tenantId !== agenda.tenantId)) {
+    return res.status(403).json({ error: "Admin access required" });
+  }
+  const [member] = await db.select({ id: usersTable.id }).from(usersTable)
+    .where(and(eq(usersTable.id, body.data.userId), eq(usersTable.tenantId, agenda.tenantId))).limit(1);
+  if (!member) return res.status(422).json({ error: "User does not belong to the agenda tenant" });
+  await db.insert(agendaAccessGrantsTable).values({ agendaId: agenda.id, tenantId: agenda.tenantId, userId: member.id, grantedBy: req.user.sub ?? null })
+    .onConflictDoNothing();
+  await writeConfigurationAudit({ tenantId: agenda.tenantId, action: "criar", entity: "agenda_access_grant", entityId: `${agenda.id}:${member.id}`, after: { agendaId: agenda.id, userId: member.id }, actor: { userId: req.user.sub ?? null, ip: req.ip ?? null } });
+  return res.status(201).json({ agendaId: agenda.id, userId: member.id });
+});
+
+router.delete("/agendas/:id/access/:userId", async (req, res) => {
+  const [agenda] = await db.select({ id: agendasTable.id, tenantId: agendasTable.tenantId })
+    .from(agendasTable).where(eq(agendasTable.id, String(req.params.id))).limit(1);
+  if (!agenda) return res.status(404).json({ error: "Agenda not found" });
+  if (!req.user || !["super_admin", "tenant_admin"].includes(req.user.platformRole) ||
+      (req.user.platformRole !== "super_admin" && req.user.tenantId !== agenda.tenantId)) {
+    return res.status(403).json({ error: "Admin access required" });
+  }
+  const userId = String(req.params.userId);
+  await db.delete(agendaAccessGrantsTable).where(and(eq(agendaAccessGrantsTable.agendaId, agenda.id),
+    eq(agendaAccessGrantsTable.tenantId, agenda.tenantId), eq(agendaAccessGrantsTable.userId, userId)));
+  await writeConfigurationAudit({ tenantId: agenda.tenantId, action: "excluir", entity: "agenda_access_grant", entityId: `${agenda.id}:${userId}`, before: { agendaId: agenda.id, userId }, actor: { userId: req.user.sub ?? null, ip: req.ip ?? null } });
+  return res.status(204).send();
 });
 
 // ── Google Calendar OAuth callback (PUBLIC — browser redirect from Google) ────
