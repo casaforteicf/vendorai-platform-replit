@@ -43,3 +43,12 @@ Evidências adicionais de leitura estática:
 **Decisão:** não introduzir guard de projeto improvisado baseado em `arquitetoResponsavel` (campo de nome livre) nem bloquear indiscriminadamente usuários legítimos. Antes de modificar o backend, rastrear regras do CRM/obra/projeto vinculados e decidir explicitamente a política autorizada para admin, profissional responsável, equipe, convidados e portal. Se não existir ACL persistido confiável, isso requer definição de modelo e migração homologada.
 
 Critério adicional de aceitação: testes integrados com dois usuários do mesmo tenant — um autorizado e outro não — em histórico, render individual, geração de URL assinada e modelo GLB, além de isolamento entre tenants.
+
+## UI-27 — descoberta de autorização reutilizável
+
+- Há serviço real em `artifacts/api-server/src/lib/lead-scope-access.ts`: `canAccessLead(req, tenantId, leadId)` verifica tenant, privilégio `leads:view_all` e `leads.assignedTo`. `canViewAllScopedData` considera permissões persistidas do usuário e atores internos autorizados.
+- `lib/db/src/schema/obras.ts` possui `responsavelId` e vínculos de origem com lead/deal; `arch_projetos.leadId` e `arch_projetos.obraId` podem servir de referência após definir a política de autorização.
+- **Não reutilizar `canAccessLead` diretamente e isoladamente** nas rotas de render: projetos sem lead são possíveis; administração, responsáveis de obra, membros e convidados exigem regras explícitas. A permissão `leads:view_all` não é automaticamente equivalente a ver todos os projetos.
+- Próximo passo de implementação: desenhar `canAccessArchProject` apoiado na política real e em vínculos validados por tenant; decidir fallback seguro para projetos legados sem lead/obra; depois testar GET de histórico, render individual e rotas de mídia/edição.
+
+Este achado é evidência de código estático, não é homologação de autorização.
