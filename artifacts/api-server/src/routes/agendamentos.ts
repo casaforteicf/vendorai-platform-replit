@@ -1010,6 +1010,12 @@ router.delete("/agendamentos/:id", async (req, res) => {
     return;
   }
 
+  if (!isAdminDelete && existing.agendaId &&
+      (!req.user?.sub || !(await hasAgendaAccess(existing.agendaId, existing.tenantId, req.user.sub)))) {
+    res.status(403).json({ error: "Acesso ao calendario revogado ou nao autorizado" });
+    return;
+  }
+
   await db.delete(agendamentosTable).where(eq(agendamentosTable.id, existing.id));
   res.status(204).send();
 
