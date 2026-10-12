@@ -230,6 +230,7 @@ router.post("/operational-checklists/deals/:dealId/start", async (req, res) => {
 });
 
 const updateItemSchema = z.object({
+  expectedUpdatedAt: z.string().datetime().optional(),
   larguraConferida: z.number().nonnegative().nullable().optional(),
   alturaConferida: z.number().nonnegative().nullable().optional(),
   localizacao: z.string().max(500).nullable().optional(),
@@ -277,6 +278,9 @@ router.patch("/operational-checklists/runs/:runId/items/:itemId", async (req, re
   if (!run) return void res.status(404).json({ error: "Checklist não encontrado" });
   if (!canAccessTenant(req, run.tenantId)) return void res.status(403).json({ error: "Acesso negado" });
   if (run.status === "concluido") return void res.status(409).json({ error: "Checklist concluído não pode ser alterado" });
+  if (parsed.data.expectedUpdatedAt && parsed.data.expectedUpdatedAt !== run.updatedAt.toISOString())
+    return void res.status(409).json({error:"Versão do levantamento desatualizada. Recarregue e reconcilie suas alterações.",code:"CHECKLIST_CONFLICT"});
+
 
   const itemId = String(req.params.itemId);
   const targetItem = (run.items ?? []).find((item) => item.id === itemId);
@@ -317,7 +321,7 @@ router.patch("/operational-checklists/runs/:runId/items/:itemId", async (req, re
   const items = (run.items ?? []).map((item) => {
     if (item.id !== itemId) return item;
     found = true;
-    const { resolutionReason, ...patch } = parsed.data;
+    const { resolutionReason, expectedUpdatedAt, ...patch } = parsed.data;
     const next = { ...item, ...patch };
     if (parsed.data.status === "resolvido" && resolutionReason) {
       next.divergenceResolution = {
