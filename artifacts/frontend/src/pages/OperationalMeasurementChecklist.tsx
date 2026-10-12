@@ -415,9 +415,18 @@ export default function OperationalMeasurementChecklist() {
                       }} onClose={() => setPhotoItemId(null)} />
                     )}
                   </div>
-                  {photoItemId === item.id && <SurveyElementsEditor key={item.id + "-" + (item.surveyElements?.length ?? 0)} draftKey={(user?.id ?? "anonymous") + ":" + run.id + ":" + run.revision + ":" + item.id} elements={item.surveyElements ?? []} photos={item.fotos ?? []} disabled={run.status === "concluido"} onSave={async (surveyElements) => {
+                  {photoItemId === item.id && <SurveyElementsEditor key={item.id + "-" + (item.surveyElements?.length ?? 0)} draftKey={(user?.id ?? "anonymous") + ":" + run.id + ":" + run.revision + ":" + item.id} elements={item.surveyElements ?? []} photos={item.fotos ?? []} disabled={run.status === "concluido"} onFetchLatest={async () => {
+                    if (!data?.run) throw new Error("Checklist indisponível.");
+                    const fresh: CurrentPayload = await api(`/api/operational-checklists/deals/${dealId}/current`);
+                    if (!fresh.run || fresh.run.id !== data.run.id || fresh.run.revision !== data.run.revision)
+                      throw new Error("O levantamento foi substituído por uma nova revisão. Não é seguro mesclar automaticamente.");
+                    runVersionRef.current = fresh.run.updatedAt;
+                    setData(fresh);
+                    return fresh.run.items.find(entry => entry.id === item.id)?.surveyElements ?? [];
+                  }} onSave={async (surveyElements) => {
                     if (!data?.run) throw new Error("Checklist indisponível.");
                     const updated = await api(`/api/operational-checklists/runs/${data.run.id}/items/${item.id}`, { method: "PATCH", body: JSON.stringify({ surveyElements, expectedUpdatedAt: runVersionRef.current ?? data.run.updatedAt }) });
+                    runVersionRef.current = updated.updatedAt;
                     setData((prev) => prev ? { ...prev, run: updated } : prev);
                   }} />}
                   <div className="mt-3 grid gap-3 md:grid-cols-2 print:hidden">
