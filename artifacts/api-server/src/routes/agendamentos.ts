@@ -740,6 +740,12 @@ router.patch("/agendamentos/:id", async (req, res) => {
 
   const data = parsed.data;
 
+  // Reassignments (including clearing the responsible user) require admin privileges.
+  if (!isAdminPatch && data.responsavelId !== undefined && data.responsavelId !== existing.responsavelId) {
+    res.status(403).json({ error: "Somente administradores podem transferir o responsável do agendamento" });
+    return;
+  }
+
   if (data.responsavelId) {
     const [responsavel] = await db
       .select({ id: usersTable.id })
