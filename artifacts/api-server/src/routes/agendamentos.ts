@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { and, eq, gte, lte, lt, gt, or, inArray, isNotNull, like } from "drizzle-orm";
+import { and, eq, gte, lte, lt, gt, or, inArray, isNotNull, like, sql } from "drizzle-orm";
 import { z } from "zod/v4";
 import {
   db,
@@ -239,15 +239,33 @@ router.post("/agendamentos", async (req, res) => {
 
   let agendamento: typeof agendamentosTable.$inferSelect;
   try {
-    const rows = await db
-      .insert(agendamentosTable)
-      .values(resolvedInsertData)
-      .returning();
-    agendamento = rows[0];
+    agendamento = await db.transaction(async (tx) => {
+      if (!creatorIsAdmin && resolvedInsertData.agendaId) {
+        const agendaId = resolvedInsertData.agendaId;
+        const callerId = req.user?.sub;
+        // Shared agenda row lock serializes this write against grant revocation
+        // and owner reassignment, provided those routes acquire the same lock.
+        await tx.execute(sql`SELECT id FROM agendas WHERE id = ${agendaId} AND tenant_id = ${parsed.data.tenantId} FOR UPDATE`);
+        const [owner] = await tx.select({ ownerUserId: agendasTable.ownerUserId })
+          .from(agendasTable).where(and(eq(agendasTable.id, agendaId), eq(agendasTable.tenantId, parsed.data.tenantId))).limit(1);
+        const [grant] = callerId ? await tx.select({ userId: agendaAccessGrantsTable.userId })
+          .from(agendaAccessGrantsTable).where(and(eq(agendaAccessGrantsTable.agendaId, agendaId),
+            eq(agendaAccessGrantsTable.tenantId, parsed.data.tenantId),
+            eq(agendaAccessGrantsTable.userId, callerId))).limit(1) : [];
+        if (!callerId || !owner || (owner.ownerUserId !== callerId && !grant)) {
+          throw new Error("AGENDA_ACCESS_REVOKED");
+        }
+      }
+      const [created] = await tx.insert(agendamentosTable).values(resolvedInsertData).returning();
+      return created;
+    });
   } catch (err: unknown) {
-    req.log.error({ err, body: req.body }, "agendamento insert failed");
-    const msg = err instanceof Error ? err.message : String(err);
-    res.status(500).json({ error: msg });
+    if (err instanceof Error && err.message === "AGENDA_ACCESS_REVOKED") {
+      res.status(403).json({ error: "Acesso ao calendario revogado durante o agendamento" });
+      return;
+    }
+    req.log.error({ err }, "agendamento insert failed");
+    res.status(500).json({ error: "Erro ao criar agendamento" });
     return;
   }
 
