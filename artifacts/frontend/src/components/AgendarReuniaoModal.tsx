@@ -73,7 +73,7 @@ export function AgendarReuniaoModal({
   const ownUserId = user?.id ?? "";
   const queryClient = useQueryClient();
 
-  const [modalidade, setModalidade]         = useState<Modalidade>("meet");
+  const [modalidade, setModalidade]         = useState<Modalidade>("presencial");
   const [date, setDate]                     = useState<string>(tomorrowISO());
   const [duracao, setDuracao]               = useState<string>("30");
   const [selectedSlot, setSelectedSlot]     = useState<Slot | null>(null);
@@ -125,7 +125,7 @@ export function AgendarReuniaoModal({
       setClientesExtras([]);
       setEnviarCliente(true);
       setSelectedAgendaId(isAdmin ? (agendas[0]?.id ?? "") : "");
-      setModalidade("meet");
+      setModalidade(isAdmin ? "meet" : "presencial");
       setDate(tomorrowISO());
       setDuracao("30");
       setObservacoes("");
@@ -217,7 +217,7 @@ export function AgendarReuniaoModal({
           <div className="space-y-2">
             <Label>Tipo</Label>
             <div className="flex gap-2">
-              {(["presencial", "meet", "ligacao"] as Modalidade[]).map((m) => {
+              {(["presencial", ...(isAdmin ? ["meet" as const] : []), "ligacao"] as Modalidade[]).map((m) => {
                 const label = m === "presencial" ? "Presencial" : m === "meet" ? "Google Meet" : "Ligação";
                 const Icon  = m === "meet" ? Video : m === "ligacao" ? Phone : MapPin;
                 return (
