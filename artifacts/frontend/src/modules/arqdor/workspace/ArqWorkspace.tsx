@@ -430,7 +430,7 @@ function RenderStudioRouteBridge({ projectId }: { projectId: string | null }) {
 function renderModule(id: ModuleId, arqState: ArqProjectState, setActive: (m: ModuleId) => void) {
   switch (id) {
     case 'home':          return <ProjectHomeV2 arqState={arqState} onNavigate={m => setActive(m as ModuleId)} />
-    case 'projeto':       return <SmartProjectModule arqState={arqState} onNavigate={m => setActive(m as ModuleId)} />
+    case 'projeto':       return <SmartProjectModule arqState={arqState} projectId={arqState.projectId} onNavigate={m => setActive(m as ModuleId)} />
     case 'biblioteca':    return <LibraryModule/>
     case 'especificacao': return <SmartSpecModule projectId={arqState.projectId} onBack={() => setActive('home')} onOpenRender={() => setActive('renders')} />
     case 'specification':
