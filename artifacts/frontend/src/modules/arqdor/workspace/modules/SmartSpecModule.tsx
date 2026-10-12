@@ -594,9 +594,14 @@ export function SmartSpecModule({
       setSelRender(null)
       setSpec(null)
       setItems([])
+      setLoadingRenders(false)
       return
     }
 
+    setRenders([])
+    setSelRender(null)
+    setSpec(null)
+    setItems([])
     setLoadingRenders(true)
     setError(null)
 
@@ -660,28 +665,37 @@ export function SmartSpecModule({
   }, [requestedRenderId, effectiveProjectId])
 
   // Load existing spec when render selected
-  const loadExistingSpec = useCallback(async (projetoId: string) => {
+  useEffect(() => {
+    const projetoId = selRender?.projetoId
+    if (!projetoId) {
+      setLoadedSpecProjectId(null)
+      setLoadingSpec(false)
+      return
+    }
+    const controller = new AbortController()
     setLoadingSpec(true)
     setLoadedSpecProjectId(null)
-    try {
-      const r = await fetch(`${BASE}/arch/specification/${projetoId}`, { headers: authHeaders() })
-      if (r.ok) {
-        const data = await r.json()
-        setSpec(data.spec)
-        setItems(data.items)
-      } else {
-        setSpec(null)
-        setItems([])
-      }
-    } finally {
+    fetch(`${BASE}/arch/specification/${encodeURIComponent(projetoId)}`, {
+      headers: authHeaders(), signal: controller.signal,
+    }).then(async response => {
+      if (!response.ok) return {spec:null,items:[]}
+      return response.json()
+    }).then(data => {
+      if (controller.signal.aborted) return
+      setSpec(data.spec ?? null)
+      setItems(Array.isArray(data.items) ? data.items : [])
+    }).catch(cause => {
+      if (controller.signal.aborted) return
+      setError(cause instanceof Error ? cause.message : 'Falha ao carregar especificações')
+      setSpec(null)
+      setItems([])
+    }).finally(() => {
+      if (controller.signal.aborted) return
       setLoadedSpecProjectId(projetoId)
       setLoadingSpec(false)
-    }
-  }, [])
-
-  useEffect(() => {
-    if (selRender?.projetoId) loadExistingSpec(selRender.projetoId)
-  }, [selRender?.projetoId, loadExistingSpec])
+    })
+    return () => controller.abort()
+  }, [selRender?.projetoId])
 
   // Analyze render
   const analyze = async () => {
