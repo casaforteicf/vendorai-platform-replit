@@ -1025,7 +1025,8 @@ export function useRenderStudioController() {
     }
     localStorage.setItem("arq_last_project_id", arq.projectId);
     const params = new URLSearchParams();
-    params.set("module", "especificacao");
+    params.set("module", "projeto");
+    params.set("tab", "especificacoes");
     params.set("project_id", arq.projectId);
     if (renderId) params.set("render_id", renderId);
     if (ambiente.trim()) params.set("ambiente", ambiente.trim());
