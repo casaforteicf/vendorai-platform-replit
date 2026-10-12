@@ -12,6 +12,8 @@ import type { ProjectContext, ProjectObject, ProjectMaterial } from '../engines/
 const BASE = '/api'
 const STORAGE_KEY = 'arqdor_workspace_project_id'
 const SAVE_DEBOUNCE_MS = 2000
+// Experimental ACL flow is disabled by default and must be enabled with the backend flag.
+const USE_PROJECT_ACL = import.meta.env.VITE_MULTI08_PROJECT_ACL === 'true'
 
 export const EMPTY_PROJECT_CONTEXT: ProjectContext = {
   id: '',
@@ -53,6 +55,8 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const [saveError, setSaveError] = useState<string | null>(null)
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const initialLoadDone = useRef(false)
+  const remoteRevisionRef = useRef<string | null>(null)
+  const saveInFlightRef = useRef(false)
 
   // ── Load on mount ───────────────────────────────────────────────────────────
   useEffect(() => {
@@ -66,10 +70,10 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     if (!storedId) return  // Nenhum projeto salvo — exibe tela de boas-vindas
 
     setIsInitializing(true)
-    fetch(`${BASE}/arqdor/projects/${storedId}`, { headers: authHeaders() })
+    fetch(`${BASE}/arqdor/projects/${encodeURIComponent(storedId)}${USE_PROJECT_ACL ? '/snapshot' : ''}`, { headers: authHeaders(), cache: 'no-store' })
       .then(async res => {
-        if (res.status === 404) {
-          // Project no longer exists — clear stale ID so we don't retry on next load
+        if (res.status === 404 && !USE_PROJECT_ACL) {
+          // Legacy-only behavior; an ACL 404 may indicate revoked membership.
           localStorage.removeItem(STORAGE_KEY)
           setLoadError(null) // show empty/welcome state, not an error
           return
@@ -80,7 +84,17 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
         }
         let ctx: ProjectContext
         try {
-          ctx = await res.json() as ProjectContext
+          const data = await res.json()
+          if (USE_PROJECT_ACL) {
+            if (!data || data.id !== storedId || !data.contextBlob || typeof data.revision !== 'string') {
+              setLoadError('Resposta de projeto inválida. Salvamento bloqueado.')
+              return
+            }
+            remoteRevisionRef.current = data.revision
+            ctx = data.contextBlob as ProjectContext
+          } else {
+            ctx = data as ProjectContext
+          }
         } catch {
           // Non-JSON response (e.g. proxy HTML error page) — ignore silently
           return
@@ -109,19 +123,34 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
 
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
     saveTimerRef.current = setTimeout(async () => {
+      if (USE_PROJECT_ACL && (!remoteRevisionRef.current || saveInFlightRef.current)) {
+        setSaveError('Salvamento protegido indisponível ou ocupado. Preserve seu projeto antes de sair.')
+        return
+      }
+      saveInFlightRef.current = true
       setSaving(true)
       try {
-        const response = await fetch(`${BASE}/arqdor/projects/${ctx.id}`, {
+        const response = await fetch(`${BASE}/arqdor/projects/${encodeURIComponent(ctx.id)}${USE_PROJECT_ACL ? '/member-conditional' : ''}`, {
           method: 'PUT',
           headers: authHeaders(),
-          body: JSON.stringify(ctx),
+          body: JSON.stringify(USE_PROJECT_ACL ? { expectedRevision: remoteRevisionRef.current, contextBlob: ctx } : ctx),
         })
+        if (response.status === 409) {
+          setSaveError('Conflito com outra sessão ou acesso revogado. Exporte seu projeto antes de sair.')
+          return
+        }
         if (!response.ok) throw new Error(`Save failed: HTTP ${response.status}`)
+        if (USE_PROJECT_ACL) {
+          const saved = await response.json() as { id?: string; revision?: string }
+          if (saved.id !== ctx.id || typeof saved.revision !== 'string') throw new Error('Invalid save acknowledgment')
+          remoteRevisionRef.current = saved.revision
+        }
         setSaveError(null)
       } catch {
         // Do not pretend the server saved a draft when the network or API rejected it.
         setSaveError('Não foi possível salvar as alterações no servidor. Copie ou exporte seu trabalho antes de sair.')
       } finally {
+        saveInFlightRef.current = false
         setSaving(false)
       }
     }, SAVE_DEBOUNCE_MS)
