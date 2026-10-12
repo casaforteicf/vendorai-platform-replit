@@ -35,6 +35,7 @@ type ChecklistRun = {
   id: string;
   name: string;
   revision: number;
+  updatedAt: string;
   status: string;
   toleranceMm: number;
   headerSnapshot: Record<string, unknown>;
@@ -184,7 +185,7 @@ export default function OperationalMeasurementChecklist() {
     try {
       const run = await api(`/api/operational-checklists/runs/${data.run.id}/items/${item.id}`, {
         method: "PATCH",
-        body: JSON.stringify(patch),
+        body: JSON.stringify({ ...patch, expectedUpdatedAt: data.run.updatedAt }),
       });
       setData((prev) => prev ? { ...prev, run } : prev);
     } catch (err) {
@@ -399,7 +400,7 @@ export default function OperationalMeasurementChecklist() {
                         if (!data?.run) throw new Error("Conferência indisponível.");
                         const updated = await api(`/api/operational-checklists/runs/${data.run.id}/items/${item.id}`, {
                           method: "PATCH",
-                          body: JSON.stringify({ photoMeasurements: measurements }),
+                          body: JSON.stringify({ photoMeasurements: measurements, expectedUpdatedAt: data.run.updatedAt }),
                         });
                         setData((prev) => prev ? { ...prev, run: updated } : prev);
                       }} onClose={() => setPhotoItemId(null)} />
@@ -407,7 +408,7 @@ export default function OperationalMeasurementChecklist() {
                   </div>
                   {photoItemId === item.id && <SurveyElementsEditor key={item.id + "-" + (item.surveyElements?.length ?? 0)} draftKey={(user?.id ?? "anonymous") + ":" + run.id + ":" + run.revision + ":" + item.id} elements={item.surveyElements ?? []} photos={item.fotos ?? []} disabled={run.status === "concluido"} onSave={async (surveyElements) => {
                     if (!data?.run) throw new Error("Checklist indisponível.");
-                    const updated = await api(`/api/operational-checklists/runs/${data.run.id}/items/${item.id}`, { method: "PATCH", body: JSON.stringify({ surveyElements }) });
+                    const updated = await api(`/api/operational-checklists/runs/${data.run.id}/items/${item.id}`, { method: "PATCH", body: JSON.stringify({ surveyElements, expectedUpdatedAt: data.run.updatedAt }) });
                     setData((prev) => prev ? { ...prev, run: updated } : prev);
                   }} />}
                   <div className="mt-3 grid gap-3 md:grid-cols-2 print:hidden">
