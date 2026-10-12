@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 export type PersistentRenderOperationType = "initial" | "material" | "lighting" | "improve" | "approved";
 
@@ -128,6 +128,7 @@ export function usePersistentRenderHistory(projectId: string | null | undefined,
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loadedProjectId, setLoadedProjectId] = useState<string | null>(null);
+  const requestIdRef = useRef(0);
 
   const normalizedAmbiente = useMemo(
     () => (ambiente ?? "").trim().toLowerCase().replace(/\s+/g, "_"),
@@ -135,6 +136,7 @@ export function usePersistentRenderHistory(projectId: string | null | undefined,
   );
 
   const reload = useCallback(async () => {
+    const requestId = ++requestIdRef.current;
     if (!projectId) {
       setVersions([]);
       setLoadedProjectId(null);
@@ -144,6 +146,8 @@ export function usePersistentRenderHistory(projectId: string | null | undefined,
 
     setLoading(true);
     setError(null);
+    setVersions([]);
+    setLoadedProjectId(null);
     try {
       const params = new URLSearchParams({ project_id: projectId });
       if (normalizedAmbiente) params.set("ambiente", normalizedAmbiente);
@@ -157,15 +161,16 @@ export function usePersistentRenderHistory(projectId: string | null | undefined,
       }
 
       const mapped = (payload.versions ?? []).map(mapVersion);
+      if (requestId !== requestIdRef.current) return [] as PersistentRenderVersion[];
       setVersions(mapped);
       setLoadedProjectId(projectId);
       return mapped;
     } catch (err) {
       const message = err instanceof Error ? err.message : "Não foi possível carregar o histórico de renders";
-      setError(message);
+      if (requestId === requestIdRef.current) setError(message);
       return [] as PersistentRenderVersion[];
     } finally {
-      setLoading(false);
+      if (requestId === requestIdRef.current) setLoading(false);
     }
   }, [projectId, normalizedAmbiente]);
 
