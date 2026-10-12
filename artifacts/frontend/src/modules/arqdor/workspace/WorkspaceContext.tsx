@@ -1,5 +1,7 @@
 import { createContext, useContext, useState, useMemo, useEffect, useCallback, useRef } from 'react'
 import type { ReactNode } from 'react'
+import { useAuth } from '../../../contexts/AuthContext'
+import { saveArqdorDraft } from '../../../lib/arqdorLocalDrafts'
 import type { Project } from '../../../pages/arch/arqdor/domain/arqdor-domain-types'
 import type { ArchProject } from '../../../pages/arch/arqdor-types'
 import type { ProjectContext, ProjectObject, ProjectMaterial } from '../engines/aie/aie-types'
@@ -14,6 +16,8 @@ const STORAGE_KEY = 'arqdor_workspace_project_id'
 const SAVE_DEBOUNCE_MS = 2000
 // Experimental ACL flow is disabled by default and must be enabled with the backend flag.
 const USE_PROJECT_ACL = import.meta.env.VITE_MULTI08_PROJECT_ACL === 'true'
+// Unencrypted IndexedDB prototype: use only in explicitly approved, non-sensitive test projects.
+const USE_LOCAL_DRAFTS = USE_PROJECT_ACL && import.meta.env.VITE_MULTI09_LOCAL_DRAFTS === 'true'
 
 export const EMPTY_PROJECT_CONTEXT: ProjectContext = {
   id: '',
@@ -47,6 +51,9 @@ export interface WorkspaceContextValue {
 export const WorkspaceContext = createContext<WorkspaceContextValue | null>(null)
 
 export function WorkspaceProvider({ children }: { children: ReactNode }) {
+  const { user } = useAuth()
+  const identityRef = useRef<{ tenantId: string; userId: string } | null>(null)
+  identityRef.current = user?.tenantId && user?.id ? { tenantId: user.tenantId, userId: user.id } : null
   const [projectCtx, setProjectCtxState] = useState<ProjectContext>(EMPTY_PROJECT_CONTEXT)
   const [isRealProject, setIsRealProject] = useState<boolean>(false)
   const [isInitializing, setIsInitializing] = useState(false)
@@ -60,6 +67,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const latestPendingRef = useRef<ProjectContext | null>(null)
   const activeProjectRef = useRef<string | null>(null)
   const writeBlockedRef = useRef(false)
+  const authorizedDraftScopeRef = useRef<{ tenantId: string; userId: string; contextId: string; projectId: string } | null>(null)
 
   // ── Load on mount ───────────────────────────────────────────────────────────
   useEffect(() => {
@@ -96,6 +104,10 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
             }
             if (activeProjectRef.current !== storedId) return
             remoteRevisionRef.current = data.revision
+            const identity = identityRef.current
+            authorizedDraftScopeRef.current = identity ? {
+              ...identity, contextId: 'arqdor-workspace', projectId: storedId,
+            } : null
             ctx = data.contextBlob as ProjectContext
           } else {
             ctx = data as ProjectContext
@@ -135,6 +147,24 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
           break
         }
         const expectedRevision = remoteRevisionRef.current
+        if (USE_LOCAL_DRAFTS) {
+          const scope = authorizedDraftScopeRef.current
+          const identity = identityRef.current
+          if (!scope || !identity || scope.projectId !== ctx.id ||
+              scope.tenantId !== identity.tenantId || scope.userId !== identity.userId || !expectedRevision) {
+            writeBlockedRef.current = true
+            setSaveError('Identidade ou autorização local indisponível. Exporte o projeto antes de sair.')
+            break
+          }
+          try {
+            await saveArqdorDraft({ ...scope, baseRevision: expectedRevision,
+              savedAt: new Date().toISOString(), payload: ctx })
+          } catch {
+            writeBlockedRef.current = true
+            setSaveError('Rascunho local não confirmado. Verifique o espaço do dispositivo e exporte o projeto.')
+            break
+          }
+        }
         if (USE_PROJECT_ACL && !expectedRevision) {
           writeBlockedRef.current = true
           setSaveError('Sem revisão autorizada para este projeto. Exporte suas alterações.')
@@ -185,6 +215,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
       latestPendingRef.current = null
       remoteRevisionRef.current = null
+      authorizedDraftScopeRef.current = null
       writeBlockedRef.current = USE_PROJECT_ACL
       setSaveError('Projeto alterado. Reabra-o para obter uma revisão autorizada antes de salvar.')
     }
