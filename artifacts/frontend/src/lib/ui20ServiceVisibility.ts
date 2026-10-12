@@ -20,8 +20,6 @@ export function getUi20VisibleServices(input: {
     const row = modules.find((module) => module.moduleKey === key);
     return Boolean(row?.isEnabled && row.commerciallyEntitled !== false);
   }
-  const notExplicitlyDisabled = (key: string) =>
-    !modules.some((module) => module.moduleKey === key && (module.hasOverride === true && !module.isEnabled || module.commerciallyEntitled === false));
   if (permittedModule("financeiro")) visible.add("erp");
   if (arqdorEligible && permittedModule("arch")) visible.add("arqdor");
   // Real NAV_MODULE_CATALOG keys; never infer IA access from missing entries.
