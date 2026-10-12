@@ -131,6 +131,7 @@ export default function Dashboard() {
           name={user?.name ?? ""}
           tenantId={tenantId}
           userId={user?.id ?? ""}
+          token={token}
           isAdmin={user?.platformRole === "super_admin" || user?.userFunction === "administrador"}
           modules={ui20NavQuery.data}
           overdueTasks={official?.operation?.overdueTasks}
