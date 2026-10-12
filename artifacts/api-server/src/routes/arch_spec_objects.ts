@@ -144,7 +144,7 @@ async function createSpecObject(tId: string | null, payload: SpecObjectPayload) 
   return result.rows[0];
 }
 
-async function updateSpecObject(id: string, tId: string | null, payload: Partial<SpecObjectPayload>) {
+async function updateSpecObject(id: string, tId: string | null, payload: Partial<SpecObjectPayload>, expectedUpdatedAt?: Date) {
   const currentValues: unknown[] = [id];
   let currentWhere = `id = $1`;
   if (tId) {
@@ -263,6 +263,10 @@ async function updateSpecObject(id: string, tId: string | null, payload: Partial
     where += ` AND tenant_id = $${values.length}`;
   }
 
+  if (expectedUpdatedAt) {
+    values.push(expectedUpdatedAt);
+    where += ` AND updated_at = ${values.length}`;
+  }
   const result = await pool.query(`UPDATE arch_spec_objects SET ${sets.join(", ")} WHERE ${where} RETURNING *`, values);
   return result.rows[0] ?? null;
 }
@@ -1185,9 +1189,12 @@ archSpecObjectsRouter.patch("/arch/spec-objects/:id", async (req, res, next) => 
         return;
       }
     }
-    const item = await updateSpecObject(req.params["id"]!, tId, patch);
+    const item = await updateSpecObject(req.params["id"]!, tId, patch, patch.expectedUpdatedAt ? new Date(patch.expectedUpdatedAt) : undefined);
     if (!item) {
-      res.status(404).json({ error: "SpecObject não encontrado" });
+      res.status(patch.expectedUpdatedAt ? 409 : 404).json({
+        error: patch.expectedUpdatedAt ? "O componente foi alterado durante a edição. Recarregue antes de salvar." : "SpecObject não encontrado",
+        code: patch.expectedUpdatedAt ? "TECHNICAL_REVISION_CONFLICT" : "NOT_FOUND",
+      });
       return;
     }
     const budgetSync = item.status === "sent-to-budget"
