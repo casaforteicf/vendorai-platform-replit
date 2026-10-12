@@ -94,6 +94,22 @@ export function FurniturePlacementPanel({environment,draft}:{environment:Interio
   function move(id:string){try{const next=repositionPlacedCabinet({room:{id:environment.roomId,widthMm:width,depthMm:depth},items,id,xMm:x,yMm:y});next.forEach(checkObstacles);setItems(next);markDirty();setMessage("Posição alterada no rascunho. Salve para persistir.");}catch(e){setMessage(e instanceof Error?e.message:"Posicionamento inválido");}}
   function remove(id:string){try{setItems(old=>removePlacedCabinet(old,id));if(selectedId===id)setSelectedId(null);markDirty();setMessage("Móvel removido do rascunho. Salve para persistir.");}catch(e){setMessage(e instanceof Error?e.message:"Falha ao remover");}}
   function authHeaders(){const token=localStorage.getItem("vendorai_token");if(!token)throw Error("Sessão expirada. Faça login novamente.");return {Authorization:"Bearer "+token};}
+  async function publishConceptGeometry(){
+    if(!environment.projectId||!savedTenantId||dirtyRef.current){
+      setMessage("Salve ou exporte seu rascunho e abra um projeto autorizado antes de sincronizar a arquitetura.");return;
+    }
+    setBusy(true);
+    try{
+      const response=await fetch("/api/arqdor/projects/"+encodeURIComponent(environment.projectId)+"/furniture/geometry-from-concept",{
+        method:"POST",headers:{"Content-Type":"application/json",...authHeaders()},credentials:"include"
+      });
+      const result=await response.json();
+      if(!response.ok)throw Error(result.error??"Falha ao publicar geometria Concept");
+      setGeometryRevision(result.geometryRevision);
+      setMessage("Geometria retangular do Concept publicada ("+result.rooms+" ambientes). Confira as aberturas antes de inserir móveis.");
+    }catch(e){setMessage(e instanceof Error?e.message:"Falha na sincronização arquitetônica");}
+    finally{setBusy(false);}
+  }
   async function save(){
     if(!ready||!environment.projectId){setMessage("É necessário salvar o projeto e ter geometria do ambiente.");return;}
     if(!savedTenantId){setMessage("O projeto ainda não foi carregado ou não está autorizado.");return;}
@@ -177,7 +193,7 @@ export function FurniturePlacementPanel({environment,draft}:{environment:Interio
     {webglPreview&&<FurnitureWebGLPreview items={roomItems} selectedId={selectedId} onSelect={id=>{const item=roomItems.find(i=>i.id===id);if(!item)return;setSelectedId(id);setX(item.bounds.xMm);setY(item.bounds.yMm);setEdit({widthMm:item.parameters.widthMm,heightMm:item.parameters.heightMm,depthMm:item.parameters.depthMm,materialId:item.parameters.materialId});}}/>}
     <FurnitureAxonometricPreview items={roomItems} selectedId={selectedId} onSelect={id=>{const item=roomItems.find(candidate=>candidate.id===id);if(!item)return;setSelectedId(item.id);setX(item.bounds.xMm);setY(item.bounds.yMm);setEdit({widthMm:item.parameters.widthMm,heightMm:item.parameters.heightMm,depthMm:item.parameters.depthMm,materialId:item.parameters.materialId});}}/>
     {!savedTenantId&&environment.projectId&&<p className="mt-2 text-xs text-amber-700">Carregando identidade e revisão do projeto. A edição será habilitada após a consulta.</p>}
-    <div className="mt-2 flex gap-2"><button type="button" disabled={busy||!environment.projectId||!savedTenantId} onClick={save} className="rounded border px-3 py-2 text-xs">Salvar móveis</button><button type="button" disabled={busy||!environment.projectId} onClick={load} className="rounded border px-3 py-2 text-xs">Carregar móveis</button></div>
+    <div className="mt-2 flex flex-wrap gap-2">{!geometryRevision&&<button type="button" disabled={busy||!environment.projectId||!savedTenantId||dirty} onClick={publishConceptGeometry} className="rounded border px-3 py-2 text-xs">Sincronizar geometria Concept</button>}<button type="button" disabled={busy||!environment.projectId||!savedTenantId} onClick={save} className="rounded border px-3 py-2 text-xs">Salvar móveis</button><button type="button" disabled={busy||!environment.projectId} onClick={load} className="rounded border px-3 py-2 text-xs">Carregar móveis</button></div>
     {message&&<p role="alert" className="text-sm text-red-700">{message}</p>}
   </section>;
 }
