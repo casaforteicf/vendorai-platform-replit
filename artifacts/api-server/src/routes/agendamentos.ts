@@ -229,6 +229,14 @@ router.post("/agendamentos", async (req, res) => {
     }
   }
 
+  // Recheck access immediately before the write: the grant may have been
+  // revoked while resolving lead/deal/responsible user or availability.
+  if (!creatorIsAdmin && resolvedInsertData.agendaId &&
+      (!req.user?.sub || !(await hasAgendaAccess(resolvedInsertData.agendaId, parsed.data.tenantId, req.user.sub)))) {
+    res.status(403).json({ error: "Acesso ao calendario revogado durante o agendamento" });
+    return;
+  }
+
   let agendamento: typeof agendamentosTable.$inferSelect;
   try {
     const rows = await db
