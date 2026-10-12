@@ -8705,6 +8705,7 @@ router.get("/arq/learning", authenticate, async (req, res) => {
 // GET /arqdor/projects/:id — load a full ProjectContext blob for this tenant
 // ─────────────────────────────────────────────────────────────────────────────
 router.get("/arqdor/projects/:id", authenticate, async (req, res) => {
+  if (process.env.ARQDOR_PROJECT_ACL_ENABLED === "true") return res.status(403).json({ error: "Endpoint legado indisponível com ACL habilitada." });
   const tid = tenantId(req);
   const id = String((req.params.id as string));
 
@@ -8727,6 +8728,7 @@ router.get("/arqdor/projects/:id", authenticate, async (req, res) => {
 // PUT /arqdor/projects/:id — upsert (create or update) a ProjectContext blob
 // ─────────────────────────────────────────────────────────────────────────────
 router.put("/arqdor/projects/:id", authenticate, async (req, res) => {
+  if (process.env.ARQDOR_PROJECT_ACL_ENABLED === "true") return res.status(403).json({ error: "Endpoint legado indisponível com ACL habilitada." });
   const tid = tenantId(req);
   const id = String((req.params.id as string));
   const contextBlob = req.body;
@@ -8836,6 +8838,7 @@ router.put("/arqdor/projects/:id/member-conditional", authenticate, async (req, 
 });
 
 router.put("/arqdor/projects/:id/conditional", authenticate, requireRole("super_admin", "tenant_admin"), async (req, res) => {
+  if (process.env.ARQDOR_PROJECT_ACL_ENABLED === "true") return res.status(403).json({ error: "Endpoint legado indisponível com ACL habilitada." });
   const tid = tenantId(req);
   const id = String(req.params.id);
   if (!canUseArqdorConditionalSave(req.user, tid)) return res.status(403).json({ error: "Acesso restrito ao piloto administrativo." });
