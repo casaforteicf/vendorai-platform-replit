@@ -27,7 +27,11 @@ router.get("/arqdor/projects/:id/furniture",async(req:Request,res:Response)=>{
   const [record]=await db.select({contextBlob:arqdorWorkspaceProjectsTable.contextBlob}).from(arqdorWorkspaceProjectsTable)
    .where(and(eq(arqdorWorkspaceProjectsTable.tenantId,tenantId),eq(arqdorWorkspaceProjectsTable.id,projectId))).limit(1);
   if(!record)return res.status(404).json({error:"Projeto não encontrado"});
-  return res.json({tenantId,furnitureSnapshots:(record.contextBlob as Record<string,unknown>|null)?.furnitureSnapshots??{}});
+  const blob=record.contextBlob;
+  if(!blob||Array.isArray(blob)||typeof blob!=="object")return res.status(409).json({error:"Estrutura do projeto inválida"});
+  const stored=(blob as Record<string,unknown>).furnitureSnapshots;
+  if(stored!==undefined&&(!stored||typeof stored!=="object"||Array.isArray(stored)))return res.status(409).json({error:"Estrutura do mobiliário inválida"});
+  return res.json({tenantId,furnitureSnapshots:stored??{}});
  }catch(e){console.error("furniture get",e);return res.status(500).json({error:"Falha ao carregar mobiliário"});}
 });
 router.put("/arqdor/projects/:id/furniture/:roomId",async(req:Request,res:Response)=>{
@@ -56,6 +60,7 @@ router.put("/arqdor/projects/:id/furniture/:roomId",async(req:Request,res:Respon
   const records=await db.update(arqdorWorkspaceProjectsTable)
    .set({contextBlob:sql`jsonb_set(jsonb_set(COALESCE(${arqdorWorkspaceProjectsTable.contextBlob}, '{}'::jsonb), '{furnitureSnapshots}', CASE WHEN jsonb_typeof(${arqdorWorkspaceProjectsTable.contextBlob}->'furnitureSnapshots')='object' THEN ${arqdorWorkspaceProjectsTable.contextBlob}->'furnitureSnapshots' ELSE '{}'::jsonb END, true), ARRAY['furnitureSnapshots', ${roomId}]::text[], ${JSON.stringify(normalized)}::jsonb, true)`,updatedAt:new Date()})
    .where(and(eq(arqdorWorkspaceProjectsTable.id,projectId),eq(arqdorWorkspaceProjectsTable.tenantId,tenantId),
+    sql`jsonb_typeof(${arqdorWorkspaceProjectsTable.contextBlob}) = 'object'`,
     sql`(jsonb_typeof(${arqdorWorkspaceProjectsTable.contextBlob}->'furnitureSnapshots') IS NULL OR jsonb_typeof(${arqdorWorkspaceProjectsTable.contextBlob}->'furnitureSnapshots') = 'object')`,
     sql`(${arqdorWorkspaceProjectsTable.contextBlob} #>> ARRAY['furnitureSnapshots', ${roomId}, 'revision']::text[]) IS NOT DISTINCT FROM ${expected}`)).returning({id:arqdorWorkspaceProjectsTable.id});
   if(!records.length)return res.status(409).json({error:"Projeto não encontrado ou mobiliário alterado por outro usuário; recarregue antes de salvar"});
