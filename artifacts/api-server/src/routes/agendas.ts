@@ -1,3 +1,4 @@
+import { createHmac, timingSafeEqual } from "node:crypto";
 import { Router, type IRouter } from "express";
 import { and, eq, or, inArray } from "drizzle-orm";
 import { z } from "zod/v4";
@@ -393,9 +394,15 @@ googleCallbackRouter.get("/auth/google/calendar/callback", async (req, res) => {
   let agendaId: string;
   let returnTo: string = "/agenda";
   try {
-    const decoded = JSON.parse(
-      Buffer.from(state, "base64url").toString("utf-8")
-    ) as { agendaId: string; returnTo?: string };
+    const [payload, mac, extra] = state.split(".");
+    const secret = process.env.GOOGLE_CALENDAR_OAUTH_STATE_SECRET;
+    if (!payload || !mac || extra || !secret || secret.length < 32) throw new Error("Invalid OAuth state");
+    const expected = createHmac("sha256", secret).update(payload).digest();
+    const provided = Buffer.from(mac, "base64url");
+    if (expected.length !== provided.length || !timingSafeEqual(expected, provided)) throw new Error("Invalid state signature");
+    const decoded = JSON.parse(Buffer.from(payload, "base64url").toString("utf-8")) as { agendaId: string; returnTo?: string; issuedAt?: number };
+    if (typeof decoded.issuedAt !== "number" || !Number.isFinite(decoded.issuedAt) ||
+        decoded.issuedAt > Date.now() + 30_000 || Date.now() - decoded.issuedAt > 600_000) throw new Error("Expired state");
     if (typeof decoded.agendaId !== "string" || !decoded.agendaId.trim()) throw new Error("Invalid agenda");
     agendaId = decoded.agendaId;
     if (decoded.returnTo === "/agenda" || decoded.returnTo === "/configuracoes") returnTo = decoded.returnTo;
