@@ -1,9 +1,12 @@
 import { Link } from "wouter";
+import { MyUpcomingAppointments } from "./MyUpcomingAppointments";
 import { getUi20VisibleServices, type Ui20Module } from "@/lib/ui20ServiceVisibility";
 import { Bot, Building2, CircleHelp, House, CalendarDays, ClipboardList, Sparkles, Megaphone, Ruler, Settings2, Store, Users, ArrowUpRight } from "lucide-react";
 
 type Props = {
   name: string;
+  tenantId: string;
+  userId: string;
   isAdmin: boolean;
   arqdorVisible?: boolean;
   erpVisible?: boolean;
@@ -27,7 +30,7 @@ const serviceCards = [
 ] as const;
 
 /** Presentation only; tenant/route authorization continues on the server. */
-export function ServiceHome({ name, isAdmin, arqdorVisible = false, erpVisible = false, modules, loading, overdueTasks, unassignedLeads, overdueTaskItems, recentActivity }: Props) {
+export function ServiceHome({ name, tenantId, userId, isAdmin, arqdorVisible = false, erpVisible = false, modules, loading, overdueTasks, unassignedLeads, overdueTaskItems, recentActivity }: Props) {
   const allowed = getUi20VisibleServices({ modules, isAdmin, arqdorEligible: arqdorVisible, loading });
   const visible = serviceCards.filter((module) =>
     allowed.has(module.key) && (module.key !== "erp" || erpVisible)
@@ -73,6 +76,7 @@ export function ServiceHome({ name, isAdmin, arqdorVisible = false, erpVisible =
           </section>}
         </div>
       )}
+      {tenantId && userId && modules?.some(module => module.moduleKey === "scheduler" && module.isEnabled && module.commerciallyEntitled !== false) ? <MyUpcomingAppointments tenantId={tenantId} userId={userId} /> : null}
       <div>
         <h2 className="mb-3 text-base font-semibold">Meus serviços</h2>
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4">
