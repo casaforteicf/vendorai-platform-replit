@@ -1,3 +1,4 @@
+import { architecturalSheetLayout } from "./conceptArchitecturalSheet";
 import { useMemo, useRef, useState } from "react";
 import type { ArchitecturalModel } from "./conceptArchitecturalModel";
 import { architecturalSection } from "./conceptArchitecturalSections";
@@ -5,6 +6,9 @@ export function ConceptArchitecturalDocumentation({ model }: { model: Architectu
   const [axis, setAxis] = useState<"x" | "y">("x"), [position, setPosition] = useState(1);
   const [elevation, setElevation] = useState(false);
   const [showDimensions, setShowDimensions] = useState(true);
+  const [sheetScale, setSheetScale] = useState(100);
+  const [sheetTitle, setSheetTitle] = useState("Pré-projeto");
+  const [sheetError, setSheetError] = useState<string | null>(null);
   const svgRef = useRef<SVGSVGElement>(null);
   const items = useMemo(() => architecturalSection(model, axis, position, elevation), [model, axis, position, elevation]);
   const points = items.flatMap(item => item.points);
@@ -14,6 +18,33 @@ export function ConceptArchitecturalDocumentation({ model }: { model: Architectu
     if (!svgRef.current) return;
     const url = URL.createObjectURL(new Blob([new XMLSerializer().serializeToString(svgRef.current)], { type: "image/svg+xml;charset=utf-8" }));
     const a = document.createElement("a"); a.href = url; a.download = "vista-parametrica-arqdor.svg"; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 0);
+  }
+  function downloadSheet() {
+    if (!svgRef.current || !items.length) return;
+    const layout = architecturalSheetLayout({ minU, maxU, minZ, maxZ }, sheetScale);
+    if ("error" in layout) { setSheetError(layout.error); return; }
+    setSheetError(null);
+    const ns = "http://www.w3.org/2000/svg";
+    const sheet = document.createElementNS(ns, "svg");
+    sheet.setAttribute("width", "420mm"); sheet.setAttribute("height", "297mm"); sheet.setAttribute("viewBox", "0 0 420 297");
+    const add = (tag: string, attributes: Record<string, string>, text?: string) => {
+      const node = document.createElementNS(ns, tag);
+      Object.entries(attributes).forEach(([key, value]) => node.setAttribute(key, value));
+      if (text) node.textContent = text;
+      sheet.appendChild(node);
+    };
+    add("rect", { width: "420", height: "297", fill: "white" });
+    add("rect", { x: "10", y: "10", width: "400", height: "277", fill: "none", stroke: "#334155", "stroke-width": "0.3" });
+    const drawing = svgRef.current.cloneNode(true) as SVGSVGElement;
+    drawing.removeAttribute("class");
+    for (const key of ["x", "y", "width", "height"] as const) drawing.setAttribute(key, String(layout.value[key]));
+    sheet.appendChild(drawing);
+    add("line", { x1: "10", x2: "410", y1: "257", y2: "257", stroke: "#334155", "stroke-width": "0.3" });
+    add("text", { x: "15", y: "266", fill: "#334155", "font-size": "4" }, sheetTitle.slice(0, 80));
+    add("text", { x: "15", y: "274", fill: "#334155", "font-size": "3" }, `${elevation ? "Elevação" : "Corte"} · direção ${axis.toUpperCase()}${elevation ? "" : ` · posição ${position.toFixed(2)} m`} · escala 1:${sheetScale}`);
+    add("text", { x: "15", y: "282", fill: "#334155", "font-size": "2.8" }, "Arqdor · Vista esquemática de elementos paramétricos · Imprimir em tamanho real (100%)");
+    const url = URL.createObjectURL(new Blob([new XMLSerializer().serializeToString(sheet)], { type: "image/svg+xml;charset=utf-8" }));
+    const a = document.createElement("a"); a.href = url; a.download = "prancha-parametrica-a3.svg"; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 0);
   }
   return <section aria-label="Documentação paramétrica" className="space-y-2 rounded border p-2">
     <h4 className="text-sm font-semibold">Cortes e elevações</h4>
@@ -35,6 +66,12 @@ export function ConceptArchitecturalDocumentation({ model }: { model: Architectu
       </g>}
     </svg>
     {!items.length && <p className="text-xs" role="status">Nenhum elemento interceptado nesta posição.</p>}
+    <div className="grid grid-cols-2 gap-2">
+      <label className="text-xs">Título da prancha<input value={sheetTitle} maxLength={80} onChange={e => setSheetTitle(e.target.value)} className="w-full rounded border p-2" /></label>
+      <label className="text-xs">Escala da prancha<select value={sheetScale} onChange={e => { setSheetScale(Number(e.target.value)); setSheetError(null); }} className="w-full rounded border p-2">{[50, 100, 200].map(scale => <option key={scale} value={scale}>1:{scale}</option>)}</select></label>
+    </div>
+    {sheetError && <p role="alert" className="text-xs text-red-500">{sheetError}</p>}
+    <button type="button" disabled={!items.length} onClick={downloadSheet} className="rounded border px-3 py-2 text-xs disabled:opacity-50">Exportar prancha A3 SVG</button>
     <button type="button" disabled={!items.length} onClick={download} className="rounded border px-3 py-2 text-xs disabled:opacity-50">Exportar vista SVG</button>
   </section>;
 }
