@@ -4,6 +4,7 @@ import {db,arqdorWorkspaceProjectsTable,archConceptProjectsTable} from "@workspa
 import {and,eq,or,sql} from "drizzle-orm";
 import {authenticate} from "../middlewares/auth.js";
 import {validateBimFurnitureFootprints} from "./arqdor_furniture_bim_geometry.js";
+import {conceptRoomFurnitureGeometry} from "./arqdor_concept_furniture_geometry.js";
 /** Only mount under the globally authenticated API router. No whole-context overwrite. */
 const router=Router();
 router.use("/arqdor/projects/:id/furniture",authenticate);
@@ -48,9 +49,9 @@ router.post("/arqdor/projects/:id/furniture/geometry-from-concept",async(req:Req
    .where(and(eq(archConceptProjectsTable.tenantId,tenantId),or(eq(archConceptProjectsTable.id,projectId),eq(archConceptProjectsTable.archProjetoId,projectId)))).limit(1);
   if(!concept)return res.status(404).json({error:"Concept vinculado não encontrado"});
   const config=concept.configuration;
-  if((config.customWalls?.length??0)>0||(config.customOpenings?.length??0)>0||Object.keys(concept.openingOverrides??{}).length>0)
+  if(Object.keys(concept.openingOverrides??{}).length>0)
    return res.status(422).json({error:"Geometria personalizada exige publicação BIM completa"});
-  const rooms:Record<string,{outline:Array<{xMm:number;yMm:number}>;exclusions:never[]}>= {};
+  const rooms:Record<string,ReturnType<typeof conceptRoomFurnitureGeometry>>= {};
   if(!Array.isArray(concept.rooms)||concept.rooms.length===0||concept.rooms.length>150)return res.status(422).json({error:"Ambientes Concept inválidos"});
   // Multiple rooms can have auto-generated circulation openings not represented in this rectangle-only contract.
   // Fail closed until the full wall/opening geometry publisher is available.
@@ -59,8 +60,8 @@ router.post("/arqdor/projects/:id/furniture/geometry-from-concept",async(req:Req
    const {id,x,y,width,depth}=room;
    if(typeof id!=="string"||!id||rooms[id]||![x,y,width,depth].every(Number.isFinite)||width<=0||depth<=0||width>500||depth>500)
     return res.status(422).json({error:"Ambiente Concept sem geometria retangular válida"});
-   const x0=0,y0=0,x1=Math.round(width*1000),y1=Math.round(depth*1000);
-   rooms[id]={outline:[{xMm:x0,yMm:y0},{xMm:x1,yMm:y0},{xMm:x1,yMm:y1},{xMm:x0,yMm:y1}],exclusions:[]};
+   try{rooms[id]=conceptRoomFurnitureGeometry(room,(config.customWalls??[]).filter(w=>w.floor===room.floor),(config.customOpenings??[]).filter(o=>o.floor===room.floor));}
+   catch(error){return res.status(422).json({error:error instanceof Error?error.message:"Geometria Concept incompleta"});}
   }
   const revision=concept.id+":"+concept.updatedAt.toISOString();
   const geometry={schemaVersion:1 as const,source:"bim-server" as const,revision,rooms};
