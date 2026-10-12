@@ -272,10 +272,10 @@ async function autoScheduleAndGetMeetLink(params: {
   // 3. Create agendamento record
   const agendamentoId = crypto.randomUUID();
   const titulo = `Reunião com ${leadNome || "Lead"}`;
-  await db.execute(
-    `INSERT INTO agendamentos (id, tenant_id, lead_id, tipo, titulo, data_hora_inicio, data_hora_fim, status, agenda_id, gerar_meet, criado_por, created_at, updated_at)
-     VALUES ('${agendamentoId}','${tenantId}','${leadId}','reuniao','${titulo.replace(/'/g,"''")}','${dataHoraInicio.toISOString()}','${dataHoraFim.toISOString()}','agendado','${agendaWithToken.id}',true,'closer_auto',NOW(),NOW())`
-  );
+  await db.execute(sql`
+    INSERT INTO agendamentos (id, tenant_id, lead_id, tipo, titulo, data_hora_inicio, data_hora_fim, status, agenda_id, gerar_meet, criado_por, created_at, updated_at)
+    VALUES (${agendamentoId}, ${tenantId}, ${leadId}, 'reuniao', ${titulo}, ${dataHoraInicio.toISOString()}, ${dataHoraFim.toISOString()}, 'agendado', ${agendaWithToken.id}, true, 'closer_auto', NOW(), NOW())
+  `);
 
   log.info({ agendamentoId, agendaId: agendaWithToken.id, dataHoraInicio }, "autoSchedule: agendamento created, calling Google Calendar");
 
@@ -290,9 +290,10 @@ async function autoScheduleAndGetMeetLink(params: {
     );
 
     if (meetLink || googleEventId) {
-      await db.execute(
-        `UPDATE agendamentos SET meet_link=${meetLink ? `'${meetLink}'` : "NULL"}, google_event_id=${googleEventId ? `'${googleEventId}'` : "NULL"}, updated_at=NOW() WHERE id='${agendamentoId}'`
-      );
+      await db.execute(sql`
+        UPDATE agendamentos SET meet_link = ${meetLink ?? null}, google_event_id = ${googleEventId ?? null}, updated_at = NOW()
+        WHERE id = ${agendamentoId} AND tenant_id = ${tenantId}
+      `);
       log.info({ agendamentoId, meetLink, googleEventId }, "autoSchedule: Meet link saved");
     }
 
