@@ -237,3 +237,10 @@ Esse teste estrutural não acessa rede, não modifica arquivos e não conta como
 - Implementado `arqdorEncryptedRecovery.ts`: verifica escopo e `canEdit` antes de abrir o cofre, compara revisão do rascunho com a revisão autorizada e retorna `missing`, `denied` ou `review`. Não faz upload.
 - Adicionados testes unitários para divergência de identidade, ausência de rascunho e conflito de revisão (ainda não executados).
 - **Pendente:** interface de frase de recuperação, consulta integrada de snapshot e edit-access frescos, revisão explícita pelo usuário, testes IndexedDB/WebCrypto em navegador e integração no editor. Não habilitar flags nem usar em produção.
+
+
+## MULTI-09.5 — Painel experimental de recuperação somente leitura
+- Criado `ArqdorDraftRecoveryPanel.tsx` e montado em `ArqWorkspace.tsx` sob flags `VITE_MULTI09_RECOVERY_REVIEW=true` e `VITE_MULTI08_PROJECT_ACL=true`, ambas desligadas por padrão.
+- O painel exige frase de recuperação, valida respostas recentes de `snapshot` e `edit-access`, abre o cofre criptografado com identidade ativa e mostra apenas metadados e estado de conflito. Não executa PUT, restauração ou limpeza de rascunho.
+- Teste estrutural criado em `artifacts/frontend/scripts/test-arqdor-recovery-panel.mjs`, ainda sem execução comprovada.
+- Pendentes: fluxo de confirmação com visualização de diferenças, persistência criptografada efetivamente ligada ao autosave, testes de browser/WebCrypto/IndexedDB, UX responsiva, higiene de senha e validação de sessão revogada após requisição. Sem merge, deploy ou migração.
