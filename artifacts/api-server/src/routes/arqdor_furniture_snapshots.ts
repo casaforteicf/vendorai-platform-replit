@@ -115,6 +115,7 @@ router.put("/arqdor/projects/:id/furniture/:roomId",async(req:Request,res:Respon
    .where(and(eq(arqdorWorkspaceProjectsTable.id,projectId),eq(arqdorWorkspaceProjectsTable.tenantId,tenantId),
     sql`jsonb_typeof(${arqdorWorkspaceProjectsTable.contextBlob}) = 'object'`,
     sql`(${arqdorWorkspaceProjectsTable.contextBlob} #>> '{furnitureGeometryV1,revision}') = ${geometryRevision}`,
+    sql`EXISTS (SELECT 1 FROM arch_concept_projects src WHERE src.id = ${sourceConcept.id} AND src.tenant_id = ${tenantId} AND src.updated_at = ${sourceConcept.updatedAt})`,
     sql`(jsonb_typeof(${arqdorWorkspaceProjectsTable.contextBlob}->'furnitureSnapshots') IS NULL OR jsonb_typeof(${arqdorWorkspaceProjectsTable.contextBlob}->'furnitureSnapshots') = 'object')`,
     sql`(${arqdorWorkspaceProjectsTable.contextBlob} #>> ARRAY['furnitureSnapshots', ${roomId}, 'revision']::text[]) IS NOT DISTINCT FROM ${expected}`)).returning({id:arqdorWorkspaceProjectsTable.id});
   if(!records.length)return res.status(409).json({error:"Projeto não encontrado ou mobiliário alterado por outro usuário; recarregue antes de salvar"});
