@@ -20,3 +20,12 @@ test("ACL denial never clears stored project and save handles conflicts", () => 
   assert.match(source, /res\.status === 404 && !USE_PROJECT_ACL/);
   assert.match(source, /response\.status === 409/);
 });
+
+test("MULTI-08.4 serializes requests and stops on switching projects", () => {
+  assert.match(source, /latestPendingRef\.current = ctx/);
+  assert.match(source, /while \(latestPendingRef\.current && !writeBlockedRef\.current\)/);
+  assert.match(source, /if \(saveInFlightRef\.current \|\| writeBlockedRef\.current\) return/);
+  assert.match(source, /activeProjectRef\.current !== ctx\.id/);
+  assert.match(source, /remoteRevisionRef\.current = null/);
+  assert.match(source, /writeBlockedRef\.current = true/);
+});
