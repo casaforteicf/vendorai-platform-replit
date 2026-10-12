@@ -29,4 +29,11 @@ describe("C04 furniture snapshot contract",()=>{
   expect(()=>createFurnitureSnapshot({...base,furniture:[{...furniture[0],parameters:{...furniture[0].parameters,widthMm:999}}]})).toThrow();
   expect(()=>createFurnitureSnapshot({...base,furniture:[{...furniture[0],parameters:{...furniture[0].parameters,roomId:"other"}}]})).toThrow();
  });
+ it("rejects a broken part before it reaches the persistence API",()=>{
+  const broken={...furniture[0],parts:[{...furniture[0].parts[0],quantity:0}]};
+  expect(()=>createFurnitureSnapshot({...base,furniture:[broken]})).toThrow();
+ });
+ it("applies the same 500-furniture maximum enforced by the server",()=>{
+  expect(()=>createFurnitureSnapshot({...base,furniture:Array.from({length:501},()=>furniture[0])})).toThrow();
+ });
 });
