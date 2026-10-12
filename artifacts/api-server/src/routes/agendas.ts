@@ -426,6 +426,10 @@ googleCallbackRouter.get("/auth/google/calendar/callback", async (req, res) => {
     if (!consumed || !consumed.initiatedBy) throw new Error("OAuth state already consumed or expired");
     const [linkedAgenda] = await db.select({ tenantId: agendasTable.tenantId }).from(agendasTable).where(eq(agendasTable.id, decoded.agendaId)).limit(1);
     if (!linkedAgenda || linkedAgenda.tenantId !== consumed.tenantId) throw new Error("OAuth state tenant mismatch");
+    const [initiator] = await db.select({ id: usersTable.id }).from(usersTable).where(and(
+      eq(usersTable.id, consumed.initiatedBy), eq(usersTable.tenantId, consumed.tenantId)
+    )).limit(1);
+    if (!initiator) throw new Error("OAuth initiator no longer belongs to tenant");
     agendaId = decoded.agendaId;
     if (decoded.returnTo === "/agenda" || decoded.returnTo === "/configuracoes" || decoded.returnTo === "/onboarding/integracoes") returnTo = decoded.returnTo;
   } catch {
