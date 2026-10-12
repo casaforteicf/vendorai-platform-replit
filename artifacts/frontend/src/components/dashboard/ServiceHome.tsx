@@ -1,6 +1,6 @@
 import { Link } from "wouter";
 import { getUi20VisibleServices, type Ui20Module } from "@/lib/ui20ServiceVisibility";
-import { Bot, Building2, CircleHelp, House, Megaphone, Ruler, Settings2, Store, Users, ArrowUpRight } from "lucide-react";
+import { Bot, Building2, CircleHelp, House, CalendarDays, ClipboardList, Sparkles, Megaphone, Ruler, Settings2, Store, Users, ArrowUpRight } from "lucide-react";
 
 type Props = {
   name: string;
@@ -9,6 +9,8 @@ type Props = {
   erpVisible?: boolean;
   modules?: Ui20Module[];
   loading?: boolean;
+  overdueTasks?: number;
+  unassignedLeads?: number;
 };
 
 const serviceCards = [
@@ -23,7 +25,7 @@ const serviceCards = [
 ] as const;
 
 /** Presentation only; tenant/route authorization continues on the server. */
-export function ServiceHome({ name, isAdmin, arqdorVisible = false, erpVisible = false, modules, loading }: Props) {
+export function ServiceHome({ name, isAdmin, arqdorVisible = false, erpVisible = false, modules, loading, overdueTasks, unassignedLeads }: Props) {
   const allowed = getUi20VisibleServices({ modules, isAdmin, arqdorEligible: arqdorVisible, loading });
   const visible = serviceCards.filter((module) =>
     allowed.has(module.key) && (module.key !== "erp" || erpVisible)
@@ -37,6 +39,20 @@ export function ServiceHome({ name, isAdmin, arqdorVisible = false, erpVisible =
         <h1 className="text-2xl font-bold tracking-tight">Olá, {name || "bem-vindo"}!</h1>
         <p className="mt-1 text-sm text-muted-foreground">Acesse seus serviços e acompanhe os resultados da empresa abaixo.</p>
       </header>
+      <div className="grid gap-3 sm:grid-cols-3" aria-label="Acessos rápidos e alertas">
+        <Link href="/trabalho" className="rounded-xl border bg-card p-4 hover:border-primary/50">
+          <div className="flex items-center gap-2 text-sm font-semibold"><ClipboardList className="h-4 w-4 text-primary" /> Minhas atividades</div>
+          <p className="mt-2 text-sm text-muted-foreground">{overdueTasks == null ? "Abrir atividades" : overdueTasks > 0 ? `${overdueTasks} tarefa(s) vencida(s)` : "Nenhuma tarefa vencida"}</p>
+        </Link>
+        <Link href="/agenda" className="rounded-xl border bg-card p-4 hover:border-primary/50">
+          <div className="flex items-center gap-2 text-sm font-semibold"><CalendarDays className="h-4 w-4 text-primary" /> Agenda</div>
+          <p className="mt-2 text-sm text-muted-foreground">Ver compromissos e prazos</p>
+        </Link>
+        <Link href="/leads" className="rounded-xl border bg-card p-4 hover:border-primary/50">
+          <div className="flex items-center gap-2 text-sm font-semibold"><Sparkles className="h-4 w-4 text-primary" /> Atenção comercial</div>
+          <p className="mt-2 text-sm text-muted-foreground">{unassignedLeads == null ? "Conferir leads" : unassignedLeads > 0 ? `${unassignedLeads} lead(s) sem responsável` : "Nenhum lead sem responsável"}</p>
+        </Link>
+      </div>
       <div>
         <h2 className="mb-3 text-base font-semibold">Meus serviços</h2>
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4">
