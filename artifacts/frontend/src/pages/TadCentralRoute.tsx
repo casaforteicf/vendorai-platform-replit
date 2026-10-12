@@ -7,6 +7,7 @@ type NavItem = { moduleKey?: string; key?: string; isEnabled?: boolean };
 const MAPPING: Record<string, LauncherModule> = {
   leads: "crm", campaigns: "marketing", content: "marketing", scheduler: "agenda", arch: "arqdor",
   obras: "obras", financeiro: "erp", praca_ai: "marketplace_casa", settings: "configuracoes", analytics: "inteligencia",
+  sdr: "agentes_ia",
 };
 /**
  * TAD central: require both tenant entitlement and verified user permission.
