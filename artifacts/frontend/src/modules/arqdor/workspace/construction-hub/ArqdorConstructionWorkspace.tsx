@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import "./arqdor-construction-studio.css";
+import { StudioField } from "../../theme/ArqdorStudioComponents";
 import "../../theme/arqdor-studio-primitives.css";
 import { useAuth } from "@/contexts/AuthContext";
 import { useWorkspaceProject } from "../WorkspaceContext";
@@ -341,7 +342,7 @@ export default function ArqdorConstructionWorkspace({ arqState, onNavigate }: Pr
                     <p className="mt-1 text-sm text-slate-500">Executado: {pct(etapa.percentualExecutado)}</p>
                   </div>
                   <div className="flex gap-2">
-                    <input type="number" min="0" max="100" value={measurementDraft[etapa.id] ?? ""} onChange={(e) => setMeasurementDraft((prev) => ({ ...prev, [etapa.id]: e.target.value }))} placeholder="Novo %" className="w-28 rounded-xl border px-3 py-2 text-sm" />
+                    <StudioField label={`Novo percentual de ${etapa.nome}`} type="number" min={0} max={100} step="0.01" value={measurementDraft[etapa.id] ?? ""} onChange={(e) => setMeasurementDraft((prev) => ({ ...prev, [etapa.id]: e.target.value }))} placeholder="0–100%" className="w-28" />
                     <button disabled={saving} onClick={() => void createMeasurement(etapa)} className="rounded-xl bg-slate-950 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">Registrar</button>
                   </div>
                 </div>
