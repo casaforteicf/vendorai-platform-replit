@@ -1181,7 +1181,7 @@ archSpecObjectsRouter.patch("/arch/spec-objects/:id", async (req, res, next) => 
       }
       const values: unknown[] = [req.params["id"]!];
       let where = "id = $1";
-      if (tId) { values.push(tId); where += ` AND tenant_id = ${values.length}`; }
+      if (tId) { values.push(tId); where += " AND tenant_id = $2"; }
       const previous = await pool.query(`SELECT updated_at FROM arch_spec_objects WHERE ${where} LIMIT 1`, values);
       if (!previous.rows.length) { res.status(404).json({ error: "SpecObject não encontrado" }); return; }
       if (new Date(previous.rows[0].updated_at).getTime() !== expected.getTime()) {
