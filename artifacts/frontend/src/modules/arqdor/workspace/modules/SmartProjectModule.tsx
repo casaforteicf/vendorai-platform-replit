@@ -330,6 +330,8 @@ function EmptyProject({ onNavigate }: { onNavigate?: (module: string) => void })
 
 type TechnicalObject = {
   id: string; name?: string|null; category?: string|null; ambiente_id?: string|null; status?: string|null;
+  source_object_id?: string|null; source_type?: string|null; project_revision?: string|null;
+  render_id?: string|null; geometry_hash?: string|null; catalog_product_id?: string|null; catalog_material_id?: string|null;
   width_mm?: string|number|null; height_mm?: string|number|null; depth_mm?: string|number|null;
   length_mm?: string|number|null; measurement_source?: string|null; measurement_revision?: string|null;
   quantity?: string|number|null; unit?: string|null; quantity_source?: string|null;
@@ -358,6 +360,19 @@ function useProjectTechnicalObjects(projectId: string|null): TechnicalSnapshot {
   },[projectId]);
   return snapshot;
 }
+function TechnicalProvenance({item}:{item:TechnicalObject}) {
+  const links = [
+    ["Objeto BIM",item.source_object_id], ["Origem",item.source_type],
+    ["Revisão do projeto",item.project_revision], ["Revisão da medida",item.measurement_revision],
+    ["Render",item.render_id], ["Material do catálogo",item.catalog_material_id],
+    ["Produto do catálogo",item.catalog_product_id],
+  ].filter((entry):entry is [string,string]=>typeof entry[1]==="string" && entry[1].length>0);
+  return <div className="mt-2 flex flex-wrap gap-1.5" aria-label="Rastreabilidade do componente">
+    <span className="rounded bg-slate-100 px-2 py-1 text-[11px] text-slate-600" title={item.id}>ID técnico: {item.id.slice(0,8)}</span>
+    {links.map(([label,value])=><span key={label} title={value} className="max-w-full break-all rounded bg-slate-100 px-2 py-1 text-[11px] text-slate-600">{label}: {value}</span>)}
+    {!item.source_object_id && <span className="rounded bg-amber-50 px-2 py-1 text-[11px] text-amber-800">Sem vínculo BIM identificado</span>}
+  </div>;
+}
 function ProjectMeasurements({ projectId, snapshot }: {projectId:string|null; snapshot:TechnicalSnapshot}) {
   const {items,loading,error}=snapshot;
   const measured = items.filter(item => [item.width_mm,item.height_mm,item.depth_mm,item.length_mm].some(v => v != null));
@@ -372,6 +387,7 @@ function ProjectMeasurements({ projectId, snapshot }: {projectId:string|null; sn
     <div className="mt-3 grid gap-3">
       {measured.map(item => <article key={item.id} className="min-w-0 rounded-xl border border-slate-200 bg-white p-3">
         <h4 className="break-words text-sm font-semibold text-slate-900">{item.name || "Componente sem nome"}</h4>
+        <TechnicalProvenance item={item} />
         <p className="mt-1 text-xs text-slate-500">Ambiente: {item.ambiente_id || "não informado"} · Origem: {item.measurement_source || "não informada"} · Revisão: {item.measurement_revision || "—"}</p>
         <div className="mt-2 grid grid-cols-2 gap-2 text-xs text-slate-700 sm:grid-cols-4">
           <span>Largura: {format(item.width_mm)}</span><span>Altura: {format(item.height_mm)}</span>
@@ -398,6 +414,7 @@ function ProjectQuantities({projectId,snapshot}:{projectId:string|null;snapshot:
     <div className="mt-4 grid gap-3">
     {items.map(item=><article key={item.id} className="min-w-0 rounded-xl border border-slate-200 bg-white p-3">
       <div className="flex flex-wrap items-center justify-between gap-2"><h4 className="break-words text-sm font-semibold text-slate-900">{item.name||"Componente"}</h4><span className="text-xs text-slate-500">{item.status||"Sem status"}</span></div>
+      <TechnicalProvenance item={item} />
       <p className="mt-1 break-words text-xs text-slate-600">{item.category||"Categoria não definida"} · Ambiente {item.ambiente_id||"não informado"}</p>
       <div className="mt-2 grid grid-cols-2 gap-2 text-xs text-slate-700 sm:grid-cols-4">
         <span>Quantidade: {fmt(item.quantity)} {item.unit||""}</span>
