@@ -57,3 +57,37 @@
 .arqdor-concept-studio :where([role="tab"], button)[aria-selected="true"] {
   outline-color: #4AC59A;
 }
+
+/* ARQDOR Projeto — Studio 2.0 chrome escopado ao editor, sem alterar geometria,
+   render, modais ou projetos compartilhados. */
+.arqdor-concept-studio .arq-workspace-stage > .arq-app-bar {
+  background: var(--arq-surface);
+  border-color: var(--arq-border);
+  color: var(--arq-text);
+  min-height: 52px;
+}
+.arqdor-concept-studio .arq-workspace-stage > .arq-app-bar .text-slate-950,
+.arqdor-concept-studio .arq-workspace-stage > .arq-app-bar .text-slate-900 {
+  color: var(--arq-text);
+}
+.arqdor-concept-studio .arq-workspace-stage > .arq-app-bar .text-slate-400,
+.arqdor-concept-studio .arq-workspace-stage > .arq-app-bar .text-slate-500 {
+  color: var(--arq-muted);
+}
+@media (min-width: 768px) {
+  .arqdor-concept-studio .arq-workspace-stage .arq-tool-rail {
+    background: var(--arq-surface);
+    border-color: var(--arq-border);
+  }
+  .arqdor-concept-studio .arq-workspace-stage .arq-tool-rail button {
+    color: var(--arq-muted);
+  }
+  .arqdor-concept-studio .arq-workspace-stage .arq-tool-rail button:hover {
+    background: var(--arq-panel);
+    color: var(--arq-text);
+  }
+  .arqdor-concept-studio .arq-workspace-stage .arq-tool-rail button.bg-orange-50 {
+    background: var(--arq-accent);
+    color: white;
+  }
+}

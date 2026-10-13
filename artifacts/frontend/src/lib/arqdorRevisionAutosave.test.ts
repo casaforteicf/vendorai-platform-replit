@@ -25,3 +25,59 @@ describe("MULTI-04.8 revision-conditional autosave", () => {
     expect(mocked).not.toHaveBeenCalled();
   });
 });
+
+describe("Arqdor — integração defensiva do preflight no adaptador", () => {
+  const customWalls = [{ id: "w1", floor: 0, x1: 1, y1: 1, x2: 4, y2: 1, thickness: 0.15 }];
+  it("não envia geometria sem dimensões do lote", async () => {
+    const mocked = vi.fn(); vi.stubGlobal("fetch", mocked);
+    await expect(saveConceptWithRevision({ ...base, updates: { customWalls } }))
+      .rejects.toThrow("PROJECT_WALL_PREFLIGHT_CONTEXT_REQUIRED");
+    expect(mocked).not.toHaveBeenCalled();
+  });
+  it("não envia paredes fora do lote", async () => {
+    const mocked = vi.fn(); vi.stubGlobal("fetch", mocked);
+    await expect(saveConceptWithRevision({ ...base, updates: { customWalls }, lotBounds: { width: 2, depth: 5 } }))
+      .rejects.toThrow("PROJECT_WALL_PREFLIGHT_FAILED:OUTSIDE_LOT");
+    expect(mocked).not.toHaveBeenCalled();
+  });
+  it("permite salvar paredes válidas com revisão conhecida", async () => {
+    const mocked = vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => ({ id: "p1" }) });
+    vi.stubGlobal("fetch", mocked);
+    expect((await saveConceptWithRevision({ ...base, updates: { customWalls }, lotBounds: { width: 12, depth: 25 } })).status).toBe("saved");
+    expect(mocked).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("Arqdor — integridade do payload de paredes", () => {
+  it("recusa dois conjuntos de paredes contraditórios sem fazer PATCH", async () => {
+    const mocked = vi.fn();
+    vi.stubGlobal("fetch", mocked);
+    const first = [{ id: "w1", floor: 0, x1: 1, y1: 1, x2: 3, y2: 1, thickness: 0.15 }];
+    const second = [{ ...first[0], x2: 50 }];
+    await expect(saveConceptWithRevision({
+      ...base,
+      lotBounds: { width: 12, depth: 25 },
+      updates: { customWalls: first, configuration: { customWalls: second } },
+    })).rejects.toThrow("PROJECT_WALL_PREFLIGHT_AMBIGUOUS_PAYLOAD");
+    expect(mocked).not.toHaveBeenCalled();
+  });
+});
+
+describe("Arqdor — snapshots do editor com configuração aninhada", () => {
+  const walls = [{ id: "w1", floor: 0, x1: 1, y1: 1, x2: 4, y2: 1, thickness: 0.15 }];
+  it("reconhece configuração.customWalls e os limites reais do editor", async () => {
+    const mocked = vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => ({ id: "p1" }) });
+    vi.stubGlobal("fetch", mocked);
+    const updates = { lot: { width: 12, depth: 25 }, configuration: { customWalls: walls, workspaceBounds: { width: 12, depth: 25 } } };
+    expect((await saveConceptWithRevision({ ...base, updates })).status).toBe("saved");
+    expect(mocked).toHaveBeenCalledTimes(1);
+  });
+  it("impede o envio de paredes aninhadas fora do lote", async () => {
+    const mocked = vi.fn();
+    vi.stubGlobal("fetch", mocked);
+    const updates = { lot: { width: 12, depth: 25 }, configuration: { customWalls: [{ ...walls[0], x2: 20 }] } };
+    await expect(saveConceptWithRevision({ ...base, updates }))
+      .rejects.toThrow("PROJECT_WALL_PREFLIGHT_FAILED:OUTSIDE_LOT");
+    expect(mocked).not.toHaveBeenCalled();
+  });
+});

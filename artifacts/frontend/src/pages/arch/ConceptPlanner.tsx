@@ -75,6 +75,8 @@ import { evaluateConceptAcceptance } from "./conceptAcceptance";
 import { autoRepairConceptLayout } from "./conceptAutoRepair";
 import { buildExplainableFindings } from "./conceptExplainableEvaluation";
 import { clampObjectToLot, clampRoomToLot, clampWallToLot, normalizeOpeningDimensions } from "./conceptParametricEditing";
+import { buildConceptWallDiagnostics } from "./conceptWallDiagnostics";
+import { validateConceptWalls } from "./conceptWallPreflight";
 
 const ConceptPlan2D = lazy(() => import("./ConceptPlan2D"));
 const ConceptTypologyPreview = lazy(() => import("./ConceptTypologyPreview"));
@@ -83,6 +85,7 @@ const ConceptFacadeEditor = lazy(() => import("./ConceptFacadeEditor"));
 const ConceptClientBriefPanel = lazy(() => import("./ConceptClientBriefPanel"));
 const ConceptSitePlacementPanel = lazy(() => import("./ConceptSitePlacementPanel"));
 const ConceptModel3D = lazy(() => import("./ConceptModel3D"));
+const ConceptWallDiagnosticsPanel = lazy(() => import("./ConceptWallDiagnosticsPanel").then((m) => ({ default: m.ConceptWallDiagnosticsPanel })));
 const ConceptRenderGalleryActions = lazy(() => import("./ConceptRenderGalleryActions").then((m) => ({ default: m.ConceptRenderGalleryActions })));
 const ConceptCatalogPanels = lazy(() => import("./ConceptCatalogPanels"));
 const ConceptConstructionLibraryPanel = lazy(() => import("./ConceptConstructionLibraryPanel"));
@@ -1043,7 +1046,7 @@ const WORKSPACE_STEP = 4;
 const RESULT_STEP = 6;
 
 export default function ConceptPlanner({ guestMode = false, guestBrand }: {
-  /** Cliente final vindo do link público: só o próprio pré-projeto, sem lista nem menu do sistema. */
+  /** Cliente final vindo do link público: só o próprio projeto, sem lista nem menu do sistema. */
   guestMode?: boolean;
   guestBrand?: string;
 } = {}) {
@@ -1058,10 +1061,10 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
   const [desiredArea, setDesiredArea] = useState(145);
   const [activeFloor, setActiveFloor] = useState(0);
   const [editorView, setEditorView] = useState<"plan" | "model3d" | "facade" | "render">("plan");
-  const [editorExperienceMode, setEditorExperienceMode] = useState<EditorExperienceMode>("guided");
+  const [editorExperienceMode, setEditorExperienceMode] = useState<EditorExperienceMode>(guestMode ? "guided" : "professional");
 
   useEffect(() => {
-    // O pré-projeto tem só duas telas: o workspace (2D/3D/Fachada/Render) e o Resultado,
+    // O projeto tem só duas telas: o workspace (2D/3D/Fachada/Render) e o Resultado,
     // onde ficam o resumo, os dados do cliente e o envio ao profissional. Antes, esta
     // trava forçava tudo de volta pro workspace e o Resultado nunca abria.
     if (step !== WORKSPACE_STEP && step !== RESULT_STEP) {
@@ -1090,6 +1093,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
   const [selectedOpeningId, setSelectedOpeningId] = useState<string | null>(null);
   const [selectedWallId, setSelectedWallId] = useState<string | null>(null);
   const [selectedCustomWallId, setSelectedCustomWallId] = useState<string | null>(null);
+  const [wallDiagnosticsOpen, setWallDiagnosticsOpen] = useState(false);
   const [selectedClosedSpaceId, setSelectedClosedSpaceId] = useState<string | null>(null);
   const [customWalls, setCustomWalls] = useState<CustomWall[]>([]);
   const [customOpenings, setCustomOpenings] = useState<CustomOpening[]>([]);
@@ -1591,7 +1595,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
     const loadLatest = async () => {
       try {
         const { id: requestedId } = conceptUrlParams();
-        // A rota principal /arch/concept sempre inicia um novo pré-projeto.
+        // A rota principal /arch/concept sempre inicia um novo projeto.
         // Projetos existentes só são reabertos quando há um id explícito,
         // normalmente vindo da lista/pasta de projetos.
         if (!requestedId) {
@@ -1601,7 +1605,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
             conceptRevisionRef.current = null;
             revisionConflictRef.current = false;
             setRevisionConflictPreview(null);
-            // PKG-07 / ARQ-UI: novo pré-projeto entra direto na escolha da origem.
+            // PKG-07 / ARQ-UI: novo projeto entra direto na escolha da origem.
             // Casa é o padrão, terreno é opcional e pode ser informado antes ou depois.
             setProjectScope("house");
             setStartWithTerrain(false);
@@ -1620,7 +1624,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
         const response = await fetch(
           `/api/arch/concept-projects/${encodeURIComponent(requestedId)}`,
         );
-        if (!response.ok) throw new Error("Falha ao carregar pré-projeto");
+        if (!response.ok) throw new Error("Falha ao carregar projeto");
         const draft = (await response.json()) as ConceptDraftResponse | null;
         if (cancelled || !draft) {
           if (!cancelled) setSaveState("idle");
@@ -1773,7 +1777,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
       ? overrides.referencePlan
       : referencePlan;
     const payload = {
-      title: customerProfile.name?.trim() ? `Pré-projeto — ${customerProfile.name.trim()}` : "Meu pré-projeto",
+      title: customerProfile.name?.trim() ? `Projeto — ${customerProfile.name.trim()}` : "Meu projeto",
       currentStep: stepOverride ?? step,
       lot: { width: lotWidth, depth: lotDepth },
       configuration: {
@@ -1811,7 +1815,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
       selectedVariant: layoutVariant,
     };
 
-    // Dois salvamentos simultâneos num pré-projeto novo criavam dois registros (dois POST).
+    // Dois salvamentos simultâneos num projeto novo criavam dois registros (dois POST).
     // Se já existe uma criação em andamento, espera ela terminar e salva por PATCH.
     if (!conceptIdRef.current && !conceptId && creatingConceptRef.current) {
       await creatingConceptRef.current.catch(() => null);
@@ -1829,6 +1833,20 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
     }
 
     const sendRequest = async () => {
+      // Validação da geometria no fluxo real de POST/PATCH do editor.
+      // Não corrige silenciosamente paredes nem altera o controle de revisão.
+      const wallIssues = validateConceptWalls(
+        nextCustomWalls.map((wall) => ({
+          id: wall.id, floor: wall.floor, x1: wall.x1, y1: wall.y1,
+          x2: wall.x2, y2: wall.y2, thickness: wall.thickness,
+        })),
+        lotWidth,
+        lotDepth,
+      );
+      if (wallIssues.length > 0) {
+        throw new Error("Revise as paredes antes de salvar: " +
+          [...new Set(wallIssues.map((issue) => issue.code))].join(", "));
+      }
       if (revisionAutosaveEnabled && revisionConflictRef.current) throw new Error("Conflito pendente. Gravação bloqueada até revisar o projeto.");
       if (revisionAutosaveEnabled && targetId && !conceptRevisionRef.current) throw new Error("Revisão do projeto indisponível.");
       const response = await fetch(
@@ -1860,7 +1878,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
       }
       if (!response.ok) {
         const errorBody = await response.json().catch(() => null) as { message?: string; error?: string } | null;
-        throw new Error(errorBody?.message || errorBody?.error || `Falha ao salvar pré-projeto (${response.status})`);
+        throw new Error(errorBody?.message || errorBody?.error || `Falha ao salvar projeto (${response.status})`);
       }
       const saved = (await response.json()) as ConceptDraftResponse;
       conceptRevisionRef.current = saved.updatedAt ?? null;
@@ -1887,7 +1905,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
       return savedId;
     } catch (error) {
       setSaveState("error");
-      setSaveErrorMessage(error instanceof Error ? error.message : "Não foi possível salvar o pré-projeto.");
+      setSaveErrorMessage(error instanceof Error ? error.message : "Não foi possível salvar o projeto.");
       return null;
     } finally {
       if (creatingConceptRef.current === request) creatingConceptRef.current = null;
@@ -2105,7 +2123,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
   };
 
   const goToConcept = async (target: { id?: string; isNew?: boolean }) => {
-    // Grava o que estiver pendente antes de trocar de pré-projeto.
+    // Grava o que estiver pendente antes de trocar de projeto.
     if (hasUnsavedChanges || saveState === "error") {
       const saved = await saveConcept();
       if (!saved) return;
@@ -2265,7 +2283,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
         undefined,
         projectBriefOverride ? { projectBrief: projectBriefOverride } : undefined,
       );
-      if (!projectId) throw new Error("Não foi possível salvar o pré-projeto antes da análise.");
+      if (!projectId) throw new Error("Não foi possível salvar o projeto antes da análise.");
       const response = await fetch(`/api/arch/concept-projects/${projectId}/develop-with-ai`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -3914,6 +3932,11 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
     wallMaterialOptions,
   ]);
 
+  const wallDiagnosticReport = useMemo(
+    () => buildConceptWallDiagnostics(safeCustomWalls.filter((wall) => wall.floor === activeFloor), { width: lotWidth, depth: lotDepth }),
+    [safeCustomWalls, activeFloor, lotWidth, lotDepth],
+  );
+
   const customWallTopology = useMemo(
     () =>
       buildOrthogonalWallTopology(
@@ -4824,7 +4847,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
     const id = conceptIdRef.current ?? conceptId;
     if (!id) {
       setSourceFileState("error");
-      setSourceFileMessage("Salve o pré-projeto antes de converter o IFC.");
+      setSourceFileMessage("Salve o projeto antes de converter o IFC.");
       return;
     }
 
@@ -4931,7 +4954,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
     const id = conceptIdRef.current ?? conceptId;
     if (!id) {
       setSourceFileState("error");
-      setSourceFileMessage("Salve o pré-projeto antes de ler o IFC.");
+      setSourceFileMessage("Salve o projeto antes de ler o IFC.");
       return;
     }
     setParsingIfcId(source.id);
@@ -4966,7 +4989,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
     const id = conceptIdRef.current ?? conceptId;
     if (!id) {
       setSourceFileState("error");
-      setSourceFileMessage("Salve o pré-projeto antes de converter o SketchUp.");
+      setSourceFileMessage("Salve o projeto antes de converter o SketchUp.");
       return;
     }
     setConvertingSketchupId(source.id);
@@ -5000,7 +5023,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
     setSourceFileMessage(null);
     try {
       const id = await saveConcept(4);
-      if (!id) throw new Error("Não foi possível salvar o pré-projeto antes do upload.");
+      if (!id) throw new Error("Não foi possível salvar o projeto antes do upload.");
       const { uploadProjectSourceFileRequest, projectSourceFileMessage } = await import("./conceptReferenceNetwork");
       const payload = await uploadProjectSourceFileRequest(id, file) as ProjectSourceFile;
       setSourceFiles((current) => [...current.filter((item) => item.id !== payload.id), payload].slice(-10));
@@ -5363,7 +5386,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
     setReferencePlanMessage(null);
     try {
       const id = await saveConcept(4);
-      if (!id) throw new Error("Não foi possível salvar o pré-projeto antes do upload.");
+      if (!id) throw new Error("Não foi possível salvar o projeto antes do upload.");
       const { uploadReferencePlanRequest, clearRealEnvironmentRequest } = await import("./conceptReferenceNetwork");
       const payload = await uploadReferencePlanRequest(id, file) as ReferencePlan;
       setReferencePlan(payload);
@@ -5427,7 +5450,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
       } else {
         setReferenceTraceState("idle");
         setReferencePlanMessage(
-          "PDF vinculado ao pré-projeto. Converta a página desejada para imagem para gerar a planta editável automaticamente.",
+          "PDF vinculado ao projeto. Converta a página desejada para imagem para gerar a planta editável automaticamente.",
         );
       }
       window.setTimeout(() => setReferencePlanState("idle"), 5000);
@@ -5445,7 +5468,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
     setDxfImportMessage(null);
     try {
       const id = await saveConcept(4);
-      if (!id) throw new Error("Não foi possível salvar o pré-projeto antes da importação.");
+      if (!id) throw new Error("Não foi possível salvar o projeto antes da importação.");
 
       const form = new FormData();
       form.append("file", file);
@@ -5555,7 +5578,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
     setGeometryImportMessage("Lendo o arquivo sem alterar a geometria atual...");
     try {
       const id = await saveConcept(4);
-      if (!id) throw new Error("Não foi possível salvar o pré-projeto antes da importação.");
+      if (!id) throw new Error("Não foi possível salvar o projeto antes da importação.");
 
       const form = new FormData();
       form.append("file", file, file.name);
@@ -5656,7 +5679,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
     setGeometryImportMessage("Aplicando a geometria confirmada e preservando o arquivo original...");
     try {
       const id = conceptIdRef.current ?? conceptId ?? await saveConcept(4);
-      if (!id) throw new Error("Não foi possível identificar o pré-projeto.");
+      if (!id) throw new Error("Não foi possível identificar o projeto.");
 
       const form = new FormData();
       form.append("file", file, file.name);
@@ -5796,7 +5819,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
     setIfcExportState("exporting");
     try {
       const id = await saveConcept(6);
-      if (!id) throw new Error("Não foi possível salvar o pré-projeto antes da exportação.");
+      if (!id) throw new Error("Não foi possível salvar o projeto antes da exportação.");
       const token = typeof window !== "undefined" ? localStorage.getItem("vendorai_token") : null;
       const response = await fetch(`/api/arch/concept-projects/${encodeURIComponent(id)}/export/ifc`, {
         headers: token ? { Authorization: `Bearer ${token}` } : undefined,
@@ -5830,7 +5853,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
     setDxfExportState("exporting");
     try {
       const id = await saveConcept(6);
-      if (!id) throw new Error("Não foi possível salvar o pré-projeto antes da exportação.");
+      if (!id) throw new Error("Não foi possível salvar o projeto antes da exportação.");
       const token = typeof window !== "undefined" ? localStorage.getItem("vendorai_token") : null;
       const response = await fetch(`/api/arch/concept-projects/${encodeURIComponent(id)}/export/dxf`, {
         headers: token ? { Authorization: `Bearer ${token}` } : undefined,
@@ -6347,7 +6370,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                       : saveState === "saving"
                         ? "Salvando..."
                         : saveState === "saved"
-                          ? "Pré-projeto salvo"
+                          ? "Projeto salvo"
                           : saveState === "error"
                             ? "Não foi possível salvar"
                             : "Ainda não salvo"}
@@ -6358,7 +6381,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                     disabled={saveState === "saving" || saveState === "loading"}
                     className="rounded-xl border bg-background px-4 py-2 text-sm font-semibold disabled:opacity-50"
                   >
-                    Salvar pré-projeto
+                    Salvar projeto
                   </button>
                 </div>
               </div>
@@ -7086,16 +7109,16 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                 </a>}
 
                 <div className="hidden min-w-0 sm:block">
-                  <div className="truncate text-sm font-semibold text-slate-950">{customerProfile.name?.trim() ? `Pré-projeto — ${customerProfile.name.trim()}` : "Pré-projeto"}</div>
-                  <div className="text-[11px] text-slate-400">{guestMode ? `${guestBrand ?? "Pré-projeto"} · projete sua casa` : "Arqdor Pro · editor arquitetônico"}</div>
+                  <div className="truncate text-sm font-semibold text-slate-950">{customerProfile.name?.trim() ? `Projeto — ${customerProfile.name.trim()}` : "Projeto"}</div>
+                  <div className="text-[11px] text-slate-400">{guestMode ? `${guestBrand ?? "Projeto"} · projete sua casa` : "Arqdor Pro · editor arquitetônico"}</div>
                 </div>
 
                 {!guestMode && <button
                   type="button"
                   onClick={openProjectList}
                   className="grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-slate-200 bg-white text-slate-600 transition hover:bg-slate-50 hover:text-slate-950"
-                  title="Meus pré-projetos"
-                  aria-label="Meus pré-projetos"
+                  title="Meus projetos"
+                  aria-label="Meus projetos"
                 >
                   <FolderOpen className="h-4 w-4" />
                 </button>}
@@ -7376,10 +7399,10 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
             {saveState !== "loading" && !modelGalleryOpen && !projectMaster &&
               (intakeStage === "kind" || intakeStage === "terrain_choice" || intakeStage === "source") && (
               <div className="fixed inset-0 z-[110] flex items-end justify-center bg-slate-950/55 sm:items-center sm:p-6">
-                <div className="max-h-[92dvh] w-full max-w-3xl overflow-y-auto rounded-t-3xl bg-white p-5 shadow-2xl sm:rounded-3xl sm:p-7" role="dialog" aria-label="Iniciar pré-projeto">
+                <div className="max-h-[92dvh] w-full max-w-3xl overflow-y-auto rounded-t-3xl bg-white p-5 shadow-2xl sm:rounded-3xl sm:p-7" role="dialog" aria-label="Iniciar projeto">
                   {startWizardStage === "kind" && (
                     <>
-                      <div className="text-xs font-semibold uppercase tracking-[0.16em] text-orange-500">Novo pré-projeto</div>
+                      <div className="text-xs font-semibold uppercase tracking-[0.16em] text-orange-500">Novo projeto</div>
                       <h2 className="mt-1 text-2xl font-bold text-slate-950">O que você quer projetar?</h2>
                       <p className="mt-1 text-sm leading-6 text-slate-500">Isso define a jornada correta antes de pedir terreno, planta ou referências.</p>
                       <div className="mt-6 grid gap-3 sm:grid-cols-2">
@@ -7450,7 +7473,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                     <>
                       <div className="mb-5 flex flex-col gap-4 border-b border-slate-100 pb-5 sm:flex-row sm:items-center sm:justify-between">
                         <div>
-                          <div className="text-xs font-semibold uppercase tracking-[0.16em] text-orange-500">Novo pré-projeto</div>
+                          <div className="text-xs font-semibold uppercase tracking-[0.16em] text-orange-500">Novo projeto</div>
                           <h2 className="mt-1 text-2xl font-bold text-slate-950">Como você quer começar?</h2>
                           <p className="mt-1 text-sm text-slate-500">Escolha o escopo e a origem. Nada aqui bloqueia ajustes posteriores.</p>
                         </div>
@@ -9177,6 +9200,33 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
 
                   {editorView === "plan" && (
                     <>
+                      {!terrainOnly && !hideCurrentGeometryForReferenceReview && (
+                        <div className="absolute right-3 top-16 z-[62] w-[min(330px,calc(100%-24px))] space-y-2">
+                          <button type="button" onClick={() => setWallDiagnosticsOpen((open) => !open)}
+                            aria-expanded={wallDiagnosticsOpen} aria-controls="arqdor-wall-diagnostics"
+                            className="ml-auto block rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-xs font-semibold text-emerald-300 shadow-lg">
+                            Revisar paredes {wallDiagnosticReport.hasBlockingIssues ? `(${wallDiagnosticReport.issues.length + wallDiagnosticReport.overlaps.length})` : "✓"}
+                          </button>
+                          {wallDiagnosticsOpen && (
+                            <div id="arqdor-wall-diagnostics">
+                              <Suspense fallback={<div className="rounded bg-zinc-900 p-3 text-xs text-zinc-200">Carregando diagnóstico...</div>}>
+                                <ConceptWallDiagnosticsPanel report={wallDiagnosticReport} onSelectWall={(wallId) => {
+                                  const wall = safeCustomWalls.find((item) => item.id === wallId);
+                                  if (!wall) return;
+                                  setActiveFloor(wall.floor);
+                                  setInteractionMode("navigate");
+                                  setSelectedCustomWallId(wall.id);
+                                  setSelectedWallId(null);
+                                  setSelectedId(null);
+                                  setSelectedOpeningId(null);
+                                  setSelectedObjectId(null);
+                                  setSelectedClosedSpaceId(null);
+                                }} />
+                              </Suspense>
+                            </div>
+                          )}
+                        </div>
+                      )}
                       {geometryImportState === "review" && geometryImportPreview && (
                         <div className="absolute left-1/2 top-16 z-[66] w-[min(680px,calc(100%-24px))] -translate-x-1/2 rounded-2xl border border-amber-300 bg-amber-50/95 px-4 py-3 shadow-xl backdrop-blur">
                           <div className="flex flex-wrap items-start justify-between gap-3">
@@ -9738,7 +9788,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                             <div className="mb-3 flex items-center justify-between">
                               <div>
                                 <div className="text-sm font-semibold">Histórico de renders</div>
-                                <div className="text-[11px] text-muted-foreground">Versões salvas deste pré-projeto.</div>
+                                <div className="text-[11px] text-muted-foreground">Versões salvas deste projeto.</div>
                               </div>
                               <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-600">
                                 {conceptRender.history.length}
@@ -10497,11 +10547,11 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                   <div className="mt-4 overflow-hidden rounded-2xl border bg-muted">
                     <img
                       src={presentationRender.resultImageUrl}
-                      alt="Render conceitual do pré-projeto"
+                      alt="Render conceitual do projeto"
                       className="max-h-[640px] w-full object-contain"
                     />
                     <div className="flex flex-wrap items-center justify-between gap-3 border-t bg-background p-3 text-xs text-muted-foreground">
-                      <span>Render vinculado a este pré-projeto</span>
+                      <span>Render vinculado a este projeto</span>
                       {presentationRender.generatedAt && <span>{new Date(presentationRender.generatedAt).toLocaleString("pt-BR")}</span>}
                     </div>
                   </div>
@@ -10534,7 +10584,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                 <div>
                   <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-orange-500">
                     <FileText className="h-4 w-4" />
-                    Resultado do pré-projeto
+                    Resultado do projeto
                   </div>
                   <h2 className="mt-2 text-2xl font-bold">Sua ideia organizada para seguir com o profissional</h2>
                   <p className="mt-2 max-w-3xl text-sm text-muted-foreground">
@@ -11184,7 +11234,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                   <div className="rounded-3xl border border-dashed bg-card p-8 text-center">
                     <Sparkles className="mx-auto h-8 w-8 text-orange-500" />
                     <div className="mt-3 font-semibold">Render ainda não gerado</div>
-                    <p className="mt-1 text-sm text-muted-foreground">A imagem realista da fachada valoriza muito o pré-projeto para o cliente.</p>
+                    <p className="mt-1 text-sm text-muted-foreground">A imagem realista da fachada valoriza muito o projeto para o cliente.</p>
                     <button
                       type="button"
                       onClick={() => { goToJourneyStage(3); setEditorView("render"); window.scrollTo({ top: 0 }); }}
@@ -11272,7 +11322,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                 <div id="dados-cliente" className="scroll-mt-4 rounded-3xl border bg-card p-5 shadow-sm print:hidden">
                   <h3 className="font-semibold">Dados do cliente</h3>
                   <p className="mt-1 text-xs text-muted-foreground">
-                    Essas informações qualificam o contato e entram no CRM quando o pré-projeto for enviado.
+                    Essas informações qualificam o contato e entram no CRM quando o projeto for enviado.
                   </p>
                   <div className="mt-4 grid gap-3 sm:grid-cols-2">
                     <label className="text-xs font-semibold">
@@ -11485,7 +11535,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
               <div>
                 <h2 className="text-lg font-bold">Link para clientes</h2>
                 <p className="mt-1 text-sm text-muted-foreground">
-                  Coloque no seu site. O cliente se cadastra (nome, WhatsApp, e-mail, Instagram e endereço), vira lead no CRM e projeta a casa dele aqui. Os projetos chegam na sua lista de pré-projetos.
+                  Coloque no seu site. O cliente se cadastra (nome, WhatsApp, e-mail, Instagram e endereço), vira lead no CRM e projeta a casa dele aqui. Os projetos chegam na sua lista de projetos.
                 </p>
               </div>
               <button type="button" onClick={() => setPublicLinkOpen(false)} className="grid h-9 w-9 shrink-0 place-items-center rounded-xl border" aria-label="Fechar"><X className="h-4 w-4" /></button>
@@ -11587,11 +11637,11 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
             className="flex max-h-[88vh] w-full max-w-5xl flex-col overflow-hidden rounded-t-3xl bg-background shadow-2xl sm:rounded-3xl"
             onClick={(event) => event.stopPropagation()}
             role="dialog"
-            aria-label="Meus pré-projetos"
+            aria-label="Meus projetos"
           >
             <div className="flex items-center justify-between gap-3 border-b px-5 py-4">
               <div>
-                <h2 className="text-lg font-bold">Meus pré-projetos</h2>
+                <h2 className="text-lg font-bold">Meus projetos</h2>
                 <p className="text-xs text-muted-foreground">Projetos visuais com escopo, estágio e última edição. Abra qualquer um para continuar.</p>
               </div>
               <button type="button" onClick={() => setProjectListOpen(false)} className="grid h-9 w-9 place-items-center rounded-xl border" aria-label="Fechar">
@@ -11605,7 +11655,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                 onClick={() => void goToConcept({ isNew: true })}
                 className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-orange-500 px-4 py-3 text-sm font-semibold text-white"
               >
-                <Plus className="h-4 w-4" /> Novo pré-projeto
+                <Plus className="h-4 w-4" /> Novo projeto
               </button>
             </div>
 
@@ -11623,12 +11673,12 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                 </div>
               )}
               {projectListState === "idle" && projectList.length === 0 && (
-                <div className="px-2 py-8 text-center text-sm text-muted-foreground">Nenhum pré-projeto salvo ainda.</div>
+                <div className="px-2 py-8 text-center text-sm text-muted-foreground">Nenhum projeto salvo ainda.</div>
               )}
               <ul className="grid gap-3 md:grid-cols-2">
                 {projectList.map((item) => {
                   const isCurrent = item.id === (conceptIdRef.current ?? conceptId);
-                  const label = item.customerName ?? (item.title && item.title !== "Meu pré-projeto" ? item.title : "Sem cliente definido");
+                  const label = item.customerName ?? (item.title && item.title !== "Meu projeto" && item.title !== "Meu pré-projeto" ? item.title : "Sem cliente definido");
                   return (
                     <li key={item.id} className={isCurrent ? "relative overflow-hidden rounded-2xl border border-orange-300 bg-orange-50/60" : "relative overflow-hidden rounded-2xl border bg-white"}>
                       <button
@@ -11686,7 +11736,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                           onClick={() => setConfirmDeleteId(item.id)}
                           disabled={deletingProjectId === item.id}
                           className="absolute right-3 top-3 grid h-9 w-9 shrink-0 place-items-center rounded-xl border border-white/70 bg-white/90 text-slate-500 shadow-sm hover:text-red-600 disabled:opacity-50"
-                          aria-label="Excluir pré-projeto"
+                          aria-label="Excluir projeto"
                           title="Excluir"
                         >
                           <Trash2 className="h-4 w-4" />
