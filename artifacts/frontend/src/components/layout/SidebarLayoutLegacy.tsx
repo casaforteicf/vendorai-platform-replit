@@ -835,7 +835,7 @@ export function SidebarLayout({ children, arqdorVisible = false }: { children: R
 
     const groupActive = (items: Array<{ href: string }>) =>
       items.some((item) => location === item.href || (item.href !== "/" && location.startsWith(item.href)));
-    if (import.meta.env.VITE_UI20_SERVICE_TABS === "true") {
+    if (import.meta.env.VITE_UI20_SERVICE_TABS !== "false") {
       const path = location.split("?")[0];
       const serviceGroups = [
         { name: "Início", match: ["/dashboard", "/trabalho", "/"], links: homeNav },
