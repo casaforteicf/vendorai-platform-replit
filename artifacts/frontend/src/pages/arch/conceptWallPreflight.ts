@@ -34,6 +34,10 @@ export function validateConceptWalls(
     const coords = [wall.x1, wall.y1, wall.x2, wall.y2];
     if (coords.some((v) => !Number.isFinite(v))) {
       issues.push({ wallId: id, code: "INVALID_COORDINATE" });
+      if (wall.thickness !== undefined &&
+        (!Number.isFinite(wall.thickness) || wall.thickness < 0.08 || wall.thickness > 0.5)) {
+        issues.push({ wallId: id, code: "INVALID_THICKNESS" });
+      }
       continue;
     }
     const axisOutside = (
