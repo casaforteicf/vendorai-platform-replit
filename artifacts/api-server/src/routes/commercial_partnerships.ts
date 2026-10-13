@@ -5,6 +5,7 @@ import { requireSameTenanOrSuperAdmin } from "../middlewares/auth.js";
 import {
   db,
   dealsTable,
+  notificationsTable,
   leadsTable,
   usersTable,
   tenantsTable,
@@ -602,7 +603,8 @@ router.post("/deals/:dealId/forward-to-company", async (req, res) => {
 
   const now = new Date();
   const stageDueAt = stage.slaMinutos ? new Date(now.getTime() + stage.slaMinutos * 60000) : null;
-  const [created] = await db.insert(dealTenantParticipationsTable).values({
+  const created = await db.transaction(async (tx) => {
+    const [participation] = await tx.insert(dealTenantParticipationsTable).values({
     dealId: deal.id,
     ownerTenantId: deal.tenantId,
     partnerTenantId: destinationTenantId,
@@ -620,6 +622,26 @@ router.post("/deals/:dealId/forward-to-company", async (req, res) => {
     lastHandoffFromTenantId: senderTenantId,
     lastHandoffAt: now,
   }).returning();
+    if (!participation) throw new Error("Falha ao registrar participação.");
+    const [senderCompany] = await tx.select({ name: tenantsTable.name }).from(tenantsTable)
+      .where(eq(tenantsTable.id, senderTenantId)).limit(1);
+    await tx.insert(notificationsTable).values({
+      tenantId: destinationTenantId,
+      recipientUserId: operationalUserId,
+      leadId: null,
+      type: "info",
+      category: "intercompany_handoff",
+      title: "Nova solicitação de empresa parceira",
+      message: [
+        `Enviado por: ${senderCompany?.name ?? "Empresa parceira"}`,
+        `Negócio: ${deal.titulo}`,
+        `Solicitação: ${parsed.data.note}`,
+        `Etapa: ${stage.label}`,
+        "Próxima ação: conferir os dados compartilhados e registrar o atendimento.",
+      ].join("\\n"),
+    });
+    return participation;
+  });
   return res.status(201).json({
     dealId: deal.id,
     originTenantId: deal.tenantId,
