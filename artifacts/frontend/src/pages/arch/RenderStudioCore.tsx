@@ -197,7 +197,7 @@ function RenderStudioInner() {
         </button>
       </nav>
       <div style={{ flex: 1, display: "flex", overflow: "hidden", position: "relative" }}>
-        <LeftSidebar step={step} projectTitle={arq.projectMeta?.titulo ?? null} onStepClick={handleStepClick} onProjectClick={() => { if (arq.projectId) setLocation(`/arch/projetos/${arq.projectId}`); }} />
+        <LeftSidebar step={step} projectTitle={arq.projectMeta?.titulo ?? null} onStepClick={handleStepClick} onProjectClick={() => { if (arq.projectId) setLocation(`/arch/projetos/${arq.projectId}`); }} versions={versions} currentRenderId={renderId} onSelectVersion={handleSelectVersion} />
 
         {pendingNavStep && <NavConfirmBanner targetStep={pendingNavStep} onConfirm={() => { go(pendingNavStep); setPendingNavStep(null); }} onCancel={() => setPendingNavStep(null)} />}
 
