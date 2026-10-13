@@ -25,7 +25,7 @@ rumo à `main` ao mesmo tempo.
 
 ## 1. Gate REAL de publicação (o que trava o deploy)
 
-Rodar na raiz / no filtro do pacote, com `CI=true` e `pnpm@10.26.1`:
+Rodar na raiz / no filtro do pacote, com `CI=true` e `pnpm@10.26.1`. Os gates podem ser executados no sandbox isolado para antecipar falhas; a validação pertinente ao SHA final deve também ser evidenciada na homologação isolada da Contabo conforme `AGENTS.md`. O sandbox não comprova o estado da VPS:
 
 1. `pnpm install --no-frozen-lockfile`
 2. `pnpm run typecheck:libs` (shared libs) — deve passar.
@@ -104,7 +104,7 @@ produção DORMENTE** (atrás de feature flag off) até a homologação funciona
 2. Roda os 7 gates (§1) + verifica regressão (§2).
 3. Migrations: só **aditivas/idempotentes/reversíveis**, aplicadas **migration-first** via
    Supabase MCP e **com autorização explícita** do Marcos. Nunca migration de teste em produção.
-4. Merge no **SHA exato de 40 chars**: `gh api -X PUT .../pulls/<N>/merge -f merge_method=squash -f sha=<HEAD>`.
+4. **Antes do merge:** obter a aprovação aplicável, confirmar que a função não homologada está comprovadamente dormente (flag off no frontend/backend), ou homologar o release candidato de modo isolado. **O merge na `main` pode acionar cron e publicar; não é ação neutra.** Merge no **SHA exato de 40 chars**: `gh api -X PUT .../pulls/<N>/merge -f merge_method=squash -f sha=<HEAD>`.
    (Tirar do rascunho antes: `gh api -X POST .../pulls/<N>/ccr/ready_for_review`.)
 5. Confirma deploy (cron: build → homolog `:5000` → prod `:5001` → auto-rollback) e entrega
    cmd de status + rollback.
@@ -117,10 +117,11 @@ produção DORMENTE** (atrás de feature flag off) até a homologação funciona
 
 ## 5. Publicação e rollback (Contabo)
 
+- O frontend ativo de `app.appvendorai.com` é Vite estático na **Contabo/nginx**, de acordo com `CLAUDE.md`; o projeto Cloudflare Pages é inativo. Não usar Pages como evidência de publicação.
 - Deploy é **automático por cron** (`deploy-backend.sh` + `deploy-frontend-auto.sh`): build com
   gate `tsc` no `Dockerfile.deploy` → homolog `:5000` healthcheck `/api/auth/healthz` → prod
   `:5001` → auto-rollback em falha. `deploy.lock` serializa. **Não alterar** cron/scripts/Actions.
-- **Confirmar** pós-merge: `last-deployed-sha` == SHA mergeado, `:5001` healthz = 200, site = 200.
+- **Confirmar** pós-merge: identificar o SHA efetivo do backend e o release efetivo do frontend nos caminhos de status do ambiente, verificar `:5001` healthz = 200 e site = 200. Esses sinais atestam publicação/boot, **não** homologação funcional. Como o cron pode publicar após merge, conferir gates, flags e autorização **antes** de integrar.
 - **Rollback:** `DEPLOY_IMAGE=vendorai-api:main-<SHA_anterior>` no `docker compose up -d api-prod`;
   frontend via symlink do release anterior.
 - Ações na VPS saem por `.cmd` que o Marcos roda no Windows (sem SSH direto do sandbox):
