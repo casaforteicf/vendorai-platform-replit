@@ -346,6 +346,11 @@ export default function LeadWorkspace() {
   const [intelligenceOpen, setIntelligenceOpen] = useState(false);
   const [advancedHandoffOpen, setAdvancedHandoffOpen] = useState(false);
   const [selectedPartnershipId, setSelectedPartnershipId] = useState("");
+  const [forwardPartnershipId, setForwardPartnershipId] = useState("");
+  const [forwardNote, setForwardNote] = useState("");
+  const [forwardStage, setForwardStage] = useState("");
+  const [forwardBusy, setForwardBusy] = useState(false);
+
   const [selectedPartnerUserId, setSelectedPartnerUserId] = useState("");
   const [partnerCommissionPercent, setPartnerCommissionPercent] = useState("15");
   const [commissionEditorOpen, setCommissionEditorOpen] = useState(false);
@@ -627,6 +632,36 @@ export default function LeadWorkspace() {
       toast({ title: "Erro ao atualizar responsável", description: e instanceof Error ? e.message : "Tente novamente.", variant: "destructive" });
     } finally {
       setSavingOwner(false);
+    }
+  }
+
+  async function forwardToCompany() {
+    if (!deal || !forwardPartnershipId || forwardNote.trim().length < 3) {
+      toast({ title: "Selecione a empresa e informe o motivo do encaminhamento.", variant: "destructive" });
+      return;
+    }
+    setForwardBusy(true);
+    try {
+      const response = await fetch(`/api/deals/${deal.id}/forward-to-company`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: "Bearer " + token },
+        body: JSON.stringify({
+          partnershipId: forwardPartnershipId,
+          targetPipeline: "comercial",
+          ...(forwardStage.trim() ? { targetStage: forwardStage.trim() } : {}),
+          note: forwardNote.trim(),
+        }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.message ?? payload.error ?? "Encaminhamento recusado.");
+      await qc.invalidateQueries({ queryKey: ["deal-participations", tenantId] });
+      setForwardNote("");
+      setForwardStage("");
+      toast({ title: "Negócio encaminhado", description: "A empresa de destino recebeu uma participação vinculada ao negócio original." });
+    } catch (error) {
+      toast({ title: "Erro ao encaminhar", description: error instanceof Error ? error.message : "Tente novamente.", variant: "destructive" });
+    } finally {
+      setForwardBusy(false);
     }
   }
 
@@ -949,6 +984,27 @@ export default function LeadWorkspace() {
                     </div>
                   </div>
         
+                  <div className="rounded-lg border border-border/70 p-3 space-y-3 mb-3">
+                    <p className="text-sm font-semibold">Encaminhar para outra empresa</p>
+                    <p className="text-xs text-muted-foreground">Compartilhe com empresa parceira sem criar outro lead. A origem permanece vinculada.</p>
+                    <Select value={forwardPartnershipId} onValueChange={setForwardPartnershipId}>
+                      <SelectTrigger aria-label="Empresa de destino"><SelectValue placeholder="Selecione uma empresa parceira" /></SelectTrigger>
+                      <SelectContent>
+                        {ownerPartnerships.map((partnership) => (
+                          <SelectItem key={partnership.id} value={partnership.id}>
+                            {partnership.partnerName || partnership.partnerTenantCode || partnership.partnerTenantId}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <Input aria-label="Etapa no destino" placeholder="Etapa no destino (opcional, chave configurada)" value={forwardStage} onChange={(event) => setForwardStage(event.target.value)} />
+                    <Textarea aria-label="Motivo do encaminhamento" placeholder="O que a empresa deverá fazer? Ex.: elaborar orçamento de esquadrias" value={forwardNote} onChange={(event) => setForwardNote(event.target.value)} />
+                    <Button type="button" variant="outline" disabled={forwardBusy || !forwardPartnershipId || forwardNote.trim().length < 3} onClick={() => void forwardToCompany()}>
+                      {forwardBusy && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                      Encaminhar para empresa
+                    </Button>
+                  </div>
+
                   {ownerPartnerships.length === 0 ? (
                     <p className="text-sm text-muted-foreground">Nenhuma empresa representante ativa foi vinculada a este tenant.</p>
                   ) : (
