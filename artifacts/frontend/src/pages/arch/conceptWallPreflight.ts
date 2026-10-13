@@ -3,7 +3,7 @@ import type { EditableWall } from "./conceptParametricEditing";
 /** Validação não destrutiva. Nunca corrige ou descarta geometria automaticamente. */
 export type WallPreflightIssue = {
   wallId: string;
-  code: "INVALID_LOT" | "DUPLICATE_ID" | "INVALID_COORDINATE" | "OUTSIDE_LOT" | "ZERO_LENGTH" | "INVALID_THICKNESS";
+  code: "INVALID_LOT" | "DUPLICATE_ID" | "INVALID_COORDINATE" | "OUTSIDE_LOT" | "ZERO_LENGTH" | "INVALID_THICKNESS" | "INVALID_FLOOR" | "INVALID_TOLERANCE";
 };
 
 export function validateConceptWalls(
@@ -13,6 +13,9 @@ export function validateConceptWalls(
   tolerance = 0.001,
 ): WallPreflightIssue[] {
   const issues: WallPreflightIssue[] = [];
+  if (!Number.isFinite(tolerance) || tolerance <= 0) {
+    return [{ wallId: "", code: "INVALID_TOLERANCE" }];
+  }
   if (!Number.isFinite(lotWidth) || !Number.isFinite(lotDepth) || lotWidth <= 0 || lotDepth <= 0) {
     return [{ wallId: "", code: "INVALID_LOT" }];
   }
@@ -21,6 +24,9 @@ export function validateConceptWalls(
     const id = wall.id;
     if (!id || seen.has(id)) issues.push({ wallId: id, code: "DUPLICATE_ID" });
     seen.add(id);
+    if (!Number.isInteger(wall.floor) || wall.floor < 0) {
+      issues.push({ wallId: id, code: "INVALID_FLOOR" });
+    }
     const coords = [wall.x1, wall.y1, wall.x2, wall.y2];
     if (coords.some((v) => !Number.isFinite(v))) {
       issues.push({ wallId: id, code: "INVALID_COORDINATE" });
