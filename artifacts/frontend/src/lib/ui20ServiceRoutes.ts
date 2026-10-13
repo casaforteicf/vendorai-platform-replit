@@ -1,9 +1,16 @@
 import type { Ui20Service } from "./ui20ServiceVisibility";
 export const ui20RouteGroups: Record<Ui20Service, readonly string[]> = {
   home: ["/", "/dashboard", "/trabalho"],
-  crm: ["/leads", "/deals", "/pipeline-operacional", "/pipeline-relacionamento", "/conversations", "/agenda", "/propostas", "/empresas", "/app/prospector", "/catalogo", "/pacotes"],
+  crm: ["/leads", "/deals", "/pipeline-operacional", "/pipeline-relacionamento", "/empresas", "/contacts-nonleads"],
+  omnichannel: ["/conversations"],
+  prospecting: ["/app/prospector"],
+  agenda: ["/agenda"],
+  commercial: ["/propostas", "/catalogo", "/pacotes"],
+  intelligence: ["/vkg", "/scout", "/relatorios"],
+  works: ["/obras", "/insumos", "/composicoes"],
+  library: ["/biblioteca"],
   marketing: ["/marketing", "/content", "/ads", "/analytics", "/campanhas", "/diagnostico-planejamento"],
-  erp: ["/erp", "/estoque", "/obras", "/entregas", "/insumos", "/composicoes"],
+  erp: ["/erp", "/estoque", "/entregas"],
   ia: ["/agents", "/vendi", "/base-conhecimento", "/brain"],
   marketplace: ["/marketplace"],
   arqdor: ["/arch"],
