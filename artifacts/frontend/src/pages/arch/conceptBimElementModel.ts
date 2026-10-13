@@ -42,3 +42,29 @@ export function upsertBimElement(model: BimModel, element: BimElement): BimModel
 export function removeBimElement(model: BimModel, id: string): BimModel {
   return { schemaVersion: 1, elements: model.elements.filter(element => element.id !== id) };
 }
+
+/** Changes a numeric dimension or placement atomically; rejects invalid measurements. */
+export function editBimElementNumber(
+  model: BimModel,
+  id: string,
+  key: "x" | "y" | "width" | "depth" | "thickness" | "rise" | "run" | "stepCount" | "eave" | "pitchDegrees",
+  value: number,
+): BimModel {
+  if (!Number.isFinite(value)) throw new Error("ARQDOR_BIM_NON_FINITE_VALUE");
+  const element = model.elements.find(item => item.id === id);
+  if (!element) throw new Error("ARQDOR_BIM_ELEMENT_NOT_FOUND");
+  if (key === "x" || key === "y") return upsertBimElement(model, { ...element, [key]: value });
+  const allowed = element.kind === "stair" ? ["width", "rise", "run", "stepCount"]
+    : element.kind === "slab" ? ["width", "depth", "thickness"]
+    : ["width", "depth", "eave", "pitchDegrees"];
+  if (!allowed.includes(key)) throw new Error("ARQDOR_BIM_UNSUPPORTED_PARAMETER");
+  if (element.kind === "stair") return upsertBimElement(model, {
+    ...element, parameters: { ...element.parameters, [key]: value },
+  });
+  if (element.kind === "slab") return upsertBimElement(model, {
+    ...element, parameters: { ...element.parameters, [key]: value },
+  });
+  return upsertBimElement(model, {
+    ...element, parameters: { ...element.parameters, [key]: value },
+  });
+}
