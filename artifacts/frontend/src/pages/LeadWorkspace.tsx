@@ -547,27 +547,41 @@ export default function LeadWorkspace() {
   }
 
   function showAdvance() {
-    const stage = deal?.etapa === "em_aquecimento"
-      ? "novo"
-      : (requestedStage ?? stages[currentIndex + 1]?.key ?? "");
-    const aiAction = fullIntelligence?.health?.nextBestAction ?? fullIntelligence?.profile?.nextBestAction;
-    const aiReason = fullIntelligence?.health?.nextBestActionReason ?? fullIntelligence?.profile?.nextBestActionReason;
+    try {
+      if (!deal) {
+        toast({ title: "Negócio não carregado", description: "Atualize a página e tente novamente.", variant: "destructive" });
+        return;
+      }
+      const nextConfigured = stages.slice(currentIndex + 1).find((stage) => !hiddenFromCommercialFlow.has(stage.key));
+      const requested = requestedStage && stages.some((stage) => stage.key === requestedStage) ? requestedStage : null;
+      const stage = deal.etapa === "em_aquecimento" ? "novo" : (requested ?? nextConfigured?.key ?? "");
+      if (!stage) {
+        toast({ title: "Sem próxima etapa", description: "Verifique a configuração da pipeline.", variant: "destructive" });
+        return;
+      }
 
-    const nextStageConfig = stages.find((candidate) => candidate.key === stage) as ResponsibilityStage | undefined;
-    const stageEligibleUsers = users.filter((candidate) => userCanOwnStage(candidate as ResponsibilityUser, nextStageConfig));
-    const preferredOwner = [deal?.assignedTo, user?.id].find((candidateId) =>
-      Boolean(candidateId) && stageEligibleUsers.some((candidate) => candidate.id === candidateId)
-    );
-
-    setNextStage(stage);
-    setOwner(preferredOwner ?? stageEligibleUsers[0]?.id ?? "");
-    setTitle(aiAction?.trim() || guidance[stage]?.[1] || "Dar continuidade ao atendimento");
-    setDescription(aiReason?.trim() || "");
-    setNote("");
-    setDue(tomorrow());
-    setEditEligible(false);
-    setAdvancedHandoffOpen(false);
-    setOpen(true);
+      const nextStageConfig = stages.find((candidate) => candidate.key === stage) as ResponsibilityStage | undefined;
+      const stageEligibleUsers = users.filter((candidate) => userCanOwnStage(candidate as ResponsibilityUser, nextStageConfig));
+      const preferredOwner = [deal.assignedTo, lead?.assignedTo, user?.id].find((candidateId) =>
+        Boolean(candidateId) && stageEligibleUsers.some((candidate) => candidate.id === candidateId)
+      );
+      // Primeiro abre a janela, antes da sugestão de IA e demais cálculos.
+      setNextStage(stage);
+      setOwner(preferredOwner ?? stageEligibleUsers[0]?.id ?? "");
+      setTitle(guidance[stage]?.[1] || "Dar continuidade ao atendimento");
+      setDescription("");
+      setNote("");
+      setDue(tomorrow());
+      setEditEligible(false);
+      setAdvancedHandoffOpen(false);
+      setOpen(true);
+    } catch (error) {
+      toast({
+        title: "Falha ao abrir avanço",
+        description: error instanceof Error ? error.message : "Não foi possível preparar a próxima etapa.",
+        variant: "destructive",
+      });
+    }
   }
 
   async function saveCurrentOwner() {
