@@ -75,15 +75,15 @@ export async function renderWebGpuPreview(o:DiffusePreviewOptions):Promise<Uint8
  const adapter=await gpu.requestAdapter({powerPreference:"high-performance"});
  if(!adapter)throw Error("ARQDOR: adaptador GPU indisponível");
  const device:GpuDeviceLike=await adapter.requestDevice();
- const usage=(globalThis as any).GPUBufferUsage;
- const mapMode=(globalThis as any).GPUMapMode;
- if(!usage||!mapMode)throw Error("ARQDOR: API WebGPU incompleta");
  const buffers:GpuBufferLike[]=[];
  const create=(size:number,flags:number):GpuBufferLike=>{
    const b=device.createBuffer({size:Math.ceil(size/4)*4,usage:flags});
    buffers.push(b);return b;
  };
  try {
+   const usage=(globalThis as any).GPUBufferUsage;
+   const mapMode=(globalThis as any).GPUMapMode;
+   if(!usage||!mapMode)throw Error("ARQDOR: API WebGPU incompleta");
    const verts:number[]=[];const cols:number[]=[];
    let actualTriangles=0;
    for(const mesh of geometry.meshes) {
