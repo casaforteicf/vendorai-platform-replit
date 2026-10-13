@@ -468,6 +468,7 @@ export function useRenderStudioController() {
         recoveryCancelled = true;
       };
     }
+    return undefined;
   }, []);
 
   useEffect(() => { sessionStorage.setItem(SK.step, step); }, [step]);
