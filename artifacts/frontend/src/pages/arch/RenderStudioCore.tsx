@@ -225,6 +225,7 @@ function RenderStudioInner() {
             onSelectVersion={handleSelectVersion}
             eventLog={eventLog}
             userName={userName}
+            onOpenMaterialLibrary={() => setShowMaterialLib(true)}
           />
         </div>
 
