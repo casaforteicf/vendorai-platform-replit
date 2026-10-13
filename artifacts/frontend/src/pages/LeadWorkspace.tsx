@@ -13,10 +13,10 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { AdminDeleteLeadButton } from "@/components/AdminDeleteLeadButton";
-import { PipelineStageFunctionAccess } from "@/components/PipelineStageFunctionAccess";
 import { ArrowLeft, ArrowRight, AlertTriangle, BrainCircuit, Building2, Clock3, HandCoins, Headset, Loader2, Pencil, Sparkles, UserRound, WalletCards } from "lucide-react";
 
+const AdminDeleteLeadButton = lazy(() => import("@/components/AdminDeleteLeadButton").then(m => ({ default: m.AdminDeleteLeadButton })));
+const PipelineStageFunctionAccess = lazy(() => import("@/components/PipelineStageFunctionAccess").then(m => ({ default: m.PipelineStageFunctionAccess })));
 const LeadDetail = lazy(() => import("@/pages/LeadDetail"));
 const DealParticipantsCard = lazy(() => import("@/components/DealParticipantsCard").then((m) => ({ default: m.DealParticipantsCard })));
 const StageQuestionsPanel = lazy(() => import("@/components/StageQuestionsPanel").then((m) => ({ default: m.StageQuestionsPanel })));
@@ -832,7 +832,7 @@ export default function LeadWorkspace() {
             {deal
               ? <Button className="shrink-0" onClick={showAdvance}>Avançar atendimento <ArrowRight className="ml-2 h-4 w-4" /></Button>
               : <Button className="shrink-0" disabled={createDeal.isPending} onClick={startAttendance}>{createDeal.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Iniciar atendimento</Button>}
-            <AdminDeleteLeadButton leadId={lead.id} leadName={lead.nome} redirectTo="/leads" compact={false} />
+            <Suspense fallback={null}><AdminDeleteLeadButton leadId={lead.id} leadName={lead.nome} redirectTo="/leads" compact={false} /></Suspense>
           </div>
         </div>
       </CardContent>
@@ -1394,14 +1394,14 @@ export default function LeadWorkspace() {
                   {canEditOwner && targetStage ? (
                     <div className="flex items-center gap-2">
                       <span className="text-[11px] text-muted-foreground">Configurar responsáveis da etapa</span>
-                      <PipelineStageFunctionAccess
+                      <Suspense fallback={null}><PipelineStageFunctionAccess
                         tenantId={tenantId}
                         pipeline="comercial"
                         stageId={targetStage.id}
                         value={(targetStage as ResponsibilityStage).responsaveisFuncoes ?? []}
                         agentValue={(targetStage as { responsavelAgenteKey?: string | null }).responsavelAgenteKey ?? null}
                         className="w-40"
-                      />
+                      /></Suspense>
                     </div>
                   ) : null}
                 </div>
