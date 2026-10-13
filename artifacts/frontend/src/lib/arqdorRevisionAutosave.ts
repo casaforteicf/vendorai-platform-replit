@@ -29,6 +29,7 @@ export async function saveConceptWithRevision(input: {
     ? configuration as Record<string, unknown> : null;
   const hasDirectWalls = Object.prototype.hasOwnProperty.call(input.updates, "customWalls");
   const hasNestedWalls = nested !== null && Object.prototype.hasOwnProperty.call(nested, "customWalls");
+  if (hasDirectWalls && hasNestedWalls) throw new Error("PROJECT_WALL_PREFLIGHT_AMBIGUOUS_PAYLOAD");
   if (hasDirectWalls || hasNestedWalls) {
     const rawWalls = hasNestedWalls ? nested!.customWalls : input.updates.customWalls;
     const candidateBounds = input.lotBounds ?? (
