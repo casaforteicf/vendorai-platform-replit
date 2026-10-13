@@ -52,6 +52,16 @@ describe("experimental WebGPU preflight", () => {
       light: { ...options.light, directionToLight: [0, 0, 0] } }))
       .rejects.toThrow(/direção da luz inválida/);
   });
+  it("rejects a coincident camera target", async () => {
+    await expect(renderWebGpuPreview({
+      ...options, camera: { ...options.camera, target: [0, 0, 3] },
+    })).rejects.toThrow(/orientação de câmera inválida/);
+  });
+  it("rejects a camera up vector parallel to the view", async () => {
+    await expect(renderWebGpuPreview({
+      ...options, camera: { ...options.camera, up: [0, 0, -1] },
+    })).rejects.toThrow(/orientação de câmera inválida/);
+  });
   it("rejects invalid field of view", async () => {
     await expect(renderWebGpuPreview({ ...options, camera: { ...options.camera, verticalFovDegrees: 0 } }))
       .rejects.toThrow(/FOV inválido/);
