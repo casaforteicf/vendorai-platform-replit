@@ -1,0 +1,181 @@
+/* ARQDOR Studio 2.0 — shared editor primitives.
+   Opt-in only. No global html/body rules and no effect on other Vendor.ai modules. */
+.arqdor-studio-ui {
+  --arq2-bg:#171f22;
+  --arq2-surface:#20282a;
+  --arq2-panel:#263034;
+  --arq2-raised:#303a3d;
+  --arq2-border:#3a4649;
+  --arq2-text:#eef2ef;
+  --arq2-muted:#aab8b5;
+  --arq2-accent:#176d59;
+  --arq2-focus:#4ac59a;
+  font-family:Inter,"IBM Plex Sans","Segoe UI",sans-serif;
+  font-size:12px;
+  font-variant-numeric:tabular-nums;
+}
+.arqdor-studio-ui .arq2-panel {
+  background:var(--arq2-panel);
+  color:var(--arq2-text);
+  border:1px solid var(--arq2-border);
+  border-radius:8px;
+}
+.arqdor-studio-ui .arq2-toolbar {
+  display:flex;
+  gap:6px;
+  align-items:center;
+  min-height:40px;
+  padding:5px 8px;
+  background:var(--arq2-surface);
+  color:var(--arq2-text);
+  border-bottom:1px solid var(--arq2-border);
+}
+.arqdor-studio-ui .arq2-panel-title {
+  font-size:13px;
+  font-weight:600;
+  line-height:1.4;
+}
+.arqdor-studio-ui .arq2-label {
+  color:var(--arq2-muted);
+  font-size:11px;
+  line-height:1.4;
+}
+.arqdor-studio-ui .arq2-tool-button {
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  gap:6px;
+  min-height:32px;
+  padding:5px 10px;
+  border-radius:6px;
+  border:1px solid transparent;
+  color:var(--arq2-text);
+  background:transparent;
+  font-size:12px;
+}
+.arqdor-studio-ui .arq2-tool-button:hover {background:var(--arq2-raised);}
+.arqdor-studio-ui .arq2-tool-button[aria-pressed="true"],
+.arqdor-studio-ui .arq2-tool-button[data-state="active"] {
+  color:white;
+  background:var(--arq2-accent);
+}
+.arqdor-studio-ui .arq2-tool-button:focus-visible,
+.arqdor-studio-ui .arq2-field:focus-visible {
+  outline:2px solid var(--arq2-focus);
+  outline-offset:2px;
+}
+.arqdor-studio-ui .arq2-field {
+  min-height:32px;
+  border:1px solid var(--arq2-border);
+  border-radius:6px;
+  background:var(--arq2-surface);
+  color:var(--arq2-text);
+  padding:5px 8px;
+  font-size:12px;
+}
+@media (pointer:coarse) {
+  .arqdor-studio-ui .arq2-tool-button,
+  .arqdor-studio-ui .arq2-field {min-height:44px;}
+}
+
+/* UI-11 — semantic actions used by RenderStudioNavigation */
+.arqdor-studio-ui .arqdor-render-improve-action {
+  margin-right:8px;
+  background:var(--arq2-panel);
+  color:var(--arq2-text);
+  border:1px solid var(--arq2-accent);
+  font-size:11px;
+  font-weight:600;
+}
+.arqdor-studio-ui .arqdor-render-next-action {
+  margin-right:12px;
+  background:var(--arq2-accent);
+  color:#fff;
+  font-size:12px;
+  font-weight:600;
+}
+.arqdor-studio-ui .arqdor-render-next-action:hover {background:#21856C;}
+
+/* UI-13 — Render sidebar steps, preserving active/completed/disabled semantics */
+.arqdor-studio-ui .arqdor-render-step {
+  display:flex;
+  width:100%;
+  justify-content:flex-start;
+  align-items:center;
+  text-align:left;
+  gap:8px;
+  min-height:34px;
+  padding:7px 14px 7px 12px;
+  border:0;
+  border-left:2px solid transparent;
+  border-radius:0 6px 6px 0;
+  background:transparent;
+  transition:background .12s ease;
+}
+.arqdor-studio-ui .arqdor-render-step:hover:not(:disabled) {background:var(--arq2-raised);}
+.arqdor-studio-ui .arqdor-render-step[aria-current="step"] {
+  border-left-color:var(--arq2-accent);
+  background:#176d5926;
+}
+.arqdor-studio-ui .arqdor-render-step:disabled {opacity:.35;cursor:not-allowed;}
+.arqdor-studio-ui .arqdor-render-step[data-completed="true"]:not([aria-current="step"]) {color:var(--arq2-text);}
+@media(pointer:coarse){.arqdor-studio-ui .arqdor-render-step{min-height:44px;}}
+
+/* UI-15: technical form inputs in the Render properties inspector. */
+.arqdor-studio-ui .arqdor-legacy-right-panel .arqdor-render-tech-field {
+  background:#20282A !important;
+  color:#EEF2EF !important;
+  border:1px solid #3A4649 !important;
+  border-radius:6px !important;
+  font:400 12px/1.45 Inter,"IBM Plex Sans","Segoe UI",sans-serif !important;
+  min-height:32px;
+  padding:6px 8px;
+  max-width:100%;
+}
+.arqdor-studio-ui .arqdor-legacy-right-panel .arqdor-render-tech-field::placeholder {
+  color:#AAB8B5;
+  opacity:1;
+}
+.arqdor-studio-ui .arqdor-legacy-right-panel .arqdor-render-tech-field:focus-visible {
+  outline:2px solid #4AC59A !important;
+  outline-offset:2px;
+}
+@media(pointer:coarse){
+  .arqdor-studio-ui .arqdor-legacy-right-panel :is(input,select).arqdor-render-tech-field {min-height:44px;}
+}
+
+/* UI-16 — material selection uses the common inspector visual language. */
+.arqdor-studio-ui .arqdor-legacy-right-panel .arqdor-render-material-picker {
+  display:flex;
+  align-items:center;
+  gap:8px;
+  width:100%;
+  padding:8px 10px;
+  border-radius:6px;
+  border:1px solid var(--arq2-border);
+  background:var(--arq2-surface);
+  color:var(--arq2-text);
+  text-align:left;
+  font-size:11px;
+  cursor:pointer;
+}
+.arqdor-studio-ui .arqdor-legacy-right-panel .arqdor-render-material-picker:hover {background:var(--arq2-raised);border-color:var(--arq2-accent);}
+.arqdor-studio-ui .arqdor-legacy-right-panel .arqdor-render-material-picker:focus-visible {outline:2px solid var(--arq2-focus);outline-offset:2px;}
+@media(pointer:coarse) {.arqdor-studio-ui .arqdor-legacy-right-panel .arqdor-render-material-picker {min-height:44px;}}
+
+/* UI-17 — Studio IA Copilot inside Render inspector. */
+.arqdor-studio-ui .arqdor-legacy-right-panel .arqdor-studio-copilot {
+  background:var(--arq2-surface);
+  border-top:1px solid var(--arq2-border);
+}
+.arqdor-studio-ui .arqdor-legacy-right-panel .arqdor-studio-copilot > button:focus-visible,
+.arqdor-studio-ui .arqdor-legacy-right-panel .arqdor-studio-copilot button:focus-visible {
+  outline:2px solid var(--arq2-focus);
+  outline-offset:2px;
+}
+.arqdor-studio-ui .arqdor-legacy-right-panel .arqdor-studio-copilot .arqdor-render-tech-field {
+  background:var(--arq2-panel) !important;
+  color:var(--arq2-text) !important;
+  border:1px solid var(--arq2-border) !important;
+  border-radius:6px !important;
+}
