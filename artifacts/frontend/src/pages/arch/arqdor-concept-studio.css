@@ -193,3 +193,42 @@
     color: #176d59;
   }
 }
+
+/* Mobile presentation and safe-area handling — issue #3517. */
+@media (max-width: 767px) {
+  .arqdor-concept-studio .arq-mobile-stage-nav {
+    max-width: calc(100vw - 16px);
+    box-sizing: border-box;
+    gap: 2px;
+    padding-bottom: max(4px, env(safe-area-inset-bottom, 0px));
+  }
+
+  .arqdor-concept-studio .arq-mobile-stage-nav > button {
+    min-width: 0;
+    overflow: hidden;
+    line-height: 1.15;
+  }
+
+  .arqdor-concept-studio .arq-project-result {
+    scroll-padding-bottom: 110px;
+  }
+
+  .arqdor-concept-studio .arq-project-result :where(.bg-card) {
+    background-color: #fff;
+    color: #172025;
+  }
+
+  .arqdor-concept-studio .arq-project-result :where(.text-muted-foreground) {
+    color: #475569;
+  }
+
+  .arqdor-concept-studio .arq-project-result :where(button) {
+    max-width: 100%;
+    overflow-wrap: anywhere;
+  }
+
+  .arqdor-concept-studio .arq-result-send {
+    background-color: #176d59;
+    bottom: max(12px, env(safe-area-inset-bottom, 0px));
+  }
+}
