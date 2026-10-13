@@ -31,10 +31,14 @@ describe("Arqdor Projeto — pré-validação de paredes", () => {
     }
   });
   it("recusa tolerância inválida em vez de produzir aprovação enganosa", () => {
-    for (const tolerance of [0, -1, Number.NaN, Number.POSITIVE_INFINITY]) {
+    for (const tolerance of [0, -1, Number.NaN, Number.POSITIVE_INFINITY, 0.02, 5]) {
       expect(validateConceptWalls([wall], 12, 25, tolerance))
         .toEqual([{ wallId: "", code: "INVALID_TOLERANCE" }]);
     }
+  });
+  it("identifica segmentos com comprimento igual à tolerância", () => {
+    expect(validateConceptWalls([{ ...wall, x2: 1.001 }], 12, 25, 0.001))
+      .toContainEqual({ wallId: "a", code: "ZERO_LENGTH" });
   });
   it("permite parede dentro da margem de tolerância numérica", () => {
     expect(validateConceptWalls([{ ...wall, x2: 12.0004 }], 12, 25)).toEqual([]);
