@@ -37,10 +37,15 @@ export function ConceptBimElementsPanel({ model, onChange, floor, selectedId, on
       </div>
       <svg role="img" aria-label="Projeção em planta dos elementos BIM" viewBox="0 0 260 260" className="h-64 w-full rounded bg-zinc-950">
         {shapes.map(shape => <rect key={shape.id}
+          onClick={() => onSelect?.(shape.parentId ?? shape.id)}
+          role="button"
+          aria-label={`Selecionar ${shape.parentId ?? shape.id}`}
+          tabIndex={0}
+          onKeyDown={event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onSelect?.(shape.parentId ?? shape.id); } }}
           x={10 + shape.x * scale} y={10 + shape.y * scale}
           width={shape.width * scale} height={shape.depth * scale}
           fill={shape.kind === "slab-opening" ? "#09090b" : "rgba(48,180,130,0.15)"}
-          stroke={shape.kind === "slab-opening" ? "#eab308" : "#35a77d"}
+          stroke={selectedId === (shape.parentId ?? shape.id) ? "#ffffff" : shape.kind === "slab-opening" ? "#eab308" : "#35a77d"}
           strokeWidth="1.5" />)}
       </svg>
       <p className="mt-3 mb-1 text-[11px] text-zinc-400">Prévia tridimensional isométrica — mesmos elementos BIM</p>
@@ -66,7 +71,7 @@ export function ConceptBimElementsPanel({ model, onChange, floor, selectedId, on
                     onBlur={event => changeDimension(element.id, key, event.currentTarget.value)}
                     onKeyDown={event => { if (event.key === "Enter") event.currentTarget.blur(); }} />
                 </label>)}
-              <button type="button" className="rounded border border-zinc-600 px-2 py-1" onClick={() => onChange(removeBimElement(model, element.id))}>Excluir</button>
+              <button type="button" className="rounded border border-zinc-600 px-2 py-1" onClick={() => { onChange(removeBimElement(model, element.id)); if (selectedId === element.id) onSelect?.(null); }}>Excluir</button>
             </div>
           </li>)}
       </ul>
