@@ -667,6 +667,11 @@ export default function ConceptWebGLScene({
 
           if (bimElementId) {
             onSelectBimElement?.(bimElementId);
+          } else {
+            onSelectBimElement?.(null);
+          }
+          if (bimElementId) {
+            // BIM selection is independent of the legacy selection mechanisms.
           } else if (objectId) {
             onSelectObject?.(objectId);
             onSelectWall?.(null);
