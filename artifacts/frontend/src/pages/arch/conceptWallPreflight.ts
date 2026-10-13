@@ -3,7 +3,7 @@ import type { EditableWall } from "./conceptParametricEditing";
 /** Validação não destrutiva. Nunca corrige ou descarta geometria automaticamente. */
 export type WallPreflightIssue = {
   wallId: string;
-  code: "INVALID_LOT" | "DUPLICATE_ID" | "INVALID_COORDINATE" | "OUTSIDE_LOT" | "ZERO_LENGTH" | "INVALID_THICKNESS" | "INVALID_FLOOR" | "INVALID_TOLERANCE";
+  code: "INVALID_LOT" | "INVALID_WALL_ID" | "DUPLICATE_ID" | "INVALID_COORDINATE" | "OUTSIDE_LOT" | "ZERO_LENGTH" | "INVALID_THICKNESS" | "INVALID_FLOOR" | "INVALID_TOLERANCE";
 };
 
 export function validateConceptWalls(
@@ -22,8 +22,12 @@ export function validateConceptWalls(
   const seen = new Set<string>();
   for (const wall of walls) {
     const id = wall.id;
-    if (!id || seen.has(id)) issues.push({ wallId: id, code: "DUPLICATE_ID" });
-    seen.add(id);
+    if (typeof id !== "string" || id.trim().length === 0) {
+      issues.push({ wallId: id ?? "", code: "INVALID_WALL_ID" });
+    } else if (seen.has(id)) {
+      issues.push({ wallId: id, code: "DUPLICATE_ID" });
+    }
+    if (typeof id === "string" && id.trim().length > 0) seen.add(id);
     if (!Number.isInteger(wall.floor) || wall.floor < 0) {
       issues.push({ wallId: id, code: "INVALID_FLOOR" });
     }
