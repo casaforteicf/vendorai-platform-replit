@@ -46,6 +46,14 @@ describe("Arqdor Projeto — pré-validação de paredes", () => {
     expect(validateConceptWalls([{ ...wall, x2: 1.001 }], 12, 25, 0.001))
       .toContainEqual({ wallId: "a", code: "ZERO_LENGTH" });
   });
+  it("detecta parede que ultrapassa o lote com suas faces, mesmo com eixo interno", () => {
+    const nearEdge = { ...wall, y1: 0.04, y2: 0.04, thickness: 0.15 };
+    expect(validateConceptWalls([nearEdge], 12, 25))
+      .toContainEqual({ wallId: "a", code: "OUTSIDE_LOT" });
+  });
+  it("mantém parede afastada das bordas válida com espessura real", () => {
+    expect(validateConceptWalls([{ ...wall, y1: 0.2, y2: 0.2 }], 12, 25)).toEqual([]);
+  });
   it("permite parede dentro da margem de tolerância numérica", () => {
     expect(validateConceptWalls([{ ...wall, x2: 12.0004 }], 12, 25)).toEqual([]);
   });
