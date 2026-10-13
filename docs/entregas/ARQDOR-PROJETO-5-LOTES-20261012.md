@@ -21,3 +21,13 @@ Executar Vitest dos novos módulos, typecheck direcionado e global com baseline,
 
 ## Evidência
 Novo desenvolvimento neste PR é parcial. Código escrito não significa integração operacional nem publicação. Não promover em produção sem relatório do SHA, testes e homologação.
+
+## Auditoria complementar de integração — 2026-10-13
+- Nomenclatura comercial oficial: **Arqdor Projeto**; o termo Concept permanece apenas onde for identificador técnico legado. Persistência, URLs, contratos de API, campos e referências históricas não devem ser renomeados sem migração compatível.
+- Fonte de identidade visual: `docs/arqdor-studio-2-design-system.md`; o arquivo de estilos legado `planner5d-reference.css` não representa a experiência final. A aplicação de tokens e da barra grafite NÃO comprova a migração dos painéis e do viewport.
+- Implementado nesta branch: diagnóstico geométrico não destrutivo; controle de IDs, pavimentos e tolerâncias; nomenclatura visível alterada no ConceptPlanner; imports de estilos e chrome parcial. Todos esses itens requerem execução de testes e inspeção no navegador.
+- Frontend em produção: SHA e fidelidade visual ainda não foram comprovados pela consulta Cloudflare; nenhuma alteração deve ser declarada publicada.
+- O comparativo branch/main estava divergente na última leitura: conciliar ambas antes dos gates de integração. Reutilizar o que estiver na main sem sobrescrever componentes mais recentes.
+- Critério de aceite da interface: barra grafite, toolbar à esquerda, viewport predominante, propriedades contextuais à direita e rodapé de cenas/revisões; navegação e edição desktop/touch testadas.
+- Critério de aceite BIM: edição real de paredes/aberturas/lajes/escadas/cobertura no mesmo snapshot, roundtrip de persistência, 2D e 3D sincronizados e vínculos preservados. Os validadores atuais não atendem sozinhos a esse critério.
+- Não fazer merge/deploy até obter resultados verificáveis de testes, builds, revisão por tenant, smoke no navegador, backup e rollback.
