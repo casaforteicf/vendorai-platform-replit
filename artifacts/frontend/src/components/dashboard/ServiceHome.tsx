@@ -31,7 +31,7 @@ const serviceCards = [
   { key: "ia", title: "IA", subtitle: "Agentes e automações", href: "/agents/config", Icon: Bot },
   { key: "intelligence", title: "Inteligência", subtitle: "Análises e relatórios", href: "/vkg", Icon: BarChart3 },
   { key: "works", title: "Obras", subtitle: "Execução", href: "/obras", Icon: HardHat },
-  { key: "library", title: "Biblioteca", subtitle: "Arquivos", href: "/biblioteca", Icon: FolderOpen },
+  { key: "library", title: "Biblioteca", subtitle: "Arquivos", href: "/midias", Icon: FolderOpen },
   { key: "marketplace", title: "Marketplace", subtitle: "Produtos e serviços", href: "/marketplace", Icon: Store },
   { key: "arqdor", title: "Arqdor", subtitle: "Projetos e ambientes", href: "/arch", Icon: Ruler },
   { key: "support", title: "Suporte", subtitle: "Ajuda e atendimento", href: "/faq", Icon: CircleHelp },
