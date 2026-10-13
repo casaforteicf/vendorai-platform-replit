@@ -1060,7 +1060,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
   const [desiredArea, setDesiredArea] = useState(145);
   const [activeFloor, setActiveFloor] = useState(0);
   const [editorView, setEditorView] = useState<"plan" | "model3d" | "facade" | "render">("plan");
-  const [editorExperienceMode, setEditorExperienceMode] = useState<EditorExperienceMode>("guided");
+  const [editorExperienceMode, setEditorExperienceMode] = useState<EditorExperienceMode>(guestMode ? "guided" : "professional");
 
   useEffect(() => {
     // O projeto tem só duas telas: o workspace (2D/3D/Fachada/Render) e o Resultado,
