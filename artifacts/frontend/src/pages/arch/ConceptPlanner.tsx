@@ -9196,7 +9196,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                                 const wall = safeCustomWalls.find((item) => item.id === wallId);
                                 if (!wall) return;
                                 setActiveFloor(wall.floor);
-                                setInteractionMode("select");
+                                setInteractionMode("navigate");
                                 setSelectedCustomWallId(wall.id);
                                 setSelectedWallId(null);
                                 setSelectedId(null);
