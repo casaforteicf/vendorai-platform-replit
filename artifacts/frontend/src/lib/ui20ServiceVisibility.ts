@@ -1,5 +1,5 @@
 export type Ui20Module = { moduleKey: string; isEnabled: boolean; hasOverride?: boolean; commerciallyEntitled?: boolean };
-export type Ui20Service = "home" | "crm" | "marketing" | "erp" | "ia" | "marketplace" | "arqdor" | "support" | "settings";
+export type Ui20Service = "home" | "crm" | "omnichannel" | "prospecting" | "agenda" | "commercial" | "marketing" | "erp" | "ia" | "intelligence" | "works" | "library" | "marketplace" | "arqdor" | "support" | "settings";
 
 /** Presentation filtering only. Never use this to authorize an API or route. */
 export function getUi20VisibleServices(input: {
@@ -13,6 +13,12 @@ export function getUi20VisibleServices(input: {
   const visible = new Set<Ui20Service>(["home", "support"]);
   if (loading) return visible;
   visible.add("crm");
+  if (permittedModule("scheduler")) visible.add("agenda");
+  if (permittedModule("leads")) { visible.add("prospecting"); visible.add("commercial"); }
+  if (permittedModule("omnichannel") || permittedModule("conversations")) visible.add("omnichannel");
+  if (permittedModule("business_intelligence") || permittedModule("analytics")) visible.add("intelligence");
+  if (permittedModule("obras") || permittedModule("works")) visible.add("works");
+  if (permittedModule("media_library") || permittedModule("library")) visible.add("library");
   visible.add("marketing");
   if (isAdmin && permittedModule("settings")) visible.add("settings");
   function permittedModule(key: string) {

@@ -2,7 +2,7 @@ import { Link } from "wouter";
 import { MyUpcomingAppointments } from "./MyUpcomingAppointments";
 import { JarvisHomeSuggestions } from "./JarvisHomeSuggestions";
 import { getUi20VisibleServices, type Ui20Module } from "@/lib/ui20ServiceVisibility";
-import { Bot, Building2, CircleHelp, House, CalendarDays, ClipboardList, Sparkles, Megaphone, Ruler, Settings2, Store, Users, ArrowUpRight } from "lucide-react";
+import { Bot, Building2, CircleHelp, MessageSquare, Search, BriefcaseBusiness, BarChart3, HardHat, FolderOpen, House, CalendarDays, ClipboardList, Sparkles, Megaphone, Ruler, Settings2, Store, Users, ArrowUpRight } from "lucide-react";
 
 type Props = {
   name: string;
@@ -22,9 +22,16 @@ type Props = {
 
 const serviceCards = [
   { key: "crm", title: "CRM", subtitle: "Leads e negócios", href: "/leads", Icon: Users },
+  { key: "omnichannel", title: "Omnichannel", subtitle: "Conversas e canais", href: "/conversations", Icon: MessageSquare },
+  { key: "prospecting", title: "Prospecção", subtitle: "Oportunidades", href: "/app/prospector", Icon: Search },
+  { key: "agenda", title: "Agenda", subtitle: "Compromissos", href: "/agenda", Icon: CalendarDays },
+  { key: "commercial", title: "Comercial", subtitle: "Propostas e catálogos", href: "/propostas", Icon: BriefcaseBusiness },
   { key: "marketing", title: "Marketing", subtitle: "Campanhas e resultados", href: "/analytics", Icon: Megaphone },
   { key: "erp", title: "ERP", subtitle: "Operação e financeiro", href: "/erp", Icon: Building2 },
   { key: "ia", title: "IA", subtitle: "Agentes e automações", href: "/agents/config", Icon: Bot },
+  { key: "intelligence", title: "Inteligência", subtitle: "Análises e relatórios", href: "/vkg", Icon: BarChart3 },
+  { key: "works", title: "Obras", subtitle: "Execução", href: "/obras", Icon: HardHat },
+  { key: "library", title: "Biblioteca", subtitle: "Arquivos", href: "/midias", Icon: FolderOpen },
   { key: "marketplace", title: "Marketplace", subtitle: "Produtos e serviços", href: "/marketplace", Icon: Store },
   { key: "arqdor", title: "Arqdor", subtitle: "Projetos e ambientes", href: "/arch", Icon: Ruler },
   { key: "support", title: "Suporte", subtitle: "Ajuda e atendimento", href: "/faq", Icon: CircleHelp },
