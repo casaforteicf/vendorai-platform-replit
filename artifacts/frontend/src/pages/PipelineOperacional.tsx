@@ -1606,8 +1606,18 @@ function SupportDialog({ open, onOpenChange, tenantId, token, leads, deals, prop
   }
 
   async function submit() {
-    if (!leadId || !responsavelId || !titulo.trim() || relato.trim().length < 10) {
-      toast({ title: "Preencha cliente, responsável, título e um relato claro do problema.", variant: "destructive" });
+    const missing = [
+      !leadId && "cliente",
+      !titulo.trim() && "título",
+      relato.trim().length < 10 && "relato do problema (mínimo de 10 caracteres)",
+      !responsavelId && "responsável",
+    ].filter(Boolean);
+    if (missing.length) {
+      toast({
+        title: "Confira os campos obrigatórios",
+        description: `Falta preencher: ${missing.join(", ")}.`,
+        variant: "destructive",
+      });
       return;
     }
     setSaving(true);
