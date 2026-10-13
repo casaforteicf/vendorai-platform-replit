@@ -13,7 +13,7 @@ export function validateConceptWalls(
   tolerance = 0.001,
 ): WallPreflightIssue[] {
   const issues: WallPreflightIssue[] = [];
-  if (!Number.isFinite(tolerance) || tolerance <= 0) {
+  if (!Number.isFinite(tolerance) || tolerance <= 0 || tolerance > 0.01) {
     return [{ wallId: "", code: "INVALID_TOLERANCE" }];
   }
   if (!Number.isFinite(lotWidth) || !Number.isFinite(lotDepth) || lotWidth <= 0 || lotDepth <= 0) {
@@ -38,7 +38,7 @@ export function validateConceptWalls(
       wall.x1 > lotWidth + tolerance || wall.x2 > lotWidth + tolerance ||
       wall.y1 > lotDepth + tolerance || wall.y2 > lotDepth + tolerance
     ) issues.push({ wallId: id, code: "OUTSIDE_LOT" });
-    if (Math.hypot(wall.x2 - wall.x1, wall.y2 - wall.y1) < tolerance)
+    if (Math.hypot(wall.x2 - wall.x1, wall.y2 - wall.y1) <= tolerance)
       issues.push({ wallId: id, code: "ZERO_LENGTH" });
     if (wall.thickness !== undefined &&
       (!Number.isFinite(wall.thickness) || wall.thickness < 0.08 || wall.thickness > 0.5))
