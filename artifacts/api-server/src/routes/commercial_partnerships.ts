@@ -840,6 +840,12 @@ router.patch("/representation-work/:participationId/stage", async (req, res) => 
   const access = await assertParticipationAccess(req, participationId);
   if ("error" in access) return res.status(access.error === "NOT_FOUND" ? 404 : 403).json({ error: access.error });
 
+  // A etapa da participação pertence ao tenant executor, não à empresa de origem.
+  // O tenant de origem pode acompanhar o andamento, mas não movimentar o card externo.
+  if (!isSuperAdmin(req) && currentTenantId(req) !== access.participation.partnerTenantId) {
+    return res.status(403).json({ error: "FORBIDDEN" });
+  }
+
   const parsed = stageSchema.safeParse(req.body);
   if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
   if (!access.participation.permissions.includes("move_pipeline")) {
@@ -1037,7 +1043,7 @@ router.patch("/intercompany-commissions/:commissionId", async (req, res) => {
       vencimento: parsed.data.dueAt ?? commission.dueAt ?? new Date(),
       status: titleStatus,
       updatedAt: new Date(),
-    }).where(eq(erpTitulosTable.id, commission.payerTitleId));
+    }).where(and(eq(erpTitulosTable.id, commission.payerTitleId), eq(erpTitulosTable.tenantId, commission.payerTenantId)));
   }
   if (commission.beneficiaryTitleId) {
     await db.update(erpTitulosTable).set({
@@ -1046,7 +1052,7 @@ router.patch("/intercompany-commissions/:commissionId", async (req, res) => {
       vencimento: parsed.data.dueAt ?? commission.dueAt ?? new Date(),
       status: titleStatus,
       updatedAt: new Date(),
-    }).where(eq(erpTitulosTable.id, commission.beneficiaryTitleId));
+    }).where(and(eq(erpTitulosTable.id, commission.beneficiaryTitleId), eq(erpTitulosTable.tenantId, commission.beneficiaryTenantId)));
   }
 
   return res.json(updated);
