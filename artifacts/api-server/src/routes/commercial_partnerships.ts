@@ -1101,10 +1101,13 @@ router.post("/intercompany-commissions/:commissionId/payments", async (req, res)
       if (previous) {
         // Uma chave reutilizada com parâmetros diferentes não pode confirmar outro pagamento.
         if (
-          money(previous.amount) !== parsed.data.amount ||
+          Math.round(money(previous.amount) * 100) !== Math.round(parsed.data.amount * 100) ||
           previous.payerAccount !== parsed.data.payerAccount ||
           previous.beneficiaryAccount !== parsed.data.beneficiaryAccount ||
-          (previous.paymentMethod ?? null) !== (parsed.data.paymentMethod ?? null)
+          (previous.paymentMethod ?? null) !== (parsed.data.paymentMethod ?? null) ||
+          (previous.proofUrl ?? null) !== (parsed.data.proofUrl ?? null) ||
+          (previous.notes ?? null) !== (parsed.data.notes ?? null) ||
+          (parsed.data.paidAt !== undefined && previous.paidAt.getTime() !== parsed.data.paidAt.getTime())
         ) return { error: "IDEMPOTENCY_KEY_CONFLICT", status: 409 as const };
         return { replay: true as const, payment: previous, commission: lockedCommission };
       }
