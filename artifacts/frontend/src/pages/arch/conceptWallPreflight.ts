@@ -51,7 +51,7 @@ export function validateConceptWalls(
       const halfThickness = wall.thickness / 2;
       const nx = -(wall.y2 - wall.y1) / length * halfThickness;
       const ny = (wall.x2 - wall.x1) / length * halfThickness;
-      const footprint = [
+      const footprint: Array<[number, number]> = [
         [wall.x1 + nx, wall.y1 + ny], [wall.x1 - nx, wall.y1 - ny],
         [wall.x2 + nx, wall.y2 + ny], [wall.x2 - nx, wall.y2 - ny],
       ];
