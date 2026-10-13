@@ -1100,6 +1100,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
   const [selectedClosedSpaceId, setSelectedClosedSpaceId] = useState<string | null>(null);
   const [customWalls, setCustomWalls] = useState<CustomWall[]>([]);
   const [bimElements, setBimElements] = useState<BimModel>({ schemaVersion: 1, elements: [] });
+  const [selectedBimElementId, setSelectedBimElementId] = useState<string | null>(null);
   const bimElementsEnabled = import.meta.env.VITE_ARQDOR_BIM_ELEMENTS === "true";
   const [customOpenings, setCustomOpenings] = useState<CustomOpening[]>([]);
   const [wallFirstFloors, setWallFirstFloors] = useState<number[]>([0]);
@@ -9243,7 +9244,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                       {bimElementsEnabled && (
                         <div className="absolute right-3 top-16 z-[60] w-[min(300px,calc(100%-24px))] max-h-[75vh] overflow-y-auto">
                           <Suspense fallback={<div className="rounded bg-zinc-900 p-3 text-xs text-zinc-200">Carregando BIM...</div>}>
-                            <ConceptBimElementsPanel model={bimElements} onChange={setBimElements} floor={activeFloor} />
+                            <ConceptBimElementsPanel model={bimElements} onChange={setBimElements} floor={activeFloor} selectedId={selectedBimElementId} onSelect={setSelectedBimElementId} />
                           </Suspense>
                         </div>
                       )}
@@ -9526,6 +9527,8 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                     <ConceptModel3D
                       arqdorProjectId={conceptId || undefined}
                       experimentalBimModel={bimElementsEnabled ? bimElements : undefined}
+                      selectedBimElementId={bimElementsEnabled ? selectedBimElementId : null}
+                      onSelectBimElement={bimElementsEnabled ? setSelectedBimElementId : undefined}
                       lotWidth={lotWidth}
                       lotDepth={lotDepth}
                       activeFloor={activeFloor}
