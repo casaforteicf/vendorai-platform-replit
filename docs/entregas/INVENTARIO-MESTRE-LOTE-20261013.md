@@ -42,3 +42,10 @@ A descrição do PR #3510 foi atualizada para contemplar um kernel WGSL experime
 - [Especificação e orçamento — 16 critérios](./MATRIZ-ACEITE-ARQDOR-ESPECIFICACAO-ORCAMENTO-20261013.md)
 
 Estas 44 linhas são **critérios propostos e ainda não confrontados com o código**. Não atribuir percentuais/estados de implementação até auditoria de arquivos, testes e evidências.
+
+## Índices de aceite F07–F08
+
+- [Vendor.ai F07 — 10 linhas de referência](./MATRIZ-ACEITE-VENDORAI-F07-20261013.md)
+- [Infraestrutura F08 — 10 linhas de referência](./MATRIZ-ACEITE-INFRA-F08-20261013.md)
+
+Os índices F07/F08 **não recontam** 51 requisitos da Onda 01 ou 77 da Onda 03; exigem conciliação e auditoria de código antes de qualquer porcentagem.
