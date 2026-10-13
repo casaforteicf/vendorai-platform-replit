@@ -49,3 +49,8 @@ Estas 44 linhas são **critérios propostos e ainda não confrontados com o cód
 - [Infraestrutura F08 — 10 linhas de referência](./MATRIZ-ACEITE-INFRA-F08-20261013.md)
 
 Os índices F07/F08 **não recontam** 51 requisitos da Onda 01 ou 77 da Onda 03; exigem conciliação e auditoria de código antes de qualquer porcentagem.
+
+## Auditoria de consolidação Arqdor Projeto
+
+- [PRs #3503 × #3513 — sobreposição de arquivos e reconciliação](./AUDITORIA-RECONCILIACAO-ARQDOR-PROJETO-3503-3513.md)
+- Ambos são drafts; 15 arquivos de #3513 também são alterados em #3503; não integrar ambos isoladamente. Reconciliar por intenção, preservar tokens já integrados, validar quatro arquivos exclusivos do #3503 e executar os gates no SHA final.
