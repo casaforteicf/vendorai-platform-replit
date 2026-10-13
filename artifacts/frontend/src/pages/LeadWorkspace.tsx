@@ -488,21 +488,45 @@ export default function LeadWorkspace() {
     if (partnership) setPartnerCommissionPercent(String(partnership.defaultCommissionPercent ?? "15"));
   }, [selectedPartnershipId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  function startAttendance() {
-    if (!lead) return;
-    createDeal.mutate(
-      { data: { tenantId, leadId: id, titulo: "Atendimento - " + lead.nome, etapa: "novo" } },
-      {
-        onSuccess: async () => {
-          await Promise.all([
-            qc.invalidateQueries({ queryKey: getListDealsQueryKey(tenantId, { leadId: id }) }),
-            qc.invalidateQueries({ queryKey: getListDealsQueryKey(tenantId) }),
-          ]);
-          toast({ title: "Atendimento iniciado", description: "Defina agora o responsável e a próxima atividade." });
-        },
-        onError: () => toast({ title: "Erro ao iniciar atendimento", variant: "destructive" }),
-      },
-    );
+  async function startAttendance() {
+    if (!lead || !tenantId || createDeal.isPending) return;
+    // Reaproveita o negócio persistido no Aquecimento e seus vínculos,
+    // sem criar um segundo negócio nem perder envolvidos do cadastro.
+    const warmingDeal = deals.find((item) => item.etapa === "em_aquecimento");
+    try {
+      if (warmingDeal) {
+        const response = await fetch(`/api/deals/${warmingDeal.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json", Authorization: "Bearer " + token },
+          body: JSON.stringify({ etapa: "novo", assignedTo: warmingDeal.assignedTo ?? lead.assignedTo ?? undefined }),
+        });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(payload.error ?? payload.message ?? "Falha ao iniciar atendimento");
+      } else {
+        // Leads antigos ou isentos de pipeline ainda podem iniciar um negócio.
+        await createDeal.mutateAsync({
+          data: {
+            tenantId,
+            leadId: id,
+            titulo: "Atendimento - " + lead.nome,
+            etapa: "novo",
+            assignedTo: lead.assignedTo ?? undefined,
+          },
+        });
+      }
+      await Promise.all([
+        qc.invalidateQueries({ queryKey: getListDealsQueryKey(tenantId, { leadId: id }) }),
+        qc.invalidateQueries({ queryKey: getListDealsQueryKey(tenantId) }),
+        qc.invalidateQueries({ queryKey: getGetLeadQueryKey(id) }),
+      ]);
+      toast({ title: "Atendimento iniciado", description: "Cadastro e histórico do lead preservados no negócio." });
+    } catch (error) {
+      toast({
+        title: "Erro ao iniciar atendimento",
+        description: error instanceof Error ? error.message : "Não foi possível iniciar o negócio.",
+        variant: "destructive",
+      });
+    }
   }
 
   async function saveStageAnswers(next: Record<string, string>) {
