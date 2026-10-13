@@ -24,9 +24,23 @@ export async function saveConceptWithRevision(input: {
   if (!input.projectId || !input.token || !Number.isFinite(revision.getTime())) {
     throw new Error("PROJECT_REVISION_REQUIRED");
   }
-  if (Object.prototype.hasOwnProperty.call(input.updates, "customWalls")) {
-    const rawWalls = input.updates.customWalls;
-    if (!input.lotBounds || !Array.isArray(rawWalls)) throw new Error("PROJECT_WALL_PREFLIGHT_CONTEXT_REQUIRED");
+  const configuration = input.updates.configuration;
+  const nested = configuration && typeof configuration === "object" && !Array.isArray(configuration)
+    ? configuration as Record<string, unknown> : null;
+  const hasDirectWalls = Object.prototype.hasOwnProperty.call(input.updates, "customWalls");
+  const hasNestedWalls = nested !== null && Object.prototype.hasOwnProperty.call(nested, "customWalls");
+  if (hasDirectWalls || hasNestedWalls) {
+    const rawWalls = hasNestedWalls ? nested!.customWalls : input.updates.customWalls;
+    const candidateBounds = input.lotBounds ?? (
+      nested?.workspaceBounds && typeof nested.workspaceBounds === "object"
+        ? nested.workspaceBounds as { width: number; depth: number }
+        : null
+    ) ?? (
+      input.updates.lot && typeof input.updates.lot === "object"
+        ? input.updates.lot as { width: number; depth: number }
+        : null
+    );
+    if (!candidateBounds || !Array.isArray(rawWalls)) throw new Error("PROJECT_WALL_PREFLIGHT_CONTEXT_REQUIRED");
     const walls = rawWalls as EditableWall[];
     if (walls.some((wall) => !wall || typeof wall !== "object" ||
       typeof wall.id !== "string" || !Number.isInteger(wall.floor) ||
@@ -34,7 +48,7 @@ export async function saveConceptWithRevision(input: {
       (wall.thickness !== undefined && typeof wall.thickness !== "number"))) {
       throw new Error("PROJECT_WALL_PREFLIGHT_INVALID_SHAPE");
     }
-    const issues: WallPreflightIssue[] = validateConceptWalls(walls, input.lotBounds.width, input.lotBounds.depth);
+    const issues: WallPreflightIssue[] = validateConceptWalls(walls, candidateBounds.width, candidateBounds.depth);
     if (issues.length) throw new Error("PROJECT_WALL_PREFLIGHT_FAILED:" + issues.map((issue) => issue.code).join(","));
   }
   const response = await fetch(`/api/arch/concept-projects/${encodeURIComponent(input.projectId)}`, {
