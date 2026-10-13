@@ -15,6 +15,7 @@ export interface TadCentralProps {
   permittedModules: readonly LauncherModule[];
   previewModules?: readonly LauncherModule[];
   companyName?: string;
+  notificationCount?: number;
 }
 
 const TAD_LABELS: Partial<Record<LauncherModule, { description: string; section: string }>> = {
@@ -90,7 +91,7 @@ const SUPPORT_ACTIONS = [
   { icon: LifeBuoy, label: "Falar com o Suporte" },
 ];
 
-export default function TadCentral({ audience, enabledModules, permittedModules, previewModules = [], companyName }: TadCentralProps) {
+export default function TadCentral({ audience, enabledModules, permittedModules, previewModules = [], companyName, notificationCount = 0 }: TadCentralProps) {
   const { user, logout, isEffectiveAdmin } = useAuth();
   const [, setLocation] = useLocation();
   const [search, setSearch] = useState("");
@@ -221,7 +222,10 @@ export default function TadCentral({ audience, enabledModules, permittedModules,
             </div>
           )}
           <button type="button" className="hidden rounded-lg p-2 text-slate-300 hover:bg-white/5 sm:block" aria-label="Ajuda"><HelpCircle size={18} /></button>
-          <button type="button" className="relative rounded-lg p-2 text-slate-300 hover:bg-white/5" aria-label="Notificações"><Bell size={18} /><span className="absolute right-1 top-1 h-2 w-2 rounded-full bg-rose-500 ring-2 ring-[#070f1a]" /></button>
+          <button type="button" className="relative rounded-lg p-2 text-slate-300 hover:bg-white/5" aria-label={notificationCount > 0 ? `Notificações: ${notificationCount} não lidas` : "Notificações"}>
+            <Bell size={18} />
+            {notificationCount > 0 && <span className="absolute -right-0.5 -top-0.5 flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-rose-500 px-1 text-[10px] font-bold text-white ring-2 ring-[#070f1a]">{notificationCount > 99 ? "99+" : notificationCount}</span>}
+          </button>
           <div className="relative">
             <button type="button" onClick={() => setMenuOpen(o => !o)} className="flex items-center gap-2 rounded-xl border border-white/10 py-1.5 pl-1.5 pr-2 hover:bg-white/5" aria-haspopup="menu" aria-expanded={menuOpen}>
               <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-cyan-500 to-blue-600 text-xs font-bold text-white">{initials}</span>
