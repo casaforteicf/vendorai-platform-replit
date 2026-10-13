@@ -722,7 +722,8 @@ function AppRoutes() {
         <Route path="/partner/leads">{() => <PartnerRoute component={PartnerLeads} />}</Route>
         <Route path="/partner/commissions">{() => <PartnerRoute component={PartnerCommissions} />}</Route>
         <Route path="/partner">{() => <PartnerRoute component={PartnerDashboard} />}</Route>
-        <Route path="/marketplace">{() => <ProtectedRoute component={Marketplace} />}</Route>
+        <Route path="/admin/solucoes">{() => <SuperAdminRoute component={Marketplace} />}</Route>
+        <Route path="/marketplace"><RedirectPage to="/dashboard" /></Route>
         <Route path="/content">{() => <ProtectedRoute component={Content} />}</Route>
         <Route path="/midias">{() => <ProtectedRoute component={MediaCenter} />}</Route>
         <Route path="/midias/informacoes">{() => <ProtectedRoute component={MediaCenter} />}</Route>
