@@ -3,6 +3,18 @@ import { describeWallDiagnostics } from "./conceptWallDiagnosticPresentation";
 import type { ConceptWallDiagnostic } from "./conceptWallDiagnostics";
 
 describe("apresentação do diagnóstico arquitetônico", () => {
+  it("apresenta mensagens para todos os códigos novos do validador", () => {
+    const codes = ["INVALID_WALL_ID", "INVALID_FLOOR", "INVALID_TOLERANCE"] as const;
+    const report: ConceptWallDiagnostic = {
+      issues: codes.map((code) => ({ wallId: "w1", code })),
+      overlaps: [], junctions: [], affectedWallIds: ["w1"], hasBlockingIssues: true,
+    };
+    expect(describeWallDiagnostics(report).map((item) => item.label)).toEqual([
+      "Identificador da parede ausente ou inválido",
+      "Pavimento inválido",
+      "Precisão geométrica inválida",
+    ]);
+  });
   it("mapeia erros e permite identificar paredes afetadas", () => {
     const report: ConceptWallDiagnostic = {
       issues: [{ wallId: "w1", code: "OUTSIDE_LOT" }],
