@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { createCpuRenderJob } from "./render-worker-client";
 import type { DiffusePreviewOptions } from "./render-diffuse-preview";
+import { renderWebGpuPreview } from "./render-webgpu-preview";
 import { probeRenderAccelerators, selectAvailableRenderBackend, type RenderAcceleratorCapabilities } from "./render-gpu-capabilities";
 
 type Props={options:DiffusePreviewOptions; tenantId?:string; authToken?:string; arqdorProjectId?:string};
@@ -22,6 +23,7 @@ export function ExperimentalCpuRenderPanel({options,tenantId,authToken,arqdorPro
  const [transmission,setTransmission]=useState(0);
  const [completed,setCompleted]=useState(false);
  const [saving,setSaving]=useState(false);
+ const [gpuBusy,setGpuBusy]=useState(false);
  const savingRef=useRef(false);
  const [savedVersions,setSavedVersions]=useState<Array<{id:string;label:string;image:string}>>([]);
  const [loadingVersions,setLoadingVersions]=useState(false);
@@ -60,7 +62,7 @@ export function ExperimentalCpuRenderPanel({options,tenantId,authToken,arqdorPro
   setComparison(null);
   setStatus("Parâmetros alterados — renderize novamente");
  },[samples,denoise,exposure,sunIntensity,bounceCount,selectedMaterial,roughness,transmission]);
- const stop=()=>{generation.current++;job.current?.cancel();job.current=null;setCompleted(false);setStatus("Cancelado");};
+ const stop=()=>{generation.current++;savedGeneration.current++;job.current?.cancel();job.current=null;setCompleted(false);setStatus("Cancelado");};
  const exportPng=()=>{
   if(!completed||!canvas.current||job.current)return;
   const link=document.createElement("a");
@@ -121,6 +123,27 @@ export function ExperimentalCpuRenderPanel({options,tenantId,authToken,arqdorPro
   }catch(error){if(sourceGeneration===savedGeneration.current)setStatus("Falha ao salvar: "+(error instanceof Error?error.message:String(error)));}
   finally{savingRef.current=false;setSaving(false);}
  };
+ const startGpu=async()=>{
+  if(gpuBusy||accelerators?.webgpu!=="available")return;
+  const currentGeneration=++generation.current;
+  job.current?.cancel();job.current=null;
+  savedGeneration.current++;
+  setCompleted(false);setProgress(0);setGpuBusy(true);
+  setStatus("GPU experimental: preparando cena");
+  try{
+   const renderOptions:DiffusePreviewOptions={...options,directionalLight:{directionToLight:options.directionalLight?.directionToLight??[0.35,0.8,0.45],color:options.directionalLight?.color??[1,1,1],intensity:sunIntensity}};
+   const rgba=await renderWebGpuPreview(renderOptions);
+   if(currentGeneration!==generation.current)return;
+   const context=canvas.current?.getContext("2d");
+   if(!context)throw Error("Canvas indisponível");
+   canvas.current!.width=options.width;canvas.current!.height=options.height;
+   context.putImageData(new ImageData(rgba,options.width,options.height),0,0);
+   setProgress(100);setCompleted(true);setStatus("Prévia GPU experimental concluída (sem path tracing)");
+   const image=canvas.current?.toDataURL("image/png");
+   if(image){setLatestCompletedImage(image);const version=++historySequence.current;setHistory(old=>[{image,label:`Prévia GPU ${version}`},...old].slice(0,3));}
+  }catch(error){if(currentGeneration===generation.current)setStatus("GPU não concluiu: "+(error instanceof Error?error.message:String(error))+" — prévia CPU disponível");}
+  finally{setGpuBusy(false);}
+ };
  const start=()=>{
   savedGeneration.current++;
   stop();
@@ -179,7 +202,8 @@ export function ExperimentalCpuRenderPanel({options,tenantId,authToken,arqdorPro
    {selectedMaterial && <label>Transmissão <input type="range" min="0" max="1" step="0.05" value={transmission} onChange={e=>setTransmission(Number(e.target.value))}/>{transmission.toFixed(2)}</label>}
    <label>Rebotes <select value={bounceCount} onChange={e=>setBounceCount(Number(e.target.value))} className="rounded border p-1">{[1,2,3,4].map(v=><option key={v} value={v}>{v}</option>)}</select></label>
    <label className="flex items-center gap-2"><input type="checkbox" checked={denoise} onChange={e=>setDenoise(e.target.checked)}/>Filtro de ruído</label>
-   <button type="button" onClick={start} className="rounded bg-slate-900 px-3 py-2 text-white">Renderizar prévia</button>
+   <button type="button" onClick={start} className="rounded bg-slate-900 px-3 py-2 text-white">Renderizar prévia CPU</button>
+   <button type="button" disabled={gpuBusy||accelerators?.webgpu!=="available"||options.geometry.truncated||options.geometry.totalTriangles>512} onClick={()=>void startGpu()} className="rounded border px-3 py-2 disabled:opacity-40">Renderizar prévia WebGPU (até 512 triângulos)</button>
    <button type="button" onClick={stop} className="rounded border px-3 py-2">Cancelar</button>
    <button type="button" disabled={!completed||!!job.current} onClick={exportPng} className="rounded border px-3 py-2 disabled:opacity-40">Exportar PNG local</button>
    {tenantId && authToken && arqdorProjectId && <button type="button" disabled={!completed||!!job.current||saving} onClick={()=>void saveToLibrary()} className="rounded border px-3 py-2 disabled:opacity-40">{saving?"Salvando...":"Salvar na Biblioteca (experimental)"}</button>}
