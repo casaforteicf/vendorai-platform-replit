@@ -186,8 +186,8 @@ function RenderStudioInner() {
           { label: "Versões", icon: "▤", action: () => { setBottomPanelOpen(true); if (stepIndex(step) >= stepIndex("versao")) handleStepClick("versao"); } },
           { label: "Especificar", icon: "≡", action: () => handleOpenSpecification() },
         ].map(tool => (
-          <button key={tool.label} type="button" onClick={tool.action} disabled={tool.disabled}
-            style={{ display: "inline-flex", alignItems: "center", gap: 7, whiteSpace: "nowrap", padding: "7px 11px", borderRadius: 6, border: `1px solid ${D.border}`, color: D.text, background: D.card, fontSize: 11, fontWeight: 600, cursor: tool.disabled ? "not-allowed" : "pointer", opacity: tool.disabled ? 0.45 : 1 }}>
+          <button key={tool.label} type="button" onClick={tool.action} disabled={"disabled" in tool && tool.disabled}
+            style={{ display: "inline-flex", alignItems: "center", gap: 7, whiteSpace: "nowrap", padding: "7px 11px", borderRadius: 6, border: `1px solid ${D.border}`, color: D.text, background: D.card, fontSize: 11, fontWeight: 600, cursor: "disabled" in tool && tool.disabled ? "not-allowed" : "pointer", opacity: "disabled" in tool && tool.disabled ? 0.45 : 1 }}>
             <span aria-hidden="true" style={{ color: D.green, fontSize: 13 }}>{tool.icon}</span>{tool.label}
           </button>
         ))}
