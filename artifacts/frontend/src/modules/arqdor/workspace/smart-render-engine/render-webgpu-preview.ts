@@ -52,7 +52,7 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
       rgb=colors[t].xyz*clamp(0.16+diffuse,0.0,1.0);
    }
  }
- let v=vec3<u32>(clamp(rgb,vec3<f32>(0.0),vec3<f32>(1.0))*255.0+0.5);
+ let v=vec3<u32>(clamp(rgb*p.sky.w,vec3<f32>(0.0),vec3<f32>(1.0))*255.0+0.5);
  pixels[gid.y*w+gid.x]=v.x | (v.y<<8u) | (v.z<<16u) | (255u<<24u);
 }
 `;
@@ -111,7 +111,7 @@ export async function renderWebGpuPreview(o:DiffusePreviewOptions):Promise<Uint8
    const params=new Float32Array([
      ...o.camera.position,0,...forward,0,...right,0,...up,0,
      ...sun,Math.max(0,intensity),
-     ...(o.skyColor??[0.72,0.82,0.95]),0,
+     ...(o.skyColor??[0.72,0.82,0.95]),o.display?.exposure??1,
      width,height,Math.tan(o.camera.verticalFovDegrees*Math.PI/360),geometry.totalTriangles
    ]);
    if(params.some(v=>!Number.isFinite(v)))throw Error("ARQDOR: parâmetros da câmera ou luz inválidos");
