@@ -849,7 +849,7 @@ export function SidebarLayout({ children, arqdorVisible = false }: { children: R
         { id: "ia", name: "IA Hub", links: aiKnowledgeNav },
         { id: "intelligence", name: "Inteligência", links: inteligenciaNav },
         { id: "works", name: "Obras", links: verticalOperationNav.filter(item => ["/obras", "/insumos", "/composicoes"].includes(item.href)) },
-        { id: "library", name: "Biblioteca", links: navigation.filter(item => ui20ServiceForPath(item.href) === "library") },
+        { id: "library", name: "Biblioteca", links: [{ href: "/midias", name: "Biblioteca de Mídias", icon: FolderOpen }] },
         { id: "marketplace", name: "Marketplace", links: navigation.filter(item => item.href === "/marketplace") },
         { id: "arqdor", name: "Arqdor", links: arqdorVisible ? navigation.filter(item => item.href === "/arch" || item.href.startsWith("/arch/")) : [] },
         { id: "settings", name: "Configurações", links: administrationNav },
