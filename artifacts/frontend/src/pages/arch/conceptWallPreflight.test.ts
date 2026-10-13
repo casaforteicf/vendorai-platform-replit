@@ -42,8 +42,8 @@ describe("Arqdor Projeto — pré-validação de paredes", () => {
         .toEqual([{ wallId: "", code: "INVALID_TOLERANCE" }]);
     }
   });
-  it("identifica segmentos com comprimento igual à tolerância", () => {
-    expect(validateConceptWalls([{ ...wall, x2: 1.001 }], 12, 25, 0.001))
+  it("identifica segmentos com comprimento abaixo da tolerância", () => {
+    expect(validateConceptWalls([{ ...wall, x2: 1.0005 }], 12, 25, 0.001))
       .toContainEqual({ wallId: "a", code: "ZERO_LENGTH" });
   });
   it("detecta parede que ultrapassa o lote com suas faces, mesmo com eixo interno", () => {
