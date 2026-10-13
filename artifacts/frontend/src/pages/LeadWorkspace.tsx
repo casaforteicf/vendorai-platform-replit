@@ -552,20 +552,27 @@ export default function LeadWorkspace() {
         toast({ title: "Negócio não carregado", description: "Atualize a página e tente novamente.", variant: "destructive" });
         return;
       }
-      const nextConfigured = stages.slice(currentIndex + 1).find((stage) => !hiddenFromCommercialFlow.has(stage.key));
+      // Open immediately on click; preparing stage/owner suggestions must not block the dialog.
+      // This also makes backend/permission issues visible in the confirmation UI.
+      setOpen(true);
+      const nextConfigured = stages.slice(Math.max(0, currentIndex + 1)).find((stage) => !hiddenFromCommercialFlow.has(stage.key));
       const requested = requestedStage && stages.some((stage) => stage.key === requestedStage) ? requestedStage : null;
       const stage = deal.etapa === "em_aquecimento" ? "novo" : (requested ?? nextConfigured?.key ?? "");
       if (!stage) {
+        setOpen(false);
         toast({ title: "Sem próxima etapa", description: "Verifique a configuração da pipeline.", variant: "destructive" });
         return;
       }
 
       const nextStageConfig = stages.find((candidate) => candidate.key === stage) as ResponsibilityStage | undefined;
-      const stageEligibleUsers = users.filter((candidate) => userCanOwnStage(candidate as ResponsibilityUser, nextStageConfig));
+      const stageEligibleUsers = users.filter((candidate) => {
+        try { return userCanOwnStage(candidate as ResponsibilityUser, nextStageConfig); }
+        catch { return false; }
+      });
       const preferredOwner = [deal.assignedTo, lead?.assignedTo, user?.id].find((candidateId) =>
         Boolean(candidateId) && stageEligibleUsers.some((candidate) => candidate.id === candidateId)
       );
-      // Primeiro abre a janela, antes da sugestão de IA e demais cálculos.
+      // The confirmation dialog is already opened before optional calculations.
       setNextStage(stage);
       setOwner(preferredOwner ?? stageEligibleUsers[0]?.id ?? "");
       setTitle(guidance[stage]?.[1] || "Dar continuidade ao atendimento");
@@ -574,7 +581,6 @@ export default function LeadWorkspace() {
       setDue(tomorrow());
       setEditEligible(false);
       setAdvancedHandoffOpen(false);
-      setOpen(true);
     } catch (error) {
       toast({
         title: "Falha ao abrir avanço",
@@ -884,7 +890,7 @@ export default function LeadWorkspace() {
           </div>
           <div className="flex shrink-0 items-center gap-2">
             {deal
-              ? <Button className="shrink-0" onClick={showAdvance}>Avançar atendimento <ArrowRight className="ml-2 h-4 w-4" /></Button>
+              ? <Button className="shrink-0" type="button" onClick={showAdvance} data-testid="advance-attendance-button">Avançar atendimento <ArrowRight className="ml-2 h-4 w-4" /></Button>
               : <Button className="shrink-0" disabled={createDeal.isPending} onClick={startAttendance}>{createDeal.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Iniciar atendimento</Button>}
             <AdminDeleteLeadButton leadId={lead.id} leadName={lead.nome} redirectTo="/leads" compact={false} />
           </div>
