@@ -140,7 +140,7 @@ export default function Dashboard() {
           recentActivity={executive?.atividade?.ultimas20}
           loading={!ui20NavQuery.isSuccess}
           erpVisible={ui20NavQuery.data?.some((module) => module.moduleKey === "financeiro" && module.isEnabled) ?? false}
-          arqdorVisible={Boolean(user?.tenantVertical && /constr|arquit|obra|marcen|m[oó]ve|design/i.test(user.tenantVertical))}
+          arqdorVisible={user?.platformRole === "super_admin" || Boolean(user?.tenantVertical && /constr|arquit|obra|marcen|m[oó]ve|design/i.test(user.tenantVertical))}
         />
       ) : null}
       <Tabs defaultValue="overview" className="w-full">
