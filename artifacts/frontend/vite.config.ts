@@ -297,6 +297,11 @@ export default defineConfig({
         assetFileNames: `assets/[name]-${buildId}-[hash][extname]`,
         manualChunks(id) {
           const normalized = id.replace(/\\/g, "/");
+          // Peel the Concept pure-logic helpers (lowercase concept*.ts geometry,
+          // templates, wall network, etc.) out of the ConceptPlanner entry chunk
+          // into a sibling chunk loaded in parallel. Keeps behavior identical and
+          // trims the ConceptPlanner chunk under its size budget.
+          if (normalized.includes("/src/pages/arch/concept")) return "arch-concept-logic";
           if (!normalized.includes("/node_modules/")) return undefined;
           if (normalized.includes("/html2pdf.js/")) return "vendor-html2pdf";
           if (normalized.includes("/jspdf/")) return "vendor-jspdf";
