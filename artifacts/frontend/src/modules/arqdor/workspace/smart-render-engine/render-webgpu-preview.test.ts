@@ -42,6 +42,16 @@ describe("experimental WebGPU preflight", () => {
     await expect(renderWebGpuPreview({ ...options, width: 1000, height: 1000 }))
       .rejects.toThrow(/resolução WebGPU/);
   });
+  it("rejects non-finite camera values before WebGPU discovery", async () => {
+    await expect(renderWebGpuPreview({ ...options,
+      camera: { ...options.camera, position: [Number.NaN, 0, 3] } }))
+      .rejects.toThrow(/câmera ou iluminação inválidas/);
+  });
+  it("rejects zero-length sun direction before WebGPU discovery", async () => {
+    await expect(renderWebGpuPreview({ ...options,
+      light: { ...options.light, directionToLight: [0, 0, 0] } }))
+      .rejects.toThrow(/direção da luz inválida/);
+  });
   it("rejects invalid field of view", async () => {
     await expect(renderWebGpuPreview({ ...options, camera: { ...options.camera, verticalFovDegrees: 0 } }))
       .rejects.toThrow(/FOV inválido/);
