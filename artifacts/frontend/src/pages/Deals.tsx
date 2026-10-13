@@ -2573,13 +2573,18 @@ export default function Deals() {
   // da pipeline. Não misture com ETAPAS/KANBAN_COLUMNS fixos, pois isso cria
   // colunas órfãs (ex.: "Contrato") e faz "Responsáveis por etapa" divergir.
   const visibleEtapas = useMemo(() => {
+    // A entrada do funil comercial deve permanecer visível mesmo quando uma
+    // configuração antiga do tenant omite a etapa inicial.
+    const configuredStages = pipelineStages.some((stage) => stage.key === "novo")
+      ? pipelineStages
+      : [{ key: "novo", label: "Novo", ordem: -1, color: "text-slate-600", bg: "bg-slate-100" }, ...pipelineStages];
     if (pipelineStages.length === 0) {
       return ETAPAS
         .filter((stage) => stage.value !== "conferencia_estoque")
         .map((stage) => ({ ...stage }));
     }
 
-    return [...pipelineStages]
+    return [...configuredStages]
       .filter((stage) => !["em_aquecimento", "parceiro"].includes(stage.key))
       .sort((a, b) => (a.ordem ?? 0) - (b.ordem ?? 0))
       .map((stage) => ({
@@ -2591,6 +2596,9 @@ export default function Deals() {
   }, [pipelineStages]);
 
   const kanbanColumns = useMemo<KanbanColumnDef[]>(() => {
+    const configuredStages = pipelineStages.some((stage) => stage.key === "novo")
+      ? pipelineStages
+      : [{ key: "novo", label: "Novo", ordem: -1, color: "text-slate-600", bg: "bg-slate-100" }, ...pipelineStages];
     const staticByKey = new Map(
       KANBAN_COLUMNS.map((column) => [column.onDrop.etapa, column] as const),
     );
@@ -2605,7 +2613,7 @@ export default function Deals() {
         .sort((a, b) => a.order - b.order);
     }
 
-    return [...pipelineStages]
+    return [...configuredStages]
       .filter((stage) => !["em_aquecimento", "parceiro"].includes(stage.key))
       .sort((a, b) => (a.ordem ?? 0) - (b.ordem ?? 0))
       .map((stage) => {
@@ -3098,7 +3106,10 @@ export default function Deals() {
       if (!over) return;
 
       const draggedDeal = deals.find((d) => d.id === active.id);
-      const targetCol = kanbanColumns.find((c) => c.dropId === over.id);
+      // Dropping over another card also resolves to that card's column.
+      const overDeal = deals.find((d) => d.id === String(over.id));
+      const targetId = overDeal ? getColumnIdForDeal(overDeal) : String(over.id);
+      const targetCol = kanbanColumns.find((c) => c.dropId === targetId);
 
       if (!draggedDeal || !targetCol) return;
 
