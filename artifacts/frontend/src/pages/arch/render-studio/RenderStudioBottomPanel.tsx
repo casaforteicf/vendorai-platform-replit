@@ -7,12 +7,12 @@ type Comment = { id: string; text: string; author: string; timestamp: Date };
 
 // ─── Bottom Panel (P3-26 Storyboard, P3-27 Comments, P3-28 History, P3-29 Search) ─
 
-export function RenderStudioBottomPanel({ versions, projectId, currentRenderId, isOpen, onToggle, onSelectVersion, eventLog, userName }: {
+export function RenderStudioBottomPanel({ versions, projectId, currentRenderId, isOpen, onToggle, onSelectVersion, eventLog, userName, onOpenMaterialLibrary }: {
   versions: RenderVersion[]; projectId: string | null; currentRenderId: string | null; isOpen: boolean; onToggle: () => void;
   onSelectVersion: (version: RenderVersion) => void;
-  eventLog: EventLogEntry[]; userName: string;
+  eventLog: EventLogEntry[]; userName: string; onOpenMaterialLibrary: () => void;
 }) {
-  const [tab, setTab] = useState<"versoes" | "storyboard" | "comentarios" | "historico">("versoes");
+  const [tab, setTab] = useState<"versoes" | "materiais" | "storyboard" | "comentarios" | "historico">("versoes");
   const [storyboard, setStoryboard] = useState<RenderVersion[]>([]);
   const [comments, setComments] = useState<Record<string, Comment[]>>({});
   const [commentDraft, setCommentDraft] = useState<Record<string, string>>({});
@@ -45,8 +45,8 @@ export function RenderStudioBottomPanel({ versions, projectId, currentRenderId, 
     setCommentDraft(prev => ({ ...prev, [versionId]: "" }));
   }
 
-  const TABS = ["versoes", "storyboard", "comentarios", "historico"] as const;
-  const tabLabels: Record<string, string> = { versoes: "Versões", storyboard: "Storyboard", comentarios: "Comentários", historico: "Histórico" };
+  const TABS = ["versoes", "materiais", "storyboard", "comentarios", "historico"] as const;
+  const tabLabels: Record<string, string> = { versoes: "Versões", materiais: "Materiais", storyboard: "Storyboard", comentarios: "Comentários", historico: "Histórico" };
 
   return (
     <div className="arqdor-legacy-bottom-panel" style={{ flexShrink: 0, borderTop: `1px solid ${D.border}`, background: D.surface, display: "flex", flexDirection: "column", overflow: "hidden", transition: "height 0.2s", height: isOpen ? 188 : 36 }}>
@@ -73,6 +73,23 @@ export function RenderStudioBottomPanel({ versions, projectId, currentRenderId, 
 
       {isOpen && (
         <div style={{ flex: 1, overflowX: tab !== "historico" && tab !== "comentarios" ? "auto" : "hidden", overflowY: tab === "historico" || tab === "comentarios" ? "auto" : "hidden", padding: "8px 12px" }}>
+
+          {tab === "materiais" && (
+            <section aria-label="Biblioteca de materiais" style={{ display: "flex", gap: 14, alignItems: "center", minHeight: 115, color: D.text }}>
+              <div aria-hidden="true" style={{ display: "grid", gridTemplateColumns: "repeat(3, 36px)", gap: 6 }}>
+                {["#9d9182", "#5b6e64", "#b1b6b5", "#816957", "#66757a", "#b69b7b"].map((color, index) => (
+                  <div key={index} style={{ width: 36, height: 36, borderRadius: 5, background: color, border: `1px solid ${D.border}` }} />
+                ))}
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                <strong style={{ fontSize: 12 }}>Biblioteca de materiais do projeto</strong>
+                <span style={{ color: D.muted, fontSize: 10 }}>Abra o catálogo real para buscar texturas, referências e fabricantes. As amostras ao lado são apenas indicativas.</span>
+                <button type="button" onClick={onOpenMaterialLibrary} style={{ width: "fit-content", border: `1px solid ${D.purple}`, background: `${D.purple}22`, color: D.purpleText, padding: "7px 12px", borderRadius: 6, fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
+                  Abrir biblioteca de materiais →
+                </button>
+              </div>
+            </section>
+          )}
 
           {/* P3-29: versões com search */}
           {tab === "versoes" && (
