@@ -76,6 +76,7 @@ import { autoRepairConceptLayout } from "./conceptAutoRepair";
 import { buildExplainableFindings } from "./conceptExplainableEvaluation";
 import { clampObjectToLot, clampRoomToLot, clampWallToLot, normalizeOpeningDimensions } from "./conceptParametricEditing";
 import { buildConceptWallDiagnostics } from "./conceptWallDiagnostics";
+import { validateConceptWalls } from "./conceptWallPreflight";
 
 const ConceptPlan2D = lazy(() => import("./ConceptPlan2D"));
 const ConceptTypologyPreview = lazy(() => import("./ConceptTypologyPreview"));
@@ -1832,6 +1833,20 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
     }
 
     const sendRequest = async () => {
+      // Validação da geometria no fluxo real de POST/PATCH do editor.
+      // Não corrige silenciosamente paredes nem altera o controle de revisão.
+      const wallIssues = validateConceptWalls(
+        nextCustomWalls.map((wall) => ({
+          id: wall.id, floor: wall.floor, x1: wall.x1, y1: wall.y1,
+          x2: wall.x2, y2: wall.y2, thickness: wall.thickness,
+        })),
+        lotWidth,
+        lotDepth,
+      );
+      if (wallIssues.length > 0) {
+        throw new Error("Revise as paredes antes de salvar: " +
+          [...new Set(wallIssues.map((issue) => issue.code))].join(", "));
+      }
       if (revisionAutosaveEnabled && revisionConflictRef.current) throw new Error("Conflito pendente. Gravação bloqueada até revisar o projeto.");
       if (revisionAutosaveEnabled && targetId && !conceptRevisionRef.current) throw new Error("Revisão do projeto indisponível.");
       const response = await fetch(
