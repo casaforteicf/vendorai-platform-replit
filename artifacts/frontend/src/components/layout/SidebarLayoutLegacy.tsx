@@ -641,7 +641,7 @@ export function SidebarLayout({ children, arqdorVisible = false }: { children: R
         { name: "Segmentos",   href: "/admin/verticais",  icon: Building2,    sellerHidden: false, section: "admin", badge: undefined },
         { name: "App Builder", href: "/admin/app-builder", icon: Cpu,          sellerHidden: false, section: "admin", badge: undefined },
         { name: "Produtos",    href: "/admin/produtos-internos", icon: Package, sellerHidden: false, section: "admin", badge: undefined },
-        { name: "Marketplace", href: "/marketplace",      icon: Store,        sellerHidden: false, section: "admin", badge: undefined },
+        { name: "Central de Soluções", href: "/admin/solucoes", icon: Store, sellerHidden: false, section: "admin", badge: undefined },
         { name: "AI Usage",    href: "/admin/ai-usage",   icon: BrainCircuit, sellerHidden: false, section: "admin", badge: undefined },
         { name: "Financeiro",  href: "/admin/financeiro", icon: BarChart3,    sellerHidden: false, section: "admin", badge: undefined },
         { name: "Parceiros",   href: "/admin/partners",   icon: Users,        sellerHidden: false, section: "admin", badge: undefined },
