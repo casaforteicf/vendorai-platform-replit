@@ -23,6 +23,10 @@ describe("Arqdor parametric BIM preflight", () => {
     ] });
     expect(r.issues.map(x => x.code)).toEqual(["OPENING_OUTSIDE_SLAB", "OPENING_COLLISION"]);
   });
+  it("rejects non-finite roof pitches and unsupported kinds", () => {
+    expect(validateRoof({ kind: "flat", width: 8, depth: 10, pitchDegrees: Number.NaN, eave: 0 }).valid).toBe(false);
+    expect(validateRoof({ kind: "unknown" as "flat", width: 8, depth: 10, pitchDegrees: 0, eave: 0 }).valid).toBe(false);
+  });
   it("calculates pitched-roof rise and rejects incompatible flat pitch", () => {
     expect(validateRoof({ kind: "pitched", width: 8, depth: 10, pitchDegrees: 45, eave: 0.4 }).value.rise).toBeCloseTo(4);
     expect(validateRoof({ kind: "flat", width: 8, depth: 10, pitchDegrees: 15, eave: 0 }).valid).toBe(false);
