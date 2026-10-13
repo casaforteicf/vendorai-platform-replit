@@ -14,7 +14,6 @@ export function getUi20VisibleServices(input: {
   if (loading) return visible;
   visible.add("crm");
   visible.add("marketing");
-  visible.add("marketplace");
   if (isAdmin && permittedModule("settings")) visible.add("settings");
   function permittedModule(key: string) {
     const row = modules.find((module) => module.moduleKey === key);
@@ -26,6 +25,6 @@ export function getUi20VisibleServices(input: {
   if (["sdr", "vendor_brain", "knowledge_graph"].some(permittedModule)) visible.add("ia");
   if (!permittedModule("leads")) visible.delete("crm");
   if (!["content", "campaigns", "analytics", "content_autopilot"].some(permittedModule)) visible.delete("marketing");
-  // /marketplace is distinct from Praça.AI. No catalog key exists for this public workspace.
+  // O catálogo de módulos é exclusivo do Superadmin, fora da navegação operacional.
   return visible;
 }
