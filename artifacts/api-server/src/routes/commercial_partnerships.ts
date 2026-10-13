@@ -522,6 +522,115 @@ router.post("/deals/:dealId/share-with-partner", async (req, res) => {
   return res.status(201).json(result);
 });
 
+// Encaminhamento em cadeia: empresa de origem ou participante com permissão
+// pode solicitar trabalho a uma terceira empresa com parceria ativa direta.
+// Não altera a origem canônica nem transfere comissões automaticamente.
+const downstreamHandoffSchema = z.object({
+  partnershipId: z.string().min(1),
+  targetPipeline: z.enum(SHARED_PIPELINES).default("comercial"),
+  targetStage: z.string().trim().min(1).max(120).optional(),
+  operationalUserId: z.string().min(1).optional(),
+  note: z.string().trim().min(3).max(2000),
+});
+
+router.post("/deals/:dealId/forward-to-company", async (req, res) => {
+  const parsed = downstreamHandoffSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+  const senderTenantId = currentTenantId(req);
+  if (!senderTenantId) return res.status(403).json({ error: "Empresa atual não identificada." });
+  const [deal] = await db.select().from(dealsTable)
+    .where(eq(dealsTable.id, String(req.params.dealId))).limit(1);
+  if (!deal) return res.status(404).json({ error: "Negócio não encontrado." });
+
+  const senderIsOrigin = senderTenantId === deal.tenantId;
+  let senderParticipation: typeof dealTenantParticipationsTable.$inferSelect | undefined;
+  if (!senderIsOrigin) {
+    [senderParticipation] = await db.select().from(dealTenantParticipationsTable)
+      .where(and(
+        eq(dealTenantParticipationsTable.dealId, deal.id),
+        eq(dealTenantParticipationsTable.partnerTenantId, senderTenantId),
+        eq(dealTenantParticipationsTable.status, "active"),
+      )).limit(1);
+    if (!senderParticipation) return res.status(403).json({ error: "Empresa sem participação ativa neste negócio." });
+    const access = await assertParticipationAccess(req, senderParticipation.id);
+    if (access.error) return res.status(403).json({ error: "Usuário sem acesso ao negócio compartilhado." });
+    if (!senderParticipation.permissions?.includes("move_pipeline"))
+      return res.status(403).json({ error: "Encaminhamento não permitido para esta participação." });
+  } else if (!canManageOwnerTenant(req, deal.tenantId)) {
+    return res.status(403).json({ error: "Somente administradores da origem podem encaminhar por este fluxo." });
+  }
+
+  const [partnership] = await db.select().from(tenantCommercialPartnershipsTable)
+    .where(and(
+      eq(tenantCommercialPartnershipsTable.id, parsed.data.partnershipId),
+      eq(tenantCommercialPartnershipsTable.ownerTenantId, senderTenantId),
+      eq(tenantCommercialPartnershipsTable.status, "active"),
+    )).limit(1);
+  if (!partnership || partnership.partnerTenantId === senderTenantId || partnership.partnerTenantId === deal.tenantId)
+    return res.status(422).json({ error: "Selecione parceria ativa de saída para uma terceira empresa." });
+
+  const destinationTenantId = partnership.partnerTenantId;
+  const sourceStage = senderParticipation?.stage ?? deal.etapa;
+  const stage = await resolveStageForTenant({
+    tenantId: destinationTenantId,
+    pipeline: parsed.data.targetPipeline,
+    requestedStage: parsed.data.targetStage,
+    sourceStage,
+  });
+  if (!stage) return res.status(409).json({
+    error: "STAGE_MAPPING_REQUIRED",
+    message: "Defina uma etapa existente na pipeline da empresa de destino.",
+  });
+  const operationalUserId = await resolveOperationalUser({
+    tenantId: destinationTenantId,
+    requestedUserId: parsed.data.operationalUserId,
+    responsibleFunctions: stage.responsaveisFuncoes,
+  });
+  if (!operationalUserId) return res.status(422).json({ error: "STAGE_RESPONSIBLE_REQUIRED" });
+  if (partnership.authorizedUserIds?.length && !partnership.authorizedUserIds.includes(operationalUserId))
+    return res.status(403).json({ error: "Responsável não autorizado na parceria." });
+
+  const [existing] = await db.select().from(dealTenantParticipationsTable)
+    .where(and(
+      eq(dealTenantParticipationsTable.dealId, deal.id),
+      eq(dealTenantParticipationsTable.partnerTenantId, destinationTenantId),
+    )).limit(1);
+  if (existing) return res.status(409).json({
+    error: "PARTICIPATION_EXISTS",
+    message: "A empresa de destino já participou deste negócio. Use o fluxo de devolução/reativação para preservar o histórico.",
+  });
+
+  const now = new Date();
+  const stageDueAt = stage.slaMinutos ? new Date(now.getTime() + stage.slaMinutos * 60000) : null;
+  const [created] = await db.insert(dealTenantParticipationsTable).values({
+    dealId: deal.id,
+    ownerTenantId: deal.tenantId,
+    partnerTenantId: destinationTenantId,
+    partnershipId: partnership.id,
+    role: "participant",
+    status: "active",
+    operationalUserId,
+    pipeline: parsed.data.targetPipeline,
+    stage: stage.key,
+    stageEnteredAt: now,
+    stageDueAt,
+    permissions: (partnership.defaultPermissions ?? DEFAULT_PARTNER_PERMISSIONS)
+      .filter((permission) => permission !== "close_deal"),
+    sharedByUserId: req.user?.sub ?? null,
+    lastHandoffFromTenantId: senderTenantId,
+    lastHandoffAt: now,
+  }).returning();
+  return res.status(201).json({
+    dealId: deal.id,
+    originTenantId: deal.tenantId,
+    senderTenantId,
+    destinationTenantId,
+    participation: created,
+    note: parsed.data.note,
+    message: "Encaminhado sem alterar a origem do negócio.",
+  });
+});
+
 const handoffCompanySchema = z.object({
   partnershipId: z.string().min(1),
   targetPipeline: z.enum(SHARED_PIPELINES).optional(),
