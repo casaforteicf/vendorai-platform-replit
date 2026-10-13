@@ -1,4 +1,11 @@
 import { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import {
+  getGetTenantQueryKey,
+  getGetBusinessProfileByTenantQueryKey,
+  useGetBusinessProfileByTenant,
+  useGetTenant,
+} from "@workspace/api-client-react";
 import { useAuth } from "@/contexts/AuthContext";
 import TadCentral from "./TadCentral";
 import type { LauncherModule } from "@/lib/adaptiveModuleLauncher";
@@ -15,10 +22,39 @@ const MAPPING: Record<string, LauncherModule> = {
  * Failed authorization checks must never expose a clickable module.
  */
 export default function TadCentralRoute() {
-  const { user, token } = useAuth();
+  const { user, token, tenantOverride } = useAuth();
   const [enabled, setEnabled] = useState<LauncherModule[]>([]);
   const [failed, setFailed] = useState(false);
   const [permitted, setPermitted] = useState<LauncherModule[]>([]);
+  const tenantId = user?.tenantId ?? "";
+
+  // Nome da empresa para o seletor de tenant — mesma fonte do SidebarLayout.
+  const tenantQuery = useGetTenant(tenantId, {
+    query: { queryKey: getGetTenantQueryKey(tenantId), enabled: !!tenantId && !!token, staleTime: 5 * 60_000 },
+  });
+  const businessProfileQuery = useGetBusinessProfileByTenant(tenantId, {
+    query: { queryKey: getGetBusinessProfileByTenantQueryKey(tenantId), enabled: !!tenantId && !!token, staleTime: 5 * 60_000 },
+  });
+  const companyName =
+    businessProfileQuery.data?.nomeFantasia?.trim() ||
+    businessProfileQuery.data?.razaoSocial?.trim() ||
+    tenantQuery.data?.name?.trim() ||
+    tenantOverride?.name ||
+    (user as { tenantName?: string | null } | null)?.tenantName?.trim() ||
+    undefined;
+
+  // Contagem de novidades não lidas — mesmo endpoint do sino de novidades.
+  const unreadQuery = useQuery<{ count: number }>({
+    queryKey: ["changelog-unread"],
+    enabled: !!token,
+    staleTime: 60_000,
+    queryFn: async () => {
+      const r = await fetch("/api/changelog/unread-count", { headers: { Authorization: `Bearer ${token}` } });
+      if (!r.ok) throw new Error("unread-count failed");
+      return r.json();
+    },
+  });
+  const notificationCount = unreadQuery.data?.count ?? 0;
   useEffect(() => {
     if (!user?.tenantId || !token) return;
     const controller = new AbortController();
@@ -66,7 +102,8 @@ export default function TadCentralRoute() {
         Não foi possível conferir os serviços habilitados. Nenhum acesso adicional foi liberado.
       </div>}
       <TadCentral audience="business" enabledModules={enabled}
-        permittedModules={permitted} previewModules={enabled} companyName={undefined} />
+        permittedModules={permitted} previewModules={enabled}
+        companyName={companyName} notificationCount={notificationCount} />
     </>
   );
 }
