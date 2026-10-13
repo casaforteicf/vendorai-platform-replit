@@ -657,7 +657,7 @@ export default function LeadDetail() {
           urgencia: leadDadosDraft.urgencia || null,
           logoUrl: leadDadosDraft.logoUrl || null,
           websiteUrl: leadDadosDraft.websiteUrl || null,
-          metadata: { ...metadataAtual, ...metadataEditavel },
+          // Metadata de auditoria é protegida pelo backend e não deve seguir no PATCH comum.
         }),
       });
       const leadPayload = await leadResponse.json().catch(() => ({}));
