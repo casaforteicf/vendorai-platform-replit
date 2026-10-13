@@ -79,6 +79,9 @@ export async function renderWebGpuPreview(o:DiffusePreviewOptions):Promise<Uint8
    throw Error("ARQDOR: câmera ou iluminação inválidas");
  if(Math.hypot(...light.directionToLight)<1e-9)
    throw Error("ARQDOR: direção da luz inválida");
+ const viewDirection=o.camera.target.map((v,i)=>v-o.camera.position[i]);
+ if(Math.hypot(...viewDirection)<1e-9 || Math.hypot(...cross(viewDirection,o.camera.up??[0,1,0]))<1e-9)
+   throw Error("ARQDOR: orientação de câmera inválida");
  if(typeof navigator==="undefined" || typeof window==="undefined" || !window.isSecureContext)
    throw Error("ARQDOR: WebGPU exige navegador e contexto seguro");
  const gpu=(navigator as any).gpu;
