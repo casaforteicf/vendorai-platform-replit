@@ -1,6 +1,6 @@
 import type { Ui20Service } from "./ui20ServiceVisibility";
 export const ui20RouteGroups: Record<Ui20Service, readonly string[]> = {
-  home: ["/", "/dashboard", "/trabalho"],
+  home: ["/", "/tad", "/dashboard", "/trabalho"],
   crm: ["/leads", "/deals", "/pipeline-operacional", "/pipeline-relacionamento", "/empresas", "/contacts-nonleads"],
   omnichannel: ["/conversations"],
   prospecting: ["/app/prospector"],
