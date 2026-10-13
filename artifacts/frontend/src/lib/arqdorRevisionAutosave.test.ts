@@ -48,6 +48,21 @@ describe("Arqdor — integração defensiva do preflight no adaptador", () => {
   });
 });
 
+describe("Arqdor — integridade do payload de paredes", () => {
+  it("recusa dois conjuntos de paredes contraditórios sem fazer PATCH", async () => {
+    const mocked = vi.fn();
+    vi.stubGlobal("fetch", mocked);
+    const first = [{ id: "w1", floor: 0, x1: 1, y1: 1, x2: 3, y2: 1, thickness: 0.15 }];
+    const second = [{ ...first[0], x2: 50 }];
+    await expect(saveConceptWithRevision({
+      ...base,
+      lotBounds: { width: 12, depth: 25 },
+      updates: { customWalls: first, configuration: { customWalls: second } },
+    })).rejects.toThrow("PROJECT_WALL_PREFLIGHT_AMBIGUOUS_PAYLOAD");
+    expect(mocked).not.toHaveBeenCalled();
+  });
+});
+
 describe("Arqdor — snapshots do editor com configuração aninhada", () => {
   const walls = [{ id: "w1", floor: 0, x1: 1, y1: 1, x2: 4, y2: 1, thickness: 0.15 }];
   it("reconhece configuração.customWalls e os limites reais do editor", async () => {
