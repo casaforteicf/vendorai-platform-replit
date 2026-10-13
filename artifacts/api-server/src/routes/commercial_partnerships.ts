@@ -1134,6 +1134,18 @@ router.post("/intercompany-commissions/:commissionId/payments", async (req, res)
 
     if (!payerTitleId || !beneficiaryTitleId) throw new Error("Failed to create ERP titles for intercompany commission");
 
+    // Nunca lançar pagamentos em títulos de tenant diferente, mesmo se um ID
+    // incorreto tiver sido gravado anteriormente na comissão.
+    const [payerTitle] = await tx.select({ id: erpTitulosTable.id }).from(erpTitulosTable)
+      .where(and(eq(erpTitulosTable.id, payerTitleId), eq(erpTitulosTable.tenantId, commission.payerTenantId), eq(erpTitulosTable.tipo, "pagar")))
+      .limit(1);
+    const [beneficiaryTitle] = await tx.select({ id: erpTitulosTable.id }).from(erpTitulosTable)
+      .where(and(eq(erpTitulosTable.id, beneficiaryTitleId), eq(erpTitulosTable.tenantId, commission.beneficiaryTenantId), eq(erpTitulosTable.tipo, "receber")))
+      .limit(1);
+    if (!payerTitle || !beneficiaryTitle) {
+      throw new Error("INTERCOMPANY_ERP_TITLE_TENANT_MISMATCH");
+    }
+
     const [payerPayment] = await tx.insert(erpPagamentosTable).values({
       tenantId: commission.payerTenantId,
       tituloId: payerTitleId,
@@ -1162,7 +1174,7 @@ router.post("/intercompany-commissions/:commissionId/payments", async (req, res)
       pagoEm: fullyPaid ? paidAt : null,
       contaBancaria: parsed.data.payerAccount,
       updatedAt: new Date(),
-    }).where(eq(erpTitulosTable.id, payerTitleId));
+    }).where(and(eq(erpTitulosTable.id, payerTitleId), eq(erpTitulosTable.tenantId, commission.payerTenantId)));
 
     await tx.update(erpTitulosTable).set({
       valorPago: String(newPaid.toFixed(2)),
@@ -1170,7 +1182,7 @@ router.post("/intercompany-commissions/:commissionId/payments", async (req, res)
       pagoEm: fullyPaid ? paidAt : null,
       contaBancaria: parsed.data.beneficiaryAccount,
       updatedAt: new Date(),
-    }).where(eq(erpTitulosTable.id, beneficiaryTitleId));
+    }).where(and(eq(erpTitulosTable.id, beneficiaryTitleId), eq(erpTitulosTable.tenantId, commission.beneficiaryTenantId)));
 
     const [payment] = await tx.insert(intercompanyCommissionPaymentsTable).values({
       commissionId: commission.id,
