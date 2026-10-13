@@ -30,6 +30,8 @@ export default function RenderStudioGlbViewer({ url, modelId, onSelect, focusNam
   const [surface, setSurface] = useState("");
   const [color, setColor] = useState("#d5ddd8");
   const [lightPower, setLightPower] = useState(1.2);
+  const [cameraFov, setCameraFov] = useState(50);
+  const [cameraHeight, setCameraHeight] = useState(0);
   const [materialColors, setMaterialColors] = useState<Record<string, string>>({});
   const [savingSettings, setSavingSettings] = useState(false);
   const [walkthroughDuration, setWalkthroughDuration] = useState(12);
@@ -158,6 +160,7 @@ export default function RenderStudioGlbViewer({ url, modelId, onSelect, focusNam
       observer = new ResizeObserver(resize); observer.observe(holder); resize();
       const animate = () => { if (cancelled) return; frame = requestAnimationFrame(animate); controls.update(); renderer.render(scene, camera); };
       runtime.current = { root, camera, controls, sun };
+      setCameraHeight(Number(camera.position.y.toFixed(2)));
       animate(); setStatus("");
     })().catch((reason: unknown) => {
       if (!cancelled) { cleanup(); setStatus(""); setError(reason instanceof Error ? reason.message : "Falha ao visualizar GLB"); }
@@ -207,6 +210,25 @@ export default function RenderStudioGlbViewer({ url, modelId, onSelect, focusNam
     setMaterialColors(previous => ({ ...previous, [meshKey]: next }));
     setSaveMessage("Alterações ainda não salvas");
   }
+  function updateCameraFov(value: number) {
+    const current = runtime.current;
+    if (!current) return;
+    const next = Math.max(20, Math.min(100, value));
+    current.camera.fov = next;
+    current.camera.updateProjectionMatrix();
+    setCameraFov(next);
+    setSaveMessage("Enquadramento alterado na prévia. Salve uma câmera para registrar sua posição.");
+  }
+  function updateCameraHeight(value: number) {
+    const current = runtime.current;
+    if (!current || !Number.isFinite(value)) return;
+    const delta = value - current.camera.position.y;
+    current.camera.position.y = value;
+    current.controls.target.y += delta;
+    current.controls.update();
+    setCameraHeight(value);
+    setSaveMessage("Altura ajustada na prévia. Salve o enquadramento para registrar a posição.");
+  }
   function saveView() {
     const current = runtime.current;
     if (!current) return;
@@ -217,6 +239,7 @@ export default function RenderStudioGlbViewer({ url, modelId, onSelect, focusNam
     const current = runtime.current;
     if (!current) return;
     current.camera.position.fromArray(view.position); current.controls.target.fromArray(view.target); current.controls.update();
+    setCameraHeight(Number(current.camera.position.y.toFixed(2)));
   }
   function exportWalkthrough() {
     if (savedViews.length < 2) {
@@ -270,6 +293,18 @@ export default function RenderStudioGlbViewer({ url, modelId, onSelect, focusNam
           onChange={event => { setLightPower(Number(event.target.value)); setSaveMessage("Alterações ainda não salvas"); }} className="w-full accent-emerald-700" />
       </label>
       <div className="space-y-2 sm:col-span-2">
+        <fieldset disabled={!!status || !!error} className="grid gap-3 rounded-lg border border-emerald-800 bg-slate-900 p-3 text-slate-100 sm:grid-cols-2">
+          <legend className="px-2 text-xs font-semibold text-emerald-300">Câmera 3D · Prévia do modelo</legend>
+          <label className="flex flex-col gap-1 text-xs">Campo de visão: {cameraFov}°
+            <input aria-label="Campo de visão da câmera" type="range" min={20} max={100} step={1} value={cameraFov}
+              onChange={event => updateCameraFov(Number(event.target.value))} className="accent-emerald-400" />
+          </label>
+          <label className="flex flex-col gap-1 text-xs">Altura da câmera (unidades do modelo)
+            <input aria-label="Altura da câmera no modelo" type="number" step="0.1" value={cameraHeight}
+              onChange={event => updateCameraHeight(Number(event.target.value))} className="rounded border border-slate-600 bg-slate-800 px-2 py-1 text-white" />
+          </label>
+          <p className="text-xs text-slate-400 sm:col-span-2">A posição pode ser salva em um enquadramento. O campo de visão é apenas da prévia e ainda não é persistido no servidor.</p>
+        </fieldset>
         <button type="button" onClick={saveView} disabled={!!status || !!error}
           className="rounded-md border border-emerald-700 px-3 py-2 text-sm text-emerald-800 disabled:opacity-50">Salvar enquadramento</button>
         <div className="flex flex-wrap gap-2">{savedViews.map((view, index) =>
