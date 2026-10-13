@@ -22,8 +22,9 @@ const MessagingMediaPlanBridge = lazy(() => import("@/components/marketing/Messa
 
 // UI-01 is opt-in and remains off in all existing deployments unless explicitly enabled.
 const UI01_CONTEXT_NAV_ENABLED = import.meta.env.VITE_UI01_CONTEXT_NAV === "true";
-// Homologated and rolled out: default ON. Kill-switch: set VITE_UI20_SERVICE_TABS=false to disable.
-const UI20_SERVICE_TABS_ENABLED = import.meta.env.VITE_UI20_SERVICE_TABS !== "false";
+// Disabled by default: the global service tabs overlay was not part of the approved layout.
+// Enable only for isolated preview after explicit UI approval.
+const UI20_SERVICE_TABS_ENABLED = import.meta.env.VITE_UI20_SERVICE_TABS === "true";
 // Install prompt: default ON after device QA. Kill-switch: set VITE_MULTI02_PWA_INSTALL=false to disable.
 const MULTI02_PWA_INSTALL_ENABLED = import.meta.env.VITE_MULTI02_PWA_INSTALL !== "false";
 
