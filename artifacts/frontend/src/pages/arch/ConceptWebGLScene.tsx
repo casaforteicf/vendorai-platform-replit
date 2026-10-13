@@ -23,6 +23,8 @@ type RenderQuality = "fast" | "realistic" | "ultra";
 
 type Props = {
   experimentalBimModel?: BimModel;
+  selectedBimElementId?: string | null;
+  onSelectBimElement?: (id: string | null) => void;
   lotWidth: number;
   lotDepth: number;
   activeFloor: number;
@@ -317,6 +319,8 @@ function canWalkTo(
 
 export default function ConceptWebGLScene({
   experimentalBimModel,
+  selectedBimElementId,
+  onSelectBimElement,
   lotWidth,
   lotDepth,
   activeFloor,
@@ -634,12 +638,14 @@ export default function ConceptWebGLScene({
           let current = hit?.object;
           while (
             current &&
+            !current.userData?.bimElementId &&
             !current.userData?.objectId &&
             !current.userData?.wallId &&
             !current.userData?.spaceId &&
             !current.userData?.openingId
           ) current = current.parent;
 
+          const bimElementId = current?.userData?.bimElementId as string | undefined;
           const objectId = current?.userData?.objectId as string | undefined;
           const unionMesh = current?.userData?.wallUnionMesh as WallUnionMesh | undefined;
           const unionPick = unionMesh
@@ -659,7 +665,9 @@ export default function ConceptWebGLScene({
             return;
           }
 
-          if (objectId) {
+          if (bimElementId) {
+            onSelectBimElement?.(bimElementId);
+          } else if (objectId) {
             onSelectObject?.(objectId);
             onSelectWall?.(null);
             onSelectCustomWall?.(null);
@@ -2090,6 +2098,7 @@ export default function ConceptWebGLScene({
           mesh.castShadow = true;
           mesh.receiveShadow = true;
           modelRoot.add(mesh);
+          runtime.pickables.push(mesh);
         }
       } catch (error) {
         console.warn("Prévia BIM experimental não exibida:", error);
@@ -2448,6 +2457,7 @@ export default function ConceptWebGLScene({
     if (!runtime || engineState !== "ready") return;
 
     const selectedKeys = new Set<string>();
+    if (selectedBimElementId) selectedKeys.add(`bim:${selectedBimElementId}`);
     if (selectedObjectId) selectedKeys.add(`object:${selectedObjectId}`);
     if (selectedWallId) selectedKeys.add(`wall:${selectedWallId}`);
     if (selectedCustomWallId) selectedKeys.add(`wall:${selectedCustomWallId}`);
@@ -2456,7 +2466,9 @@ export default function ConceptWebGLScene({
 
     runtime.modelRoot.traverse((node: any) => {
       if (!node?.isMesh) return;
-      const entityKey = node.userData?.objectId
+      const entityKey = node.userData?.bimElementId
+        ? `bim:${node.userData.bimElementId}`
+        : node.userData?.objectId
         ? `object:${node.userData.objectId}`
         : node.userData?.wallId
           ? `wall:${node.userData.wallId}`
@@ -2485,6 +2497,7 @@ export default function ConceptWebGLScene({
     selectedClosedSpaceId,
     selectedCustomWallId,
     selectedObjectId,
+    selectedBimElementId,
     selectedOpeningId,
     selectedWallId,
     navigationMode,
