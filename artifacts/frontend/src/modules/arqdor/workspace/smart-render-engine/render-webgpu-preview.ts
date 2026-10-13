@@ -72,6 +72,13 @@ export async function renderWebGpuPreview(o:DiffusePreviewOptions):Promise<Uint8
  if(geometry.meshes.some(mesh=>!Number.isSafeInteger(mesh.triangles)||mesh.triangles<0||mesh.positions.length!==mesh.triangles*9||mesh.positions.some(v=>!Number.isFinite(v))))
    throw Error("ARQDOR: geometria inválida");
  if(!(o.camera.verticalFovDegrees>1&&o.camera.verticalFovDegrees<179))throw Error("ARQDOR: FOV inválido");
+ const cameraValues=[...o.camera.position,...o.camera.target,...(o.camera.up??[0,1,0])];
+ const light=o.directionalLight??o.light;
+ const lightValues=[...light.directionToLight,light.intensity,...(o.skyColor??[0.72,0.82,0.95]),o.display?.exposure??1];
+ if(cameraValues.some(v=>!Number.isFinite(v))||lightValues.some(v=>!Number.isFinite(v))||light.intensity<0)
+   throw Error("ARQDOR: câmera ou iluminação inválidas");
+ if(Math.hypot(...light.directionToLight)<1e-9)
+   throw Error("ARQDOR: direção da luz inválida");
  if(typeof navigator==="undefined" || typeof window==="undefined" || !window.isSecureContext)
    throw Error("ARQDOR: WebGPU exige navegador e contexto seguro");
  const gpu=(navigator as any).gpu;
