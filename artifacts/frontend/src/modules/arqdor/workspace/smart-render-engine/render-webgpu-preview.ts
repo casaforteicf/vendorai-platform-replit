@@ -110,6 +110,7 @@ export async function renderWebGpuPreview(o:DiffusePreviewOptions):Promise<Uint8
      ...(o.skyColor??[0.72,0.82,0.95]),0,
      width,height,Math.tan(o.camera.verticalFovDegrees*Math.PI/360),geometry.totalTriangles
    ]);
+   if(params.some(v=>!Number.isFinite(v)))throw Error("ARQDOR: parâmetros da câmera ou luz inválidos");
    const vertsData=new Float32Array(verts),colorsData=new Float32Array(cols);
    const vb=create(vertsData.byteLength,usage.STORAGE|usage.COPY_DST);
    const cb=create(colorsData.byteLength,usage.STORAGE|usage.COPY_DST);
@@ -121,6 +122,9 @@ export async function renderWebGpuPreview(o:DiffusePreviewOptions):Promise<Uint8
    device.queue.writeBuffer(cb,0,colorsData);
    device.queue.writeBuffer(ub,0,params);
    const module=device.createShaderModule({code:SHADER});
+   const shaderInfo=await module.getCompilationInfo();
+   const shaderErrors=shaderInfo.messages.filter((m:{type:string})=>m.type==="error");
+   if(shaderErrors.length)throw Error("ARQDOR: shader WGSL inválido: "+shaderErrors.map((m:{message:string})=>m.message).join("; "));
    const pipeline=device.createComputePipeline({layout:"auto",compute:{module,entryPoint:"main"}});
    const bind=device.createBindGroup({layout:pipeline.getBindGroupLayout(0),entries:[
      {binding:0,resource:{buffer:vb}},{binding:1,resource:{buffer:cb}},
@@ -131,11 +135,9 @@ export async function renderWebGpuPreview(o:DiffusePreviewOptions):Promise<Uint8
    pass.setPipeline(pipeline);pass.setBindGroup(0,bind);
    pass.dispatchWorkgroups(Math.ceil(width/8),Math.ceil(height/8));pass.end();
    encoder.copyBufferToBuffer(out,0,read,0,pixelBytes);
-   device.pushErrorScope?.("validation");
    device.queue.submit([encoder.finish()]);
    await read.mapAsync(mapMode.READ);
-   const gpuError=await device.popErrorScope?.();
-   if(gpuError)throw Error("ARQDOR: falha de validação WebGPU: "+gpuError.message);
+
    const bytes=new Uint8ClampedArray(read.getMappedRange().slice(0));
    read.unmap();
    return bytes;
