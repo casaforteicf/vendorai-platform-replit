@@ -1043,7 +1043,7 @@ router.patch("/intercompany-commissions/:commissionId", async (req, res) => {
       vencimento: parsed.data.dueAt ?? commission.dueAt ?? new Date(),
       status: titleStatus,
       updatedAt: new Date(),
-    }).where(eq(erpTitulosTable.id, commission.payerTitleId));
+    }).where(and(eq(erpTitulosTable.id, commission.payerTitleId), eq(erpTitulosTable.tenantId, commission.payerTenantId)));
   }
   if (commission.beneficiaryTitleId) {
     await db.update(erpTitulosTable).set({
@@ -1052,7 +1052,7 @@ router.patch("/intercompany-commissions/:commissionId", async (req, res) => {
       vencimento: parsed.data.dueAt ?? commission.dueAt ?? new Date(),
       status: titleStatus,
       updatedAt: new Date(),
-    }).where(eq(erpTitulosTable.id, commission.beneficiaryTitleId));
+    }).where(and(eq(erpTitulosTable.id, commission.beneficiaryTitleId), eq(erpTitulosTable.tenantId, commission.beneficiaryTenantId)));
   }
 
   return res.json(updated);
