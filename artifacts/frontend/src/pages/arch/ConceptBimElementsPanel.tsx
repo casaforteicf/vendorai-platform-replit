@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import { projectBimPlan } from "./conceptBimPlanGeometry";
-import { removeBimElement, upsertBimElement, type BimElement, type BimModel } from "./conceptBimElementModel";
+import { editBimElementNumber, removeBimElement, upsertBimElement, type BimElement, type BimModel } from "./conceptBimElementModel";
 
 type Props = { model: BimModel; onChange(model: BimModel): void; floor: number };
 const nextId = () => "bim-" + globalThis.crypto.randomUUID();
@@ -19,6 +19,12 @@ export function ConceptBimElementsPanel({ model, onChange, floor }: Props) {
   const add = (kind: BimElement["kind"]) => {
     try { onChange(upsertBimElement(model, makeElement(kind, floor))); }
     catch (error) { window.alert(error instanceof Error ? error.message : "Elemento BIM inválido"); }
+  };
+  const changeDimension = (id: string, key: "x" | "y" | "width" | "depth" | "thickness" | "rise" | "run" | "stepCount" | "eave" | "pitchDegrees", raw: string) => {
+    if (raw.trim() === "") return;
+    const value = Number(raw.replace(",", "."));
+    try { onChange(editBimElementNumber(model, id, key, value)); }
+    catch (error) { window.alert(error instanceof Error ? error.message : "Medida inválida"); }
   };
   return (
     <section className="rounded-lg border border-zinc-700 bg-zinc-900 p-3 text-zinc-100" aria-label="Elementos BIM experimentais">
@@ -40,10 +46,27 @@ export function ConceptBimElementsPanel({ model, onChange, floor }: Props) {
         {model.elements.filter(element => (element.kind === "roof" ? element.floor : element.parameters.floor) === floor).map(element =>
           <li key={element.id} className="flex items-center justify-between gap-2 text-xs">
             <span>{element.kind === "stair" ? "Escada" : element.kind === "slab" ? "Laje" : "Cobertura"} — {element.id.slice(-8)}</span>
-            <button type="button" className="rounded border border-zinc-600 px-2 py-1" onClick={() => onChange(removeBimElement(model, element.id))}>Excluir</button>
+            <div className="flex flex-wrap items-center gap-1">
+              {([
+                ["x", element.x], ["y", element.y],
+                ["width", element.parameters.width],
+                ...(element.kind === "stair" ? [["run", element.parameters.run], ["rise", element.parameters.rise], ["stepCount", element.parameters.stepCount]]
+                  : element.kind === "slab" ? [["depth", element.parameters.depth], ["thickness", element.parameters.thickness]]
+                  : [["depth", element.parameters.depth], ["eave", element.parameters.eave], ["pitchDegrees", element.parameters.pitchDegrees]])
+              ] as Array<["x" | "y" | "width" | "depth" | "thickness" | "rise" | "run" | "stepCount" | "eave" | "pitchDegrees", number]>).map(([key, value]) =>
+                <label key={key} className="flex items-center gap-1 text-[10px]">
+                  {key}
+                  <input aria-label={element.id + " " + key} className="w-14 rounded bg-zinc-800 px-1 py-1 text-zinc-100"
+                    type="number" step={key === "stepCount" ? 1 : 0.01} defaultValue={value}
+                    key={element.id + ":" + key + ":" + value}
+                    onBlur={event => changeDimension(element.id, key, event.currentTarget.value)}
+                    onKeyDown={event => { if (event.key === "Enter") event.currentTarget.blur(); }} />
+                </label>)}
+              <button type="button" className="rounded border border-zinc-600 px-2 py-1" onClick={() => onChange(removeBimElement(model, element.id))}>Excluir</button>
+            </div>
           </li>)}
       </ul>
-      <p className="mt-2 text-[11px] text-zinc-400">Planta experimental: sem malha 3D, sem orçamento e sem edição dimensional.</p>
+      <p className="mt-2 text-[11px] text-zinc-400">Planta experimental: edição dimensional básica, sem malha 3D ou orçamento.</p>
     </section>
   );
 }
