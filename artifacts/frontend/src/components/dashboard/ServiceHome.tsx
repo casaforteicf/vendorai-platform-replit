@@ -2,7 +2,7 @@ import { Link } from "wouter";
 import { MyUpcomingAppointments } from "./MyUpcomingAppointments";
 import { JarvisHomeSuggestions } from "./JarvisHomeSuggestions";
 import { getUi20VisibleServices, type Ui20Module } from "@/lib/ui20ServiceVisibility";
-import { Bot, Building2, CircleHelp, MessageSquare, Search, BriefcaseBusiness, BarChart3, HardHat, FolderOpen, House, CalendarDays, ClipboardList, Sparkles, Megaphone, Ruler, Settings2, Store, Users, ArrowUpRight } from "lucide-react";
+import { BookOpen, Bot, Building2, CircleHelp, MessageSquare, Search, BriefcaseBusiness, BarChart3, HardHat, FolderOpen, House, CalendarDays, ClipboardList, Sparkles, Megaphone, Ruler, Settings2, Store, Users, ArrowUpRight } from "lucide-react";
 
 type Props = {
   name: string;
@@ -84,6 +84,11 @@ export function ServiceHome({ name, tenantId, userId, token, isAdmin, arqdorVisi
             ))}</ul>
           </section>}
         </div>
+      )}
+      {allowed.has("commercial") && modules?.some(module => module.moduleKey === "catalog" && module.isEnabled && module.commerciallyEntitled !== false) && (
+        <Link href="/catalogo" className="flex items-center gap-2 rounded-xl border bg-card px-4 py-3 text-sm font-semibold hover:border-primary/50" aria-label="Abrir Catálogo de Produtos e Serviços">
+          <BookOpen className="h-4 w-4 text-primary" aria-hidden="true" /> Catálogo de Produtos e Serviços <ArrowUpRight className="ml-auto h-4 w-4" aria-hidden="true" />
+        </Link>
       )}
       {tenantId && userId && modules?.some(module => module.moduleKey === "scheduler" && module.isEnabled && module.commerciallyEntitled !== false) ? <MyUpcomingAppointments tenantId={tenantId} userId={userId} /> : null}
       {allowed.has("ia") && tenantId && token ? <JarvisHomeSuggestions tenantId={tenantId} token={token} /> : null}
