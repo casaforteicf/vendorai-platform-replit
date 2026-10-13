@@ -2,9 +2,10 @@ import { flushSync } from "react-dom";
 import { conceptReferenceSize } from "./conceptReferenceImage";
 import { compareArqdorSnapshots } from "@/lib/arqdorConflictCompare";
 import { conceptAutosaveIfMatchHeader, isConceptAutosaveConflict } from "@/lib/conceptAutosaveRevisionGate";
-import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useId, useMemo, useRef, useState } from "react";
 import "./planner5d-reference.css";
 import "./arqdor-concept-studio.css";
+import "./arqdor-concept-studio2-final.css";
 import "../../modules/arqdor/theme/arqdor-studio-primitives.css";
 import {
   ArrowLeft,
@@ -1062,6 +1063,9 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
   const [activeFloor, setActiveFloor] = useState(0);
   const [editorView, setEditorView] = useState<"plan" | "model3d" | "facade" | "render">("plan");
   const [editorExperienceMode, setEditorExperienceMode] = useState<EditorExperienceMode>(guestMode ? "guided" : "professional");
+  // Build-time rollout: enable only in the isolated Studio homologation build.
+  const studio2Enabled = import.meta.env.VITE_ARQDOR_STUDIO2_CONCEPT === "true" && !guestMode && editorExperienceMode === "professional";
+  const studioLibraryPanelId = useId();
 
   useEffect(() => {
     // O projeto tem só duas telas: o workspace (2D/3D/Fachada/Render) e o Resultado,
@@ -6292,7 +6296,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
   ]);
 
   return (
-    <div className="arqdor-reference-ui arqdor-studio-ui arqdor-concept-studio min-h-screen bg-muted/30">
+    <div className={`arqdor-reference-ui arqdor-studio-ui arqdor-concept-studio min-h-screen bg-muted/30 ${studio2Enabled ? "arq-studio-active" : ""}`}>
       {projectMaster && step !== RESULT_STEP && (
         <div className="fixed inset-0 z-[250] grid place-items-center bg-slate-950/55 p-4 backdrop-blur-sm">
           <div className="w-full max-w-lg rounded-3xl border border-emerald-200 bg-white p-6 shadow-2xl">
@@ -7838,7 +7842,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
             {/* ARQ-UI: a barra horizontal duplicada foi removida.
                 Ferramentas de desenho permanecem no rail/painel contextual, liberando área do canvas. */}
 
-            <div className="arq-workspace-shell relative min-h-[calc(100dvh-112px)] overflow-hidden bg-[#f6f7f8]">
+            <div className={`arq-workspace-shell relative min-h-[calc(100dvh-112px)] overflow-hidden bg-[#f6f7f8] ${studio2Enabled ? "arq-studio-professional-layout" : ""}`} data-arqdor-workspace={studio2Enabled ? "studio" : "legacy"}>
               <aside className={editorView !== "plan"
                   ? "arq-workspace-sidebar hidden"
                   : (selected || selectedCustomWall || selectedOpening || selectedClosedSpace || selectedWall)
@@ -7873,6 +7877,10 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                             setLibraryOpen((open) => sameTab ? !open : true);
                           }}
                           title={label}
+                          aria-label={label}
+                          aria-controls={studioLibraryPanelId}
+                          aria-expanded={libraryOpen && editorLibraryTab === value}
+                          aria-pressed={libraryOpen && editorLibraryTab === value}
                           className={editorLibraryTab === value
                             ? "grid h-11 w-11 place-items-center rounded-xl bg-orange-50 text-orange-600 shadow-sm"
                             : "grid h-11 w-11 place-items-center rounded-xl text-slate-500 transition hover:bg-slate-100 hover:text-slate-900"}
@@ -7883,7 +7891,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                       <div className="my-1 h-px w-8 bg-slate-200" />
                     </div>
                   </div>
-                  <div className={libraryOpen
+                  <div id={studioLibraryPanelId} aria-label="Ferramentas do projeto" className={libraryOpen
                     ? `fixed inset-x-2 bottom-20 z-40 max-h-[68vh] overflow-y-auto rounded-3xl border bg-white shadow-2xl md:static md:inset-auto md:z-auto md:max-h-none md:overflow-visible md:rounded-none md:border-0 md:shadow-none ${editorLibraryTab === "furniture" || editorLibraryTab === "materials" ? "md:w-[340px]" : "md:w-[260px]"}`
                     : "hidden"}>
                 <div className="sticky top-0 z-10 rounded-t-3xl border-b bg-white px-4 py-3 md:rounded-none md:px-5 md:py-4">
@@ -9092,7 +9100,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                   )}
 
                   {editorView === "plan" && !terrainOnly && (
-                      <div className={`absolute top-3 z-30 flex snap-x items-center gap-1.5 overflow-x-auto rounded-2xl border border-slate-200 bg-white/96 p-1.5 shadow-md backdrop-blur [scrollbar-width:none] [&::-webkit-scrollbar]:hidden
+                      <div className={`arq-canvas-toolbar absolute top-3 z-30 flex snap-x items-center gap-1.5 overflow-x-auto rounded-2xl border border-slate-200 bg-white/96 p-1.5 shadow-md backdrop-blur [scrollbar-width:none] [&::-webkit-scrollbar]:hidden
                         left-16 right-3 md:right-auto
                         ${libraryOpen ? (editorLibraryTab === "furniture" || editorLibraryTab === "materials" ? "md:left-[460px]" : "md:left-[380px]") : "md:left-20"}
                       `}>
