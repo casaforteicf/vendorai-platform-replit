@@ -9826,21 +9826,21 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                 </div>
               </div>
 
-              <div className="fixed inset-x-3 bottom-[max(0.75rem,env(safe-area-inset-bottom))] z-30 flex items-center justify-between rounded-2xl border bg-white/95 p-1.5 shadow-xl backdrop-blur md:hidden">
+              <nav aria-label="Etapas do projeto" className="arq-mobile-stage-nav fixed inset-x-2 bottom-[max(0.5rem,env(safe-area-inset-bottom))] z-30 flex items-center justify-between rounded-xl border bg-white/95 p-1 shadow-lg backdrop-blur md:hidden">
                 {journeyStages.map((stage, index) => (
                   <button
                     key={stage.id}
                     type="button"
                     onClick={() => goToJourneyStage(index)}
                     className={journeyIndex === index
-                      ? "flex min-h-11 flex-1 flex-col items-center justify-center rounded-xl bg-slate-950 px-1 py-1.5 text-[11px] font-bold text-white"
-                      : "flex min-h-11 flex-1 flex-col items-center justify-center rounded-xl px-1 py-1.5 text-[11px] font-semibold text-slate-500"}
+                      ? "flex min-h-11 min-w-0 flex-1 flex-col items-center justify-center rounded-lg bg-slate-950 px-1 py-1 text-[10px] font-bold text-white"
+                       : "flex min-h-11 min-w-0 flex-1 flex-col items-center justify-center rounded-lg px-1 py-1 text-[10px] font-semibold text-slate-500"}
                   >
                     <span className={index < journeyIndex && journeyIndex !== index ? "text-emerald-600" : ""}>{index < journeyIndex ? "✓" : index + 1}</span>
-                    {stage.label}
+                    <span className="block w-full truncate text-center">{stage.label}</span>
                   </button>
                 ))}
-              </div>
+              </nav>
 
               {hasEditorSelection && (editorView === "plan" || editorView === "model3d") && (
               <aside className="arq-workspace-inspector arq-inspector fixed inset-x-3 bottom-[calc(5rem+env(safe-area-inset-bottom))] z-[70] max-h-[64vh] overflow-y-auto rounded-3xl border bg-white/98 px-4 py-4 shadow-2xl backdrop-blur md:inset-y-3 md:left-auto md:right-3 md:bottom-auto md:w-[340px] md:max-h-[calc(100dvh-24px)] md:rounded-2xl md:border-slate-200 md:px-4 md:py-4 md:shadow-[0_18px_50px_rgba(15,23,42,0.16)]">
@@ -10562,7 +10562,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
         )}
 
         {step === 6 && (
-          <section className="mx-auto max-w-6xl space-y-5 px-3 pt-4 print:max-w-none sm:px-6">
+          <section className="arq-project-result mx-auto max-w-6xl space-y-5 px-3 pt-4 pb-28 print:max-w-none sm:px-6 md:pb-6">
             <button
               type="button"
               onClick={() => { setStep(WORKSPACE_STEP); setEditorView("render"); }}
@@ -10574,12 +10574,12 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
               <button
                 type="button"
                 onClick={() => document.getElementById(startContactValid ? "enviar-profissional" : "dados-cliente")?.scrollIntoView({ behavior: "smooth", block: "start" })}
-                className="fixed inset-x-3 bottom-[max(0.75rem,env(safe-area-inset-bottom))] z-30 inline-flex min-h-12 items-center justify-center gap-2 rounded-2xl bg-orange-500 px-4 text-sm font-semibold text-white shadow-xl md:hidden print:hidden"
+                className="arq-result-send fixed inset-x-3 bottom-[max(0.75rem,env(safe-area-inset-bottom))] z-30 inline-flex min-h-12 items-center justify-center gap-2 rounded-xl bg-emerald-800 px-4 text-sm font-semibold text-white shadow-xl md:hidden print:hidden"
               >
                 <Send className="h-4 w-4" /> {startContactValid ? "Enviar ao profissional" : "Informar contato e enviar"}
               </button>
             )}
-            <div className="rounded-3xl border bg-card p-6 shadow-sm sm:p-8">
+            <div className="rounded-3xl border border-slate-200 bg-white p-6 text-slate-900 shadow-sm sm:p-8">
               <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                 <div>
                   <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-orange-500">
