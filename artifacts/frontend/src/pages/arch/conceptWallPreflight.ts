@@ -36,12 +36,13 @@ export function validateConceptWalls(
       issues.push({ wallId: id, code: "INVALID_COORDINATE" });
       continue;
     }
-    if (
+    const axisOutside = (
       wall.x1 < -tolerance || wall.x2 < -tolerance ||
       wall.y1 < -tolerance || wall.y2 < -tolerance ||
       wall.x1 > lotWidth + tolerance || wall.x2 > lotWidth + tolerance ||
       wall.y1 > lotDepth + tolerance || wall.y2 > lotDepth + tolerance
-    ) issues.push({ wallId: id, code: "OUTSIDE_LOT" });
+    );
+    if (axisOutside) issues.push({ wallId: id, code: "OUTSIDE_LOT" });
     const length = Math.hypot(wall.x2 - wall.x1, wall.y2 - wall.y1);
     if (length <= tolerance) {
       issues.push({ wallId: id, code: "ZERO_LENGTH" });
@@ -58,7 +59,7 @@ export function validateConceptWalls(
       if (footprint.some(([x, y]) =>
         x < -tolerance || y < -tolerance ||
         x > lotWidth + tolerance || y > lotDepth + tolerance
-      ) && !issues.some((issue) => issue.wallId === id && issue.code === "OUTSIDE_LOT")) {
+      ) && !axisOutside) {
         issues.push({ wallId: id, code: "OUTSIDE_LOT" });
       }
     }
