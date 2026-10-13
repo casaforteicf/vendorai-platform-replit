@@ -2,6 +2,21 @@ import {expect,it} from "vitest";
 import {openingBudgetPlan} from "./arch-opening-budget";
 const o={id:"j",catalogProductId:"p",width:1.2,height:1.5,sillHeight:0.9,type:"window"};
 const p={id:"p",nome:"Janela",precoBase:"100.00",unidade:"m²"};
+it("rejects ambiguous catalog IDs regardless of product order",()=>{
+ for(const products of [[p,{...p,precoBase:"200"}],[{...p,precoBase:"200"},p]]){
+  const plan=openingBudgetPlan("c",[o],products,0);
+  expect(plan.items).toEqual([]);expect(plan.issues[0]).toContain("duplicado");
+ }
+ expect(openingBudgetPlan("c",[o],[p,{...p,id:"other"}],0).issues).toEqual([]);
+});
+it("never inserts or updates desired items from another concept",async()=>{
+ const {openingBudgetMutations}=await import("./arch-opening-budget");
+ const own=openingBudgetPlan("c",[o],[p],0).items;
+ const foreign=openingBudgetPlan("other",[o],[p],0).items;
+ const result=openingBudgetMutations([...own,...foreign],[...own,...foreign,{id:"manual"}],"c");
+ expect(result.update).toEqual(own);expect(result.insert).toEqual([]);expect(result.remove).toEqual([]);
+ expect(openingBudgetMutations(foreign,[],"c").insert).toEqual([]);
+});
 it("uses exact master product IDs and stable IDs across repeated budget sends",()=>{
  const first=openingBudgetPlan("c",[o],[p],0), second=openingBudgetPlan("c",[o],[p],0);
  expect(first).toEqual(second);expect(first.items[0]).toMatchObject({produtoId:"p",quantidade:"1.80",valorTotal:"180.00"});

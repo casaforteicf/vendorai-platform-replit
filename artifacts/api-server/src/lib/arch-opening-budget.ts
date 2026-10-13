@@ -11,9 +11,16 @@ export type OpeningBudgetProduct = { id: string; nome: string; precoBase: unknow
 export function openingBudgetPlan(conceptId: string, openings: readonly OpeningBudgetSource[], products: readonly OpeningBudgetProduct[], now: number) {
  const issues: string[] = [], items: { id: string; sourceId: string; produtoId: string; descricao: string; categoria: string; quantidade: string; unidade: string; valorUnitario: string; valorTotal: string; fornecedor: string | null }[] = [];
  const ids=new Set<string>();
+ const catalog=new Map<string,OpeningBudgetProduct>();
+ const duplicateProducts=new Set<string>();
+ for(const product of products){
+  if(catalog.has(product.id))duplicateProducts.add(product.id);
+  else catalog.set(product.id,product);
+ }
  for(const opening of openings){
   if(!opening.id||ids.has(opening.id)){issues.push("ID de abertura inválido ou duplicado.");continue;}ids.add(opening.id);
-  const product=products.find(p=>p.id===opening.catalogProductId);
+  if(opening.catalogProductId&&duplicateProducts.has(opening.catalogProductId)){issues.push(`${opening.id}: produto duplicado no catálogo; confira o vínculo.`);continue;}
+  const product=opening.catalogProductId?catalog.get(opening.catalogProductId):undefined;
   if(!product){issues.push(`${opening.id}: vincule um produto ativo do catálogo.`);continue;}
   if(![opening.width,opening.height,opening.sillHeight].every(v=>typeof v==="number"&&Number.isFinite(v))||Number(opening.width)<=0||Number(opening.height)<=0||Number(opening.sillHeight)<0){issues.push(`${opening.id}: confirme as medidas da esquadria.`);continue;}
   const decimal=(v:unknown)=>typeof v==="number"&&Number.isFinite(v)?v:typeof v==="string"&&/^\d+(\.\d+)?$/.test(v)?Number(v):NaN;
@@ -37,7 +44,9 @@ export function openingBudgetMutations(items: ReturnType<typeof openingBudgetPla
  const prefix=`arqdor-opening:${encodeURIComponent(conceptId)}:`;
  const owned=existing.filter(item=>item.id.startsWith(prefix));
  const desired=new Set(items.map(item=>item.id));
- return { remove:owned.filter(item=>!desired.has(item.id)).map(item=>item.id), insert:items.filter(item=>!owned.some(old=>old.id===item.id)), update:items.filter(item=>owned.some(old=>old.id===item.id)) };
+ const ownedIds=new Set(owned.map(item=>item.id));
+ const scoped=items.filter(item=>item.id.startsWith(prefix));
+ return { remove:owned.filter(item=>!desired.has(item.id)).map(item=>item.id), insert:scoped.filter(item=>!ownedIds.has(item.id)), update:scoped.filter(item=>ownedIds.has(item.id)) };
 }
 
 
