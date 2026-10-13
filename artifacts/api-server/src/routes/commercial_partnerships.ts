@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { and, eq, or } from "drizzle-orm";
+import { and, eq, or, sql } from "drizzle-orm";
 import { z } from "zod/v4";
 import { requireSameTenanOrSuperAdmin } from "../middlewares/auth.js";
 import {
@@ -1059,6 +1059,7 @@ router.patch("/intercompany-commissions/:commissionId", async (req, res) => {
 });
 
 const paymentSchema = z.object({
+  idempotencyKey: z.string().trim().min(8).max(128).optional(),
   amount: z.coerce.number().positive(),
   payerAccount: z.string().trim().min(1).max(200),
   beneficiaryAccount: z.string().trim().min(1).max(200),
@@ -1078,13 +1079,6 @@ router.post("/intercompany-commissions/:commissionId/payments", async (req, res)
   const parsed = paymentSchema.safeParse(req.body);
   if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
 
-  const total = money(commission.amount);
-  const alreadyPaid = money(commission.paidAmount);
-  const remaining = Math.max(0, total - alreadyPaid);
-  if (parsed.data.amount > remaining + 0.0001) {
-    return res.status(422).json({ error: `Pagamento excede o saldo da comissão. Saldo atual: R$ ${remaining.toFixed(2)}.` });
-  }
-
   const [payerTenant] = await db.select({ name: tenantsTable.name }).from(tenantsTable)
     .where(eq(tenantsTable.id, commission.payerTenantId)).limit(1);
   const [beneficiaryTenant] = await db.select({ name: tenantsTable.name }).from(tenantsTable)
@@ -1092,9 +1086,43 @@ router.post("/intercompany-commissions/:commissionId/payments", async (req, res)
 
   const paidAt = parsed.data.paidAt ?? new Date();
   const result = await db.transaction(async (tx) => {
-    let payerTitleId = commission.payerTitleId;
-    let beneficiaryTitleId = commission.beneficiaryTitleId;
-    const dueAt = commission.dueAt ?? paidAt;
+    // Serializa pagamentos da mesma comissão; saldo e IDs devem ser relidos
+    // dentro da transação após adquirir o lock da linha.
+    await tx.execute(sql`SELECT id FROM intercompany_commissions WHERE id = ${commissionId} FOR UPDATE`);
+    const [lockedCommission] = await tx.select().from(intercompanyCommissionsTable)
+      .where(eq(intercompanyCommissionsTable.id, commissionId)).limit(1);
+    if (!lockedCommission) return { error: "Comissão não encontrada.", status: 404 as const };
+
+    if (parsed.data.idempotencyKey) {
+      const [previous] = await tx.select().from(intercompanyCommissionPaymentsTable).where(and(
+        eq(intercompanyCommissionPaymentsTable.commissionId, commissionId),
+        eq(intercompanyCommissionPaymentsTable.idempotencyKey, parsed.data.idempotencyKey),
+      )).limit(1);
+      if (previous) {
+        // Uma chave reutilizada com parâmetros diferentes não pode confirmar outro pagamento.
+        if (
+          Math.round(money(previous.amount) * 100) !== Math.round(parsed.data.amount * 100) ||
+          previous.payerAccount !== parsed.data.payerAccount ||
+          previous.beneficiaryAccount !== parsed.data.beneficiaryAccount ||
+          (previous.paymentMethod ?? null) !== (parsed.data.paymentMethod ?? null) ||
+          (previous.proofUrl ?? null) !== (parsed.data.proofUrl ?? null) ||
+          (previous.notes ?? null) !== (parsed.data.notes ?? null) ||
+          (parsed.data.paidAt !== undefined && previous.paidAt.getTime() !== parsed.data.paidAt.getTime())
+        ) return { error: "IDEMPOTENCY_KEY_CONFLICT", status: 409 as const };
+        return { replay: true as const, payment: previous, commission: lockedCommission };
+      }
+    }
+
+    const total = money(lockedCommission.amount);
+    const alreadyPaid = money(lockedCommission.paidAmount);
+    const remaining = Math.max(0, total - alreadyPaid);
+    if (parsed.data.amount > remaining + 0.0001) {
+      return { error: `Pagamento excede o saldo da comissão. Saldo atual: R$ ${remaining.toFixed(2)}.`, status: 422 as const };
+    }
+
+    let payerTitleId = lockedCommission.payerTitleId;
+    let beneficiaryTitleId = lockedCommission.beneficiaryTitleId;
+    const dueAt = lockedCommission.dueAt ?? paidAt;
 
     if (!payerTitleId) {
       const [title] = await tx.insert(erpTitulosTable).values({
@@ -1134,6 +1162,18 @@ router.post("/intercompany-commissions/:commissionId/payments", async (req, res)
 
     if (!payerTitleId || !beneficiaryTitleId) throw new Error("Failed to create ERP titles for intercompany commission");
 
+    // Nunca lançar pagamentos em títulos de tenant diferente, mesmo se um ID
+    // incorreto tiver sido gravado anteriormente na comissão.
+    const [payerTitle] = await tx.select({ id: erpTitulosTable.id }).from(erpTitulosTable)
+      .where(and(eq(erpTitulosTable.id, payerTitleId), eq(erpTitulosTable.tenantId, commission.payerTenantId), eq(erpTitulosTable.tipo, "pagar")))
+      .limit(1);
+    const [beneficiaryTitle] = await tx.select({ id: erpTitulosTable.id }).from(erpTitulosTable)
+      .where(and(eq(erpTitulosTable.id, beneficiaryTitleId), eq(erpTitulosTable.tenantId, commission.beneficiaryTenantId), eq(erpTitulosTable.tipo, "receber")))
+      .limit(1);
+    if (!payerTitle || !beneficiaryTitle) {
+      throw new Error("INTERCOMPANY_ERP_TITLE_TENANT_MISMATCH");
+    }
+
     const [payerPayment] = await tx.insert(erpPagamentosTable).values({
       tenantId: commission.payerTenantId,
       tituloId: payerTitleId,
@@ -1162,7 +1202,7 @@ router.post("/intercompany-commissions/:commissionId/payments", async (req, res)
       pagoEm: fullyPaid ? paidAt : null,
       contaBancaria: parsed.data.payerAccount,
       updatedAt: new Date(),
-    }).where(eq(erpTitulosTable.id, payerTitleId));
+    }).where(and(eq(erpTitulosTable.id, payerTitleId), eq(erpTitulosTable.tenantId, commission.payerTenantId)));
 
     await tx.update(erpTitulosTable).set({
       valorPago: String(newPaid.toFixed(2)),
@@ -1170,10 +1210,11 @@ router.post("/intercompany-commissions/:commissionId/payments", async (req, res)
       pagoEm: fullyPaid ? paidAt : null,
       contaBancaria: parsed.data.beneficiaryAccount,
       updatedAt: new Date(),
-    }).where(eq(erpTitulosTable.id, beneficiaryTitleId));
+    }).where(and(eq(erpTitulosTable.id, beneficiaryTitleId), eq(erpTitulosTable.tenantId, commission.beneficiaryTenantId)));
 
     const [payment] = await tx.insert(intercompanyCommissionPaymentsTable).values({
       commissionId: commission.id,
+      idempotencyKey: parsed.data.idempotencyKey ?? null,
       payerTenantId: commission.payerTenantId,
       beneficiaryTenantId: commission.beneficiaryTenantId,
       amount: String(parsed.data.amount.toFixed(2)),
@@ -1199,7 +1240,8 @@ router.post("/intercompany-commissions/:commissionId/payments", async (req, res)
     return { commission: updatedCommission, payment, payerTitleId, beneficiaryTitleId };
   });
 
-  return res.status(201).json(result);
+  if ("error" in result) return res.status(result.status).json({ error: result.error });
+  return res.status("replay" in result ? 200 : 201).json(result);
 });
 
 router.get("/tenants/:tenantId/intercompany-commissions", requireSameTenanOrSuperAdmin(), async (req, res) => {
