@@ -87,6 +87,7 @@ const ConceptClientBriefPanel = lazy(() => import("./ConceptClientBriefPanel"));
 const ConceptSitePlacementPanel = lazy(() => import("./ConceptSitePlacementPanel"));
 const ConceptModel3D = lazy(() => import("./ConceptModel3D"));
 const ConceptWallDiagnosticsPanel = lazy(() => import("./ConceptWallDiagnosticsPanel").then((m) => ({ default: m.ConceptWallDiagnosticsPanel })));
+const ConceptBimElementsPanel = lazy(() => import("./ConceptBimElementsPanel").then((m) => ({ default: m.ConceptBimElementsPanel })));
 const ConceptRenderGalleryActions = lazy(() => import("./ConceptRenderGalleryActions").then((m) => ({ default: m.ConceptRenderGalleryActions })));
 const ConceptCatalogPanels = lazy(() => import("./ConceptCatalogPanels"));
 const ConceptConstructionLibraryPanel = lazy(() => import("./ConceptConstructionLibraryPanel"));
@@ -9237,6 +9238,13 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                               </Suspense>
                             </div>
                           )}
+                        </div>
+                      )}
+                      {bimElementsEnabled && (
+                        <div className="absolute right-3 top-16 z-[60] w-[min(300px,calc(100%-24px))] max-h-[75vh] overflow-y-auto">
+                          <Suspense fallback={<div className="rounded bg-zinc-900 p-3 text-xs text-zinc-200">Carregando BIM...</div>}>
+                            <ConceptBimElementsPanel model={bimElements} onChange={setBimElements} floor={activeFloor} />
+                          </Suspense>
                         </div>
                       )}
                       {geometryImportState === "review" && geometryImportPreview && (
