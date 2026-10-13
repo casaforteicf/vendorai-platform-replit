@@ -15,6 +15,13 @@ describe("Arqdor BIM experimental 3D mesh adapter", () => {
     expect(result.every(x => x.positions.length > 0 && x.positions.length % 9 === 0)).toBe(true);
     expect(result.every(x => x.positions.every(Number.isFinite))).toBe(true);
   });
+  it("keeps stair triangles within the specified run", () => {
+    const stairs = projectBimMeshes(model)[0].positions;
+    const depths = stairs.filter((_, index) => index % 3 === 2);
+    expect(Math.min(...depths)).toBeGreaterThanOrEqual(3);
+    expect(Math.max(...depths)).toBeCloseTo(7.5);
+    expect(stairs.length / 9).toBe(15 * 12);
+  });
   it("does not fill the slab opening with triangle centroids", () => {
     const slab = projectBimMeshes(model)[1];
     for(let i=0;i<slab.positions.length;i+=9) {
