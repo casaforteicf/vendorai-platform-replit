@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import { projectBimPlan } from "./conceptBimPlanGeometry";
+import { ConceptBimMeshPreview } from "./ConceptBimMeshPreview";
 import { editBimElementNumber, removeBimElement, upsertBimElement, type BimElement, type BimModel } from "./conceptBimElementModel";
 
 type Props = { model: BimModel; onChange(model: BimModel): void; floor: number };
@@ -42,6 +43,8 @@ export function ConceptBimElementsPanel({ model, onChange, floor }: Props) {
           stroke={shape.kind === "slab-opening" ? "#eab308" : "#35a77d"}
           strokeWidth="1.5" />)}
       </svg>
+      <p className="mt-3 mb-1 text-[11px] text-zinc-400">Prévia tridimensional isométrica — mesmos elementos BIM</p>
+      <ConceptBimMeshPreview model={model} />
       <ul className="mt-3 space-y-2">
         {model.elements.filter(element => (element.kind === "roof" ? element.floor : element.parameters.floor) === floor).map(element =>
           <li key={element.id} className="flex items-center justify-between gap-2 text-xs">
@@ -66,7 +69,7 @@ export function ConceptBimElementsPanel({ model, onChange, floor }: Props) {
             </div>
           </li>)}
       </ul>
-      <p className="mt-2 text-[11px] text-zinc-400">Planta experimental: edição dimensional básica, sem malha 3D ou orçamento.</p>
+      <p className="mt-2 text-[11px] text-zinc-400">Laboratório BIM: malha 3D em projeção isométrica SVG, sem integração ao WebGL principal ou orçamento.</p>
     </section>
   );
 }
