@@ -91,7 +91,7 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
   // o token, e voltando 403 (tela em branco no app).
   const effectiveTenantId = user?.tenantId ?? "";
 
-  const { data: tenantNavModules = [], isSuccess: tenantNavModulesReady } = useQuery<TenantNavModule[]>({
+  const { data: tenantNavModules = [], isSuccess: tenantNavModulesReady, isLoading: tenantNavModulesLoading } = useQuery<TenantNavModule[]>({
     queryKey: ["tenant-nav-modules", effectiveTenantId],
     enabled: !!effectiveTenantId && !!token,
     staleTime: 60_000,
