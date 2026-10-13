@@ -1059,7 +1059,6 @@ function WorkspaceInner() {
             collapsed={copilotCollapsed}
             onToggle={() => setCopilotCollapsed(p => !p)}
             nextAction={computeNextAction(arqState, 0)}
-            moduleId={activeModule}
           />
         </div>
 

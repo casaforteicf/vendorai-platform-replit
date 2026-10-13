@@ -36,6 +36,13 @@ export function useRenderStudioPersistentBootstrap(
   );
 
   const state = useMemo<RenderStudioPersistentState>(() => {
+    // Never display unscoped browser cache while a project's server history is pending.
+    // A previous login/project may have populated sessionStorage with unrelated images.
+    if (!projectId || history.loadedProjectId !== projectId) {
+      return { versions: [], latestRenderId: null, latestRenderUrl: null, sourceImageUrl: null, approvedVersionId: null };
+    }
+    // A successful empty server response is authoritative: do not resurrect old cached renders.
+    if (!history.error) return persistentState;
     const recovered = mergeRecoveryCache(
       persistentState,
       Array.isArray(recoveryCache.versions) ? recoveryCache.versions : [],
@@ -66,7 +73,7 @@ export function useRenderStudioPersistentBootstrap(
     }
 
     return recovered;
-  }, [persistentState, recoveryCache.versions, recoveryCache.renderId, recoveryCache.renderUrl, recoveryCache.imageUrl]);
+  }, [persistentState, projectId, history.loadedProjectId, history.error, recoveryCache.versions, recoveryCache.renderId, recoveryCache.renderUrl, recoveryCache.imageUrl]);
 
   const source = history.versions.length > 0 ? "backend" : state.versions.length > 0 ? "recovery" : "empty";
 

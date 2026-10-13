@@ -1,4 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
+import "./arqdor-construction-studio.css";
+import { StudioField, StudioToolButton } from "../../theme/ArqdorStudioComponents";
+import "../../theme/arqdor-studio-primitives.css";
 import { useAuth } from "@/contexts/AuthContext";
 import { useWorkspaceProject } from "../WorkspaceContext";
 
@@ -251,7 +254,7 @@ export default function ArqdorConstructionWorkspace({ arqState, onNavigate }: Pr
   if (!obra) return <Empty>Não foi possível vincular uma obra a este projeto.</Empty>;
 
   return (
-    <div className="min-h-screen bg-[#f7f7f8] text-slate-950">
+    <div className="arqdor-studio-ui arqdor-construction-studio min-h-screen bg-[#f7f7f8] text-slate-950">
       <div className="mx-auto flex w-full max-w-[1760px] flex-col gap-5 px-5 py-6 lg:px-8">
         <header className="rounded-[34px] border border-slate-100 bg-white p-5 shadow-sm">
           <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
@@ -263,8 +266,8 @@ export default function ArqdorConstructionWorkspace({ arqState, onNavigate }: Pr
               </p>
             </div>
             <div className="flex flex-wrap gap-2">
-              <button type="button" onClick={() => setView("overview")} className={`rounded-2xl px-4 py-2 text-sm font-semibold ${view === "overview" ? "bg-slate-950 text-white" : "bg-slate-50 text-slate-600"}`}>Visão Geral</button>
-              <button type="button" onClick={() => setView("measurements")} className={`rounded-2xl px-4 py-2 text-sm font-semibold ${view === "measurements" ? "bg-slate-950 text-white" : "bg-slate-50 text-slate-600"}`}>Medições</button>
+              <StudioToolButton active={view === "overview"} onClick={() => setView("overview")}>Visão Geral</StudioToolButton>
+              <StudioToolButton active={view === "measurements"} onClick={() => setView("measurements")}>Medições</StudioToolButton>
               <button type="button" onClick={() => onNavigate?.("procurement")} className="rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold">Compras</button>
               <button type="button" onClick={() => onNavigate?.("real-budget")} className="rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold">Orçamento</button>
               <button type="button" onClick={() => onNavigate?.("execution")} className="rounded-2xl border border-violet-200 bg-violet-50 px-4 py-2 text-sm font-semibold text-violet-700">Produção & Execução</button>
@@ -339,7 +342,7 @@ export default function ArqdorConstructionWorkspace({ arqState, onNavigate }: Pr
                     <p className="mt-1 text-sm text-slate-500">Executado: {pct(etapa.percentualExecutado)}</p>
                   </div>
                   <div className="flex gap-2">
-                    <input type="number" min="0" max="100" value={measurementDraft[etapa.id] ?? ""} onChange={(e) => setMeasurementDraft((prev) => ({ ...prev, [etapa.id]: e.target.value }))} placeholder="Novo %" className="w-28 rounded-xl border px-3 py-2 text-sm" />
+                    <StudioField label={`Novo percentual de ${etapa.nome}`} type="number" min={0} max={100} step="0.01" value={measurementDraft[etapa.id] ?? ""} onChange={(e) => setMeasurementDraft((prev) => ({ ...prev, [etapa.id]: e.target.value }))} placeholder="0–100%" className="w-28" />
                     <button disabled={saving} onClick={() => void createMeasurement(etapa)} className="rounded-xl bg-slate-950 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">Registrar</button>
                   </div>
                 </div>

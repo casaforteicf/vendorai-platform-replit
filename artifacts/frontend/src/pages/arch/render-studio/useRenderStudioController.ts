@@ -468,6 +468,7 @@ export function useRenderStudioController() {
         recoveryCancelled = true;
       };
     }
+    return undefined;
   }, []);
 
   useEffect(() => { sessionStorage.setItem(SK.step, step); }, [step]);
@@ -769,10 +770,10 @@ export function useRenderStudioController() {
         preserveCamera:   preservationLocks.camera,
         preservation_policy: preservationLocks,
         parent_render_id: currentRenderId, // P2-18
-        material_id:      selectedMaterial?.id,
-        material_name:    selectedMaterial?.nome,
-        material_reference_url: selectedMaterial?.imagens?.[0],
-        surface_key:       selections.slice(-1)[0]?.surfaceKey,
+        material_id:      melhoriaMode === "change-material" ? selectedMaterial?.id : undefined,
+        material_name:    melhoriaMode === "change-material" ? selectedMaterial?.nome : undefined,
+        material_reference_url: melhoriaMode === "change-material" ? selectedMaterial?.imagens?.[0] : undefined,
+        surface_key:       melhoriaMode === "change-material" ? selections.slice(-1)[0]?.surfaceKey : undefined,
         operation_type:   melhoriaMode === "change-material" ? "material" : melhoriaMode === "change-lighting" ? "lighting" : "improve",
         // A troca de material usa a máscara final já detectada e confirmada.
         // Não há expansão durante a geração.
@@ -787,9 +788,9 @@ export function useRenderStudioController() {
         parentVersionId: currentRenderId, // P2-18: imutável, rastreável
         createdAt: new Date(),
         selectionLabel: selections[0]?.label,
-        materialId: selectedMaterial?.id,
-        materialName: selectedMaterial?.nome,
-        surfaceKey: selections.slice(-1)[0]?.surfaceKey,
+        materialId: melhoriaMode === "change-material" ? selectedMaterial?.id : undefined,
+        materialName: melhoriaMode === "change-material" ? selectedMaterial?.nome : undefined,
+        surfaceKey: melhoriaMode === "change-material" ? selections.slice(-1)[0]?.surfaceKey : undefined,
       };
       setRenderUrl(normalizeRenderMediaUrl(data.result_image_url)); setRenderId(render_id);
       setVersions(v => [newVersion, ...v]);

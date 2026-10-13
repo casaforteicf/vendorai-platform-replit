@@ -10,7 +10,7 @@ export type ParametricWall = {
 
 let engine: Promise<void> | null = null;
 export function loadThree(): Promise<void> {
-  if (!engine) engine = new Promise((resolve, reject) => {
+  if (!engine) engine = new Promise<void>((resolve, reject) => {
     if ((window as any).THREE?.WebGLRenderer) { resolve(); return; }
     const script = document.createElement("script");
     script.src = "https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js";
@@ -47,7 +47,7 @@ export function loadThree(): Promise<void> {
     engine = null;
     throw error;
   });
-  return engine;
+  return engine!;
 }
 
 export function buildWallGeometry(THREE: any, wall: ParametricWall) {

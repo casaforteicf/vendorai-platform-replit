@@ -85,6 +85,29 @@ const CSS = `
     0%,100% { opacity:1; }
     50%     { opacity:0.4; }
   }
+  .ss-spec-root { width:100%; min-width:0; max-width:100%; overflow:hidden; }
+  .ss-spec-root * { box-sizing:border-box; }
+  .ss-spec-main, .ss-spec-results { min-width:0; }
+  .ss-spec-results { overflow-wrap:anywhere; }
+  .ss-spec-results pre { max-width:100%; overflow-wrap:anywhere; white-space:pre-wrap; }
+  @media (max-width:700px) {
+    .ss-spec-root { min-height:100%; height:auto !important; overflow:visible !important; }
+    .ss-spec-header { padding:12px !important; }
+    .ss-spec-header-row { flex-wrap:wrap !important; align-items:flex-start !important; }
+    .ss-spec-heading { flex:1 1 calc(100% - 56px) !important; min-width:0 !important; }
+    .ss-spec-heading h2 { overflow-wrap:anywhere; }
+    .ss-spec-stats { width:100%; flex:1 1 100% !important; display:grid !important; grid-template-columns:repeat(3,minmax(0,1fr)); }
+    .ss-spec-stats > div { min-width:0 !important; padding:8px 3px !important; }
+    .ss-spec-stats p { overflow-wrap:anywhere; font-size:9px !important; }
+    .ss-spec-main { flex-direction:column !important; overflow:visible !important; }
+    .ss-spec-picker { width:100% !important; max-width:100% !important; border-right:none !important; border-bottom:1px solid rgba(255,255,255,.12) !important; }
+    .ss-spec-results { width:100% !important; overflow:visible !important; }
+    .ss-spec-scroll { overflow:visible !important; max-height:none !important; }
+    .ss-spec-tabs { overflow-x:auto !important; max-width:100%; padding:8px 12px 0 !important; }
+    .ss-spec-tabs button { flex-shrink:0; }
+    .ss-spec-item-fields { grid-template-columns:repeat(2,minmax(0,1fr)) !important; }
+    .ss-spec-root input, .ss-spec-root select, .ss-spec-root textarea { min-width:0; max-width:100%; }
+  }
   .ss-render-card {
     transition: border-color 0.18s ease, transform 0.18s ease !important;
     cursor: pointer;
@@ -147,7 +170,7 @@ function AnalyzingState({ imageUrl }: { imageUrl: string | null }) {
 
 // ─── Spec Item Row ────────────────────────────────────────────────────────────
 function SpecItemRow({
-  item, expanded, onToggle, onSearch, onSetStatus, catalogMatches, searching, onUseMatch,
+  item, expanded, onToggle, onSearch, onSetStatus, catalogMatches, searching, onUseMatch, onSaveDetails,
 }: {
   item: SpecItem
   expanded: boolean
@@ -157,7 +180,7 @@ function SpecItemRow({
   catalogMatches: CatalogMatch[] | null
   searching: boolean
   onUseMatch: (match: CatalogMatch) => void
-  onSaveDetails: (patch: Partial<SpecItem>) => Promise<void>
+  onSaveDetails: (patch: Partial<SpecItem>) => Promise<boolean>
 }) {
   const cc   = confColor(item.confianca)
   const pct  = Math.round(parseFloat(item.confianca) * 100)
@@ -274,7 +297,7 @@ function SpecItemRow({
                 </span>
               </div>
 
-              <div style={{ display:'grid', gridTemplateColumns:'repeat(3, minmax(0,1fr))', gap:8, marginBottom:8 }}>
+              <div className="ss-spec-item-fields" style={{ display:'grid', gridTemplateColumns:'repeat(3, minmax(0,1fr))', gap:8, marginBottom:8 }}>
                 {[
                   ['larguraCm','Largura (cm)'],
                   ['profundidadeCm','Profundidade (cm)'],
@@ -541,6 +564,7 @@ export function SmartSpecModule({
 }) {
   const [renders,      setRenders]      = useState<GalleryRender[]>([])
   const [loadingRenders, setLoadingRenders] = useState(false)
+  const [renderAvailability, setRenderAvailability] = useState<string | null>(null)
   const [selRender,    setSelRender]    = useState<GalleryRender | null>(null)
   const [spec,         setSpec]         = useState<Specification | null>(null)
   const [items,        setItems]        = useState<SpecItem[]>([])
@@ -567,13 +591,20 @@ export function SmartSpecModule({
     let cancelled = false
 
     if (!effectiveProjectId) {
+      setRenderAvailability(null)
       setRenders([])
       setSelRender(null)
       setSpec(null)
       setItems([])
+      setLoadingRenders(false)
       return
     }
 
+    setRenderAvailability(null)
+    setRenders([])
+    setSelRender(null)
+    setSpec(null)
+    setItems([])
     setLoadingRenders(true)
     setError(null)
 
@@ -607,6 +638,10 @@ export function SmartSpecModule({
           .sort((a: GalleryRender, b: GalleryRender) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
 
         setRenders(approved)
+        const allVersions = Array.isArray(data?.versions) ? data.versions : []
+        setRenderAvailability(approved.length > 0 ? null : allVersions.length > 0
+          ? "Há versões no histórico, mas nenhuma atende aos critérios de render concluído, aprovado e disponível."
+          : "Nenhum render foi localizado no histórico deste projeto.")
         if (approved.length === 0) {
           setSelRender(null)
           setSpec(null)
@@ -622,6 +657,7 @@ export function SmartSpecModule({
       .catch((cause: unknown) => {
         if (cancelled) return
         setRenders([])
+        setRenderAvailability("Falha na consulta do histórico de renderizações.")
         setSelRender(null)
         setSpec(null)
         setItems([])
@@ -637,28 +673,37 @@ export function SmartSpecModule({
   }, [requestedRenderId, effectiveProjectId])
 
   // Load existing spec when render selected
-  const loadExistingSpec = useCallback(async (projetoId: string) => {
+  useEffect(() => {
+    const projetoId = selRender?.projetoId
+    if (!projetoId) {
+      setLoadedSpecProjectId(null)
+      setLoadingSpec(false)
+      return
+    }
+    const controller = new AbortController()
     setLoadingSpec(true)
     setLoadedSpecProjectId(null)
-    try {
-      const r = await fetch(`${BASE}/arch/specification/${projetoId}`, { headers: authHeaders() })
-      if (r.ok) {
-        const data = await r.json()
-        setSpec(data.spec)
-        setItems(data.items)
-      } else {
-        setSpec(null)
-        setItems([])
-      }
-    } finally {
+    fetch(`${BASE}/arch/specification/${encodeURIComponent(projetoId)}`, {
+      headers: authHeaders(), signal: controller.signal,
+    }).then(async response => {
+      if (!response.ok) return {spec:null,items:[]}
+      return response.json()
+    }).then(data => {
+      if (controller.signal.aborted) return
+      setSpec(data.spec ?? null)
+      setItems(Array.isArray(data.items) ? data.items : [])
+    }).catch(cause => {
+      if (controller.signal.aborted) return
+      setError(cause instanceof Error ? cause.message : 'Falha ao carregar especificações')
+      setSpec(null)
+      setItems([])
+    }).finally(() => {
+      if (controller.signal.aborted) return
       setLoadedSpecProjectId(projetoId)
       setLoadingSpec(false)
-    }
-  }, [])
-
-  useEffect(() => {
-    if (selRender?.projetoId) loadExistingSpec(selRender.projetoId)
-  }, [selRender?.projetoId, loadExistingSpec])
+    })
+    return () => controller.abort()
+  }, [selRender?.projetoId])
 
   // Analyze render
   const analyze = async () => {
@@ -698,7 +743,7 @@ export function SmartSpecModule({
   }, [requestedRenderId, selRender?.id, selRender?.imageUrl, selRender?.projetoId, loadedSpecProjectId, loadingSpec, analyzing, spec?.renderId])
 
   const sendToBudget = async () => {
-    if (!spec?.id) return
+    if (sendingBudget || !spec?.id) return
     const itemIds = items.filter(item => item.status === 'especificado').map(item => item.id)
     if (itemIds.length === 0) {
       setBudgetMsg('Confirme pelo menos um item antes de enviar ao orçamento.')
@@ -712,7 +757,7 @@ export function SmartSpecModule({
         headers: authHeaders(true),
         body: JSON.stringify({ itemIds }),
       })
-      const data = await r.json()
+      const data = await r.json().catch(() => ({}))
       if (!r.ok) throw new Error(data.error ?? `HTTP ${r.status}`)
       const pending = Number(data.pendentes ?? 0)
       setBudgetMsg(pending > 0
@@ -731,15 +776,18 @@ export function SmartSpecModule({
     setCatalogMap(m => ({ ...m, [item.id]: null }))
     try {
       const r = await fetch(`${BASE}/arch/catalogo?busca=${encodeURIComponent(item.descricao)}&limit=5`, { headers: authHeaders() })
-      const data: CatalogMatch[] = r.ok ? await r.json() : []
-      setCatalogMap(m => ({ ...m, [item.id]: data }))
+      if (!r.ok) throw new Error(`Falha na busca do catálogo (HTTP ${r.status})`)
+      const data: CatalogMatch[] = await r.json()
+      setCatalogMap(m => ({ ...m, [item.id]: Array.isArray(data) ? data : [] }))
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Não foi possível consultar o catálogo.')
     } finally {
       setSearchingMap(m => ({ ...m, [item.id]: false }))
     }
   }
 
   // Update item status
-  const updateItem = async (itemId: string, patch: Partial<SpecItem>) => {
+  const updateItem = async (itemId: string, patch: Partial<SpecItem>): Promise<boolean> => {
     try {
       const r = await fetch(`${BASE}/arch/specification/item/${itemId}`, {
         method: 'PATCH',
@@ -749,25 +797,28 @@ export function SmartSpecModule({
       if (r.ok) {
         const updated: SpecItem = await r.json()
         setItems(prev => prev.map(i => i.id === itemId ? { ...i, ...updated } : i))
-        if (patch.status) setSpec(prev => prev ? {
-          ...prev,
-          specifiedCount: patch.status === 'especificado'
-            ? prev.specifiedCount + 1
-            : Math.max(0, prev.specifiedCount - (items.find(i => i.id === itemId)?.status === 'especificado' ? 1 : 0)),
-        } : prev)
+        setError(null)
+        return true
+      } else {
+        const payload = await r.json().catch(() => ({}))
+        throw new Error(payload.error ?? `Erro ao salvar componente (HTTP ${r.status})`)
       }
-    } catch {}
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Não foi possível salvar o componente.')
+      return false
+    }
   }
 
   // Use catalog match
   const useMatch = async (item: SpecItem, match: CatalogMatch) => {
-    await updateItem(item.id, {
+    const saved = await updateItem(item.id, {
       status:             'especificado',
       catalogoItemId:     match.id,
       overrideNome:       match.nome,
       overrideFornecedor: match.fornecedor ?? undefined,
       overridePreco:      match.precoBase ?? undefined,
     } as Partial<SpecItem>)
+    if (!saved) return
     setCatalogMap(m => ({ ...m, [item.id]: null }))
     setExpandedItem(null)
   }
@@ -789,16 +840,16 @@ export function SmartSpecModule({
   }
 
   return (
-    <div style={{ height:'100%', display:'flex', flexDirection:'column', background:T.bg }}>
+    <div className="ss-spec-root" style={{ height:'100%', display:'flex', flexDirection:'column', background:T.bg }}>
       <style>{CSS}</style>
 
       {/* ── Header ── */}
-      <div style={{
+      <div className="ss-spec-header" style={{
         padding:'12px 20px', flexShrink:0,
         background:'linear-gradient(180deg, rgba(124,58,237,0.08) 0%, transparent 100%)',
         borderBottom:`1px solid ${T.border}`,
       }}>
-        <div style={{ display:'flex', alignItems:'center', gap:12 }}>
+        <div className="ss-spec-header-row" style={{ display:'flex', alignItems:'center', gap:12 }}>
           {onBack && (
             <button
               type="button"
@@ -817,7 +868,7 @@ export function SmartSpecModule({
               ←
             </button>
           )}
-          <div style={{ flex:1 }}>
+          <div className="ss-spec-heading" style={{ flex:1 }}>
             <h2 style={{ margin:'0 0 2px', fontSize:16, fontWeight:900, color:'#fff', letterSpacing:'-0.02em' }}>
               ✨ Smart Specification
             </h2>
@@ -826,9 +877,9 @@ export function SmartSpecModule({
             </p>
           </div>
           {spec && (
-            <div style={{ display:'flex', gap:6, alignItems:'center' }}>
+            <div className="ss-spec-stats" style={{ display:'flex', gap:6, alignItems:'center' }}>
               <div style={{ textAlign:'center', padding:'6px 12px', borderRadius:8, background:'rgba(74,222,128,0.08)', border:`1px solid rgba(74,222,128,0.2)` }}>
-                <p style={{ margin:'0 0 1px', fontSize:16, fontWeight:900, color:T.green }}>{spec.specifiedCount}</p>
+                <p style={{ margin:'0 0 1px', fontSize:16, fontWeight:900, color:T.green }}>{counts.especificados}</p>
                 <p style={{ margin:0, fontSize:8, color:T.dim, fontWeight:700 }}>ESPECIFICADOS</p>
               </div>
               <div style={{ textAlign:'center', padding:'6px 12px', borderRadius:8, background:'rgba(251,191,36,0.08)', border:`1px solid rgba(251,191,36,0.2)` }}>
@@ -845,10 +896,10 @@ export function SmartSpecModule({
       </div>
 
       {/* ── Body ── */}
-      <div style={{ flex:1, display:'flex', overflow:'hidden' }}>
+      <div className="ss-spec-main" style={{ flex:1, display:'flex', overflow:'hidden' }}>
 
         {/* ── Left: Render Picker + Controls ── */}
-        <div style={{ width:220, flexShrink:0, borderRight:`1px solid ${T.border}`, display:'flex', flexDirection:'column', background:T.sidebar }}>
+        <div className="ss-spec-picker" style={{ width:220, flexShrink:0, borderRight:`1px solid ${T.border}`, display:'flex', flexDirection:'column', background:T.sidebar }}>
 
           {/* Render picker */}
           <div style={{ padding:'10px', borderBottom:`1px solid ${T.border}`, flexShrink:0 }}>
@@ -858,7 +909,7 @@ export function SmartSpecModule({
                 <div style={{ padding:'20px 10px', textAlign:'center', color:T.dim, fontSize:11 }}>
                   <div style={{ fontSize:24, marginBottom:6 }}>🎬</div>
                   {effectiveProjectId
-                    ? 'Este projeto ainda não possui um render aprovado.'
+                    ? renderAvailability ?? 'Este projeto ainda não possui um render aprovado.'
                     : 'Selecione um projeto para continuar.'}
                   <br/>
                   {effectiveProjectId && (
@@ -964,7 +1015,7 @@ export function SmartSpecModule({
         </div>
 
         {/* ── Right: Results ── */}
-        <div style={{ flex:1, display:'flex', flexDirection:'column', overflow:'hidden' }}>
+        <div className="ss-spec-results" style={{ flex:1, display:'flex', flexDirection:'column', overflow:'hidden' }}>
 
           {/* Error */}
           {error && (
@@ -1046,7 +1097,7 @@ export function SmartSpecModule({
           {!analyzing && !loadingSpec && items.length > 0 && !memorial && (
             <>
               {/* Tabs */}
-              <div style={{ display:'flex', gap:2, padding:'10px 16px 0', flexShrink:0, borderBottom:`1px solid ${T.border}` }}>
+              <div className="ss-spec-tabs" style={{ display:'flex', gap:2, padding:'10px 16px 0', flexShrink:0, borderBottom:`1px solid ${T.border}` }}>
                 {([
                   { id:'todos',             label:'Todos',       count:counts.todos },
                   { id:'pendentes',         label:'Pendentes',   count:counts.pendentes,         color:T.amber },
@@ -1076,7 +1127,7 @@ export function SmartSpecModule({
               </div>
 
               {/* Item list */}
-              <div style={{ flex:1, overflowY:'auto', padding:'12px 16px' }}>
+              <div className="ss-spec-scroll" style={{ flex:1, overflowY:'auto', padding:'12px 16px' }}>
                 {filteredItems.length === 0 && (
                   <div style={{ textAlign:'center', padding:'30px', color:T.dim, fontSize:12 }}>
                     Nenhum item nesta categoria.
