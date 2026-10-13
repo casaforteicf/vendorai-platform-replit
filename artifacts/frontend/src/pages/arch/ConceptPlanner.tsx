@@ -77,6 +77,7 @@ import { buildExplainableFindings } from "./conceptExplainableEvaluation";
 import { clampObjectToLot, clampRoomToLot, clampWallToLot, normalizeOpeningDimensions } from "./conceptParametricEditing";
 import { buildConceptWallDiagnostics } from "./conceptWallDiagnostics";
 import { validateConceptWalls } from "./conceptWallPreflight";
+import { inspectBimModel, type BimModel } from "./conceptBimElementModel";
 
 const ConceptPlan2D = lazy(() => import("./ConceptPlan2D"));
 const ConceptTypologyPreview = lazy(() => import("./ConceptTypologyPreview"));
@@ -562,6 +563,7 @@ type ConceptDraftResponse = {
     wallFirstFloors?: number[];
     showDimensions?: boolean;
     customWalls?: Array<{ id: string; floor: number; x1: number; y1: number; x2: number; y2: number; thickness?: number }>;
+    bimElements?: BimModel;
     customOpenings?: CustomOpening[];
     spaceProfiles?: SpaceProfile[];
     objects?: ConceptPlanObject[];
@@ -1096,6 +1098,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
   const [wallDiagnosticsOpen, setWallDiagnosticsOpen] = useState(false);
   const [selectedClosedSpaceId, setSelectedClosedSpaceId] = useState<string | null>(null);
   const [customWalls, setCustomWalls] = useState<CustomWall[]>([]);
+  const [bimElements, setBimElements] = useState<BimModel>({ schemaVersion: 1, elements: [] });
   const [customOpenings, setCustomOpenings] = useState<CustomOpening[]>([]);
   const [wallFirstFloors, setWallFirstFloors] = useState<number[]>([0]);
   const [showDimensions, setShowDimensions] = useState(true);
@@ -1668,6 +1671,12 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
         );
         setShowDimensions(draft.configuration?.showDimensions ?? true);
         setCustomWalls(loadedWalls);
+        const storedBim = draft.configuration?.bimElements;
+        if (storedBim?.schemaVersion === 1 && Array.isArray(storedBim.elements) && inspectBimModel(storedBim).length === 0) {
+          setBimElements(storedBim);
+        } else {
+          setBimElements({ schemaVersion: 1, elements: [] });
+        }
         setCustomOpenings(loadedOpenings);
         setSpaceProfiles(Array.isArray(draft.configuration?.spaceProfiles) ? draft.configuration.spaceProfiles : []);
         setObjects(normalizeLoadedObjects(draft.configuration?.objects, loadedFloors));
@@ -1788,6 +1797,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
         wallFirstFloors: nextWallFirstFloors,
         showDimensions,
         customWalls: nextCustomWalls,
+        bimElements,
         customOpenings: nextCustomOpenings,
         spaceProfiles: nextSpaceProfiles,
         objects: nextObjects,
@@ -1835,6 +1845,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
     const sendRequest = async () => {
       // Validação da geometria no fluxo real de POST/PATCH do editor.
       // Não corrige silenciosamente paredes nem altera o controle de revisão.
+      if (inspectBimModel(bimElements).length > 0) throw new Error("Revise os elementos BIM antes de salvar.");
       const wallIssues = validateConceptWalls(
         nextCustomWalls.map((wall) => ({
           id: wall.id, floor: wall.floor, x1: wall.x1, y1: wall.y1,
