@@ -63,7 +63,7 @@ const newLeadSchema = z.object({
   createInitialDeal: z.boolean().default(true),
   dealTitle: z.string().optional().or(z.literal("")),
   dealValue: z.string().optional().or(z.literal("")),
-  dealStage: z.enum(["em_aquecimento", "novo", "qualificado"]).default("em_aquecimento"),
+  dealStage: z.enum(["em_aquecimento", "novo", "qualificado"]).default("novo"),
 });
 
 type NewLeadValues = z.infer<typeof newLeadSchema>;
@@ -203,7 +203,7 @@ const DEFAULT_VALUES: NewLeadValues = {
   primaryContactIndex: 0,
   dealTitle: "",
   dealValue: "",
-  dealStage: "em_aquecimento",
+  dealStage: "novo",
 };
 
 function digits(value?: string | null) {
