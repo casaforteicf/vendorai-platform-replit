@@ -135,7 +135,7 @@ export function ExperimentalCpuRenderPanel({options,tenantId,authToken,arqdorPro
   setCompleted(false);setCompletedBackend(null);setProgress(0);setGpuBusy(true);
   setStatus("GPU experimental: preparando cena");
   try{
-   const renderOptions:DiffusePreviewOptions={...options,directionalLight:{directionToLight:options.directionalLight?.directionToLight??[0.35,0.8,0.45],color:options.directionalLight?.color??[1,1,1],intensity:sunIntensity}};
+   const renderOptions:DiffusePreviewOptions={...options,display:{toneMapping:"linear",exposure},directionalLight:{directionToLight:options.directionalLight?.directionToLight??[0.35,0.8,0.45],color:options.directionalLight?.color??[1,1,1],intensity:sunIntensity}};
    const rgba=await renderWebGpuPreview(renderOptions);
    if(currentGeneration!==generation.current)return;
    const context=canvas.current?.getContext("2d");
@@ -192,7 +192,7 @@ export function ExperimentalCpuRenderPanel({options,tenantId,authToken,arqdorPro
     <p className="text-xs text-slate-500">Não substitui o render IA, não publica imagens e não altera a geometria.</p></div>
    <span className="text-xs text-amber-700">Laboratório</span>
   </div>
-  <p className="text-xs text-slate-600" role="status">Aceleração: WebGPU {accelerators?.webgpu==="available"?"detectada":accelerators?.webgpu==="blocked"?"bloqueada":accelerators?"indisponível":"verificando"} · Prévia WebGPU limitada a 512 triângulos (sem path tracing) · Render físico principal: CPU. GPU servidor: não configurada.</p>
+  <p className="text-xs text-slate-600" role="status">Aceleração: WebGPU {accelerators?.webgpu==="available"?"detectada":accelerators?.webgpu==="blocked"?"bloqueada":accelerators?"indisponível":"verificando"} · Prévia WebGPU limitada a 512 triângulos; nela apenas câmera, cores básicas, sol e exposição são aplicados (sem path tracing ou controles PBR) · Render físico principal: CPU. GPU servidor: não configurada.</p>
   <canvas ref={canvas} className="block w-full rounded-lg bg-slate-900" aria-label="Imagem do render experimental"/>
   <div className="flex flex-wrap items-center gap-3 text-sm">
    <label>Passagens <select value={samples} onChange={e=>setSamples(Number(e.target.value))} className="rounded border p-1">
