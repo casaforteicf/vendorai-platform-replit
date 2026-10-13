@@ -323,6 +323,20 @@ export default function LeadWorkspace() {
   const [due, setDue] = useState(tomorrow());
   const [description, setDescription] = useState("");
   const [note, setNote] = useState("");
+  // O formulário pode abrir pela pipeline antes das etapas, do negócio e dos
+  // usuários terminarem de carregar. Sincronize o destino e o responsável.
+  useEffect(() => {
+    if (!requestedStage || !deal || !stages.some((stage) => stage.key === requestedStage)) return;
+    setNextStage(requestedStage);
+    const stage = stages.find((candidate) => candidate.key === requestedStage) as ResponsibilityStage | undefined;
+    const eligible = users.filter((candidate) => userCanOwnStage(candidate as ResponsibilityUser, stage));
+    setOwner((previous) => {
+      if (eligible.some((candidate) => candidate.id === previous)) return previous;
+      return [deal.assignedTo, user?.id].find((candidate) =>
+        Boolean(candidate) && eligible.some((person) => person.id === candidate)
+      ) ?? eligible[0]?.id ?? "";
+    });
+  }, [requestedStage, deal?.id, deal?.assignedTo, stages, users, user?.id]);
   const [saving, setSaving] = useState(false);
   const [savingAnswers, setSavingAnswers] = useState(false);
   const [ownerEditorOpen, setOwnerEditorOpen] = useState(false);
@@ -763,6 +777,7 @@ export default function LeadWorkspace() {
       ]);
       setOpen(false);
       toast({ title: "Etapa avançada", description: "Próxima atividade atribuída a " + displayUser(owner) + "." });
+      if (search.get("from") === "pipeline") navigate("/deals");
     } catch (e) {
       toast({ title: "Erro ao avançar", description: e instanceof Error ? e.message : "Tente novamente.", variant: "destructive" });
     } finally {
