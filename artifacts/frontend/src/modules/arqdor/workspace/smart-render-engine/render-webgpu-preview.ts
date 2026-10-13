@@ -65,7 +65,7 @@ export async function renderWebGpuPreview(o:DiffusePreviewOptions):Promise<Uint8
  const {width,height,geometry}=o;
  if(!Number.isInteger(width)||!Number.isInteger(height)||width<1||height<1||width*height>262144)
    throw Error("ARQDOR: resolução WebGPU fora do limite experimental");
- if(geometry.truncated || geometry.totalTriangles<1 || geometry.totalTriangles>512)
+ if(geometry.truncated || geometry.totalTriangles<1 || geometry.totalTriangles>512 || !Number.isSafeInteger(geometry.totalTriangles))
    throw Error("ARQDOR: GPU experimental aceita apenas cenas completas de 1 a 512 triângulos");
  if(!(o.camera.verticalFovDegrees>1&&o.camera.verticalFovDegrees<179))throw Error("ARQDOR: FOV inválido");
  if(typeof navigator==="undefined" || typeof window==="undefined" || !window.isSecureContext)
@@ -85,21 +85,25 @@ export async function renderWebGpuPreview(o:DiffusePreviewOptions):Promise<Uint8
  };
  try {
    const verts:number[]=[];const cols:number[]=[];
+   let actualTriangles=0;
    for(const mesh of geometry.meshes) {
      const hex=o.materials[mesh.materialId??""]??"#bdbdbd";
      const rgb=/^#[0-9a-f]{6}$/i.test(hex)?[1,3,5].map(k=>parseInt(hex.slice(k,k+2),16)/255):[0.75,0.75,0.75];
-     if(mesh.positions.length!==mesh.triangles*9)throw Error("ARQDOR: malha incompleta");
+     if(!Number.isSafeInteger(mesh.triangles)||mesh.triangles<0||mesh.positions.length!==mesh.triangles*9)throw Error("ARQDOR: malha incompleta");
+     actualTriangles+=mesh.triangles;
      for(let t=0;t<mesh.triangles;t++){
        for(let v=0;v<3;v++){const at=t*9+v*3;verts.push(...mesh.positions.slice(at,at+3),0);}
        cols.push(...rgb,1);
      }
    }
+   if(actualTriangles!==geometry.totalTriangles)throw Error("ARQDOR: contagem de triângulos inconsistente");
    if(verts.some(v=>!Number.isFinite(v)))throw Error("ARQDOR: geometria inválida");
    const forward=unit(o.camera.target.map((v,i)=>v-o.camera.position[i]));
    const right=unit(cross(forward,o.camera.up??[0,1,0]));
    const up=unit(cross(right,forward));
    const sun=unit(o.directionalLight?.directionToLight??o.light.directionToLight);
    const intensity=o.directionalLight?.intensity??o.light.intensity;
+   if(!Number.isFinite(intensity)||intensity<0)throw Error("ARQDOR: iluminação inválida");
    const params=new Float32Array([
      ...o.camera.position,0,...forward,0,...right,0,...up,0,
      ...sun,Math.max(0,intensity),
@@ -127,8 +131,11 @@ export async function renderWebGpuPreview(o:DiffusePreviewOptions):Promise<Uint8
    pass.setPipeline(pipeline);pass.setBindGroup(0,bind);
    pass.dispatchWorkgroups(Math.ceil(width/8),Math.ceil(height/8));pass.end();
    encoder.copyBufferToBuffer(out,0,read,0,pixelBytes);
+   device.pushErrorScope?.("validation");
    device.queue.submit([encoder.finish()]);
    await read.mapAsync(mapMode.READ);
+   const gpuError=await device.popErrorScope?.();
+   if(gpuError)throw Error("ARQDOR: falha de validação WebGPU: "+gpuError.message);
    const bytes=new Uint8ClampedArray(read.getMappedRange().slice(0));
    read.unmap();
    return bytes;
