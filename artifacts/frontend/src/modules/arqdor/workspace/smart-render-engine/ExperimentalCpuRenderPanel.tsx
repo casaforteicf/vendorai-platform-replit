@@ -19,6 +19,7 @@ export function ExperimentalCpuRenderPanel({options,tenantId,authToken,arqdorPro
  const [transmission,setTransmission]=useState(0);
  const [completed,setCompleted]=useState(false);
  const [saving,setSaving]=useState(false);
+ const savingRef=useRef(false);
  const [savedVersions,setSavedVersions]=useState<Array<{id:string;label:string;image:string}>>([]);
  const [loadingVersions,setLoadingVersions]=useState(false);
  const [history,setHistory]=useState<Array<{image:string;label:string}>>([]);
@@ -65,7 +66,8 @@ export function ExperimentalCpuRenderPanel({options,tenantId,authToken,arqdorPro
   link.click();
  };
  const saveToLibrary=async()=>{
-  if(!completed||!canvas.current||job.current||saving||!tenantId||!authToken||!arqdorProjectId)return;
+  if(!completed||!canvas.current||job.current||savingRef.current||!tenantId||!authToken||!arqdorProjectId)return;
+  savingRef.current=true;
   setSaving(true);
   const sourceKey=`${tenantId}:${arqdorProjectId}`;
   const sourceGeneration=savedGeneration.current;
@@ -104,7 +106,7 @@ export function ExperimentalCpuRenderPanel({options,tenantId,authToken,arqdorPro
    if(!requested.ok||typeof prepared.uploadURL!=="string"||typeof prepared.objectPath!=="string")throw Error(prepared.error||"Falha ao preparar envio");
    const uploaded=await fetch(prepared.uploadURL,{method:"PUT",headers:{"Content-Type":"image/png"},body:blob});
    if(!uploaded.ok)throw Error("Falha ao transferir imagem");
-   if(sourceGeneration!==savedGeneration.current)throw Error("Projeto ou cena alterados durante o envio");
+   if(sourceGeneration!==savedGeneration.current)throw Error("Projeto, cena ou parâmetros alterados durante o envio");
    const registered=await fetch(root,{method:"POST",headers,body:JSON.stringify({
     type:"image",role:"output",source:"upload",projectId:mediaId,operation:"arqdor_cpu_preview",
     label:"Prévia CPU experimental",storageUrl:prepared.objectPath,
@@ -114,9 +116,10 @@ export function ExperimentalCpuRenderPanel({options,tenantId,authToken,arqdorPro
    if(!registered.ok){const error=await registered.json().catch(()=>({}));throw Error(error.error||"Falha ao registrar imagem");}
    if(sourceGeneration===savedGeneration.current){setStatus("Prévia experimental salva na Biblioteca de Mídias do tenant");await loadSavedVersions(mediaId!,tenantId,authToken);}
   }catch(error){if(sourceGeneration===savedGeneration.current)setStatus("Falha ao salvar: "+(error instanceof Error?error.message:String(error)));}
-  finally{setSaving(false);}
+  finally{savingRef.current=false;setSaving(false);}
  };
  const start=()=>{
+  savedGeneration.current++;
   stop();
   setComparison(null);
   const context=canvas.current?.getContext("2d");
