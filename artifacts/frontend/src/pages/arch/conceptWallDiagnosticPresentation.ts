@@ -2,6 +2,9 @@ import type { ConceptWallDiagnostic } from "./conceptWallDiagnostics";
 
 const issueLabels: Record<ConceptWallDiagnostic["issues"][number]["code"], string> = {
   INVALID_LOT: "Dimensões do terreno inválidas",
+  INVALID_WALL_ID: "Identificador da parede ausente ou inválido",
+  INVALID_FLOOR: "Pavimento inválido",
+  INVALID_TOLERANCE: "Precisão geométrica inválida",
   DUPLICATE_ID: "Identificador de parede duplicado",
   INVALID_COORDINATE: "Coordenadas inválidas",
   OUTSIDE_LOT: "Parede fora dos limites do terreno",
