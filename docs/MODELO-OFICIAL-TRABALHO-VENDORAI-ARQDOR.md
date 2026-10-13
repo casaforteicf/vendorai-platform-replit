@@ -85,7 +85,7 @@ E2E Playwright deve cobrir progressivamente caminhos críticos reais, sem fingir
 
 ## 9. Publicação, segurança e rollback
 
-Infra oficial: frontend Cloudflare Pages e backend Docker Contabo; cron existente coordena deploy/healthchecks (homologação API `:5000`, produção `:5001`) e rollback. Registrar SHA efetivo, release frontend/backend, verificações de acesso real, logs e backup recuperável. Não presumir que `main`, branch ou PR coincide com versão em produção; verificar na VPS.
+Infra operacional descrita no `CLAUDE.md` vigente: **frontend Vite estático na Contabo/nginx** (Cloudflare Pages com domínio inativo) e backend Docker Contabo; cron existente coordena deploy/healthchecks (homologação API `:5000`, produção `:5001`) e rollback. Registrar SHA efetivo, release frontend/backend, verificações de acesso real, logs e backup recuperável. Não presumir que `main`, branch ou PR coincide com versão em produção; verificar na VPS.
 
 Não usar Replit, TinyFish, Desktop Commander, GraphQL para GitHub nem GitHub Actions como mecanismo obrigatório. Não revelar segredos. Commits com e-mail do proprietário conforme protocolo. Não aplicar migrations em produção sem autorização. Evitar qualquer mudança de infraestrutura ou produção não autorizada.
 
@@ -115,6 +115,13 @@ Vocabulário obrigatório: **implementado** = código comprovado; **testado** = 
  
 Esses estados mudam; reconsultar GitHub e Contabo antes de afirmar conclusão ou porcentagem.
 
-## 13. Critério final
+## 13. Divergências entre documentos — decisão segura
+
+- `AGENTS.md` determina validação técnica/compilação também em **ambiente isolado na Contabo**; o protocolo novo aceita gates no sandbox Linux. Adotar os gates do sandbox **e** comprovação pertinente na Contabo/homologação; nunca usar o resultado do sandbox como prova do deploy.
+- `AGENTS.md` diz não fazer merge/deploy automaticamente por push na main, enquanto `CLAUDE.md` descreve o cron já ativo que publica após merge. **Consequência:** tratar o merge na main como gatilho potencial de publicação. Integrador só deve mergear com autorização e isolamento comprovado, ou após homologação e aceite da release; nunca presumir que um merge docs-only não aciona o pipeline.
+- `docs/PROTOCOLO-EXECUCAO-AGENTES.md` declara erroneamente que interseção vazia de arquivos alterados e arquivos com erro prova zero regressão. A comparação correta é **diagnóstico completo antes/depois**, incluindo arquivos não tocados, com mesmas dependências e configuração, mais testes dirigidos/de integração.
+- O plano e o PR não modificam diretamente esses arquivos normativos; registrar uma tarefa separada de correção e validação com os agentes responsáveis.
+
+## 14. Critério final
 
 **Aceite = requisitos observáveis + evidência técnica + evidência funcional/visual + versão efetiva/flag correspondente + segurança/rollback.** Qualquer item ausente aparece como pendência. Se uma frente estiver bloqueada, explicar a causa real e seguir com frentes independentes.
