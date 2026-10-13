@@ -3,7 +3,7 @@ import { projectBimPlan } from "./conceptBimPlanGeometry";
 import { ConceptBimMeshPreview } from "./ConceptBimMeshPreview";
 import { editBimElementNumber, removeBimElement, upsertBimElement, type BimElement, type BimModel } from "./conceptBimElementModel";
 
-type Props = { model: BimModel; onChange(model: BimModel): void; floor: number };
+type Props = { model: BimModel; onChange(model: BimModel): void; floor: number; selectedId?: string | null; onSelect?(id: string | null): void };
 const nextId = () => "bim-" + globalThis.crypto.randomUUID();
 const makeElement = (kind: BimElement["kind"], floor: number): BimElement => {
   const base = { id: nextId(), x: 1, y: 1 };
@@ -13,7 +13,7 @@ const makeElement = (kind: BimElement["kind"], floor: number): BimElement => {
 };
 
 /** Feature-flagged draft editor. Not connected to legacy wall geometry or 3D meshes. */
-export function ConceptBimElementsPanel({ model, onChange, floor }: Props) {
+export function ConceptBimElementsPanel({ model, onChange, floor, selectedId, onSelect }: Props) {
   const shapes = useMemo(() => projectBimPlan(model, floor), [model, floor]);
   const bounds = Math.max(8, ...shapes.map(s => Math.max(s.x + s.width, s.y + s.depth)));
   const scale = 240 / bounds;
@@ -47,7 +47,8 @@ export function ConceptBimElementsPanel({ model, onChange, floor }: Props) {
       <ConceptBimMeshPreview model={model} />
       <ul className="mt-3 space-y-2">
         {model.elements.filter(element => (element.kind === "roof" ? element.floor : element.parameters.floor) === floor).map(element =>
-          <li key={element.id} className="flex items-center justify-between gap-2 text-xs">
+          <li key={element.id} className={`flex items-center justify-between gap-2 text-xs ${selectedId === element.id ? "ring-1 ring-emerald-500" : ""}`}>
+            <button type="button" aria-pressed={selectedId === element.id} onClick={() => onSelect?.(element.id)} className="rounded border border-emerald-800 px-1 py-1">Selecionar</button>
             <span>{element.kind === "stair" ? "Escada" : element.kind === "slab" ? "Laje" : "Cobertura"} — {element.id.slice(-8)}</span>
             <div className="flex flex-wrap items-center gap-1">
               {([
