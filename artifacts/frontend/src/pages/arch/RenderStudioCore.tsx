@@ -175,10 +175,27 @@ function RenderStudioInner() {
         onShortcuts={() => setShowShortcuts(true)}
       />
 
-      <div style={{ padding: "6px 16px", borderBottom: `1px solid ${D.border}`, background: D.surface }}>
-        <button type="button" disabled={!arq.projectId} onClick={() => setShowModels(true)} style={{ padding: "6px 12px", borderRadius: 6, border: `1px solid ${D.border}`, color: D.text, background: D.surface, opacity: arq.projectId ? 1 : .5 }}>Modelos 3D</button>
-        {!arq.projectId ? <span style={{ marginLeft: 8, fontSize: 12 }}>Selecione um projeto para importar modelos.</span> : null}
-      </div>
+      {/* Render Studio 2.0: contextual toolbar backed by existing controller actions. */}
+      <nav aria-label="Ferramentas do Arqdor Render" style={{ display: "flex", gap: 6, alignItems: "center", padding: "7px 12px", borderBottom: `1px solid ${D.border}`, background: D.surface, overflowX: "auto", flexShrink: 0 }}>
+        {[
+          { label: "Projeto", icon: "▣", action: () => arq.projectId ? setLocation(`/arch/projetos/${arq.projectId}`) : setShowCreateModal(true) },
+          { label: "Modelos 3D", icon: "⬡", action: () => setShowModels(true), disabled: !arq.projectId },
+          { label: "Imagem base", icon: "▧", action: () => handleUpload() },
+          { label: "Materiais", icon: "◈", action: () => setShowMaterialLib(true) },
+          { label: "Iluminação", icon: "☼", action: () => { setLightingProfile("balanced"); setRightPanelOpen(true); if (stepIndex(step) >= stepIndex("melhoria")) setMelhoriaMode("change-lighting"); } },
+          { label: "Versões", icon: "▤", action: () => { setBottomPanelOpen(true); if (stepIndex(step) >= stepIndex("versao")) handleStepClick("versao"); } },
+          { label: "Especificar", icon: "≡", action: () => handleOpenSpecification() },
+        ].map(tool => (
+          <button key={tool.label} type="button" onClick={tool.action} disabled={tool.disabled}
+            style={{ display: "inline-flex", alignItems: "center", gap: 7, whiteSpace: "nowrap", padding: "7px 11px", borderRadius: 6, border: `1px solid ${D.border}`, color: D.text, background: D.card, fontSize: 11, fontWeight: 600, cursor: tool.disabled ? "not-allowed" : "pointer", opacity: tool.disabled ? 0.45 : 1 }}>
+            <span aria-hidden="true" style={{ color: D.green, fontSize: 13 }}>{tool.icon}</span>{tool.label}
+          </button>
+        ))}
+        <span style={{ flex: 1 }} />
+        <button type="button" onClick={() => setRightPanelOpen(open => !open)} aria-pressed={rightPanelOpen} style={{ whiteSpace: "nowrap", padding: "7px 11px", borderRadius: 6, border: `1px solid ${D.border}`, background: D.card, color: D.text, fontSize: 11 }}>
+          {rightPanelOpen ? "Ocultar controles" : "Mostrar controles"}
+        </button>
+      </nav>
       <div style={{ flex: 1, display: "flex", overflow: "hidden", position: "relative" }}>
         <LeftSidebar step={step} projectTitle={arq.projectMeta?.titulo ?? null} onStepClick={handleStepClick} onProjectClick={() => { if (arq.projectId) setLocation(`/arch/projetos/${arq.projectId}`); }} />
 
