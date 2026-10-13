@@ -14,7 +14,9 @@ export function getUi20VisibleServices(input: {
   if (loading) return visible;
   visible.add("crm");
   if (permittedModule("scheduler")) visible.add("agenda");
-  if (permittedModule("leads")) { visible.add("prospecting"); visible.add("commercial"); }
+  if (permittedModule("leads")) visible.add("prospecting");
+  // Catálogo e propostas podem estar habilitados mesmo sem acesso ao módulo Leads.
+  if (["leads", "catalog", "proposals"].some(permittedModule)) visible.add("commercial");
   if (permittedModule("omnichannel") || permittedModule("conversations")) visible.add("omnichannel");
   if (permittedModule("business_intelligence") || permittedModule("analytics")) visible.add("intelligence");
   if (permittedModule("obras") || permittedModule("works")) visible.add("works");
