@@ -226,6 +226,8 @@ export * from "./poe_opportunities";
 export * from "./poe_recommendations";
 export * from "./poe_quotations";
 export * from "./arqdor_workspace_projects";
+export * from "./arqdor_workspace_members";
+export * from "./arqdor_workspace_member_audit";
 export * from "./arqdor_universal_models";
 export * from "./content_library";
 export * from "./bug_reports";
@@ -283,3 +285,7 @@ export * from "./attachment_folder_locks";
 export * from "./arch_render_fidelity_reviews";
 
 export * from "./atr_origin";
+
+export * from "./agenda_access_grants";
+
+export * from "./calendar_oauth_states";

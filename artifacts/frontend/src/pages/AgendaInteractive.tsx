@@ -1,3 +1,4 @@
+import { AgendaAccessManagement } from "@/components/agenda/AgendaAccessManagement";
 import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import {
@@ -340,7 +341,9 @@ export default function AgendaPage() {
 
   return (
     <div className="vendor-product-page vendor-agenda-page flex h-full min-h-0 flex-col gap-4 md:flex-row md:gap-5">
+      <div className="md:hidden">{(user?.platformRole === "tenant_admin" || user?.platformRole === "super_admin") && <AgendaAccessManagement agendas={agendas} users={tenantUsers} />}</div>
       <aside className="hidden md:flex w-52 shrink-0 flex-col gap-1">
+        {(user?.platformRole === "tenant_admin" || user?.platformRole === "super_admin") && <AgendaAccessManagement agendas={agendas} users={tenantUsers} />}
         <div className="flex items-center justify-between mb-1 px-1"><span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Agendas</span><button onClick={openNewAgenda} className="p-1 rounded-md hover:bg-muted" title="Nova agenda"><Plus className="h-3.5 w-3.5 text-muted-foreground" /></button></div>
         <button className={`flex items-center gap-2 px-2.5 py-2 rounded-lg text-left transition-colors ${selectedAgendaId === null ? "bg-primary/10 font-semibold text-primary" : "hover:bg-muted"}`} onClick={() => setSelectedAgendaId(null)}><span className="w-2.5 h-2.5 rounded-full bg-muted-foreground/30" /><span className="text-sm">Todas</span></button>
         {agendas.map((a) => <AgendaSidebarItem key={a.id} agenda={a} selected={selectedAgendaId === a.id} onSelect={() => setSelectedAgendaId(a.id)} onEdit={() => openEditAgenda(a)} onDelete={() => setDeleteTarget(a)} onConnectGoogle={() => handleConnectGoogle(a)} onDisconnectGoogle={() => handleDisconnectGoogle(a)} isGoogleLoading={googleLoadingId === a.id} />)}

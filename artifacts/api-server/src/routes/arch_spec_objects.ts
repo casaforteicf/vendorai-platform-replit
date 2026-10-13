@@ -144,7 +144,7 @@ async function createSpecObject(tId: string | null, payload: SpecObjectPayload) 
   return result.rows[0];
 }
 
-async function updateSpecObject(id: string, tId: string | null, payload: Partial<SpecObjectPayload>) {
+async function updateSpecObject(id: string, tId: string | null, payload: Partial<SpecObjectPayload>, expectedUpdatedAt?: Date, actor?: {id:string|null;name:string|null}) {
   const currentValues: unknown[] = [id];
   let currentWhere = `id = $1`;
   if (tId) {
@@ -201,7 +201,9 @@ async function updateSpecObject(id: string, tId: string | null, payload: Partial
   const values: unknown[] = [];
   const payloadRecord = payload as Record<string, unknown>;
   const approvalSensitiveFields = new Set([
-    "quantity", "unit",
+    "quantity", "unit", "quantitySource",
+    "sourceObjectId", "sourceType", "projectRevision", "revisionImpact", "geometryHash",
+    "measurementSource", "measurementRevision",
     "catalogProductId", "catalogMaterialId", "catalogCode",
     "manufacturerId", "supplierId",
     "productName", "materialName", "manufacturerName", "supplierName",
@@ -225,7 +227,7 @@ async function updateSpecObject(id: string, tId: string | null, payload: Partial
   if (payloadRecord.status !== undefined) {
     const nextStatus = invalidatesTechnicalApproval
       && current.technical_approval_status === "approved"
-      && payloadRecord.status === "approved"
+      && (payloadRecord.status === "approved" || payloadRecord.status === "sent-to-budget")
         ? "specified"
         : payloadRecord.status;
     values.push(nextStatus);
@@ -240,7 +242,7 @@ async function updateSpecObject(id: string, tId: string | null, payload: Partial
     sets.push("technical_approved_by = NULL");
     sets.push("technical_approval_note = NULL");
     if (payloadRecord.status === undefined) {
-      sets.push("status = CASE WHEN status = 'approved' THEN 'specified' ELSE status END");
+      sets.push("status = CASE WHEN status IN ('approved', 'sent-to-budget') THEN 'specified' ELSE status END");
     }
   }
 
@@ -261,7 +263,38 @@ async function updateSpecObject(id: string, tId: string | null, payload: Partial
     where += ` AND tenant_id = $${values.length}`;
   }
 
-  const result = await pool.query(`UPDATE arch_spec_objects SET ${sets.join(", ")} WHERE ${where} RETURNING *`, values);
+  // Compare every write to the snapshot used to compute approval invalidation.
+  values.push(expectedUpdatedAt ?? new Date(current.updated_at));
+  where += ` AND updated_at = ${values.length}`;
+  const watchedColumns = [...new Set([...Object.values(allowed), "technical_approval_status", "status"])];
+  const before = Object.fromEntries(watchedColumns.map(column => [column, current[column] ?? null]));
+  values.push(JSON.stringify(before));
+  const beforeParam = values.length;
+  values.push(watchedColumns);
+  const keysParam = values.length;
+  values.push(actor?.id ?? null);
+  const actorIdParam = values.length;
+  values.push(actor?.name ?? null);
+  const actorNameParam = values.length;
+  const sql = `WITH updated AS (
+    UPDATE arch_spec_objects SET ${sets.join(", ")} WHERE ${where} RETURNING *
+  ), logged AS (
+    INSERT INTO arch_spec_object_change_audit
+      (tenant_id, project_id, spec_object_id, actor_id, actor_name, project_revision, changes)
+    SELECT updated.tenant_id, updated.project_id, updated.id,
+      ${actorIdParam}, ${actorNameParam}, updated.project_revision,
+      COALESCE((
+        SELECT jsonb_object_agg(field.key,
+          jsonb_build_object('before', ${beforeParam}::jsonb -> field.key, 'after', field.value))
+        FROM jsonb_each(to_jsonb(updated)) AS field
+        WHERE field.key = ANY(${keysParam}::text[])
+          AND (${beforeParam}::jsonb -> field.key) IS DISTINCT FROM field.value
+      ), '{}'::jsonb)
+    FROM updated
+    RETURNING spec_object_id
+  )
+  SELECT updated.* FROM updated JOIN logged ON logged.spec_object_id = updated.id`;
+  const result = await pool.query(sql, values);
   return result.rows[0] ?? null;
 }
 
@@ -1074,6 +1107,29 @@ archSpecObjectsRouter.post("/arch/spec-objects/sync-project", async (req, res, n
   }
 });
 
+archSpecObjectsRouter.get("/arch/spec-objects/:id/changes", async (req, res, next) => {
+  try {
+    const tId = tenantId(req);
+    const values: unknown[] = [req.params["id"]!];
+    let where = "id=$1";
+    if (tId) { values.push(tId); where += " AND tenant_id=$2"; }
+    const match = await pool.query(`SELECT id, tenant_id FROM arch_spec_objects WHERE ${where} LIMIT 1`, values);
+    if (!match.rows.length) { res.status(404).json({ error: "Componente não encontrado" }); return; }
+    const scope = match.rows[0].tenant_id;
+    const changes = await pool.query(
+      `SELECT id, spec_object_id, actor_id, actor_name, project_revision, changes, occurred_at
+         FROM arch_spec_object_change_audit
+        WHERE spec_object_id=$1 AND tenant_id IS NOT DISTINCT FROM $2
+        ORDER BY occurred_at DESC, id DESC LIMIT 100`,
+      [req.params["id"]!, scope],
+    );
+    res.json({ changes: changes.rows });
+  } catch (err) {
+    logger.error({ err }, "arch/spec-objects changes GET error");
+    next(err);
+  }
+});
+
 archSpecObjectsRouter.get("/arch/spec-objects/:id/approvals", async (req, res, next) => {
   try {
     const approvals = await getSpecObjectApprovals(tenantId(req), req.params["id"]!);
@@ -1162,9 +1218,33 @@ archSpecObjectsRouter.post("/arch/spec-objects/bulk-from-render", async (req, re
 archSpecObjectsRouter.patch("/arch/spec-objects/:id", async (req, res, next) => {
   try {
     const tId = tenantId(req);
-    const item = await updateSpecObject(req.params["id"]!, tId, req.body as Partial<SpecObjectPayload>);
+    const patch = req.body as Partial<SpecObjectPayload> & { expectedUpdatedAt?: string };
+    if (patch.status === "sent-to-budget" || patch.status === "approved") {
+      res.status(409).json({ error: "A aprovação técnica e o envio ao orçamento exigem seus fluxos específicos.", code: "TECHNICAL_APPROVAL_REQUIRED" });
+      return;
+    }
+    if (patch.expectedUpdatedAt !== undefined) {
+      const expected = new Date(patch.expectedUpdatedAt);
+      if (Number.isNaN(expected.getTime())) {
+        res.status(400).json({ error: "expectedUpdatedAt inválido" });
+        return;
+      }
+      const values: unknown[] = [req.params["id"]!];
+      let where = "id = $1";
+      if (tId) { values.push(tId); where += " AND tenant_id = $2"; }
+      const previous = await pool.query(`SELECT updated_at FROM arch_spec_objects WHERE ${where} LIMIT 1`, values);
+      if (!previous.rows.length) { res.status(404).json({ error: "SpecObject não encontrado" }); return; }
+      if (new Date(previous.rows[0].updated_at).getTime() !== expected.getTime()) {
+        res.status(409).json({ error: "O componente mudou desde sua última leitura. Recarregue antes de editar.", code: "TECHNICAL_REVISION_CONFLICT" });
+        return;
+      }
+    }
+    const item = await updateSpecObject(req.params["id"]!, tId, patch, patch.expectedUpdatedAt ? new Date(patch.expectedUpdatedAt) : undefined, { id: actorId(req), name: actorName(req) });
     if (!item) {
-      res.status(404).json({ error: "SpecObject não encontrado" });
+      res.status(patch.expectedUpdatedAt ? 409 : 404).json({
+        error: patch.expectedUpdatedAt ? "O componente foi alterado durante a edição. Recarregue antes de salvar." : "SpecObject não encontrado",
+        code: patch.expectedUpdatedAt ? "TECHNICAL_REVISION_CONFLICT" : "NOT_FOUND",
+      });
       return;
     }
     const budgetSync = item.status === "sent-to-budget"

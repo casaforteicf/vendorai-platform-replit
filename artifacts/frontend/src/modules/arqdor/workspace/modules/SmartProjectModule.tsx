@@ -1,4 +1,6 @@
-import React, { useMemo, useState } from "react";
+import React, { lazy, Suspense, useEffect, useMemo, useState } from "react";
+import { SmartSpecModule } from "./SmartSpecModule";
+const RealBudgetEngineStudio = lazy(() => import("../real-budget-engine/RealBudgetEngineStudio"));
 
 type ProjectLike = {
   id?: string;
@@ -20,6 +22,7 @@ type ProjectLike = {
   totalRenders?: number;
   ambientes?: EnvironmentLike[];
   renders?: unknown[];
+  dossieProjeto?: { arquivos?: Array<{ id:string; nome:string; url:string; tipo:string; ambienteId?:string|null; createdAt?:string; size?:number }> };
   updatedAt?: string;
   updated_at?: string;
   createdAt?: string;
@@ -51,6 +54,7 @@ type ArqStateLike = {
 type SmartProjectModuleProps = {
   arqState: ArqStateLike;
   onNavigate?: (module: string) => void;
+  projectId?: string | null;
 };
 
 const projectStatusLabel: Record<string, string> = {
@@ -76,9 +80,13 @@ function getProjects(arqState: ArqStateLike): ProjectLike[] {
   return Array.isArray(list) ? list : [];
 }
 
-function getCurrentProject(arqState: ArqStateLike): ProjectLike | null {
+function getCurrentProject(arqState: ArqStateLike, requestedId?: string | null): ProjectLike | null {
   const projects = getProjects(arqState);
-  return arqState?.currentProject || arqState?.selectedProject || arqState?.project || projects?.[0] || null;
+  const candidates = [arqState?.currentProject, arqState?.selectedProject, arqState?.project, ...projects].filter(
+    (project): project is ProjectLike => Boolean(project)
+  );
+  if (requestedId) return candidates.find(project => project.id === requestedId) ?? null;
+  return candidates[0] ?? null;
 }
 
 function getTitle(project?: ProjectLike | null): string {
@@ -319,16 +327,203 @@ function EmptyProject({ onNavigate }: { onNavigate?: (module: string) => void })
   );
 }
 
-export default function SmartProjectModule({ arqState, onNavigate }: SmartProjectModuleProps) {
-  const [activeTab, setActiveTab] = useState<"overview" | "ambientes" | "timeline" | "briefing">("overview");
 
-  const project = useMemo(() => getCurrentProject(arqState), [arqState]);
+type TechnicalObject = {
+  id: string; name?: string|null; category?: string|null; ambiente_id?: string|null; status?: string|null;
+  source_object_id?: string|null; source_type?: string|null; project_revision?: string|null;
+  render_id?: string|null; geometry_hash?: string|null; catalog_product_id?: string|null; catalog_material_id?: string|null;
+  technical_approval_status?: string|null; technical_approved_at?: string|null;
+  width_mm?: string|number|null; height_mm?: string|number|null; depth_mm?: string|number|null;
+  length_mm?: string|number|null; measurement_source?: string|null; measurement_revision?: string|null;
+  quantity?: string|number|null; unit?: string|null; quantity_source?: string|null;
+  area_m2?: string|number|null; volume_m3?: string|number|null;
+  material_name?: string|null; product_name?: string|null;
+};
+type TechnicalSnapshot = { items:TechnicalObject[]; loading:boolean; error:string|null };
+function useProjectTechnicalObjects(projectId: string|null): TechnicalSnapshot {
+  const [snapshot,setSnapshot] = useState<TechnicalSnapshot>({items:[],loading:false,error:null});
+  useEffect(()=>{
+    if(!projectId){setSnapshot({items:[],loading:false,error:null});return;}
+    const controller=new AbortController();
+    setSnapshot({items:[],loading:true,error:null});
+    const token=localStorage.getItem("vendorai_token");
+    fetch(`/api/arch/spec-objects?projectId=${encodeURIComponent(projectId)}`,{
+      signal:controller.signal,cache:"no-store",headers:token?{Authorization:`Bearer ${token}`}:{},
+    }).then(async response=>{
+      if(!response.ok)throw new Error(`Falha ao consultar objetos técnicos (HTTP ${response.status}).`);
+      return response.json();
+    }).then(data=>{
+      if(!controller.signal.aborted)setSnapshot({items:Array.isArray(data.items)?data.items:[],loading:false,error:null});
+    }).catch(cause=>{
+      if(!controller.signal.aborted)setSnapshot({items:[],loading:false,error:cause instanceof Error?cause.message:"Falha na consulta técnica."});
+    });
+    return ()=>controller.abort();
+  },[projectId]);
+  return snapshot;
+}
+type TechnicalApprovalEntry = {
+  id:string; approval_context?:string|null; decision?:string|null;
+  actor_name?:string|null; project_revision?:string|null; created_at?:string|null; note?:string|null;
+};
+function TechnicalApprovalHistory({objectId}:{objectId:string}) {
+  const [expanded,setExpanded]=useState(false);
+  const [entries,setEntries]=useState<TechnicalApprovalEntry[]>([]);
+  const [loading,setLoading]=useState(false);
+  const [error,setError]=useState<string|null>(null);
+  useEffect(()=>{
+    setEntries([]);setError(null);
+    if(!expanded)return;
+    const controller=new AbortController();
+    setLoading(true);
+    const token=localStorage.getItem("vendorai_token");
+    fetch(`/api/arch/spec-objects/${encodeURIComponent(objectId)}/approvals`,{
+      signal:controller.signal,cache:"no-store",
+      headers:token?{Authorization:`Bearer ${token}`}:{},
+    }).then(async response=>{
+      if(!response.ok)throw new Error(`Histórico indisponível (HTTP ${response.status})`);
+      return response.json();
+    }).then(data=>{
+      if(!controller.signal.aborted)setEntries(Array.isArray(data.approvals)?data.approvals:[]);
+    }).catch(cause=>{
+      if(!controller.signal.aborted)setError(cause instanceof Error?cause.message:"Não foi possível consultar aprovações.");
+    }).finally(()=>{if(!controller.signal.aborted)setLoading(false);});
+    return ()=>controller.abort();
+  },[objectId,expanded]);
+  return <div className="mt-2">
+    <button type="button" aria-expanded={expanded} onClick={()=>setExpanded(value=>!value)}
+      className="rounded border border-slate-200 px-2 py-1 text-xs font-medium text-slate-700">
+      {expanded?"Ocultar aprovações":"Ver histórico de aprovações"}
+    </button>
+    {expanded&&<div className="mt-2 grid gap-2" aria-live="polite">
+      {loading&&<p className="text-xs text-slate-600">Consultando histórico…</p>}
+      {error&&<p role="alert" className="text-xs text-red-700">{error}</p>}
+      {!loading&&!error&&entries.length===0&&<p className="text-xs text-slate-500">Nenhuma decisão registrada.</p>}
+      {entries.map(entry=><div key={entry.id} className="break-words rounded bg-slate-50 p-2 text-xs text-slate-700">
+        <strong>{entry.approval_context||"Aprovação"}: {entry.decision||"sem decisão"}</strong>
+        <p>Responsável: {entry.actor_name||"não informado"} · Revisão: {entry.project_revision||"—"} · {entry.created_at?new Date(entry.created_at).toLocaleString("pt-BR"):"Data não informada"}</p>
+        {entry.note&&<p className="mt-1">{entry.note}</p>}
+      </div>)}
+    </div>}
+  </div>;
+}
+function TechnicalProvenance({item}:{item:TechnicalObject}) {
+  const links = [
+    ["Objeto BIM",item.source_object_id], ["Origem",item.source_type],
+    ["Revisão do projeto",item.project_revision], ["Revisão da medida",item.measurement_revision],
+    ["Render",item.render_id], ["Material do catálogo",item.catalog_material_id],
+    ["Produto do catálogo",item.catalog_product_id],
+  ].filter((entry):entry is [string,string]=>typeof entry[1]==="string" && entry[1].length>0);
+  return <div className="mt-2 flex flex-wrap gap-1.5" aria-label="Rastreabilidade do componente">
+    <span className="rounded bg-slate-100 px-2 py-1 text-[11px] text-slate-600" title={item.id}>ID técnico: {item.id.slice(0,8)}</span>
+    {links.map(([label,value])=><span key={label} title={value} className="max-w-full break-all rounded bg-slate-100 px-2 py-1 text-[11px] text-slate-600">{label}: {value}</span>)}
+    <span className={item.technical_approval_status === "approved" ? "rounded bg-emerald-50 px-2 py-1 text-[11px] text-emerald-800" : "rounded bg-amber-50 px-2 py-1 text-[11px] text-amber-800"}>
+      Aprovação técnica: {item.technical_approval_status === "approved" ? "aprovada" : "pendente ou não registrada"}
+    </span>
+    {!item.source_object_id && <span className="rounded bg-amber-50 px-2 py-1 text-[11px] text-amber-800">Sem vínculo BIM identificado</span>}
+    <TechnicalApprovalHistory objectId={item.id} />
+  </div>;
+}
+function ProjectMeasurements({ projectId, snapshot }: {projectId:string|null; snapshot:TechnicalSnapshot}) {
+  const {items,loading,error}=snapshot;
+  const measured = items.filter(item => [item.width_mm,item.height_mm,item.depth_mm,item.length_mm].some(v => v != null));
+  const format = (value: number | string | null | undefined) => value == null ? "—" : `${Number(value).toLocaleString("pt-BR")} mm`;
+  return <section className="min-w-0 rounded-2xl border border-slate-200 bg-slate-50 p-4 md:p-5" aria-label="Medições técnicas do projeto">
+    <h3 className="text-lg font-semibold text-slate-900">Medidas técnicas do projeto</h3>
+    <p className="mt-2 text-sm text-slate-600">Dimensões registradas nos objetos de especificação deste projeto. Medidas estimadas ou não verificadas não são tratadas como conferência em campo.</p>
+    {!projectId && <p className="mt-4 text-sm text-amber-700">Selecione um projeto para consultar os registros.</p>}
+    {loading && <p className="mt-4 text-sm text-slate-600">Carregando medidas…</p>}
+    {error && <p role="alert" className="mt-4 text-sm text-red-700">{error}</p>}
+    {!loading && !error && projectId && <p className="mt-4 text-sm font-medium text-slate-700">{measured.length} objeto(s) com alguma dimensão registrada · {items.length} objeto(s) no projeto</p>}
+    <div className="mt-3 grid gap-3">
+      {measured.map(item => <article key={item.id} className="min-w-0 rounded-xl border border-slate-200 bg-white p-3">
+        <h4 className="break-words text-sm font-semibold text-slate-900">{item.name || "Componente sem nome"}</h4>
+        <TechnicalProvenance item={item} />
+        <p className="mt-1 text-xs text-slate-500">Ambiente: {item.ambiente_id || "não informado"} · Origem: {item.measurement_source || "não informada"} · Revisão: {item.measurement_revision || "—"}</p>
+        <div className="mt-2 grid grid-cols-2 gap-2 text-xs text-slate-700 sm:grid-cols-4">
+          <span>Largura: {format(item.width_mm)}</span><span>Altura: {format(item.height_mm)}</span>
+          <span>Profundidade: {format(item.depth_mm)}</span><span>Comprimento: {format(item.length_mm)}</span>
+        </div>
+      </article>)}
+    </div>
+    {!loading && !error && projectId && measured.length === 0 && <p className="mt-3 text-sm text-slate-500">Nenhuma dimensão registrada. A integração de captura e conferência do Arqdor Measure continua pendente.</p>}
+  </section>;
+}
+
+
+function ProjectQuantities({projectId,snapshot}:{projectId:string|null;snapshot:TechnicalSnapshot}) {
+  const {items,loading,error}=snapshot;
+  const fmt=(x:string|number|null|undefined)=>x==null?"Não informado":Number.isFinite(Number(x))?Number(x).toLocaleString("pt-BR",{maximumFractionDigits:3}):"Valor inválido";
+  const withQuantity=items.filter(x=>x.quantity!=null && Number.isFinite(Number(x.quantity)));
+  return <section aria-label="Quantitativos e materiais do projeto" className="min-w-0 rounded-2xl bg-slate-50 p-4 md:p-5">
+    <h3 className="text-lg font-semibold text-slate-900">Quantitativos e materiais</h3>
+    <p className="mt-2 text-sm text-slate-600">Dados registrados nos objetos técnicos do projeto. Quantidades e áreas não são calculadas automaticamente a partir de um render.</p>
+    {!projectId&&<p className="mt-3 text-sm text-amber-700">Selecione um projeto para consultar os quantitativos.</p>}
+    {loading&&<p className="mt-3 text-sm text-slate-600">Carregando quantitativos…</p>}
+    {error&&<p role="alert" className="mt-3 text-sm text-red-700">{error}</p>}
+    {!loading&&!error&&projectId&&<p className="mt-3 text-sm font-medium text-slate-800">{items.length} componente(s) · {withQuantity.length} com quantidade registrada</p>}
+    <div className="mt-4 grid gap-3">
+    {items.map(item=><article key={item.id} className="min-w-0 rounded-xl border border-slate-200 bg-white p-3">
+      <div className="flex flex-wrap items-center justify-between gap-2"><h4 className="break-words text-sm font-semibold text-slate-900">{item.name||"Componente"}</h4><span className="text-xs text-slate-500">{item.status||"Sem status"}</span></div>
+      <TechnicalProvenance item={item} />
+      <p className="mt-1 break-words text-xs text-slate-600">{item.category||"Categoria não definida"} · Ambiente {item.ambiente_id||"não informado"}</p>
+      <div className="mt-2 grid grid-cols-2 gap-2 text-xs text-slate-700 sm:grid-cols-4">
+        <span>Quantidade: {fmt(item.quantity)} {item.unit||""}</span>
+        <span>Área: {fmt(item.area_m2)} m²</span>
+        <span>Volume: {fmt(item.volume_m3)} m³</span>
+        <span>Origem: {item.quantity_source||"não informada"}</span>
+      </div>
+      <p className="mt-2 break-words text-xs text-slate-600">Material: {item.material_name||"não definido"} · Produto: {item.product_name||"não definido"} · Medida: {item.measurement_source||"não informada"}</p>
+    </article>)}
+    </div>
+    {!loading&&!error&&projectId&&items.length===0&&<p className="mt-3 text-sm text-slate-500">Nenhum objeto técnico registrado para este projeto.</p>}
+  </section>;
+}
+export default function SmartProjectModule({ arqState, onNavigate, projectId }: SmartProjectModuleProps) {
+  const [activeTab, setActiveTab] = useState<"overview" | "ambientes" | "timeline" | "briefing" | "especificacoes" | "medicoes" | "quantitativos" | "orcamento" | "documentacao">(() =>
+    typeof window !== "undefined" && (["especificacoes", "medicoes", "quantitativos", "orcamento", "documentacao"] as const).includes(
+      new URLSearchParams(window.location.search).get("tab") as "especificacoes"
+    ) ? (new URLSearchParams(window.location.search).get("tab") as "especificacoes" | "medicoes" | "quantitativos" | "orcamento" | "documentacao") : "overview"
+  );
+
+  const contextProject = useMemo(() => getCurrentProject(arqState, projectId), [arqState, projectId]);
+  const [loadedProject, setLoadedProject] = useState<ProjectLike | null>(null);
+  const [projectLoading, setProjectLoading] = useState(false);
+  const [projectError, setProjectError] = useState<string | null>(null);
+  useEffect(() => {
+    setLoadedProject(null);
+    setProjectError(null);
+    if (!projectId) { setProjectLoading(false); return; }
+    const controller = new AbortController();
+    setProjectLoading(true);
+    const token = localStorage.getItem("vendorai_token");
+    fetch(`/api/arch/projetos/${encodeURIComponent(projectId)}`, {
+      signal: controller.signal,
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    }).then(async response => {
+      if (!response.ok) throw new Error(`Não foi possível abrir o projeto (HTTP ${response.status}).`);
+      return response.json();
+    }).then(data => {
+      if (!controller.signal.aborted) {
+        const record = data.projeto;
+        if (!record || String(record.id) !== projectId) throw new Error("A API retornou um projeto diferente do solicitado.");
+        setLoadedProject({ ...record, ambientes: Array.isArray(data.ambientes) ? data.ambientes : record.ambientes });
+      }
+    }).catch(cause => {
+      if (!controller.signal.aborted) setProjectError(cause instanceof Error ? cause.message : "Falha ao carregar projeto.");
+    }).finally(() => {
+      if (!controller.signal.aborted) setProjectLoading(false);
+    });
+    return () => controller.abort();
+  }, [projectId]);
+  const project = projectId ? (loadedProject?.id === projectId ? loadedProject : null) : contextProject;
   const progress = useMemo(() => getProjectProgress(project), [project]);
   const timeline = useMemo(() => buildTimeline(project), [project]);
   const radar = useMemo(() => buildRadar(project), [project]);
   const environments = project?.ambientes || [];
+  const technicalSnapshot = useProjectTechnicalObjects(project?.id ?? null);
 
   if (!project) {
+    if (projectId) return <section className="p-6 text-sm text-slate-700" role="status">{projectLoading ? "Carregando projeto solicitado…" : projectError ?? "Projeto não encontrado ou indisponível. Verifique o acesso e selecione-o novamente."}</section>;
     return <EmptyProject onNavigate={onNavigate} />;
   }
 
@@ -395,6 +590,11 @@ export default function SmartProjectModule({ arqState, onNavigate }: SmartProjec
               {[
                 ["overview", "Visão geral"],
                 ["ambientes", "Ambientes"],
+                ["especificacoes", "Especificações"],
+                ["medicoes", "Medições"],
+                ["quantitativos", "Quantitativos"],
+                ["orcamento", "Orçamento"],
+                ["documentacao", "Documentação"],
                 ["timeline", "Timeline"],
                 ["briefing", "Briefing"],
               ].map(([key, label]) => (
@@ -413,6 +613,45 @@ export default function SmartProjectModule({ arqState, onNavigate }: SmartProjec
                 </button>
               ))}
             </nav>
+
+            {activeTab === "documentacao" ? (
+              <section className="min-w-0 rounded-2xl border border-slate-200 bg-slate-50 p-4 md:p-5" aria-label="Documentação do projeto">
+                <h3 className="text-lg font-semibold text-slate-900">Documentação e anexos</h3>
+                <p className="mt-2 text-sm text-slate-600">Arquivos do dossiê existente do projeto. Para enviar ou editar anexos, utilize a página de detalhes do projeto; esta aba apenas consulta os registros disponíveis.</p>
+                <div className="mt-4 grid gap-3">
+                  {(project.dossieProjeto?.arquivos ?? []).map(arquivo => (
+                    <div key={arquivo.id} className="min-w-0 rounded-xl border border-slate-200 bg-white p-3">
+                      <p className="break-words text-sm font-semibold text-slate-900">{arquivo.nome}</p>
+                      <p className="mt-1 text-xs text-slate-500">{arquivo.tipo} · {arquivo.ambienteId ? `Ambiente: ${arquivo.ambienteId}` : "Documento geral"} · {arquivo.createdAt ? new Date(arquivo.createdAt).toLocaleDateString("pt-BR") : "Data não informada"}</p>
+                      {arquivo.url && (/^https?:\/\//i.test(arquivo.url) || arquivo.url.startsWith("/")) && (
+                        <a className="mt-2 inline-block break-all text-sm font-medium text-violet-700 underline" href={arquivo.url} target="_blank" rel="noopener noreferrer">Abrir arquivo</a>
+                      )}
+                    </div>
+                  ))}
+                </div>
+                {(project.dossieProjeto?.arquivos ?? []).length === 0 && <p className="mt-4 text-sm text-slate-500">Nenhum anexo disponível no contexto atual. O dossiê completo pode ser consultado nos detalhes do projeto.</p>}
+                <p className="mt-4 text-xs text-amber-700">Controle de revisões e histórico imutável de documentos ainda não integrados nesta aba.</p>
+              </section>
+            ) : null}
+
+            {activeTab === "orcamento" ? (
+              <section className="min-w-0 overflow-hidden rounded-2xl bg-white" aria-label="Orçamento técnico do projeto">
+                <p className="px-4 pt-4 text-xs text-slate-600">Orçamento integrado ao projeto, utilizando o motor comercial existente. Confira medidas, composições e valores antes de aprovar ou enviar à execução.</p>
+                <Suspense fallback={<p className="p-5 text-sm text-slate-600">Carregando orçamento…</p>}>
+                  <RealBudgetEngineStudio arqState={{ ...arqState, currentProject: project, projectId: project.id }} onNavigate={onNavigate} />
+                </Suspense>
+              </section>
+            ) : null}
+
+            {activeTab === "quantitativos" ? <ProjectQuantities projectId={project.id ?? null} snapshot={technicalSnapshot} /> : null}
+
+            {activeTab === "medicoes" ? <ProjectMeasurements projectId={project.id ?? null} snapshot={technicalSnapshot} /> : null}
+
+            {activeTab === "especificacoes" ? (
+              <div className="min-w-0 overflow-hidden rounded-2xl bg-slate-950" style={{ minHeight: 540 }}>
+                <SmartSpecModule projectId={project.id ?? null} onOpenRender={() => onNavigate?.("renders")} />
+              </div>
+            ) : null}
 
             {activeTab === "overview" ? (
               <div className="grid gap-4 md:grid-cols-2">

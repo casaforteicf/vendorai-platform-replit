@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useAuth } from "@/contexts/AuthContext";
 import {
   Dialog,
   DialogContent,
@@ -67,9 +68,12 @@ export function AgendarReuniaoModal({
   open, onClose, tenantId, dealId, leadId, leadNome, leadEmail, responsavelId,
 }: Props) {
   const { toast } = useToast();
+  const { user } = useAuth();
+  const isAdmin = user?.platformRole === "super_admin" || user?.platformRole === "tenant_admin";
+  const ownUserId = user?.id ?? "";
   const queryClient = useQueryClient();
 
-  const [modalidade, setModalidade]         = useState<Modalidade>("meet");
+  const [modalidade, setModalidade]         = useState<Modalidade>("presencial");
   const [date, setDate]                     = useState<string>(tomorrowISO());
   const [duracao, setDuracao]               = useState<string>("30");
   const [selectedSlot, setSelectedSlot]     = useState<Slot | null>(null);
@@ -84,9 +88,11 @@ export function AgendarReuniaoModal({
   const { data: agendas = [] } = useListAgendas(tenantId);
   const { data: users = [] }   = useListTenantUsers(tenantId);
   const selectedAgenda         = agendas.find((agenda) => agenda.id === selectedAgendaId) ?? agendas[0];
+  const canUseMeet = Boolean(selectedAgenda?.id && selectedAgenda?.googleCalendarId);
   const createAgendamento      = useCreateAgendamento();
 
-  const resolvedResponsavelId = participanteIds[0] ?? undefined;
+  const effectiveParticipanteIds = isAdmin ? participanteIds : (ownUserId ? [ownUserId] : []);
+  const resolvedResponsavelId = effectiveParticipanteIds[0] ?? undefined;
 
   useEffect(() => {
     if (!open || !date) return;
@@ -96,13 +102,13 @@ export function AgendarReuniaoModal({
 
     const params = new URLSearchParams({ date, duracao });
     if (selectedAgenda?.id) params.set("agendaId", selectedAgenda.id);
-    if (participanteIds.length) params.set("responsavelIds", participanteIds.join(","));
+    if (effectiveParticipanteIds.length) params.set("responsavelIds", effectiveParticipanteIds.join(","));
 
     const token = localStorage.getItem("vendorai_token");
     fetch(`/api/tenants/${tenantId}/agendamentos/slots?${params}`, {
       headers: { Authorization: `Bearer ${token}` },
     })
-      .then((r) => r.json())
+      .then((r) => { if (!r.ok) throw new Error("Falha ao consultar horários autorizados"); return r.json(); })
       .then((data: { slots: Slot[] }) => {
         const now = new Date();
         setSlots((data.slots ?? []).filter((s) => new Date(s.start) > now));
@@ -111,24 +117,32 @@ export function AgendarReuniaoModal({
         setSlots([]);
       })
       .finally(() => setLoadingSlots(false));
-  }, [open, date, duracao, selectedAgenda?.id, participanteIds, tenantId]);
+  }, [open, date, duracao, isAdmin, selectedAgenda?.id, effectiveParticipanteIds.join(","), tenantId]);
 
   // Reset when modal opens
   useEffect(() => {
     if (open) {
-      setParticipanteIds(responsavelId ? [responsavelId] : []);
+      setParticipanteIds(isAdmin ? (responsavelId ? [responsavelId] : []) : (ownUserId ? [ownUserId] : []));
       setClientesExtras([]);
       setEnviarCliente(true);
       setSelectedAgendaId(agendas[0]?.id ?? "");
-      setModalidade("meet");
+      setModalidade("presencial");
       setDate(tomorrowISO());
       setDuracao("30");
       setObservacoes("");
       setSelectedSlot(null);
     }
-  }, [open, responsavelId, agendas]);
+  }, [open, responsavelId, agendas, isAdmin, ownUserId]);
 
   function handleConfirm() {
+    if (!isAdmin && !ownUserId) {
+      toast({ title: "Identidade do usuário indisponível", variant: "destructive" });
+      return;
+    }
+    if (modalidade === "meet" && !canUseMeet) {
+      toast({ title: "Selecione um calendário Google autorizado", variant: "destructive" });
+      return;
+    }
     if (!selectedSlot) {
       toast({ title: "Selecione um horário", variant: "destructive" });
       return;
@@ -139,7 +153,7 @@ export function AgendarReuniaoModal({
     }
 
     const participantesEquipe = users
-      .filter((u) => participanteIds.includes(u.id))
+      .filter((u) => effectiveParticipanteIds.includes(u.id))
       .map((u) => ({
         nome: u.name,
         email: u.email || undefined,
@@ -167,7 +181,7 @@ export function AgendarReuniaoModal({
           agendaId: selectedAgenda?.id ?? undefined,
           responsavelId: resolvedResponsavelId ?? undefined,
           tipo: "reuniao",
-          gerarMeet: modalidade === "meet",
+          gerarMeet: modalidade === "meet" && canUseMeet,
           titulo: `Reunião com ${leadNome}`,
           dataHoraInicio: new Date(selectedSlot.start) as any,
           dataHoraFim: new Date(selectedSlot.end) as any,
@@ -208,7 +222,7 @@ export function AgendarReuniaoModal({
           <div className="space-y-2">
             <Label>Tipo</Label>
             <div className="flex gap-2">
-              {(["presencial", "meet", "ligacao"] as Modalidade[]).map((m) => {
+              {(["presencial", ...(canUseMeet ? ["meet" as const] : []), "ligacao"] as Modalidade[]).map((m) => {
                 const label = m === "presencial" ? "Presencial" : m === "meet" ? "Google Meet" : "Ligação";
                 const Icon  = m === "meet" ? Video : m === "ligacao" ? Phone : MapPin;
                 return (
@@ -238,13 +252,13 @@ export function AgendarReuniaoModal({
                 Participantes da equipe
               </Label>
               <div className="rounded-lg border p-2.5 space-y-1.5 max-h-40 overflow-y-auto">
-                {users.filter((u) => u.active).map((u) => {
+                {users.filter((u) => u.active && (isAdmin || u.id === ownUserId)).map((u) => {
                   const selected = participanteIds.includes(u.id);
                   return (
                     <button
                       key={u.id}
                       type="button"
-                      onClick={() =>
+                      onClick={() => isAdmin &&
                         setParticipanteIds((prev) =>
                           selected ? prev.filter((id) => id !== u.id) : [...prev, u.id]
                         )
@@ -269,9 +283,9 @@ export function AgendarReuniaoModal({
                 })}
               </div>
               <p className="text-xs text-muted-foreground">
-                {participanteIds.length === 0
+                {effectiveParticipanteIds.length === 0
                   ? "Nenhum participante interno selecionado."
-                  : `${participanteIds.length} participante${participanteIds.length > 1 ? "s" : ""} da equipe selecionado${participanteIds.length > 1 ? "s" : ""}. Os horários consideram a disponibilidade de todos.`}
+                  : `${effectiveParticipanteIds.length} participante${effectiveParticipanteIds.length > 1 ? "s" : ""} da equipe selecionado${effectiveParticipanteIds.length > 1 ? "s" : ""}. Os horários consideram a disponibilidade de todos.`}
               </p>
             </div>
 

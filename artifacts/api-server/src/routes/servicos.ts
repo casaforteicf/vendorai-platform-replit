@@ -460,6 +460,12 @@ router.post("/tenants/:tenantId/servicos/tipos", async (req, res) => {
   const tenantId = routeTenantId(req);
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
+  // Opt-in never publishes an unclassified or inactive service.
+  if (req.body?.vendeNoPracaAi === true &&
+      (typeof req.body.categoria !== "string" || !req.body.categoria.trim() ||
+       req.body.ativo === false)) {
+    return res.status(422).json({ error: "Informe categoria válida e mantenha o serviço ativo para anunciar no Praça.ai." });
+  }
   const [row] = await db
     .insert(servicosTiposTable)
     .values({ ...req.body, tenantId } as any)
@@ -472,6 +478,18 @@ router.patch("/tenants/:tenantId/servicos/tipos/:id", async (req, res) => {
   const id = req.params.id as string;
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
+  const [existing] = await db.select()
+    .from(servicosTiposTable)
+    .where(and(eq(servicosTiposTable.id, id), eq(servicosTiposTable.tenantId, tenantId)))
+    .limit(1);
+  if (!existing) return res.status(404).json({ error: "Tipo de serviço not found" });
+  const willPublish = req.body?.vendeNoPracaAi ?? existing.vendeNoPracaAi;
+  const nextCategory = req.body?.categoria ?? existing.categoria;
+  const nextActive = req.body?.ativo ?? existing.ativo;
+  if (willPublish === true &&
+      (typeof nextCategory !== "string" || !nextCategory.trim() || nextActive === false)) {
+    return res.status(422).json({ error: "Informe categoria válida e mantenha o serviço ativo para anunciar no Praça.ai." });
+  }
   const [row] = await db
     .update(servicosTiposTable)
     .set(req.body as any)

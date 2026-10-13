@@ -37,6 +37,7 @@ import smartDeliveryPublicRouter from "./smart_delivery_public";
 import publicDeliveryRuntimeRouter from "./public_delivery_runtime";
 import facebookMarketplaceRouter from "./facebook_marketplace";
 import produtosCatalogoRouter from "./produtos_catalogo";
+import pracaPreparacaoRouter from "./praca_preparacao";
 import solicitacoesCompraRouter from "./solicitacoes_compra";
 import categoriasProdutoRouter from "./categorias_produto";
 import agendasRouter, { googleCallbackRouter } from "./agendas";
@@ -100,6 +101,7 @@ import { intakeRouter } from "./intake";
 import publicProposalsRouter from "./public_proposals";
 import construcaoRouter from "./construcao";
 import archRouter, { archPublicRouter } from "./arch";
+import arqdorWorkspaceMembersRouter from "./arqdor_workspace_members";
 import { arqdorPublicLinkRouter, arqdorPublicLinkAdminRouter } from "./arqdor_public_link";
 import arqdorPartnerLotsRouter from "./arqdor_partner_lots";
 import { archAiRenderRouter } from "./arch_ai_render";
@@ -421,6 +423,7 @@ router.use(facebookMarketplaceRouter);
 
 // Sales / CPQ Hub
 router.use(produtosCatalogoRouter);
+router.use(pracaPreparacaoRouter);
 router.use(solicitacoesCompraRouter);
 router.use(categoriasProdutoRouter);
 
@@ -561,6 +564,7 @@ router.use(partnerProspectorRouter);
 router.use(arqdorPublicLinkAdminRouter);
 router.use(arqdorPartnerLotsRouter);
 router.use(archRouter);
+router.use(arqdorWorkspaceMembersRouter);
 router.use(archSpecObjectsRouter);
 router.use(archBudgetEngineRouter);
 router.use(archClientPortalApprovalRouter);

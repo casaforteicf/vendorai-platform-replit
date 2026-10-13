@@ -1,10 +1,11 @@
 import { Router, type IRouter } from "express";
-import { and, eq, gte, lte, lt, gt, or, inArray, isNotNull, like } from "drizzle-orm";
+import { and, eq, gte, lte, lt, gt, or, inArray, isNotNull, like, sql } from "drizzle-orm";
 import { z } from "zod/v4";
 import {
   db,
   agendamentosTable,
   agendasTable,
+  agendaAccessGrantsTable,
   leadsTable,
   dealsTable,
   activitiesTable,
@@ -29,6 +30,22 @@ import { generateSpinForActivity } from "./spin.js";
 import { buildUserFunctionFilter } from "../middlewares/auth.js";
 
 const router: IRouter = Router();
+
+/** Tenant checked before this helper; explicit grant is necessary for non-admin users. */
+async function hasAgendaAccess(agendaId: string, tenantId: string, userId: string): Promise<boolean> {
+  const [agenda] = await db.select({ id: agendasTable.id, ownerUserId: agendasTable.ownerUserId })
+    .from(agendasTable).where(and(eq(agendasTable.id, agendaId), eq(agendasTable.tenantId, tenantId))).limit(1);
+  if (!agenda) return false;
+  if (agenda.ownerUserId === userId) return true;
+  const [grant] = await db.select({ userId: agendaAccessGrantsTable.userId })
+    .from(agendaAccessGrantsTable).where(and(
+      eq(agendaAccessGrantsTable.agendaId, agendaId),
+      eq(agendaAccessGrantsTable.tenantId, tenantId),
+      eq(agendaAccessGrantsTable.userId, userId)
+    )).limit(1);
+  return Boolean(grant);
+}
+
 
 // ── Handoff proativo: agendamento confirmado → aviso interno ao Closer ────────
 // Sinal apenas interno (notificação + WhatsApp para o dono do deal); NUNCA
@@ -103,6 +120,41 @@ router.post("/agendamentos", async (req, res) => {
     return;
   }
 
+  const creatorIsAdmin = req.user?.platformRole === "super_admin" || req.user?.platformRole === "tenant_admin";
+  if (!creatorIsAdmin) {
+    const callerId = req.user?.sub;
+    if (!callerId) {
+      res.status(403).json({ error: "User identity required" });
+      return;
+    }
+    if (parsed.data.responsavelId !== callerId) {
+      res.status(403).json({ error: "Usuarios comuns devem criar compromissos atribuidos a si mesmos" });
+      return;
+    }
+  }
+
+  // Shared Google calendars have no per-user ACL. Until that permission
+  // model exists, a non-admin cannot select one or request Meet creation.
+  if (!creatorIsAdmin && (parsed.data.agendaId || parsed.data.gerarMeet)) {
+    if (!parsed.data.agendaId || !req.user?.sub ||
+        !(await hasAgendaAccess(parsed.data.agendaId, parsed.data.tenantId, req.user.sub))) {
+      res.status(403).json({ error: "Acesso ao calendario Google nao autorizado" });
+      return;
+    }
+  }
+
+  // Pure input validation on the parsed payload runs before any resource
+  // lookup so an obviously invalid date fails fast (400/422) without leaking
+  // lead/deal/agenda access state and without a DB round-trip.
+  if (parsed.data.dataHoraFim <= parsed.data.dataHoraInicio) {
+    res.status(422).json({ error: "dataHoraFim must be after dataHoraInicio" });
+    return;
+  }
+  if (parsed.data.dataHoraInicio <= new Date()) {
+    res.status(400).json({ error: "Nao e possivel agendar para uma data/horario no passado." });
+    return;
+  }
+
   const leadConditions = [
     eq(leadsTable.id, parsed.data.leadId),
     eq(leadsTable.tenantId, parsed.data.tenantId),
@@ -159,21 +211,11 @@ router.post("/agendamentos", async (req, res) => {
     ? req.body.leadEmail.trim()
     : undefined;
 
-  const { dataHoraInicio, dataHoraFim } = parsed.data;
-  if (dataHoraFim <= dataHoraInicio) {
-    res.status(422).json({ error: "dataHoraFim must be after dataHoraInicio" });
-    return;
-  }
-  if (dataHoraInicio <= new Date()) {
-    res.status(400).json({ error: "Nao e possivel agendar para uma data/horario no passado." });
-    return;
-  }
-
   // Auto-resolve agendaId: if not supplied by the caller (common in AI-driven
   // flows), fall back to the first Google Calendar-connected agenda for this
   // tenant so the Meet link is always generated when OAuth is configured.
   let resolvedInsertData = parsed.data;
-  if (!parsed.data.agendaId && (parsed.data.gerarMeet || parsed.data.tipo === "reuniao")) {
+  if (creatorIsAdmin && !parsed.data.agendaId && (parsed.data.gerarMeet || parsed.data.tipo === "reuniao")) {
     try {
       const [connectedAgenda] = await db
         .select({ id: agendasTable.id })
@@ -189,17 +231,43 @@ router.post("/agendamentos", async (req, res) => {
     }
   }
 
+  // Recheck access immediately before the write: the grant may have been
+  // revoked while resolving lead/deal/responsible user or availability.
+  if (!creatorIsAdmin && resolvedInsertData.agendaId &&
+      (!req.user?.sub || !(await hasAgendaAccess(resolvedInsertData.agendaId, parsed.data.tenantId, req.user.sub)))) {
+    res.status(403).json({ error: "Acesso ao calendario revogado durante o agendamento" });
+    return;
+  }
+
   let agendamento: typeof agendamentosTable.$inferSelect;
   try {
-    const rows = await db
-      .insert(agendamentosTable)
-      .values(resolvedInsertData)
-      .returning();
-    agendamento = rows[0];
+    agendamento = await db.transaction(async (tx) => {
+      if (!creatorIsAdmin && resolvedInsertData.agendaId) {
+        const agendaId = resolvedInsertData.agendaId;
+        const callerId = req.user?.sub;
+        // Shared agenda row lock serializes this write against grant revocation
+        // and owner reassignment, provided those routes acquire the same lock.
+        await tx.execute(sql`SELECT id FROM agendas WHERE id = ${agendaId} AND tenant_id = ${parsed.data.tenantId} FOR UPDATE`);
+        const [owner] = await tx.select({ ownerUserId: agendasTable.ownerUserId })
+          .from(agendasTable).where(and(eq(agendasTable.id, agendaId), eq(agendasTable.tenantId, parsed.data.tenantId))).limit(1);
+        const [grant] = callerId ? await tx.select({ userId: agendaAccessGrantsTable.userId })
+          .from(agendaAccessGrantsTable).where(and(eq(agendaAccessGrantsTable.agendaId, agendaId),
+            eq(agendaAccessGrantsTable.tenantId, parsed.data.tenantId),
+            eq(agendaAccessGrantsTable.userId, callerId))).limit(1) : [];
+        if (!callerId || !owner || (owner.ownerUserId !== callerId && !grant)) {
+          throw new Error("AGENDA_ACCESS_REVOKED");
+        }
+      }
+      const [created] = await tx.insert(agendamentosTable).values(resolvedInsertData).returning();
+      return created;
+    });
   } catch (err: unknown) {
-    req.log.error({ err, body: req.body }, "agendamento insert failed");
-    const msg = err instanceof Error ? err.message : String(err);
-    res.status(500).json({ error: msg });
+    if (err instanceof Error && err.message === "AGENDA_ACCESS_REVOKED") {
+      res.status(403).json({ error: "Acesso ao calendario revogado durante o agendamento" });
+      return;
+    }
+    req.log.error({ err }, "agendamento insert failed");
+    res.status(500).json({ error: "Erro ao criar agendamento" });
     return;
   }
 
@@ -450,6 +518,11 @@ router.post("/agendamentos", async (req, res) => {
 });
 
 router.get("/tenants/:tenantId/agendamentos", async (req, res) => {
+  const tenantId = String(req.params.tenantId ?? "");
+  if (!req.user || (req.user.platformRole !== "super_admin" && req.user.tenantId !== tenantId)) {
+    res.status(403).json({ error: "Access denied to this tenant" });
+    return;
+  }
   const { leadId, status, from, to, agendaId } = req.query as Record<
     string,
     string | undefined
@@ -460,10 +533,13 @@ router.get("/tenants/:tenantId/agendamentos", async (req, res) => {
   ];
 
   const isAdmin = req.user?.platformRole === "super_admin" || req.user?.platformRole === "tenant_admin";
-  const isSeller = req.user?.platformRole === "tenant_seller";
-  const userFn = req.user?.userFunction as string | undefined;
-  const userId = req.user?.sub;
-  if (!isAdmin && userId && (isSeller || userFn === "vendedor" || userFn === "representante_comercial" || userFn === "entrega")) {
+  const userId = req.user.sub;
+  // Non-admin users may only list their own assigned appointments.
+  if (!isAdmin) {
+    if (!userId) {
+      res.status(403).json({ error: "User identity required" });
+      return;
+    }
     conditions.push(eq(agendamentosTable.responsavelId, userId));
   }
 
@@ -518,6 +594,46 @@ router.get("/tenants/:tenantId/agendamentos/slots", async (req, res) => {
       .filter(Boolean)
   ));
 
+  // Resolve explicit calendar and responsible users within this tenant before
+  // accessing calendar providers or availability blocks.
+  if (agendaId) {
+    const [ownedAgenda] = await db.select({ id: agendasTable.id }).from(agendasTable)
+      .where(and(eq(agendasTable.id, agendaId), eq(agendasTable.tenantId, tenantId))).limit(1);
+    if (!ownedAgenda) {
+      res.status(403).json({ error: "Agenda nao pertence a esta empresa" });
+      return;
+    }
+  }
+  if (selectedResponsavelIds.length) {
+    const owners = await db.select({ id: usersTable.id }).from(usersTable)
+      .where(and(eq(usersTable.tenantId, tenantId), inArray(usersTable.id, selectedResponsavelIds)));
+    if (owners.length !== selectedResponsavelIds.length) {
+      res.status(403).json({ error: "Um ou mais responsaveis nao pertencem a esta empresa" });
+      return;
+    }
+  }
+  const slotsIsAdmin = req.user?.platformRole === "super_admin" || req.user?.platformRole === "tenant_admin";
+  // Agendas Google sao recursos compartilhados por tenant e nao possuem ACL individual.
+  // Ate existir concessao explicita por agenda, acesso a disponibilidade externa e somente administrativo.
+  if (!slotsIsAdmin && agendaId &&
+      (!req.user?.sub || !(await hasAgendaAccess(agendaId, tenantId, req.user.sub)))) {
+    res.status(403).json({ error: "Acesso ao calendario compartilhado nao autorizado" });
+    return;
+  }
+  if (!slotsIsAdmin && !req.user?.sub) {
+    res.status(403).json({ error: "Identidade do usuario obrigatoria" });
+    return;
+  }
+  if (!slotsIsAdmin && selectedResponsavelIds.some(id => id !== req.user?.sub)) {
+    res.status(403).json({ error: "Consulta de disponibilidade de terceiros exige perfil administrador" });
+    return;
+  }
+  // Without an explicit selection a non-admin still receives only their own
+  // availability, never an aggregate derived from other employees' calendars.
+  const effectiveResponsavelIds = !slotsIsAdmin && selectedResponsavelIds.length === 0
+    ? [req.user!.sub!]
+    : selectedResponsavelIds;
+
   // Build day boundaries in São Paulo timezone
   // We convert YYYY-MM-DD (interpreted as São Paulo local) to UTC
   const tzOffset = -3 * 60; // São Paulo (BRT = UTC-3, no DST in winter)
@@ -545,8 +661,8 @@ router.get("/tenants/:tenantId/agendamentos/slots", async (req, res) => {
     .from(agendamentosTable)
     .where(and(...conditions));
 
-  const selectedSet = new Set(selectedResponsavelIds);
-  const internal = selectedResponsavelIds.length === 0
+  const selectedSet = new Set(effectiveResponsavelIds);
+  const internal = effectiveResponsavelIds.length === 0
     ? internalRows
     : internalRows.filter((row) => {
         if (row.responsavelId && selectedSet.has(row.responsavelId)) return true;
@@ -567,13 +683,13 @@ router.get("/tenants/:tenantId/agendamentos/slots", async (req, res) => {
   // the responsavel is marked unavailable. dia_inteiro blocks the full
   // workday; manha/tarde block half the day.
   let bloqueioBusy: { start: Date; end: Date }[] = [];
-  if (selectedResponsavelIds.length) {
+  if (effectiveResponsavelIds.length) {
     const bloqueios = await db
       .select({ dataInicio: bloqueiosAgendaTable.dataInicio, dataFim: bloqueiosAgendaTable.dataFim, periodo: bloqueiosAgendaTable.periodo })
       .from(bloqueiosAgendaTable)
       .where(
         and(
-          inArray(bloqueiosAgendaTable.responsavelId, selectedResponsavelIds),
+          inArray(bloqueiosAgendaTable.responsavelId, effectiveResponsavelIds),
           lt(bloqueiosAgendaTable.dataInicio, workEnd),
           gt(bloqueiosAgendaTable.dataFim, workStart)
         )
@@ -693,14 +809,8 @@ router.get("/agendamentos/:id", async (req, res) => {
     return;
   }
 
-  const role = req.user?.platformRole;
-  const fn = req.user?.userFunction as string | undefined;
-  const isSeller =
-    role === "tenant_seller" || fn === "vendedor" || fn === "representante_comercial" || fn === "entrega";
-  const isAdmin =
-    role === "super_admin" || role === "tenant_admin";
-
-  if (!isAdmin && isSeller && agendamento.responsavelId !== req.user?.sub) {
+  const isAdmin = req.user?.platformRole === "super_admin" || req.user?.platformRole === "tenant_admin";
+  if (!isAdmin && (!req.user?.sub || agendamento.responsavelId !== req.user.sub)) {
     res.status(403).json({ error: "Access denied to this agendamento" });
     return;
   }
@@ -731,17 +841,27 @@ router.patch("/agendamentos/:id", async (req, res) => {
   }
 
   const isAdminPatch = req.user?.platformRole === "super_admin" || req.user?.platformRole === "tenant_admin";
-  const isSellerPatch = req.user?.platformRole === "tenant_seller";
-  const userFnPatch = req.user?.userFunction as string | undefined;
-  const userIdPatch = req.user?.sub;
-  if (!isAdminPatch && userIdPatch && (isSellerPatch || userFnPatch === "vendedor" || userFnPatch === "representante_comercial" || userFnPatch === "entrega")) {
-    if (existing.responsavelId !== userIdPatch) {
-      res.status(403).json({ error: "Acesso negado: este agendamento pertence a outro responsável" });
-      return;
-    }
+  if (!isAdminPatch && (!req.user?.sub || existing.responsavelId !== req.user.sub)) {
+    res.status(403).json({ error: "Acesso negado: este agendamento pertence a outro responsável" });
+    return;
   }
 
   const data = parsed.data;
+
+  // A revocation must also prevent subsequent calendar-bound edits, even
+  // when this member still owns the internal appointment record.
+  const effectiveCalendarId = data.agendaId === null ? null : (data.agendaId ?? existing.agendaId);
+  if (!isAdminPatch && effectiveCalendarId &&
+      (!req.user?.sub || !(await hasAgendaAccess(effectiveCalendarId, existing.tenantId, req.user.sub)))) {
+    res.status(403).json({ error: "Acesso ao calendario revogado ou nao autorizado" });
+    return;
+  }
+
+  // Reassignments (including clearing the responsible user) require admin privileges.
+  if (!isAdminPatch && data.responsavelId !== undefined && data.responsavelId !== existing.responsavelId) {
+    res.status(403).json({ error: "Somente administradores podem transferir o responsável do agendamento" });
+    return;
+  }
 
   if (data.responsavelId) {
     const [responsavel] = await db
@@ -913,14 +1033,15 @@ router.delete("/agendamentos/:id", async (req, res) => {
   }
 
   const isAdminDelete = req.user?.platformRole === "super_admin" || req.user?.platformRole === "tenant_admin";
-  const isSellerDelete = req.user?.platformRole === "tenant_seller";
-  const userFnDelete = req.user?.userFunction as string | undefined;
-  const userIdDelete = req.user?.sub;
-  if (!isAdminDelete && userIdDelete && (isSellerDelete || userFnDelete === "vendedor" || userFnDelete === "representante_comercial" || userFnDelete === "entrega")) {
-    if (existing.responsavelId !== userIdDelete) {
-      res.status(403).json({ error: "Acesso negado: este agendamento pertence a outro responsável" });
-      return;
-    }
+  if (!isAdminDelete && (!req.user?.sub || existing.responsavelId !== req.user.sub)) {
+    res.status(403).json({ error: "Acesso negado: este agendamento pertence a outro responsável" });
+    return;
+  }
+
+  if (!isAdminDelete && existing.agendaId &&
+      (!req.user?.sub || !(await hasAgendaAccess(existing.agendaId, existing.tenantId, req.user.sub)))) {
+    res.status(403).json({ error: "Acesso ao calendario revogado ou nao autorizado" });
+    return;
   }
 
   await db.delete(agendamentosTable).where(eq(agendamentosTable.id, existing.id));

@@ -62,6 +62,11 @@ jobs:
           src/lib/vendorai-subscription-lifecycle.test.ts
           src/lib/vendorai-subscription-rules.test.ts
 
+      - name: Agenda tenant and ownership isolation tests
+        run: >-
+          pnpm --filter @workspace/api-server exec vitest run
+          src/__tests__/agendamentos-isolation.test.ts
+
       - name: Tenant session isolation tests
         run: >-
           pnpm --filter @workspace/api-server exec vitest run

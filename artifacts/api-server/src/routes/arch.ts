@@ -73,7 +73,8 @@ import {
 } from "@workspace/db";
 import { z } from "zod/v4";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
-import { authenticate } from "../middlewares/auth.js";
+import { authenticate, requireRole } from "../middlewares/auth.js";
+import { canActorEditArqdorProject } from "../lib/arqdor-workspace-membership.js";
 import { vendorPool } from "../lib/vendorDb";
 import { objectStorageClient, ObjectStorageService } from "../lib/objectStorage.js";
 import { captureGeneratedMedia } from "../services/media-library.js";
@@ -1881,6 +1882,17 @@ router.patch("/arch/concept-projects/:id", authenticate, async (req, res) => {
   const id = String(req.params.id);
   if (!tid || !userId) return res.status(401).json({ error: "Sessão inválida." });
 
+  const expectedRevisionHeader = req.header("If-Match");
+  const expectedRevision = expectedRevisionHeader ? new Date(expectedRevisionHeader.replace(/^"|"$/g, "")) : null;
+  // MULTI-04.18: when restoration is enabled, disallow legacy unversioned PATCH writers.
+  // Keep this independent of the editor rollout flag for fail-closed server behavior.
+  if (process.env.ARQDOR_RESTORE_ENABLED === "true" && !expectedRevisionHeader) {
+    return res.status(428).json({ code: "PROJECT_REVISION_REQUIRED", error: "Envie If-Match com a revisão atual do projeto." });
+  }
+  if (expectedRevisionHeader && (!expectedRevision || !Number.isFinite(expectedRevision.getTime()))) {
+    return res.status(400).json({ code: "INVALID_PROJECT_REVISION", error: "If-Match deve conter a data de revisão retornada pelo servidor." });
+  }
+
   const [currentConcept] = await db
     .select({ status: archConceptProjectsTable.status, configuration: archConceptProjectsTable.configuration })
     .from(archConceptProjectsTable)
@@ -1953,9 +1965,12 @@ router.patch("/arch/concept-projects/:id", authenticate, async (req, res) => {
         eq(archConceptProjectsTable.id, id),
         eq(archConceptProjectsTable.tenantId, tid),
         eq(archConceptProjectsTable.ownerUserId, userId),
+        ...(expectedRevision ? [eq(archConceptProjectsTable.updatedAt, expectedRevision)] : []),
       ),
     )
+    .returning();
 
+  if (!updated && expectedRevision) return res.status(409).json({ code: "PROJECT_REVISION_CONFLICT", error: "Projeto modificado em outra sessão. Recarregue antes de salvar." });
   if (!updated) return res.status(404).json({ error: "Pré-projeto não encontrado." });
   return res.json(updated);
 });
@@ -8690,6 +8705,7 @@ router.get("/arq/learning", authenticate, async (req, res) => {
 // GET /arqdor/projects/:id — load a full ProjectContext blob for this tenant
 // ─────────────────────────────────────────────────────────────────────────────
 router.get("/arqdor/projects/:id", authenticate, async (req, res) => {
+  if (process.env.ARQDOR_PROJECT_ACL_ENABLED === "true") return res.status(403).json({ error: "Endpoint legado indisponível com ACL habilitada." });
   const tid = tenantId(req);
   const id = String((req.params.id as string));
 
@@ -8712,6 +8728,7 @@ router.get("/arqdor/projects/:id", authenticate, async (req, res) => {
 // PUT /arqdor/projects/:id — upsert (create or update) a ProjectContext blob
 // ─────────────────────────────────────────────────────────────────────────────
 router.put("/arqdor/projects/:id", authenticate, async (req, res) => {
+  if (process.env.ARQDOR_PROJECT_ACL_ENABLED === "true") return res.status(403).json({ error: "Endpoint legado indisponível com ACL habilitada." });
   const tid = tenantId(req);
   const id = String((req.params.id as string));
   const contextBlob = req.body;
@@ -8730,6 +8747,156 @@ router.put("/arqdor/projects/:id", authenticate, async (req, res) => {
     .returning();
 
   return res.json(upserted?.contextBlob ?? contextBlob);
+});
+
+// Restricted pilot policy until project-level memberships exist in the database.
+// Never derive access solely from client-supplied canEdit or workspace UI roles.
+function canUseArqdorConditionalSave(user: { sub?: string; tenantId?: string; platformRole?: string; accessScope?: string; actorType?: string } | undefined, tenant: string): boolean {
+  return Boolean(user?.sub && user.tenantId === tenant &&
+    (user.platformRole === "super_admin" || user.platformRole === "tenant_admin") &&
+    (!user.accessScope || user.accessScope === "tenant") &&
+    (!user.actorType || user.actorType === "human"));
+}
+
+// MULTI-08.2: single-query snapshot with server-enforced read membership.
+// Never return project content to unauthenticated, inactive or unrelated users.
+router.get("/arqdor/projects/:id/snapshot", authenticate, async (req, res) => {
+  if (process.env.ARQDOR_PROJECT_ACL_ENABLED !== "true")
+    return res.status(404).json({ error: "Recurso ainda não habilitado." });
+  const tid = tenantId(req);
+  const id = String(req.params.id || "");
+  const actor = req.user;
+  if (!id.trim() || !actor?.sub || actor.tenantId !== tid ||
+      (actor.accessScope && actor.accessScope !== "tenant") ||
+      (actor.actorType && actor.actorType !== "human"))
+    return res.status(403).json({ error: "Acesso negado." });
+  try {
+    const [row] = await db.select({
+      id: arqdorWorkspaceProjectsTable.id,
+      contextBlob: arqdorWorkspaceProjectsTable.contextBlob,
+      revision: sql<string>`xmin::text`,
+    }).from(arqdorWorkspaceProjectsTable).where(and(
+      eq(arqdorWorkspaceProjectsTable.id, id),
+      eq(arqdorWorkspaceProjectsTable.tenantId, tid),
+      sql`EXISTS (
+        SELECT 1 FROM arqdor_workspace_members m JOIN users u
+        ON u.id = m.user_id AND u.tenant_id = m.tenant_id
+        WHERE m.tenant_id = ${tid} AND m.project_id = ${id}
+        AND m.user_id = ${actor.sub}
+        AND m.permission IN ('owner', 'editor', 'viewer') AND u.active = TRUE
+      )`,
+    )).limit(1);
+    res.setHeader("Cache-Control", "no-store");
+    if (!row) return res.status(404).json({ error: "Projeto indisponível ou sem acesso." });
+    return res.json(row);
+  } catch {
+    return res.status(503).json({ error: "Não foi possível consultar o projeto." });
+  }
+});
+
+// MULTI-07: read-only per-project ACL probe; disabled until migration + QA.
+router.get("/arqdor/projects/:id/edit-access", authenticate, async (req, res) => {
+  if (process.env.ARQDOR_PROJECT_ACL_ENABLED !== "true") {
+    return res.status(404).json({ error: "Recurso ainda não habilitado." });
+  }
+  const tid = tenantId(req);
+  const id = String(req.params.id || "");
+  if (!id.trim() || !req.user?.sub) return res.status(400).json({ error: "Projeto ou sessão inválida." });
+  try {
+    const canEdit = await canActorEditArqdorProject(req.user, tid, id);
+    res.setHeader("Cache-Control", "no-store");
+    return res.json({ projectId: id, canEdit });
+  } catch {
+    return res.status(503).json({ error: "Não foi possível verificar as permissões." });
+  }
+});
+
+// MULTI-04 — explicit conditional save for future offline sync clients.
+// This does NOT change legacy PUT /arqdor/projects/:id behavior.
+// PostgreSQL xmin is a row MVCC token; server atomically rechecks it at UPDATE.
+router.get("/arqdor/projects/:id/revision", authenticate, requireRole("super_admin", "tenant_admin"), async (req, res) => {
+  const tid = tenantId(req);
+  const id = String(req.params.id);
+  if (!canUseArqdorConditionalSave(req.user, tid)) return res.status(403).json({ error: "Acesso restrito ao piloto administrativo." });
+  if (!id.trim()) return res.status(400).json({ error: "Projeto inválido." });
+  const [row] = await db.select({ revision: sql<string>`xmin::text` })
+    .from(arqdorWorkspaceProjectsTable)
+    .where(and(eq(arqdorWorkspaceProjectsTable.id, id), eq(arqdorWorkspaceProjectsTable.tenantId, tid)))
+    .limit(1);
+  if (!row) return res.status(404).json({ error: "Projeto não encontrado." });
+  res.setHeader("Cache-Control", "no-store");
+  return res.json({ id, revision: row.revision });
+});
+
+// MULTI-07: additional membership-scoped CAS route, disabled until ACL migrations
+// and PostgreSQL integration tests pass. Legacy/admin endpoints remain unchanged.
+router.put("/arqdor/projects/:id/member-conditional", authenticate, async (req, res) => {
+  if (process.env.ARQDOR_PROJECT_ACL_ENABLED !== "true") {
+    return res.status(404).json({ error: "Recurso ainda não habilitado." });
+  }
+  const tid = tenantId(req);
+  const id = String(req.params.id || "");
+  const { expectedRevision, contextBlob } = req.body ?? {};
+  if (!id.trim() || typeof expectedRevision !== "string" || !/^\d+$/.test(expectedRevision) ||
+      !contextBlob || typeof contextBlob !== "object" || Array.isArray(contextBlob) || contextBlob.id !== id) {
+    return res.status(400).json({ error: "Projeto ou revisão inválidos." });
+  }
+  if (!req.user?.sub || req.user.tenantId !== tid ||
+      (req.user.accessScope && req.user.accessScope !== "tenant") ||
+      (req.user.actorType && req.user.actorType !== "human")) return res.status(403).json({ error: "Acesso negado." });
+  try {
+    // Atomic membership check in the UPDATE statement; a revoked editor cannot
+    // save using an earlier /edit-access=true result.
+    const [saved] = await db.transaction(async tx => {
+      const [locked] = await tx.select({ id: arqdorWorkspaceProjectsTable.id })
+        .from(arqdorWorkspaceProjectsTable)
+        .where(and(eq(arqdorWorkspaceProjectsTable.tenantId, tid), eq(arqdorWorkspaceProjectsTable.id, id)))
+        .for("update");
+      if (!locked) return [];
+      return tx.update(arqdorWorkspaceProjectsTable)
+      .set({ contextBlob, updatedAt: new Date() })
+      .where(and(
+        eq(arqdorWorkspaceProjectsTable.id, id),
+        eq(arqdorWorkspaceProjectsTable.tenantId, tid),
+        sql`xmin::text = ${expectedRevision}`,
+        sql`EXISTS (SELECT 1 FROM arqdor_workspace_members m JOIN users u
+          ON u.id = m.user_id AND u.tenant_id = m.tenant_id
+          WHERE m.tenant_id = ${tid} AND m.project_id = ${id}
+          AND m.user_id = ${req.user.sub} AND m.permission IN ('owner','editor') AND u.active = TRUE)`,
+      )).returning({ revision: sql<string>`xmin::text` });
+    });
+    if (!saved) return res.status(409).json({ error: "Revisão incompatível, vínculo revogado ou projeto indisponível." });
+    res.setHeader("Cache-Control", "no-store");
+    return res.json({ id, revision: saved.revision });
+  } catch {
+    return res.status(503).json({ error: "Falha ao validar permissão ou gravar projeto." });
+  }
+});
+
+router.put("/arqdor/projects/:id/conditional", authenticate, requireRole("super_admin", "tenant_admin"), async (req, res) => {
+  if (process.env.ARQDOR_PROJECT_ACL_ENABLED === "true") return res.status(403).json({ error: "Endpoint legado indisponível com ACL habilitada." });
+  const tid = tenantId(req);
+  const id = String(req.params.id);
+  if (!canUseArqdorConditionalSave(req.user, tid)) return res.status(403).json({ error: "Acesso restrito ao piloto administrativo." });
+  const { expectedRevision, contextBlob } = req.body ?? {};
+  if (!id.trim() || !/^\d+$/.test(expectedRevision ?? "") ||
+      !contextBlob || typeof contextBlob !== "object" || Array.isArray(contextBlob) ||
+      contextBlob.id !== id) {
+    return res.status(400).json({ error: "Projeto ou revisão inválidos." });
+  }
+  // CAS: no insert/upsert and no stale overwrite. PostgreSQL re-evaluates xmin
+  // after concurrent updates; conflict returns 409, draft stays local.
+  const [saved] = await db.update(arqdorWorkspaceProjectsTable)
+    .set({ contextBlob, updatedAt: new Date() })
+    .where(and(
+      eq(arqdorWorkspaceProjectsTable.id, id),
+      eq(arqdorWorkspaceProjectsTable.tenantId, tid),
+      sql`xmin::text = ${expectedRevision}`,
+    ))
+    .returning({ revision: sql<string>`xmin::text` });
+  if (!saved) return res.status(409).json({ error: "Revisão alterada ou projeto indisponível. Preserve o rascunho local." });
+  res.setHeader("Cache-Control", "no-store");
+  return res.json({ id, revision: saved.revision });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────

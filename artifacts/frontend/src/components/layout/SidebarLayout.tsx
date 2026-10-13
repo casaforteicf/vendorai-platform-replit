@@ -4,6 +4,8 @@ import { useLocation } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
 import { loadVerifiedContexts } from "@/lib/unifiedContextsApi";
 import { ContextSwitcher } from "./ContextSwitcher";
+import { ServiceTabsBar } from "./ServiceTabsBar";
+import { PwaInstallPrompt } from "./PwaInstallPrompt";
 
 import {
   getGetBusinessProfileByTenantQueryKey,
@@ -20,6 +22,10 @@ const MessagingMediaPlanBridge = lazy(() => import("@/components/marketing/Messa
 
 // UI-01 is opt-in and remains off in all existing deployments unless explicitly enabled.
 const UI01_CONTEXT_NAV_ENABLED = import.meta.env.VITE_UI01_CONTEXT_NAV === "true";
+// Homologated and rolled out: default ON. Kill-switch: set VITE_UI20_SERVICE_TABS=false to disable.
+const UI20_SERVICE_TABS_ENABLED = import.meta.env.VITE_UI20_SERVICE_TABS !== "false";
+// Install prompt: default ON after device QA. Kill-switch: set VITE_MULTI02_PWA_INSTALL=false to disable.
+const MULTI02_PWA_INSTALL_ENABLED = import.meta.env.VITE_MULTI02_PWA_INSTALL !== "false";
 
 const MARKETING_ROUTE_HINTS = ["marketing", "campanh", "content", "conteudo", "media", "midia", "ads", "anuncio", "analytics", "site", "landing", "video", "planej"];
 
@@ -85,7 +91,7 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
   // o token, e voltando 403 (tela em branco no app).
   const effectiveTenantId = user?.tenantId ?? "";
 
-  const { data: tenantNavModules = [], isLoading: tenantNavModulesLoading } = useQuery<TenantNavModule[]>({
+  const { data: tenantNavModules = [], isSuccess: tenantNavModulesReady, isLoading: tenantNavModulesLoading } = useQuery<TenantNavModule[]>({
     queryKey: ["tenant-nav-modules", effectiveTenantId],
     enabled: !!effectiveTenantId && !!token,
     staleTime: 60_000,
@@ -98,7 +104,7 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
       const response = await fetch(`/api/tenants/${effectiveTenantId}/nav-modules`, {
         headers: { Authorization: `Bearer ${freshToken}` },
       });
-      if (!response.ok) return [];
+      if (!response.ok) throw new Error("Não foi possível verificar os módulos autorizados");
       return response.json();
     },
   });
@@ -617,6 +623,9 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
 
   const shellContent = (
     <>
+      {UI20_SERVICE_TABS_ENABLED && !isPureSuperAdmin ? (
+        <ServiceTabsBar arqdorVisible={arqdorVisible} erpVisible={erpEntitled} modules={tenantNavModules} loading={!tenantNavModulesReady} isAdmin={user?.platformRole === "super_admin" || user?.userFunction === "administrador"} />
+      ) : null}
       <Suspense fallback={null}>
         {adsContext ? <AdsMediaPlanContextBanner pathname={location} /> : null}
         {messagingContext ? <MessagingMediaPlanBridge pathname={location} /> : null}
@@ -632,6 +641,7 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
           />
         </div>
       ) : null}
+      {MULTI02_PWA_INSTALL_ENABLED ? <PwaInstallPrompt /> : null}
       {children}
       {marketingContext ? (
         <Suspense fallback={null}>
