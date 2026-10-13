@@ -9525,6 +9525,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                   {editorView === "model3d" && (
                     <ConceptModel3D
                       arqdorProjectId={conceptId || undefined}
+                      experimentalBimModel={bimElementsEnabled ? bimElements : undefined}
                       lotWidth={lotWidth}
                       lotDepth={lotDepth}
                       activeFloor={activeFloor}
