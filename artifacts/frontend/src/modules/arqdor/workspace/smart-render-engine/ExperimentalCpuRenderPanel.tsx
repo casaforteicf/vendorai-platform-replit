@@ -24,6 +24,7 @@ export function ExperimentalCpuRenderPanel({options,tenantId,authToken,arqdorPro
  const [completed,setCompleted]=useState(false);
  const [saving,setSaving]=useState(false);
  const [gpuBusy,setGpuBusy]=useState(false);
+ const [completedBackend,setCompletedBackend]=useState<"cpu"|"webgpu"|null>(null);
  const savingRef=useRef(false);
  const [savedVersions,setSavedVersions]=useState<Array<{id:string;label:string;image:string}>>([]);
  const [loadingVersions,setLoadingVersions]=useState(false);
@@ -39,7 +40,7 @@ export function ExperimentalCpuRenderPanel({options,tenantId,authToken,arqdorPro
    if(!response.ok)throw Error("Falha ao carregar versões");
    const payload=await response.json();
    const assets=new Map((Array.isArray(payload.assets)?payload.assets:[]).map((a:any)=>[a.id,a]));
-   const versions=(Array.isArray(payload.versions)?payload.versions:[]).filter((v:any)=>v.operation==="arqdor_cpu_preview").slice(0,20);
+   const versions=(Array.isArray(payload.versions)?payload.versions:[]).filter((v:any)=>(v.operation==="arqdor_cpu_preview"||v.operation==="arqdor_webgpu_preview")).slice(0,20);
    setSavedVersions(versions.flatMap((v:any)=>{const asset:any=assets.get(v.assetId);return typeof asset?.accessUrl==="string"&&asset.accessUrl?[{id:v.id,label:v.label||"Prévia CPU",image:asset.accessUrl}]:[];}));
   }catch(error){setStatus(error instanceof Error?error.message:String(error));}
   finally{setLoadingVersions(false);}
@@ -57,12 +58,13 @@ export function ExperimentalCpuRenderPanel({options,tenantId,authToken,arqdorPro
   job.current=null;
   savedGeneration.current++;
   setCompleted(false);
+  setCompletedBackend(null);
   setProgress(0);
   setLatestCompletedImage(null);
   setComparison(null);
   setStatus("Parâmetros alterados — renderize novamente");
  },[samples,denoise,exposure,sunIntensity,bounceCount,selectedMaterial,roughness,transmission]);
- const stop=()=>{generation.current++;savedGeneration.current++;job.current?.cancel();job.current=null;setCompleted(false);setStatus("Cancelado");};
+ const stop=()=>{generation.current++;savedGeneration.current++;job.current?.cancel();job.current=null;setCompleted(false);setCompletedBackend(null);setStatus("Cancelado");};
  const exportPng=()=>{
   if(!completed||!canvas.current||job.current)return;
   const link=document.createElement("a");
@@ -71,7 +73,7 @@ export function ExperimentalCpuRenderPanel({options,tenantId,authToken,arqdorPro
   link.click();
  };
  const saveToLibrary=async()=>{
-  if(!completed||!canvas.current||job.current||savingRef.current||!tenantId||!authToken||!arqdorProjectId)return;
+  if(!completed||!completedBackend||!canvas.current||job.current||savingRef.current||!tenantId||!authToken||!arqdorProjectId)return;
   savingRef.current=true;
   setSaving(true);
   const sourceKey=`${tenantId}:${arqdorProjectId}`;
@@ -105,7 +107,7 @@ export function ExperimentalCpuRenderPanel({options,tenantId,authToken,arqdorPro
     mediaProjectRef.current={key,id:mediaId!};
    }
    if(sourceGeneration!==savedGeneration.current)throw Error("Projeto ou cena alterados durante o envio");
-   const name=`arqdor-cpu-previa-${Date.now()}.png`;
+   const name=`arqdor-${completedBackend}-previa-${Date.now()}.png`;
    const requested=await fetch(`${root}/request-upload`,{method:"POST",headers,body:JSON.stringify({name,contentType:"image/png",type:"image",size:blob.size,projectId:mediaId})});
    const prepared=await requested.json().catch(()=>({}));
    if(!requested.ok||typeof prepared.uploadURL!=="string"||typeof prepared.objectPath!=="string")throw Error(prepared.error||"Falha ao preparar envio");
@@ -113,10 +115,10 @@ export function ExperimentalCpuRenderPanel({options,tenantId,authToken,arqdorPro
    if(!uploaded.ok)throw Error("Falha ao transferir imagem");
    if(sourceGeneration!==savedGeneration.current)throw Error("Projeto, cena ou parâmetros alterados durante o envio");
    const registered=await fetch(root,{method:"POST",headers,body:JSON.stringify({
-    type:"image",role:"output",source:"upload",projectId:mediaId,operation:"arqdor_cpu_preview",
-    label:"Prévia CPU experimental",storageUrl:prepared.objectPath,
+    type:"image",role:"output",source:"upload",projectId:mediaId,operation:completedBackend==="webgpu"?"arqdor_webgpu_preview":"arqdor_cpu_preview",
+    label:completedBackend==="webgpu"?"Prévia WebGPU experimental":"Prévia CPU experimental",storageUrl:prepared.objectPath,
     originalFilename:name,mimeType:"image/png",fileSize:blob.size,
-    metadata:{folderPath:"Arqdor / Laboratório",arqdorProjectId,generator:"arqdor-cpu-experimental",status:"experimental",published:false}
+    metadata:{folderPath:"Arqdor / Laboratório",arqdorProjectId,generator:completedBackend==="webgpu"?"arqdor-webgpu-experimental":"arqdor-cpu-experimental",status:"experimental",published:false}
    })});
    if(!registered.ok){const error=await registered.json().catch(()=>({}));throw Error(error.error||"Falha ao registrar imagem");}
    if(sourceGeneration===savedGeneration.current){setStatus("Prévia experimental salva na Biblioteca de Mídias do tenant");await loadSavedVersions(mediaId!,tenantId,authToken);}
@@ -128,7 +130,7 @@ export function ExperimentalCpuRenderPanel({options,tenantId,authToken,arqdorPro
   const currentGeneration=++generation.current;
   job.current?.cancel();job.current=null;
   savedGeneration.current++;
-  setCompleted(false);setProgress(0);setGpuBusy(true);
+  setCompleted(false);setCompletedBackend(null);setProgress(0);setGpuBusy(true);
   setStatus("GPU experimental: preparando cena");
   try{
    const renderOptions:DiffusePreviewOptions={...options,directionalLight:{directionToLight:options.directionalLight?.directionToLight??[0.35,0.8,0.45],color:options.directionalLight?.color??[1,1,1],intensity:sunIntensity}};
@@ -138,7 +140,7 @@ export function ExperimentalCpuRenderPanel({options,tenantId,authToken,arqdorPro
    if(!context)throw Error("Canvas indisponível");
    canvas.current!.width=options.width;canvas.current!.height=options.height;
    context.putImageData(new ImageData(rgba,options.width,options.height),0,0);
-   setProgress(100);setCompleted(true);setStatus("Prévia GPU experimental concluída (sem path tracing)");
+   setProgress(100);setCompletedBackend("webgpu");setCompleted(true);setStatus("Prévia GPU experimental concluída (sem path tracing)");
    const image=canvas.current?.toDataURL("image/png");
    if(image){setLatestCompletedImage(image);const version=++historySequence.current;setHistory(old=>[{image,label:`Prévia GPU ${version}`},...old].slice(0,3));}
   }catch(error){if(currentGeneration===generation.current)setStatus("GPU não concluiu: "+(error instanceof Error?error.message:String(error))+" — prévia CPU disponível");}
@@ -173,7 +175,7 @@ export function ExperimentalCpuRenderPanel({options,tenantId,authToken,arqdorPro
      setProgress(Math.round(ev.progress*100));
     },
     onFrame:ev=>{if(currentGeneration!==generation.current)return;context.putImageData(new ImageData(new Uint8ClampedArray(ev.rgba),ev.width,ev.height),0,0);},
-    onDone:()=>{if(currentGeneration!==generation.current)return;job.current=null;setProgress(100);setCompleted(true);setStatus("Concluído (experimental)");
+    onDone:()=>{if(currentGeneration!==generation.current)return;job.current=null;setProgress(100);setCompletedBackend("cpu");setCompleted(true);setStatus("Concluído (experimental)");
       const image=canvas.current?.toDataURL("image/png");
       if(image){setLatestCompletedImage(image);const version=++historySequence.current;setHistory(old=>[{image,label:`Prévia ${version} · ${samples} passagens`},...old].slice(0,3));}
     },
@@ -187,7 +189,7 @@ export function ExperimentalCpuRenderPanel({options,tenantId,authToken,arqdorPro
     <p className="text-xs text-slate-500">Não substitui o render IA, não publica imagens e não altera a geometria.</p></div>
    <span className="text-xs text-amber-700">Laboratório</span>
   </div>
-  <p className="text-xs text-slate-600" role="status">Aceleração: WebGPU {accelerators?.webgpu==="available"?"detectada":accelerators?.webgpu==="blocked"?"bloqueada":accelerators?"indisponível":"verificando"} · Motor GPU ainda não implementado · Processamento atual: CPU (fallback seguro). GPU servidor: não configurada.</p>
+  <p className="text-xs text-slate-600" role="status">Aceleração: WebGPU {accelerators?.webgpu==="available"?"detectada":accelerators?.webgpu==="blocked"?"bloqueada":accelerators?"indisponível":"verificando"} · Prévia WebGPU limitada a 512 triângulos (sem path tracing) · Render físico principal: CPU. GPU servidor: não configurada.</p>
   <canvas ref={canvas} className="block w-full rounded-lg bg-slate-900" aria-label="Imagem do render experimental"/>
   <div className="flex flex-wrap items-center gap-3 text-sm">
    <label>Passagens <select value={samples} onChange={e=>setSamples(Number(e.target.value))} className="rounded border p-1">
