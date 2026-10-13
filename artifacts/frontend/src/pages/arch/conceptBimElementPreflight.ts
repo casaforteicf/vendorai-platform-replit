@@ -40,9 +40,12 @@ export function validateSlab(input: SlabInput): ParameterResult<SlabInput> {
     if (a.width <= 0 || a.depth <= 0 || a.x < 0 || a.y < 0 ||
         a.x + a.width > input.width || a.y + a.depth > input.depth)
       issues.push({ path, code: "OPENING_OUTSIDE_SLAB" });
+    // Aberturas sem área positiva são inválidas, não volumes para teste de colisão.
+    if (a.width <= 0 || a.depth <= 0) return;
     for (let j = 0; j < i; j++) {
       const b = input.openings[j];
-      if (![b.x, b.y, b.width, b.depth].every(Number.isFinite)) continue;
+      if (![b.x, b.y, b.width, b.depth].every(Number.isFinite) ||
+          b.width <= 0 || b.depth <= 0) continue;
       if (a.x < b.x + b.width && a.x + a.width > b.x &&
           a.y < b.y + b.depth && a.y + a.depth > b.y)
         issues.push({ path, code: "OPENING_COLLISION" });
