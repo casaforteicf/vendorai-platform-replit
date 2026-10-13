@@ -42,8 +42,26 @@ export function validateConceptWalls(
       wall.x1 > lotWidth + tolerance || wall.x2 > lotWidth + tolerance ||
       wall.y1 > lotDepth + tolerance || wall.y2 > lotDepth + tolerance
     ) issues.push({ wallId: id, code: "OUTSIDE_LOT" });
-    if (Math.hypot(wall.x2 - wall.x1, wall.y2 - wall.y1) <= tolerance)
+    const length = Math.hypot(wall.x2 - wall.x1, wall.y2 - wall.y1);
+    if (length <= tolerance) {
       issues.push({ wallId: id, code: "ZERO_LENGTH" });
+    } else if (wall.thickness !== undefined && Number.isFinite(wall.thickness) && wall.thickness > 0) {
+      // A parede tem largura real: a linha central dentro do lote não garante
+      // que as faces externas também estejam dentro dos limites.
+      const halfThickness = wall.thickness / 2;
+      const nx = -(wall.y2 - wall.y1) / length * halfThickness;
+      const ny = (wall.x2 - wall.x1) / length * halfThickness;
+      const footprint = [
+        [wall.x1 + nx, wall.y1 + ny], [wall.x1 - nx, wall.y1 - ny],
+        [wall.x2 + nx, wall.y2 + ny], [wall.x2 - nx, wall.y2 - ny],
+      ];
+      if (footprint.some(([x, y]) =>
+        x < -tolerance || y < -tolerance ||
+        x > lotWidth + tolerance || y > lotDepth + tolerance
+      ) && !issues.some((issue) => issue.wallId === id && issue.code === "OUTSIDE_LOT")) {
+        issues.push({ wallId: id, code: "OUTSIDE_LOT" });
+      }
+    }
     if (wall.thickness !== undefined &&
       (!Number.isFinite(wall.thickness) || wall.thickness < 0.08 || wall.thickness > 0.5))
       issues.push({ wallId: id, code: "INVALID_THICKNESS" });
