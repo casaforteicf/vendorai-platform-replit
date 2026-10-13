@@ -67,6 +67,10 @@ export async function renderWebGpuPreview(o:DiffusePreviewOptions):Promise<Uint8
    throw Error("ARQDOR: resolução WebGPU fora do limite experimental");
  if(geometry.truncated || geometry.totalTriangles<1 || geometry.totalTriangles>512 || !Number.isSafeInteger(geometry.totalTriangles))
    throw Error("ARQDOR: GPU experimental aceita apenas cenas completas de 1 a 512 triângulos");
+ if(geometry.meshes.reduce((count,mesh)=>count+mesh.triangles,0)!==geometry.totalTriangles)
+   throw Error("ARQDOR: contagem de triângulos inconsistente");
+ if(geometry.meshes.some(mesh=>!Number.isSafeInteger(mesh.triangles)||mesh.triangles<0||mesh.positions.length!==mesh.triangles*9||mesh.positions.some(v=>!Number.isFinite(v))))
+   throw Error("ARQDOR: geometria inválida");
  if(!(o.camera.verticalFovDegrees>1&&o.camera.verticalFovDegrees<179))throw Error("ARQDOR: FOV inválido");
  if(typeof navigator==="undefined" || typeof window==="undefined" || !window.isSecureContext)
    throw Error("ARQDOR: WebGPU exige navegador e contexto seguro");
