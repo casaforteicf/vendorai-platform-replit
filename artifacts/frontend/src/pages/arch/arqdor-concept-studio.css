@@ -57,3 +57,31 @@
 .arqdor-concept-studio :where([role="tab"], button)[aria-selected="true"] {
   outline-color: #4AC59A;
 }
+
+/* Projeto workspace: style only the architectural editor top bar, never dialogs,
+   technical drawing layers, project materials, or customer-facing result views. */
+.arqdor-concept-studio .arq-workspace-stage > .arq-app-bar {
+  background: var(--arq-surface);
+  color: var(--arq-text);
+  border-color: var(--arq-border);
+  min-height: 52px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, .16);
+}
+.arqdor-concept-studio .arq-workspace-stage > .arq-app-bar .text-slate-950,
+.arqdor-concept-studio .arq-workspace-stage > .arq-app-bar .text-slate-900 {
+  color: var(--arq-text);
+}
+.arqdor-concept-studio .arq-workspace-stage > .arq-app-bar .text-slate-400,
+.arqdor-concept-studio .arq-workspace-stage > .arq-app-bar .text-slate-500 {
+  color: var(--arq-muted);
+}
+.arqdor-concept-studio .arq-workspace-stage > .arq-app-bar :is(a,button):focus-visible {
+  outline: 2px solid #4AC59A;
+  outline-offset: 2px;
+}
+@media (min-width: 1024px) {
+  .arqdor-concept-studio .arq-workspace-stage > .arq-app-bar {
+    gap: 8px;
+    padding: 6px 12px;
+  }
+}
