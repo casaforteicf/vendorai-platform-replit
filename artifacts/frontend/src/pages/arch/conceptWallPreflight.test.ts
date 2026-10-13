@@ -24,6 +24,17 @@ describe("Arqdor Projeto — pré-validação de paredes", () => {
     expect(validateConceptWalls([{ ...wall, x1: Number.NaN }], 12, 25))
       .toEqual([{ wallId: "a", code: "INVALID_COORDINATE" }]);
   });
+  it("detecta coordenadas inválidas e espessura inválida simultaneamente", () => {
+    for (const invalid of [
+      { ...wall, x1: Number.NaN, thickness: 0.7 },
+      { ...wall, y2: Number.POSITIVE_INFINITY, thickness: Number.NaN },
+    ]) {
+      expect(validateConceptWalls([invalid], 12, 25)).toEqual([
+        { wallId: "a", code: "INVALID_COORDINATE" },
+        { wallId: "a", code: "INVALID_THICKNESS" },
+      ]);
+    }
+  });
   it("distingue identificador vazio de identificador duplicado", () => {
     expect(validateConceptWalls([{ ...wall, id: "" }], 12, 25))
       .toContainEqual({ wallId: "", code: "INVALID_WALL_ID" });
