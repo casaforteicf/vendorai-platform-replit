@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { and, eq, or } from "drizzle-orm";
+import { and, eq, or, sql } from "drizzle-orm";
 import { z } from "zod/v4";
 import { requireSameTenanOrSuperAdmin } from "../middlewares/auth.js";
 import {
@@ -1078,13 +1078,6 @@ router.post("/intercompany-commissions/:commissionId/payments", async (req, res)
   const parsed = paymentSchema.safeParse(req.body);
   if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
 
-  const total = money(commission.amount);
-  const alreadyPaid = money(commission.paidAmount);
-  const remaining = Math.max(0, total - alreadyPaid);
-  if (parsed.data.amount > remaining + 0.0001) {
-    return res.status(422).json({ error: `Pagamento excede o saldo da comissão. Saldo atual: R$ ${remaining.toFixed(2)}.` });
-  }
-
   const [payerTenant] = await db.select({ name: tenantsTable.name }).from(tenantsTable)
     .where(eq(tenantsTable.id, commission.payerTenantId)).limit(1);
   const [beneficiaryTenant] = await db.select({ name: tenantsTable.name }).from(tenantsTable)
@@ -1092,9 +1085,22 @@ router.post("/intercompany-commissions/:commissionId/payments", async (req, res)
 
   const paidAt = parsed.data.paidAt ?? new Date();
   const result = await db.transaction(async (tx) => {
-    let payerTitleId = commission.payerTitleId;
-    let beneficiaryTitleId = commission.beneficiaryTitleId;
-    const dueAt = commission.dueAt ?? paidAt;
+    // Serializa pagamentos da mesma comissão; saldo e IDs devem ser relidos
+    // dentro da transação após adquirir o lock da linha.
+    await tx.execute(sql`SELECT id FROM intercompany_commissions WHERE id = ${commissionId} FOR UPDATE`);
+    const [lockedCommission] = await tx.select().from(intercompanyCommissionsTable)
+      .where(eq(intercompanyCommissionsTable.id, commissionId)).limit(1);
+    if (!lockedCommission) return { error: "Comissão não encontrada.", status: 404 as const };
+    const total = money(lockedCommission.amount);
+    const alreadyPaid = money(lockedCommission.paidAmount);
+    const remaining = Math.max(0, total - alreadyPaid);
+    if (parsed.data.amount > remaining + 0.0001) {
+      return { error: `Pagamento excede o saldo da comissão. Saldo atual: R$ ${remaining.toFixed(2)}.`, status: 422 as const };
+    }
+
+    let payerTitleId = lockedCommission.payerTitleId;
+    let beneficiaryTitleId = lockedCommission.beneficiaryTitleId;
+    const dueAt = lockedCommission.dueAt ?? paidAt;
 
     if (!payerTitleId) {
       const [title] = await tx.insert(erpTitulosTable).values({
@@ -1211,6 +1217,7 @@ router.post("/intercompany-commissions/:commissionId/payments", async (req, res)
     return { commission: updatedCommission, payment, payerTitleId, beneficiaryTitleId };
   });
 
+  if ("error" in result) return res.status(result.status).json({ error: result.error });
   return res.status(201).json(result);
 });
 
