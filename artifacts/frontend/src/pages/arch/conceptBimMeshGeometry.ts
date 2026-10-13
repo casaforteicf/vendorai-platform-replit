@@ -23,9 +23,10 @@ export function projectBimMeshes(model: BimModel, floorHeight = 2.8): BimTriangl
     if (element.kind === "stair") {
       const { width, stepCount, rise, run } = element.parameters;
       const tread = run / (stepCount - 1), riser = rise / stepCount;
-      for (let i = 0; i < stepCount; i++) {
+      // stepCount counts risers; the horizontal run contains stepCount - 1 treads.
+      for (let i = 0; i < stepCount - 1; i++) {
         const z = element.y + i * tread;
-        box(p, element.x, elevation, z, width, (i+1)*riser, i === stepCount-1 ? tread : tread);
+        box(p, element.x, elevation, z, width, (i + 1) * riser, tread);
       }
     } else if (element.kind === "slab") {
       const { width, depth, thickness, openings } = element.parameters;
