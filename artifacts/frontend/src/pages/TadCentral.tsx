@@ -78,7 +78,20 @@ export default function TadCentral({ audience, enabledModules, permittedModules,
     suporte: "from-blue-500/20 to-transparent",
   };
   const navigation = [...authorized];
-  const architecturalModules = new Set<LauncherModule>(["arqdor", "obras", "marketplace_casa"]);
+  // Fotos dedicadas por área, sobreposições e ilustrações mantendo a referência TAD aprovada.
+  const visuals: Partial<Record<LauncherModule, { image?: string; position?: string; mode?: "photo" | "dashboard" }>> = {
+    crm: { mode: "dashboard" },
+    marketing: { mode: "dashboard" },
+    agenda: { mode: "dashboard" },
+    arqdor: { image: "https://images.unsplash.com/photo-1600607687920-4e2a09cf159d?auto=format&fit=crop&w=850&q=82", mode: "photo" },
+    obras: { image: "https://images.unsplash.com/photo-1504307651254-35680f356dfd?auto=format&fit=crop&w=850&q=82", mode: "photo" },
+    erp: { mode: "dashboard" },
+    marketplace_casa: { image: "https://images.unsplash.com/photo-1600585154340-be6161a56a0c?auto=format&fit=crop&w=850&q=82", mode: "photo" },
+    inteligencia: { mode: "dashboard" },
+    agentes_ia: { mode: "dashboard" },
+    configuracoes: { mode: "dashboard" },
+    suporte: { mode: "dashboard" },
+  };
   const renderIcon = (key: LauncherModule, size = 20) => {
     const Icon = iconMap[key] ?? LayoutGrid;
     return <Icon size={size} strokeWidth={1.9} aria-hidden="true" />;
@@ -114,13 +127,16 @@ export default function TadCentral({ audience, enabledModules, permittedModules,
           </div>
         </header>
         <div className="mx-auto max-w-[1500px] px-4 pb-10 pt-6 md:px-8">
-          <section className="relative mb-5 overflow-hidden rounded-2xl border border-white/10 bg-[#0b1d2b] px-6 py-7 md:px-8 md:py-9">
-            <img src="/brand/tad-architecture.svg" alt="" className="pointer-events-none absolute inset-y-0 right-0 hidden h-full w-[58%] object-cover object-center opacity-75 md:block" /><div className="pointer-events-none absolute inset-0 bg-gradient-to-r from-[#0a1b29] via-[#0a1b29]/95 to-[#0a1b29]/10" />
-            <p className="relative text-[11px] font-bold uppercase tracking-[.22em] text-teal-300">TAD · Central do ecossistema</p>
-            <h1 className="relative mt-3 text-3xl font-bold tracking-tight text-white md:text-[42px]">Bem-vindo ao <span className="text-teal-300">TAD</span></h1>
-            <p className="relative mt-2 text-base font-medium text-slate-100">Tudo que sua empresa precisa, em um só lugar.</p>
-            <p className="relative mt-1.5 max-w-2xl text-sm text-slate-400">Escolha um ambiente e continue trabalhando sem menus duplicados.</p>
-            <div className="relative mt-5 inline-flex items-center gap-2 rounded-xl border border-teal-400/20 bg-[#081b27]/80 px-3 py-2 text-xs text-slate-300"><Layers3 size={17} className="text-teal-300" /> <strong className="text-white">{authorized.length} serviços autorizados</strong> para seu acesso</div>
+          <section className="relative mb-4 overflow-hidden rounded-2xl border border-white/10 bg-[#0b1d2b] px-6 py-8 md:px-8 md:py-10">
+            <img src="https://images.unsplash.com/photo-1600607687920-4e2a09cf159d?auto=format&fit=crop&w=1350&q=88" alt="" className="pointer-events-none absolute inset-y-0 right-0 hidden h-full w-[64%] object-cover object-center opacity-85 md:block" />
+            <div className="pointer-events-none absolute inset-0 bg-gradient-to-r from-[#081521] via-[#081521]/95 via-45% to-[#081521]/20" />
+            <div className="relative z-10">
+              <p className="text-[11px] font-bold uppercase tracking-[.22em] text-teal-300">TAD · Central do ecossistema</p>
+              <h1 className="mt-3 text-3xl font-bold tracking-tight text-white md:text-[42px]">Bem-vindo ao <span className="text-teal-300">TAD</span></h1>
+              <p className="mt-2 text-base font-semibold text-slate-100">Tudo que sua empresa precisa, em um só lugar.</p>
+              <p className="mt-1 max-w-xl text-sm text-slate-300">Escolha um ambiente e continue trabalhando sem menus duplicados.</p>
+              <div className="mt-5 inline-flex items-center gap-2 rounded-xl border border-teal-400/20 bg-[#081b27]/90 px-3 py-2 text-xs text-slate-300"><Layers3 size={17} className="text-teal-300" /><strong className="text-white">{authorized.length} serviços autorizados</strong></div>
+            </div>
           </section>
           <div className="mb-4 flex flex-wrap items-center gap-3 sm:hidden">
             <div className="relative w-full"><Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" /><input type="search" value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar serviço..." className="w-full rounded-xl border border-white/10 bg-[#142232] py-2.5 pl-10 pr-3 text-sm" /></div>
@@ -134,14 +150,15 @@ export default function TadCentral({ audience, enabledModules, permittedModules,
               const info = TAD_LABELS[module.key];
               const canOpen = authorized.some(m => m.key === module.key) && !!module.route;
               const isBrand = module.key === "crm" || module.key === "arqdor";
-              const hasArchitecture = architecturalModules.has(module.key);
-              const body = <div className={"relative flex min-h-[196px] flex-col justify-between overflow-hidden rounded-2xl border border-white/10 bg-gradient-to-br bg-[#101f2d] p-5 transition-all hover:-translate-y-0.5 hover:border-teal-400/40 hover:shadow-[0_15px_32px_rgba(0,0,0,.22)] " + (themeMap[module.key] ?? "from-slate-500/10 to-transparent")}>
-                
-                {hasArchitecture ? <img src="/brand/tad-architecture.svg" alt="" className="pointer-events-none absolute right-0 top-0 h-full w-[63%] object-cover object-center opacity-65" /> : <div className="pointer-events-none absolute right-3 top-12 hidden h-[115px] w-[43%] rotate-[-4deg] overflow-hidden rounded-lg border border-white/10 bg-[#081523]/90 p-2 shadow-2xl sm:block" aria-hidden="true">
-                  <div className="mb-2 flex gap-1 border-b border-white/10 pb-1"><i className="h-1.5 w-1.5 rounded-full bg-teal-400/60"/><i className="h-1.5 w-1.5 rounded-full bg-blue-400/60"/><i className="h-1.5 w-1.5 rounded-full bg-violet-400/60"/></div>
-                  {module.key === "agenda" ? <div className="grid h-[82px] grid-cols-5 gap-1">{Array.from({length:15},(_,i)=><span key={i} className={"rounded-sm " + (i===6 || i===8 ? "bg-blue-500/75" : i===11 ? "bg-teal-500/60" : "bg-white/[.06]")}/>)}</div> : <div className="flex h-[80px] items-end gap-2">{[32,55,42,72,60,85].map((h,i)=><span key={i} className="flex-1 rounded-t bg-gradient-to-t from-teal-700/40 to-cyan-400/75" style={{height: h + "%"}} />)}</div>}
-                </div>}
-                <div className="pointer-events-none absolute inset-0 bg-gradient-to-r from-[#101f2d]/95 via-[#101f2d]/80 to-transparent" />
+              const visual = visuals[module.key];
+              const bars = module.key === "agenda" ? [34, 26, 72, 48, 68] : [28, 42, 37, 61, 78, 92];
+              const body = <div className={"group relative flex min-h-[196px] flex-col justify-between overflow-hidden rounded-2xl border border-white/10 bg-gradient-to-br bg-[#101f2d] p-5 transition-all hover:-translate-y-0.5 hover:border-teal-400/40 hover:shadow-[0_15px_32px_rgba(0,0,0,.22)] " + (themeMap[module.key] ?? "from-slate-500/10 to-transparent")}>
+                {visual?.image ? <img src={visual.image} alt="" loading="lazy" className="pointer-events-none absolute right-0 top-0 h-full w-[63%] object-cover object-center opacity-80" /> :
+                  <div aria-hidden="true" className="pointer-events-none absolute right-3 top-11 hidden h-[130px] w-[44%] rotate-[-3deg] overflow-hidden rounded-lg border border-white/10 bg-[#071827]/95 p-3 shadow-2xl sm:block">
+                    <div className="mb-2 flex gap-1 border-b border-white/10 pb-2"><span className="h-1.5 w-1.5 rounded-full bg-teal-400"/><span className="h-1.5 w-1.5 rounded-full bg-blue-500"/><span className="h-1.5 w-1.5 rounded-full bg-violet-500"/></div>
+                    <div className="flex h-[83px] items-end gap-2">{bars.map((h,i)=><span key={i} className="flex-1 rounded-t bg-gradient-to-t from-blue-600/45 to-cyan-400/90" style={{height: h+"%"}} />)}</div>
+                  </div>}
+                <div className="pointer-events-none absolute inset-0 bg-gradient-to-r from-[#101f2d] via-[#101f2d]/95 via-45% to-[#101f2d]/15" />
                 <div className="relative flex items-center justify-between"><span className="text-[11px] font-semibold uppercase tracking-wide text-teal-300">{info?.section ?? "Serviço"}</span><ArrowUpRight size={16} className="text-slate-400" /></div>
                 <div className="relative mt-3 flex items-center gap-3">
                   {module.key === "crm" ? <img src="/logo-full-light.svg" alt="Vendor.ai" className="h-9 w-auto max-w-[150px] object-contain object-left" /> :
