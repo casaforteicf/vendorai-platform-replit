@@ -236,7 +236,7 @@ export default function MarketplaceV2() {
       <div className="rounded-2xl border bg-card p-4 sm:p-5 shadow-sm">
         <div className="flex items-start gap-3">
           <div className="p-2 rounded-xl bg-primary/10"><Store className="h-5 w-5 text-primary" /></div>
-          <div><h1 className="text-xl sm:text-2xl font-bold">Marketplace</h1><p className="text-sm text-muted-foreground mt-1">Instale, personalize e reconfigure módulos e templates sem perder sua configuração atual.</p></div>
+          <div><h1 className="text-xl sm:text-2xl font-bold">Central de Soluções</h1><p className="text-sm text-muted-foreground mt-1">Instale, personalize e reconfigure módulos e templates sem perder sua configuração atual.</p></div>
         </div>
         <div className="grid grid-cols-2 gap-2 mt-4">
           <Button variant={view === "modules" ? "default" : "outline"} onClick={() => { setView("modules"); setSearch(""); }}><Layers3 className="h-4 w-4 mr-2" />Módulos</Button>
