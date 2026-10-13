@@ -277,21 +277,21 @@ div>
             const sectionName = info?.section ?? "Serviço";
             const canOpen = authorized.some(m => m.key === module.key) && !!module.route;
             const body = (
-              <div className="group flex min-h-[186px] gap-4 overflow-hidden rounded-2xl border border-white/10 bg-[#0d1a2a] p-5 transition-all hover:-translate-y-0.5 hover:border-cyan-400/40 hover:shadow-[0_16px_34px_rgba(0,0,0,.28)]">
+              <div className="group flex min-h-[148px] gap-2.5 overflow-hidden rounded-2xl border border-white/10 bg-[#0d1a2a] p-3.5 transition-all sm:min-h-[186px] sm:gap-4 sm:p-5 hover:-translate-y-0.5 hover:border-cyan-400/40 hover:shadow-[0_16px_34px_rgba(0,0,0,.28)]">
                 <div className="flex min-w-0 flex-1 flex-col">
                   <span className={"text-[11px] font-semibold uppercase tracking-wide " + (SECTION_TONE[sectionName] ?? "text-slate-300")}>{sectionName}</span>
-                  <div className="mt-2 flex items-center gap-3">
-                    <span className={"flex h-11 w-11 shrink-0 items-center justify-center rounded-xl " + (ICON_TILE[module.key] ?? "bg-white/10 text-cyan-300")}>{renderIcon(module.key, 22)}</span>
-                    <h3 className="truncate text-xl font-semibold tracking-tight text-white">{titleFor(module.key, module.title)}</h3>
+                  <div className="mt-2 flex items-center gap-2 sm:gap-3">
+                    <span className={"flex h-9 w-9 shrink-0 items-center justify-center rounded-xl sm:h-11 sm:w-11 " + (ICON_TILE[module.key] ?? "bg-white/10 text-cyan-300")}>{renderIcon(module.key, 22)}</span>
+                    <h3 className="truncate text-base font-semibold tracking-tight text-white sm:text-xl">{titleFor(module.key, module.title)}</h3>
                   </div>
-                  <p className="mt-2 line-clamp-2 text-[13px] leading-relaxed text-slate-400">{info?.description ?? "Ambiente do ecossistema"}</p>
-                  <div className="mt-auto pt-4">
+                  <p className="mt-1.5 line-clamp-2 text-xs leading-snug text-slate-400 sm:mt-2 sm:text-[13px] sm:leading-relaxed">{info?.description ?? "Ambiente do ecossistema"}</p>
+                  <div className="mt-auto pt-2 sm:pt-4">
                     <span className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/[.05] px-4 py-2 text-xs font-semibold text-white transition group-hover:border-cyan-400/50 group-hover:text-cyan-200">
                       {canOpen ? "Acessar" : "Acesso em validação"}<ArrowRight size={14} />
                     </span>
                   </div>
                 </div>
-                <div className="hidden w-[42%] max-w-[230px] shrink-0 sm:block">{renderPreview(module.key)}</div>
+                <div className="w-[34%] max-w-[230px] shrink-0 overflow-hidden rounded-xl sm:w-[42%]">{renderPreview(module.key)}</div>
               </div>
             );
             return canOpen
