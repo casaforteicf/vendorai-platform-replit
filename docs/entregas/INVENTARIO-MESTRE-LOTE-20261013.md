@@ -10,7 +10,7 @@
 | F01-L04 — MEP e orçamento por revisão | [#3503](https://github.com/casaforteicf/vendorai-platform-replit/pull/3503), [#3426](https://github.com/casaforteicf/vendorai-platform-replit/pull/3426) | drafts | Escopo e proposta de esquema MEP | Transações, ancoragem, quantitativos por revisão, tenant scope, integração | P1 |
 | F01-L05 — QA/homologação | [#3503](https://github.com/casaforteicf/vendorai-platform-replit/pull/3503) | draft aberto | Matriz de gates/documentação | Gates, E2E, visual, homologação do SHA e evidências | P1 |
 | F02-L01 — Render Studio | [#3504](https://github.com/casaforteicf/vendorai-platform-replit/pull/3504) | draft aberto | Barra contextual, materiais, cena e câmera FOV na prévia | Persistência FOV, conciliar #3507, gates e UX real | P1 |
-| F02-L02 — Render CPU/GPU | [#3510](https://github.com/casaforteicf/vendorai-platform-replit/pull/3510) | draft aberto | Invalidação CPU e detecção WebGPU/fallback | GPU verdadeira não implementada/comprovada, E2E e homologação | P1 |
+| F02-L02 — Render CPU/GPU | [#3510](https://github.com/casaforteicf/vendorai-platform-replit/pull/3510) | draft aberto | Invalidação CPU, kernel WGSL experimental, detecção WebGPU/fallback e testes escritos | Execução GPU não homologada; GPU de servidor e render PBR/GI não entregues, gates/E2E pendentes | P1 |
 | F03-L01 — Design System Studio | [#3507](https://github.com/casaforteicf/vendorai-platform-replit/pull/3507) | mergeado | Integração e relato de gates de build/bundle | Comparação visual aprovada, permissões, navegabilidade e SHA de produção | P1 |
 | F03-L02 — Navegação TAD | [#3506](https://github.com/casaforteicf/vendorai-platform-replit/pull/3506) | draft aberto | Desativa ServiceTabsBar por padrão | Testar navegação real e conflitos de main | P1 |
 | F06-L01 — Smart Specification | [#3507](https://github.com/casaforteicf/vendorai-platform-replit/pull/3507), [#3495](https://github.com/casaforteicf/vendorai-platform-replit/pull/3495) | mergeado / draft | Integração relatada; correções Android | Identificar o que já entrou por #3507; QA em dispositivos e integração por revisão | P1 |
@@ -25,3 +25,10 @@
 - No lote #3503, conferir se o documento `docs/entregas/ARQDOR-PROJETO-5-LOTES-20261012.md` existe **na branch do PR**, embora não esteja na main.
 - Para lotes que impactam os mesmos arquivos de `ConceptPlanner` ou `RenderStudio`, definir sequência de integração e reconciliar contra a main atual.
 - Acompanhar status da Contabo por evidência operacional, não por descrição de PR.
+
+## Matrizes de aceite vinculadas
+
+- [Arqdor Projeto — 26 requisitos](./MATRIZ-ACEITE-ARQDOR-PROJETO-20261013.md)
+- [Arqdor Render — 21 requisitos](./MATRIZ-ACEITE-ARQDOR-RENDER-20261013.md)
+
+A descrição do PR #3510 foi atualizada para contemplar um kernel WGSL experimental. Isso não comprova GPU de produção.
