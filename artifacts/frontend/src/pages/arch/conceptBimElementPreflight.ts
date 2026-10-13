@@ -55,11 +55,14 @@ export function validateRoof(input: RoofInput): ParameterResult<RoofInput & { ri
   range(issues, "width", input.width, 0.5, 300);
   range(issues, "depth", input.depth, 0.5, 300);
   range(issues, "eave", input.eave, 0, 3);
+  if (input.kind !== "flat" && input.kind !== "pitched") issues.push({ path: "kind", code: "OUT_OF_RANGE" });
   if (input.kind === "flat") {
-    if (input.pitchDegrees !== 0) issues.push({ path: "pitchDegrees", code: "OUT_OF_RANGE" });
+    if (!Number.isFinite(input.pitchDegrees)) issues.push({ path: "pitchDegrees", code: "NON_FINITE" });
+    else if (input.pitchDegrees !== 0) issues.push({ path: "pitchDegrees", code: "OUT_OF_RANGE" });
   } else if (input.kind === "pitched") {
     range(issues, "pitchDegrees", input.pitchDegrees, 1, 60);
   }
   const rise = input.kind === "pitched" ? Math.tan(input.pitchDegrees * Math.PI / 180) * input.width / 2 : 0;
+  if (!Number.isFinite(rise)) issues.push({ path: "rise", code: "NON_FINITE" });
   return { valid: issues.length === 0, issues, value: { ...input, rise } };
 }
