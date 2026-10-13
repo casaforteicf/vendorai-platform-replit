@@ -7,6 +7,7 @@ import { z } from "zod/v4";
 import {
   db,
   leadsTable,
+  notificationsTable,
   insertLeadSchema,
   updateLeadSchema,
   conversationsTable,
@@ -448,6 +449,34 @@ router.post("/leads", async (req, res) => {
     possivelDuplicata: false,
     leadSimilarId: null,
   } as any).returning();
+
+  // Aviso transacional, gerado apenas na primeira criação (não em replay).
+  // O destinatário é exclusivamente o responsável interno autorizado no tenant.
+  if (resolvedAssignedTo) {
+    const [creator] = registrationActorId
+      ? await tx.select({ name: usersTable.name }).from(usersTable)
+          .where(and(eq(usersTable.id, registrationActorId), eq(usersTable.tenantId, lead.tenantId)))
+          .limit(1)
+      : [];
+    const origem = lead.source?.trim() || "Cadastro manual";
+    const necessidade = lead.objetivo?.trim() || "Qualificar necessidade do cliente";
+    const cadastradoPor = creator?.name || "Integração / formulário";
+    await tx.insert(notificationsTable).values({
+      tenantId: lead.tenantId,
+      recipientUserId: resolvedAssignedTo,
+      leadId: lead.id,
+      type: "info",
+      category: "lead_entry",
+      title: `Novo lead recebido: ${lead.nome}`,
+      message: [
+        `Empresa: ${lead.empresa || "Não informada"}`,
+        `Origem: ${origem}`,
+        `Cadastrado por: ${cadastradoPor}`,
+        `Necessidade: ${necessidade}`,
+        "Próxima ação: confirmar dados, entrar em contato e definir a atividade com prazo.",
+      ].join("\\n"),
+    });
+  }
 
   // Auto-create deal in pipeline (aquecimento) unless lead is pipeline-exempt
   if (!lead.pipelineExempt) {
