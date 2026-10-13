@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { inspectBimModel, removeBimElement, upsertBimElement, type BimModel } from "./conceptBimElementModel";
+import { editBimElementNumber, inspectBimModel, removeBimElement, upsertBimElement, type BimModel } from "./conceptBimElementModel";
 
 const empty: BimModel = { schemaVersion: 1, elements: [] };
 const slab = { id: "s1", kind: "slab" as const, x: 0, y: 0, parameters: {
@@ -38,6 +38,22 @@ describe("Arqdor BIM element collection — isolated draft", () => {
   it("detects duplicate IDs and non-finite placements", () => {
     expect(inspectBimModel({ schemaVersion: 1, elements: [slab, { ...stair, id: slab.id, x: NaN }] })
       .map(issue => issue.code)).toEqual(["DUPLICATE_ID", "INVALID_POSITION"]);
+  });
+  it("edits position and dimensions without modifying original elements", () => {
+    const initial = upsertBimElement(empty, slab);
+    const positioned = editBimElementNumber(initial, "s1", "x", 3.5);
+    const resized = editBimElementNumber(positioned, "s1", "width", 9);
+    expect((initial.elements[0] as typeof slab).x).toBe(0);
+    expect((resized.elements[0] as typeof slab).parameters.width).toBe(9);
+    expect(resized.elements[0].x).toBe(3.5);
+  });
+  it("rejects invalid dimensions, missing elements and unsupported keys", () => {
+    const initial = upsertBimElement(empty, slab);
+    expect(() => editBimElementNumber(initial, "s1", "width", -1)).toThrow(/ARQDOR_BIM_INVALID/);
+    expect(() => editBimElementNumber(initial, "s1", "width", NaN)).toThrow("ARQDOR_BIM_NON_FINITE_VALUE");
+    expect(() => editBimElementNumber(initial, "missing", "width", 2)).toThrow("ARQDOR_BIM_ELEMENT_NOT_FOUND");
+    expect(() => editBimElementNumber(initial, "s1", "run", 2)).toThrow("ARQDOR_BIM_UNSUPPORTED_PARAMETER");
+    expect(initial.elements[0]).toEqual(slab);
   });
   it("removes elements immutably", () => {
     const model = upsertBimElement(upsertBimElement(empty, slab), stair);
