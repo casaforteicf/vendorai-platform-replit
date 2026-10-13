@@ -862,7 +862,7 @@ export function SidebarLayout({ children, arqdorVisible = false }: { children: R
       const unique = (canShowService ? selected.links : []).filter((item, index, all) => all.findIndex((other) => other.href === item.href) === index);
       return (
         <nav aria-label={`Menu interno de ${selected.name}`} className="space-y-1" data-ui20-context-menu={selected.name}>
-          <NavItem item={{ name: "← Voltar ao Início", href: "/dashboard", icon: LayoutDashboard }} onNavigate={onNavigate} />
+          <NavItem item={{ name: "← Voltar ao Início", href: "/tad", icon: LayoutDashboard }} onNavigate={onNavigate} />
           <div className="px-3 pb-2 pt-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">{selected.name}</div>
           {unique.map((item) => <NavItem key={item.href} item={item} onNavigate={onNavigate} />)}
           {unique.length === 0 && <p className="px-3 text-xs text-muted-foreground">Volte ao Início para escolher um módulo disponível.</p>}
