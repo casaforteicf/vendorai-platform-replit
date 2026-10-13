@@ -835,7 +835,7 @@ export function SidebarLayout({ children, arqdorVisible = false }: { children: R
 
     const groupActive = (items: Array<{ href: string }>) =>
       items.some((item) => location === item.href || (item.href !== "/" && location.startsWith(item.href)));
-    if (import.meta.env.VITE_UI20_SERVICE_TABS !== "false") {
+    if (!isSuperAdmin) {
       const path = location.split("?")[0];
       const serviceGroups = [
         { name: "Início", match: ["/dashboard", "/trabalho", "/"], links: homeNav },
@@ -855,9 +855,10 @@ export function SidebarLayout({ children, arqdorVisible = false }: { children: R
       const unique = (canShowService ? selected.links : []).filter((item, index, all) => all.findIndex((other) => other.href === item.href) === index);
       return (
         <nav aria-label={`Menu interno de ${selected.name}`} className="space-y-1" data-ui20-context-menu={selected.name}>
-          <div className="px-3 pb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">{selected.name}</div>
+          <NavItem item={{ name: "← Voltar ao Início", href: "/dashboard", icon: LayoutDashboard }} onNavigate={onNavigate} />
+          <div className="px-3 pb-2 pt-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">{selected.name}</div>
           {unique.map((item) => <NavItem key={item.href} item={item} onNavigate={onNavigate} />)}
-          {unique.length === 0 && <p className="px-3 text-xs text-muted-foreground">Use a aba superior para acessar este serviço.</p>}
+          {unique.length === 0 && <p className="px-3 text-xs text-muted-foreground">Volte ao Início para escolher um módulo disponível.</p>}
         </nav>
       );
     }
