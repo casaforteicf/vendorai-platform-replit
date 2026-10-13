@@ -840,6 +840,12 @@ router.patch("/representation-work/:participationId/stage", async (req, res) => 
   const access = await assertParticipationAccess(req, participationId);
   if ("error" in access) return res.status(access.error === "NOT_FOUND" ? 404 : 403).json({ error: access.error });
 
+  // A etapa da participação pertence ao tenant executor, não à empresa de origem.
+  // O tenant de origem pode acompanhar o andamento, mas não movimentar o card externo.
+  if (!isSuperAdmin(req) && currentTenantId(req) !== access.participation.partnerTenantId) {
+    return res.status(403).json({ error: "FORBIDDEN" });
+  }
+
   const parsed = stageSchema.safeParse(req.body);
   if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
   if (!access.participation.permissions.includes("move_pipeline")) {
