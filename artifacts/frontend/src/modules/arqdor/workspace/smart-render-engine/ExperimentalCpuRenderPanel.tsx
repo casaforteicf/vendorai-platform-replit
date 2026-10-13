@@ -64,16 +64,16 @@ export function ExperimentalCpuRenderPanel({options,tenantId,authToken,arqdorPro
   setComparison(null);
   setStatus("Parâmetros alterados — renderize novamente");
  },[samples,denoise,exposure,sunIntensity,bounceCount,selectedMaterial,roughness,transmission]);
- const stop=()=>{generation.current++;savedGeneration.current++;job.current?.cancel();job.current=null;setCompleted(false);setCompletedBackend(null);setStatus("Cancelado");};
+ const stop=()=>{generation.current++;savedGeneration.current++;job.current?.cancel();job.current=null;setGpuBusy(false);setCompleted(false);setCompletedBackend(null);setStatus("Cancelado");};
  const exportPng=()=>{
-  if(!completed||!canvas.current||job.current)return;
+  if(!completed||!canvas.current||job.current||gpuBusy)return;
   const link=document.createElement("a");
-  link.download="arqdor-previa-cpu-experimental.png";
+  link.download=`arqdor-previa-${completedBackend??"cpu"}-experimental.png`;
   link.href=canvas.current.toDataURL("image/png");
   link.click();
  };
  const saveToLibrary=async()=>{
-  if(!completed||!completedBackend||!canvas.current||job.current||savingRef.current||!tenantId||!authToken||!arqdorProjectId)return;
+  if(!completed||!completedBackend||!canvas.current||job.current||gpuBusy||savingRef.current||!tenantId||!authToken||!arqdorProjectId)return;
   savingRef.current=true;
   setSaving(true);
   const sourceKey=`${tenantId}:${arqdorProjectId}`;
@@ -144,7 +144,7 @@ export function ExperimentalCpuRenderPanel({options,tenantId,authToken,arqdorPro
    const image=canvas.current?.toDataURL("image/png");
    if(image){setLatestCompletedImage(image);const version=++historySequence.current;setHistory(old=>[{image,label:`Prévia GPU ${version}`},...old].slice(0,3));}
   }catch(error){if(currentGeneration===generation.current)setStatus("GPU não concluiu: "+(error instanceof Error?error.message:String(error))+" — prévia CPU disponível");}
-  finally{setGpuBusy(false);}
+  finally{if(currentGeneration===generation.current)setGpuBusy(false);}
  };
  const start=()=>{
   savedGeneration.current++;
@@ -207,8 +207,8 @@ export function ExperimentalCpuRenderPanel({options,tenantId,authToken,arqdorPro
    <button type="button" onClick={start} className="rounded bg-slate-900 px-3 py-2 text-white">Renderizar prévia CPU</button>
    <button type="button" disabled={gpuBusy||accelerators?.webgpu!=="available"||options.geometry.truncated||options.geometry.totalTriangles>512} onClick={()=>void startGpu()} className="rounded border px-3 py-2 disabled:opacity-40">Renderizar prévia WebGPU (até 512 triângulos)</button>
    <button type="button" onClick={stop} className="rounded border px-3 py-2">Cancelar</button>
-   <button type="button" disabled={!completed||!!job.current} onClick={exportPng} className="rounded border px-3 py-2 disabled:opacity-40">Exportar PNG local</button>
-   {tenantId && authToken && arqdorProjectId && <button type="button" disabled={!completed||!!job.current||saving} onClick={()=>void saveToLibrary()} className="rounded border px-3 py-2 disabled:opacity-40">{saving?"Salvando...":"Salvar na Biblioteca (experimental)"}</button>}
+   <button type="button" disabled={!completed||!!job.current||gpuBusy} onClick={exportPng} className="rounded border px-3 py-2 disabled:opacity-40">Exportar PNG local</button>
+   {tenantId && authToken && arqdorProjectId && <button type="button" disabled={!completed||!!job.current||gpuBusy||saving} onClick={()=>void saveToLibrary()} className="rounded border px-3 py-2 disabled:opacity-40">{saving?"Salvando...":"Salvar na Biblioteca (experimental)"}</button>}
   </div>
   <div role="status" className="text-xs text-slate-600">{status} · {progress}%</div>
   {tenantId && authToken && arqdorProjectId && <div className="space-y-2">
