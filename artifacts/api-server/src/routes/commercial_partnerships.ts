@@ -1059,6 +1059,7 @@ router.patch("/intercompany-commissions/:commissionId", async (req, res) => {
 });
 
 const paymentSchema = z.object({
+  idempotencyKey: z.string().trim().min(8).max(128).optional(),
   amount: z.coerce.number().positive(),
   payerAccount: z.string().trim().min(1).max(200),
   beneficiaryAccount: z.string().trim().min(1).max(200),
@@ -1091,6 +1092,24 @@ router.post("/intercompany-commissions/:commissionId/payments", async (req, res)
     const [lockedCommission] = await tx.select().from(intercompanyCommissionsTable)
       .where(eq(intercompanyCommissionsTable.id, commissionId)).limit(1);
     if (!lockedCommission) return { error: "Comissão não encontrada.", status: 404 as const };
+
+    if (parsed.data.idempotencyKey) {
+      const [previous] = await tx.select().from(intercompanyCommissionPaymentsTable).where(and(
+        eq(intercompanyCommissionPaymentsTable.commissionId, commissionId),
+        eq(intercompanyCommissionPaymentsTable.idempotencyKey, parsed.data.idempotencyKey),
+      )).limit(1);
+      if (previous) {
+        // Uma chave reutilizada com parâmetros diferentes não pode confirmar outro pagamento.
+        if (
+          money(previous.amount) !== parsed.data.amount ||
+          previous.payerAccount !== parsed.data.payerAccount ||
+          previous.beneficiaryAccount !== parsed.data.beneficiaryAccount ||
+          (previous.paymentMethod ?? null) !== (parsed.data.paymentMethod ?? null)
+        ) return { error: "IDEMPOTENCY_KEY_CONFLICT", status: 409 as const };
+        return { replay: true as const, payment: previous, commission: lockedCommission };
+      }
+    }
+
     const total = money(lockedCommission.amount);
     const alreadyPaid = money(lockedCommission.paidAmount);
     const remaining = Math.max(0, total - alreadyPaid);
@@ -1192,6 +1211,7 @@ router.post("/intercompany-commissions/:commissionId/payments", async (req, res)
 
     const [payment] = await tx.insert(intercompanyCommissionPaymentsTable).values({
       commissionId: commission.id,
+      idempotencyKey: parsed.data.idempotencyKey ?? null,
       payerTenantId: commission.payerTenantId,
       beneficiaryTenantId: commission.beneficiaryTenantId,
       amount: String(parsed.data.amount.toFixed(2)),
@@ -1218,7 +1238,7 @@ router.post("/intercompany-commissions/:commissionId/payments", async (req, res)
   });
 
   if ("error" in result) return res.status(result.status).json({ error: result.error });
-  return res.status(201).json(result);
+  return res.status("replay" in result ? 200 : 201).json(result);
 });
 
 router.get("/tenants/:tenantId/intercompany-commissions", requireSameTenanOrSuperAdmin(), async (req, res) => {
