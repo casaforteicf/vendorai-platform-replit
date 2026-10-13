@@ -1,3 +1,5 @@
+import type { RenderStudioVersion } from "./renderStudioModel";
+import { normalizeRenderMediaUrl } from "./renderStudioApi";
 import type { RenderStudioStep } from "./renderStudioModel";
 import { RENDER_STUDIO_COLORS as C, RENDER_STUDIO_STEPS, renderStudioStepIndex } from "./renderStudioModel";
 
@@ -88,11 +90,17 @@ export function RenderStudioSidebar({
   projectTitle,
   onStepClick,
   onProjectClick,
+  versions = [],
+  currentRenderId = null,
+  onSelectVersion,
 }: {
   step: RenderStudioStep;
   projectTitle: string | null;
   onStepClick: (step: RenderStudioStep) => void;
   onProjectClick?: () => void;
+  versions?: RenderStudioVersion[];
+  currentRenderId?: string | null;
+  onSelectVersion?: (version: RenderStudioVersion) => void;
 }) {
   const currentIndex = renderStudioStepIndex(step);
 
@@ -137,6 +145,19 @@ export function RenderStudioSidebar({
           );
         })}
       </div>
+      <section aria-label="Versões do render" style={{ borderTop: `1px solid ${C.border}`, padding: "10px 9px", maxHeight: "38%", overflowY: "auto", flexShrink: 0 }}>
+        <div style={{ fontSize: 10, fontWeight: 700, color: C.muted, marginBottom: 8 }}>CÂMERAS E VERSÕES · {versions.length}</div>
+        {versions.length === 0 ? (
+          <p style={{ fontSize: 10, color: C.dim, margin: 0 }}>As imagens geradas aparecem aqui. Câmeras 3D serão integradas ao modelo do projeto.</p>
+        ) : versions.map((version) => (
+          <button key={version.id} type="button" onClick={() => onSelectVersion?.(version)}
+            disabled={!onSelectVersion} aria-current={currentRenderId === version.id ? "true" : undefined}
+            style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", marginBottom: 6, padding: 5, background: currentRenderId === version.id ? `${C.accent}20` : C.card, border: `1px solid ${currentRenderId === version.id ? C.accent : C.border}`, borderRadius: 6, textAlign: "left", cursor: "pointer" }}>
+            <img src={normalizeRenderMediaUrl(version.url)} alt="" loading="lazy" style={{ width: 57, height: 40, borderRadius: 4, objectFit: "cover", flexShrink: 0 }} />
+            <span style={{ minWidth: 0, color: C.text, fontSize: 10, overflow: "hidden", textOverflow: "ellipsis" }}>{version.label}</span>
+          </button>
+        ))}
+      </section>
     </div>
   );
 }

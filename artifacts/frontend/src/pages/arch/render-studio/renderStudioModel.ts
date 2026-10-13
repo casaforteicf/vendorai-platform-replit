@@ -103,12 +103,12 @@ export function renderStudioStepIndex(step: RenderStudioStep) {
 }
 
 export const RENDER_STUDIO_COLORS = {
-  bg: "#F7F8FA", surface: "#FFFFFF", card: "#FFFFFF",
-  border: "#E5E7EB", borderLight: "#D8DEE8",
-  accent: "#F97316", accentHover: "#EA580C", accentMid: "#FB923C",
-  accentGlow: "rgba(249,115,22,0.16)", accentText: "#C2410C",
-  text: "#172033", muted: "#64748B", dim: "#94A3B8",
+  bg: "#171C1D", surface: "#232A2B", card: "#232A2B",
+  border: "#384445", borderLight: "#465354",
+  accent: "#5DC99C", accentHover: "#45AD82", accentMid: "#8CE2B6",
+  accentGlow: "rgba(93,201,156,0.16)", accentText: "#9DE3BD",
+  text: "#E8EFEB", muted: "#AAB8B2", dim: "#81938B",
   green: "#10B981", greenDim: "rgba(16,185,129,0.12)",
   red: "#EF4444", amber: "#F59E0B",
-  inputBg: "#FFFFFF", overlay: "rgba(247,248,250,0.92)",
+  inputBg: "#232A2B", overlay: "rgba(23,28,29,0.96)",
 } as const;
