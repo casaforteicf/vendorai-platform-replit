@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { createCpuRenderJob } from "./render-worker-client";
 import type { DiffusePreviewOptions } from "./render-diffuse-preview";
+import { probeRenderAccelerators, selectAvailableRenderBackend, type RenderAcceleratorCapabilities } from "./render-gpu-capabilities";
 
 type Props={options:DiffusePreviewOptions; tenantId?:string; authToken?:string; arqdorProjectId?:string};
 export function ExperimentalCpuRenderPanel({options,tenantId,authToken,arqdorProjectId}:Props){
@@ -8,6 +9,8 @@ export function ExperimentalCpuRenderPanel({options,tenantId,authToken,arqdorPro
  const job=useRef<ReturnType<typeof createCpuRenderJob>|null>(null);
  const generation=useRef(0);
  const [status,setStatus]=useState("Não iniciado");
+ const [accelerators,setAccelerators]=useState<RenderAcceleratorCapabilities|null>(null);
+ useEffect(()=>{let active=true;void probeRenderAccelerators().then(result=>{if(active)setAccelerators(result);});return()=>{active=false;};},[]);
  const [progress,setProgress]=useState(0);
  const [samples,setSamples]=useState(8);
  const [denoise,setDenoise]=useState(false);
@@ -128,6 +131,8 @@ export function ExperimentalCpuRenderPanel({options,tenantId,authToken,arqdorPro
   canvas.current!.width=options.width;canvas.current!.height=options.height;
   setProgress(0);setCompleted(false);setStatus("Renderizando");
   try {
+   const backend=accelerators ? selectAvailableRenderBackend(accelerators) : "cpu";
+   if(backend!=="cpu"){setStatus("Motor GPU ainda não habilitado — usando CPU");}
    const renderOptions:DiffusePreviewOptions={...options,
     display:{toneMapping:options.display?.toneMapping??"aces",exposure},
     directionalLight:{directionToLight:options.directionalLight?.directionToLight??[0.35,0.8,0.45],
@@ -159,6 +164,7 @@ export function ExperimentalCpuRenderPanel({options,tenantId,authToken,arqdorPro
     <p className="text-xs text-slate-500">Não substitui o render IA, não publica imagens e não altera a geometria.</p></div>
    <span className="text-xs text-amber-700">Laboratório</span>
   </div>
+  <p className="text-xs text-slate-600" role="status">Aceleração: WebGPU {accelerators?.webgpu==="available"?"detectada":accelerators?.webgpu==="blocked"?"bloqueada":accelerators?"indisponível":"verificando"} · Motor GPU ainda não implementado · Processamento atual: CPU (fallback seguro). GPU servidor: não configurada.</p>
   <canvas ref={canvas} className="block w-full rounded-lg bg-slate-900" aria-label="Imagem do render experimental"/>
   <div className="flex flex-wrap items-center gap-3 text-sm">
    <label>Passagens <select value={samples} onChange={e=>setSamples(Number(e.target.value))} className="rounded border p-1">
