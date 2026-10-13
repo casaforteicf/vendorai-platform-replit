@@ -32,3 +32,5 @@
 - [Arqdor Render — 21 requisitos](./MATRIZ-ACEITE-ARQDOR-RENDER-20261013.md)
 
 A descrição do PR #3510 foi atualizada para contemplar um kernel WGSL experimental. Isso não comprova GPU de produção.
+
+- [Arqdor Studio 2.0 — 20 requisitos](./MATRIZ-ACEITE-ARQDOR-STUDIO-20261013.md)
