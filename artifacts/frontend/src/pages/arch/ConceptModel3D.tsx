@@ -46,6 +46,8 @@ export type ConceptModelLevel = {
 type Props = {
   arqdorProjectId?: string;
   experimentalBimModel?: BimModel;
+  selectedBimElementId?: string | null;
+  onSelectBimElement?: (id: string | null) => void;
   /** Restricted laboratory feature; host must supply both opt-in and explicit permission. */
   experimentalCpuRenderEnabled?: boolean;
   experimentalCpuRenderAuthorized?: boolean;
@@ -590,6 +592,8 @@ function roofBounds(level: ConceptModelLevel | undefined) {
 export default function ConceptModel3D({
   arqdorProjectId,
   experimentalBimModel,
+  selectedBimElementId,
+  onSelectBimElement,
   experimentalCpuRenderEnabled = false,
   experimentalCpuRenderAuthorized = false,
   renderCaptureToken,
@@ -1702,6 +1706,8 @@ export default function ConceptModel3D({
       )}
       <ConceptWebGLScene
         experimentalBimModel={experimentalBimModel}
+        selectedBimElementId={selectedBimElementId}
+        onSelectBimElement={onSelectBimElement}
         renderSceneSnapshotToken={allowExperimentalCpu ? experimentalCapture.renderCaptureToken : renderCaptureToken}
         renderGeometryExportToken={allowExperimentalCpu ? experimentalCapture.renderCaptureToken : renderCaptureToken}
         onRenderSceneSnapshot={allowExperimentalCpu ? experimentalCapture.onRenderSceneSnapshot : onRenderSceneSnapshot}
