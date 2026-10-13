@@ -5683,7 +5683,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
             uploadedAt: now,
             status: "parsed",
             parserStatus: "ready_editable_geometry",
-          },
+          } as ProjectSourceFile,
         ].slice(-10));
       }
       window.setTimeout(() => setGeometryImportState("idle"), 7000);
