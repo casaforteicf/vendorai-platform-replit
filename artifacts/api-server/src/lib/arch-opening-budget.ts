@@ -8,6 +8,18 @@ function hundredths(value: number) {
 }
 export type OpeningBudgetSource = { id: string; catalogProductId?: string; width?: number; height?: number; sillHeight?: number; type: string };
 export type OpeningBudgetProduct = { id: string; nome: string; precoBase: unknown; precoPromocional?: unknown; promocaoAtivaAte?: unknown; unidade?: string | null; fornecedor?: string | null };
+/** Exact sum within the existing numeric(12,2) project budget column. */
+export class OpeningBudgetTotalError extends RangeError {}
+export function openingBudgetTotal(values: readonly unknown[]): string {
+ let cents=0n;
+ for(const value of values){
+  const match=typeof value==="string"?/^(\d{1,10})(?:\.(\d{1,2}))?$/.exec(value):null;
+  if(!match)throw new OpeningBudgetTotalError("Há valores inválidos no orçamento. Confira os itens antes de enviar.");
+  cents+=BigInt(match[1])*100n+BigInt((match[2]??"").padEnd(2,"0"));
+ }
+ if(cents>999999999999n)throw new OpeningBudgetTotalError("O total geral ultrapassa o limite do orçamento.");
+ return `${cents/100n}.${String(cents%100n).padStart(2,"0")}`;
+}
 export function openingBudgetPlan(conceptId: string, openings: readonly OpeningBudgetSource[], products: readonly OpeningBudgetProduct[], now: number) {
  const issues: string[] = [], items: { id: string; sourceId: string; produtoId: string; descricao: string; categoria: string; quantidade: string; unidade: string; valorUnitario: string; valorTotal: string; fornecedor: string | null }[] = [];
  const ids=new Set<string>();

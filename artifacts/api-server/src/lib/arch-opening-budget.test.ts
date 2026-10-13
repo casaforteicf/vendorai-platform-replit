@@ -1,5 +1,17 @@
 import {expect,it} from "vitest";
-import {openingBudgetPlan} from "./arch-opening-budget";
+import {openingBudgetPlan,openingBudgetTotal,OpeningBudgetTotalError} from "./arch-opening-budget";
+it("sums project totals in exact cents including zero and the database limit",()=>{
+ expect(openingBudgetTotal([])).toBe("0.00");
+ expect(openingBudgetTotal(["0.10","0.20","0","1.5"])).toBe("1.80");
+ expect(openingBudgetTotal(["9999999999.98","0.01"])).toBe("9999999999.99");
+});
+it("rejects overflow even when individual budget items fit the database",()=>{
+ expect(()=>openingBudgetTotal(["9999999999.99","0.01"])).toThrow(OpeningBudgetTotalError);
+});
+it("rejects missing, negative and malformed persisted budget totals",()=>{
+ for(const invalid of [null,undefined,NaN,Infinity,100,"-1","1.005","1,00","1e2","","10000000000.00"])
+  expect(()=>openingBudgetTotal(["10.00",invalid])).toThrow(OpeningBudgetTotalError);
+});
 const o={id:"j",catalogProductId:"p",width:1.2,height:1.5,sillHeight:0.9,type:"window"};
 const p={id:"p",nome:"Janela",precoBase:"100.00",unidade:"m²"};
 it("rejects ambiguous catalog IDs regardless of product order",()=>{
