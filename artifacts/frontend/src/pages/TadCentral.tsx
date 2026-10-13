@@ -254,13 +254,7 @@ export default function TadCentral({ audience, enabledModules, permittedModules,
               <p className="mt-3 text-base font-semibold text-slate-100">Tudo que sua empresa precisa, em um só lugar.</p>
               <p className="mt-1 text-sm text-slate-300">Escolha um ambiente e continue trabalhando sem menus duplicados.</p>
             </div>
-            <div className="flex w-full max-w-[280px] items-center gap-3 rounded-2xl border border-cyan-400/25 bg-[#081b27]/85 px-4 py-4 backdrop-blur md:w-auto">
-              <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-cyan-500/15 text-cyan-300"><Layers3 size={22} /></span>
-              <div className="min-w-0">
-                <p className="text-sm font-bold text-white">{authorized.length} serviços autorizados</p>
-                <p className="text-[11px] leading-snug text-slate-400">Somente serviços autorizados para seu acesso.</p>
-              </div>
-            </div>
+div>
           </div>
         </section>
 
