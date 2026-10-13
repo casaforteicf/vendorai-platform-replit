@@ -31,9 +31,9 @@ const SHELL_STYLES = `
     position: relative;
     height: 100vh;
     overflow: hidden;
-    background: #f7f8fa;
-    color: #172033;
-    color-scheme: light;
+    background: #171C1D;
+    color: #E8EFEB;
+    color-scheme: dark;
     font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   }
 
@@ -56,9 +56,9 @@ const SHELL_STYLES = `
     align-items: center;
     gap: 7px;
     border-radius: 10px;
-    border: 1px solid #e5e7eb;
-    background: #ffffff;
-    color: #475569;
+    border: 1px solid #384445;
+    background: #232A2B;
+    color: #B4C1BB;
     font-size: 12px;
     font-weight: 750;
     cursor: pointer;
@@ -68,9 +68,9 @@ const SHELL_STYLES = `
 
   .arqdor-studio-v3 .arqdor-back-btn:hover,
   .arqdor-studio-v3 .arqdor-market-btn:hover {
-    border-color: #fb923c;
-    background: #fff7ed;
-    color: #c2410c;
+    border-color: #8CE2B6;
+    background: #263D34;
+    color: #9DE3BD;
     transform: translateY(-1px);
   }
 
@@ -85,9 +85,9 @@ const SHELL_STYLES = `
     align-items: center;
     gap: 7px;
     border-radius: 10px;
-    border: 1px solid #fed7aa;
+    border: 1px solid #3C6654;
     background: #fff7ed;
-    color: #c2410c;
+    color: #9DE3BD;
     font-size: 12px;
     font-weight: 800;
     cursor: pointer;
@@ -97,8 +97,8 @@ const SHELL_STYLES = `
 
   .arqdor-studio-v3 .arqdor-legacy-root,
   .arqdor-studio-v3 .arqdor-legacy-workspace {
-    background: #f7f8fa !important;
-    color: #172033 !important;
+    background: #171C1D !important;
+    color: #E8EFEB !important;
   }
 
   .arqdor-studio-v3 .arqdor-legacy-topbar {
@@ -106,10 +106,10 @@ const SHELL_STYLES = `
     min-height: 58px !important;
     padding-left: 102px !important;
     padding-right: 16px !important;
-    background: rgba(255,255,255,.98) !important;
+    background: rgba(25,31,32,.98) !important;
     border-bottom: 1px solid #e8ebf0 !important;
     box-shadow: 0 1px 0 rgba(15,23,42,.03) !important;
-    color: #172033 !important;
+    color: #E8EFEB !important;
   }
 
   .arqdor-studio-v3 .arqdor-legacy-topbar .arqdor-shell-hidden {
@@ -128,22 +128,22 @@ const SHELL_STYLES = `
     min-height: 38px !important;
     padding: 0 18px !important;
     border-radius: 10px !important;
-    background: #f97316 !important;
-    color: #ffffff !important;
-    border: 1px solid #ea580c !important;
+    background: #5DC99C !important;
+    color: #232A2B !important;
+    border: 1px solid #45AD82 !important;
     box-shadow: 0 5px 14px rgba(249,115,22,.18) !important;
     font-size: 12px !important;
     font-weight: 800 !important;
   }
 
   .arqdor-studio-v3 .arqdor-legacy-topbar .arqdor-primary-action:hover {
-    background: #ea580c !important;
+    background: #45AD82 !important;
   }
 
   .arqdor-studio-v3 .arqdor-legacy-sidebar {
     width: 218px !important;
     min-width: 218px !important;
-    background: #ffffff !important;
+    background: #232A2B !important;
     border-right: 1px solid #e8ebf0 !important;
     box-shadow: none !important;
   }
@@ -163,7 +163,7 @@ const SHELL_STYLES = `
     min-height: 38px !important;
     border-radius: 10px !important;
     background: #f8fafc !important;
-    border-color: #e5e7eb !important;
+    border-color: #384445 !important;
   }
 
   .arqdor-studio-v3 .arqdor-sidebar-hidden-group {
@@ -191,13 +191,13 @@ const SHELL_STYLES = `
 
   .arqdor-studio-v3 .arqdor-studio-step:hover:not(:disabled) {
     background: #fff7ed !important;
-    color: #c2410c !important;
+    color: #9DE3BD !important;
   }
 
   .arqdor-studio-v3 .arqdor-studio-step[aria-current="step"] {
     background: linear-gradient(90deg, #fff3e8 0%, #fff9f4 100%) !important;
-    color: #c2410c !important;
-    box-shadow: inset 3px 0 0 #f97316 !important;
+    color: #9DE3BD !important;
+    box-shadow: inset 3px 0 0 #5DC99C !important;
   }
 
   .arqdor-studio-v3 .arqdor-studio-step::after {
@@ -206,28 +206,28 @@ const SHELL_STYLES = `
     min-width: 22px;
     height: 22px;
     border-radius: 999px;
-    border: 1px solid #e5e7eb;
+    border: 1px solid #384445;
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    background: #ffffff;
+    background: #232A2B;
     color: #94a3b8;
     font-size: 8px;
     font-weight: 800;
   }
 
   .arqdor-studio-v3 .arqdor-studio-step[aria-current="step"]::after {
-    color: #c2410c;
+    color: #9DE3BD;
     border-color: #fdba74;
     background: #ffedd5;
   }
 
   .arqdor-studio-v3 .arqdor-center-panel {
-    background: #f7f8fa !important;
+    background: #171C1D !important;
   }
 
   .arqdor-studio-v3 .arqdor-canvas-stage {
-    background: #f7f8fa !important;
+    background: #171C1D !important;
     padding: 72px 34px 44px !important;
     gap: 24px !important;
   }
@@ -237,8 +237,8 @@ const SHELL_STYLES = `
     max-width: 560px !important;
     padding: 30px 32px !important;
     border-radius: 18px !important;
-    border: 1px solid #e5e7eb !important;
-    background: #ffffff !important;
+    border: 1px solid #384445 !important;
+    background: #232A2B !important;
     box-shadow: 0 14px 34px rgba(15,23,42,.07) !important;
     gap: 16px !important;
   }
@@ -254,21 +254,21 @@ const SHELL_STYLES = `
     padding: 44px 48px !important;
     border-radius: 18px !important;
     border: 2px dashed #fdba74 !important;
-    background: #ffffff !important;
+    background: #232A2B !important;
     box-shadow: 0 14px 34px rgba(15,23,42,.07) !important;
     gap: 18px !important;
     justify-content: center !important;
   }
 
   .arqdor-studio-v3 .arqdor-upload-card:hover {
-    border-color: #f97316 !important;
+    border-color: #5DC99C !important;
     background: #fffaf5 !important;
     transform: translateY(-1px);
   }
 
   .arqdor-studio-v3 .arqdor-upload-card > div:first-child {
     background: #fff1e8 !important;
-    color: #f97316 !important;
+    color: #5DC99C !important;
     border: 1px solid #fed7aa !important;
   }
 
@@ -283,7 +283,7 @@ const SHELL_STYLES = `
     gap: 3px !important;
     border-radius: 11px !important;
     background: rgba(255,255,255,.98) !important;
-    border: 1px solid #e5e7eb !important;
+    border: 1px solid #384445 !important;
     backdrop-filter: blur(12px);
     box-shadow: 0 8px 20px rgba(15,23,42,.08) !important;
   }
@@ -298,7 +298,7 @@ const SHELL_STYLES = `
 
   .arqdor-studio-v3 .arqdor-canvas-toolbar button[aria-pressed="true"] {
     background: #fff1e8 !important;
-    color: #c2410c !important;
+    color: #9DE3BD !important;
     border-color: #fdba74 !important;
   }
 
@@ -308,15 +308,15 @@ const SHELL_STYLES = `
   }
 
   .arqdor-studio-v3 .arqdor-legacy-right-panel {
-    background: #f7f8fa !important;
+    background: #171C1D !important;
     border-left: 0 !important;
     padding: 12px 12px 12px 0 !important;
   }
 
   .arqdor-studio-v3 .arqdor-legacy-right-panel > div {
     width: 324px !important;
-    background: #ffffff !important;
-    border: 1px solid #e5e7eb !important;
+    background: #232A2B !important;
+    border: 1px solid #384445 !important;
     border-radius: 16px !important;
     box-shadow: 0 10px 28px rgba(15,23,42,.06) !important;
     overflow: hidden !important;
@@ -324,7 +324,7 @@ const SHELL_STYLES = `
 
   .arqdor-studio-v3 .arqdor-legacy-right-panel > div > div:first-child {
     min-height: 46px !important;
-    background: #ffffff !important;
+    background: #232A2B !important;
     border-bottom-color: #eef0f3 !important;
   }
 
@@ -337,7 +337,7 @@ const SHELL_STYLES = `
   .arqdor-studio-v3 .arqdor-legacy-right-panel .arqdor-properties-scroll {
     padding: 16px !important;
     gap: 12px !important;
-    background: #ffffff !important;
+    background: #232A2B !important;
   }
 
   .arqdor-studio-v3 .arqdor-legacy-right-panel input,
@@ -346,8 +346,8 @@ const SHELL_STYLES = `
   .arqdor-studio-v3 .arqdor-legacy-bottom-panel input,
   .arqdor-studio-v3 .arqdor-legacy-bottom-panel select,
   .arqdor-studio-v3 .arqdor-legacy-bottom-panel textarea {
-    background: #ffffff !important;
-    color: #172033 !important;
+    background: #232A2B !important;
+    color: #E8EFEB !important;
     border-color: #d8dee8 !important;
     box-shadow: none !important;
     font-size: 12px !important;
@@ -361,7 +361,7 @@ const SHELL_STYLES = `
   .arqdor-studio-v3 .arqdor-legacy-right-panel input:focus,
   .arqdor-studio-v3 .arqdor-legacy-right-panel select:focus,
   .arqdor-studio-v3 .arqdor-legacy-right-panel textarea:focus {
-    border-color: #fb923c !important;
+    border-color: #8CE2B6 !important;
     box-shadow: 0 0 0 3px rgba(249,115,22,.11) !important;
     outline: none !important;
   }
@@ -384,7 +384,7 @@ const SHELL_STYLES = `
     border-radius: 10px !important;
     text-align: center !important;
     line-height: 1.25 !important;
-    background: #ffffff !important;
+    background: #232A2B !important;
     color: #334155 !important;
     border-color: #e2e8f0 !important;
     font-size: 12px !important;
@@ -392,31 +392,31 @@ const SHELL_STYLES = `
 
   .arqdor-studio-v3 .arqdor-environment-picker > button:not(.arqdor-env-cta):hover {
     background: #fff7ed !important;
-    color: #c2410c !important;
+    color: #9DE3BD !important;
     border-color: #fdba74 !important;
   }
 
   .arqdor-studio-v3 .arqdor-environment-picker > button:not(.arqdor-env-cta)[style*="249, 115, 22"],
-  .arqdor-studio-v3 .arqdor-environment-picker > button:not(.arqdor-env-cta)[style*="#F97316"] {
+  .arqdor-studio-v3 .arqdor-environment-picker > button:not(.arqdor-env-cta)[style*="#5DC99C"] {
     background: #fff1e8 !important;
-    color: #c2410c !important;
-    border-color: #fb923c !important;
+    color: #9DE3BD !important;
+    border-color: #8CE2B6 !important;
   }
 
   .arqdor-studio-v3 .arqdor-env-cta,
   .arqdor-studio-v3 .arqdor-primary-action {
     min-height: 40px !important;
     border-radius: 10px !important;
-    background: #f97316 !important;
-    color: #ffffff !important;
-    border-color: #ea580c !important;
+    background: #5DC99C !important;
+    color: #232A2B !important;
+    border-color: #45AD82 !important;
     box-shadow: 0 5px 14px rgba(249,115,22,.16) !important;
     font-weight: 800 !important;
   }
 
   .arqdor-studio-v3 .arqdor-env-cta:hover,
   .arqdor-studio-v3 .arqdor-primary-action:hover {
-    background: #ea580c !important;
+    background: #45AD82 !important;
   }
 
   .arqdor-studio-v3 .arqdor-copilot-strip {
@@ -431,14 +431,14 @@ const SHELL_STYLES = `
   }
 
   .arqdor-studio-v3 .arqdor-legacy-bottom-panel {
-    background: #ffffff !important;
-    border-top: 1px solid #e5e7eb !important;
+    background: #232A2B !important;
+    border-top: 1px solid #384445 !important;
     box-shadow: 0 -8px 22px rgba(15,23,42,.05) !important;
   }
 
   .arqdor-studio-v3 .arqdor-legacy-bottom-panel > div:first-child {
     min-height: 40px !important;
-    background: #ffffff !important;
+    background: #232A2B !important;
   }
 
   .arqdor-studio-v3 .arqdor-legacy-root[data-arqdor-step="Projeto"] .arqdor-legacy-bottom-panel,
@@ -464,7 +464,7 @@ const SHELL_STYLES = `
     border-radius: 10px;
     border: 1px solid #fdba74;
     background: #fff7ed;
-    color: #c2410c;
+    color: #9DE3BD;
     font-size: 12px;
     font-weight: 800;
     line-height: 1;
@@ -476,7 +476,7 @@ const SHELL_STYLES = `
 
   .arqdor-studio-v3 .arqdor-studio-entry-btn:hover {
     background: #ffedd5;
-    border-color: #fb923c;
+    border-color: #8CE2B6;
     color: #9a3412;
   }
 
@@ -728,9 +728,9 @@ export default function RenderStudioPage() {
 
   if (hydratedKey !== targetKey) {
     return (
-      <div style={{ minHeight: "100vh", display: "grid", placeItems: "center", background: "#f7f8fa", color: "#c2410c", fontFamily: "Inter, sans-serif" }}>
+      <div style={{ minHeight: "100vh", display: "grid", placeItems: "center", background: "#171C1D", color: "#9DE3BD", fontFamily: "Inter, sans-serif" }}>
         <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10 }}>
-          <div style={{ width: 30, height: 30, borderRadius: "50%", border: "2px solid #e5e7eb", borderTopColor: "#f97316", animation: "arq-persistent-spin .7s linear infinite" }} />
+          <div style={{ width: 30, height: 30, borderRadius: "50%", border: "2px solid #384445", borderTopColor: "#5DC99C", animation: "arq-persistent-spin .7s linear infinite" }} />
           <span style={{ fontSize: 13, fontWeight: 700, color: "#475569" }}>Carregando histórico do projeto…</span>
           <style>{`@keyframes arq-persistent-spin{to{transform:rotate(360deg)}}`}</style>
         </div>
