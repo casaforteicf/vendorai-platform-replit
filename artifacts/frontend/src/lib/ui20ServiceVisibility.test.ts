@@ -52,6 +52,28 @@ describe("UI20 service visibility (presentation only)", () => {
     expect(visible.has("arqdor")).toBe(false);
   });
 
+  it("shows Arqdor for eligible tenants without an explicit arch override", () => {
+    expect(getUi20VisibleServices({ arqdorEligible: true, modules: [] }).has("arqdor")).toBe(true);
+    expect(getUi20VisibleServices({ arqdorEligible: true, modules: [
+      { moduleKey: "arch", isEnabled: false, hasOverride: false },
+    ] }).has("arqdor")).toBe(true);
+  });
+
+  it("does not expose Arqdor to an ineligible vertical", () => {
+    expect(getUi20VisibleServices({ arqdorEligible: false, modules: [
+      { moduleKey: "arch", isEnabled: true },
+    ] }).has("arqdor")).toBe(false);
+  });
+
+  it("keeps explicit arch denial even when other services are enabled", () => {
+    const services = getUi20VisibleServices({ arqdorEligible: true, modules: [
+      { moduleKey: "arch", isEnabled: false, hasOverride: true },
+      { moduleKey: "leads", isEnabled: true },
+    ] });
+    expect(services.has("arqdor")).toBe(false);
+    expect(services.has("crm")).toBe(true);
+  });
+
   it("does not show a commercially excluded service", () => {
     const visible = getUi20VisibleServices({
       modules: [{ moduleKey: "content", isEnabled: true, commerciallyEntitled: false }],
