@@ -1256,6 +1256,14 @@ router.get("/commercial-partnerships/:partnershipId/users", async (req, res) => 
     return res.status(403).json({ error: "FORBIDDEN" });
   }
 
+  // A lista contém dados pessoais de usuários de outro tenant. Participar da
+  // parceria não autoriza enumerar toda a equipe da empresa representante.
+  if (!isSuperAdmin(req) && !canManageOwnerTenant(req, partnership.ownerTenantId)) {
+    const isPartnerAdmin = tenantId === partnership.partnerTenantId &&
+      (req.user?.platformRole === "tenant_admin" || req.user?.userFunction === "administrador");
+    if (!isPartnerAdmin) return res.status(403).json({ error: "FORBIDDEN" });
+  }
+
   const rows = await db.select({
     id: usersTable.id,
     name: usersTable.name,
