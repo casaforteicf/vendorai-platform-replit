@@ -85,3 +85,28 @@
     padding: 6px 12px;
   }
 }
+
+/* Studio 2.0: editor chrome only. Keep the project drawing and previews untouched. */
+@media (min-width: 768px) {
+  .arqdor-concept-studio .arq-workspace-stage .arq-workspace-sidebar {
+    background: var(--arq-panel);
+    color: var(--arq-text);
+    border-color: var(--arq-border);
+  }
+  .arqdor-concept-studio .arq-workspace-stage .arq-tool-rail {
+    background: var(--arq-surface);
+    border-color: var(--arq-border);
+  }
+  .arqdor-concept-studio .arq-workspace-stage .arq-tool-rail button {
+    color: var(--arq-muted);
+  }
+  .arqdor-concept-studio .arq-workspace-stage .arq-tool-rail button:hover,
+  .arqdor-concept-studio .arq-workspace-stage .arq-tool-rail button:focus-visible {
+    color: var(--arq-text);
+    background: var(--arq-panel);
+  }
+  .arqdor-concept-studio .arq-workspace-stage .arq-tool-rail button.bg-orange-50 {
+    color: var(--arq-text);
+    background: var(--arq-accent);
+  }
+}
