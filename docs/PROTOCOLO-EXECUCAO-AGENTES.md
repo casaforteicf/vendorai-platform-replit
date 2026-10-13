@@ -50,23 +50,17 @@ gate apontou.
 
 ## 2. Como identificar REGRESSÃO (inclusive em arquivo não alterado)
 
-Um erro só é regressão se foi **introduzido pela branch**. Método:
+Um erro é regressão quando foi **introduzido pela branch** em comparação com a `main` de referência. A interseção de arquivos alterados com arquivos que têm erros é apenas uma triagem: **interseção vazia NÃO prova zero regressões**, porque mudanças em contratos, exports ou tipos podem quebrar consumidores não alterados.
 
-```sh
-# arquivos que a branch mudou (frontend)
-git diff --name-only origin/main HEAD | grep -E '^artifacts/frontend/src/.*\.(ts|tsx)$' | sort > /tmp/changed.txt
-# arquivos com erro no tsc completo
-tsc -p artifacts/frontend/tsconfig.json --noEmit 2>&1 | grep -oE '^src/[^(]+\.tsx?' | sort -u | sed 's#^#artifacts/frontend/#' > /tmp/errfiles.txt
-# interseção = candidatos a regressão
-comm -12 /tmp/changed.txt /tmp/errfiles.txt
-```
+**Comparação obrigatória, na mesma versão de dependências, lockfile, Node, configuração e comando:**
 
-- Interseção **vazia** → a branch não introduziu nenhuma regressão de tipo; os erros são todos pré-existentes.
-- Interseção **não vazia** → inspecionar cada arquivo: o erro existia na `main` (pré-existente)
-  ou é novo (regressão → **corrigir**, sem `any`/`@ts-ignore`/supressão global).
+1. Anotar SHA exato da `main` mais recente e HEAD da branch já reconciliada; executar a mesma instalação e o mesmo TypeScript completo nos dois worktrees isolados.
+2. Salvar a saída integral, código de saída e logs de cada diagnóstico. Normalizar apenas caminhos absolutos e formatação não semântica, preservando arquivo, linha, coluna, código TS e mensagem.
+3. Comparar os diagnósticos **completos** (`main` × branch), inclusive nos arquivos não modificados. Erros novos ou agravados são candidatos a regressão e devem ser investigados. Mudanças de posição/linha exigem análise contextual antes da classificação.
+4. Executar testes direcionados **e de integração dos consumidores afetados**, verificando contratos, permissões e comportamento; resultados verdes não dispensam homologação funcional.
+5. Registrar no PR: SHA da baseline, SHA testado, comandos, logs anexados, erros preexistentes, erros novos e justificativas com evidências. Falha na comparação ou regressão nova não resolvida = **gate pendente**.
 
-Baseline confiável = rodar o mesmo comando num checkout da `main` **com as mesmas deps instaladas**
-(não reusar deps de outro worktree/estado).
+O TypeScript completo do frontend **não é um gate de zero erros históricos** enquanto o débito da `main` persistir; o requisito é **não introduzir regressão**. Não mascarar diagnósticos com `any`, `@ts-ignore` ou supressões globais.
 
 ---
 
