@@ -577,6 +577,15 @@ router.post("/deals/:dealId/handoff-company", async (req, res) => {
     return res.status(403).json({ error: "Este negócio ainda não foi compartilhado com esta empresa." });
   }
 
+  // A participação da empresa não autoriza automaticamente todos os seus usuários.
+  // Reutilizar as regras de usuários autorizados e responsável operacional antes do handoff.
+  if (!isSuperAdmin(req) && senderTenantId === participantTenantId && participation) {
+    const access = await assertParticipationAccess(req, participation.id);
+    if (access.error) {
+      return res.status(access.error === "NOT_FOUND" ? 404 : 403).json({ error: access.error });
+    }
+  }
+
   const destinationTenantId = senderTenantId === participantTenantId
     ? originTenantId
     : participantTenantId;
