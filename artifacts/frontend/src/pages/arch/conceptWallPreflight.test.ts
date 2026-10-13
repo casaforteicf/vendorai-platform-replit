@@ -24,6 +24,22 @@ describe("Arqdor Projeto — pré-validação de paredes", () => {
     expect(validateConceptWalls([{ ...wall, x1: Number.NaN }], 12, 25))
       .toEqual([{ wallId: "a", code: "INVALID_COORDINATE" }]);
   });
+  it("reporta espessura inválida mesmo com coordenada não finita", () => {
+    const invalid = { ...wall, x1: Number.NaN, thickness: 0.7 };
+    expect(validateConceptWalls([invalid], 12, 25)).toEqual([
+      { wallId: "a", code: "INVALID_COORDINATE" },
+      { wallId: "a", code: "INVALID_THICKNESS" },
+    ]);
+    expect(invalid.thickness).toBe(0.7);
+  });
+  it("preserva erros independentes com coordenada infinita e espessura NaN", () => {
+    const invalid = { ...wall, y2: Number.POSITIVE_INFINITY, thickness: Number.NaN };
+    expect(validateConceptWalls([invalid], 12, 25)).toEqual([
+      { wallId: "a", code: "INVALID_COORDINATE" },
+      { wallId: "a", code: "INVALID_THICKNESS" },
+    ]);
+    expect(Number.isNaN(invalid.thickness)).toBe(true);
+  });
   it("distingue identificador vazio de identificador duplicado", () => {
     expect(validateConceptWalls([{ ...wall, id: "" }], 12, 25))
       .toContainEqual({ wallId: "", code: "INVALID_WALL_ID" });
