@@ -26,6 +26,18 @@ describe("experimental WebGPU preflight", () => {
       geometry: { ...options.geometry, totalTriangles: 513 } }))
       .rejects.toThrow(/512 triângulos/);
   });
+  it("rejects conflicting triangle counts before GPU access", async () => {
+    await expect(renderWebGpuPreview({ ...options,
+      geometry: { ...options.geometry, totalTriangles: 2 } }))
+      .rejects.toThrow(/contagem de triângulos inconsistente/);
+  });
+  it("rejects NaN coordinates before GPU access", async () => {
+    await expect(renderWebGpuPreview({ ...options,
+      geometry: { ...options.geometry,
+        meshes: [{ ...options.geometry.meshes[0],
+          positions: [NaN, -1, 0, 1, -1, 0, 0, 1, 0] }] } }))
+      .rejects.toThrow(/geometria inválida/);
+  });
   it("rejects invalid dimensions", async () => {
     await expect(renderWebGpuPreview({ ...options, width: 1000, height: 1000 }))
       .rejects.toThrow(/resolução WebGPU/);
