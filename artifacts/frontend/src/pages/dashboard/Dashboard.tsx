@@ -30,7 +30,7 @@ export default function Dashboard() {
   const [official, setOfficial] = useState<OfficialMetrics>(null);
   const ui20NavQuery = useQuery<Ui20Module[]>({
     queryKey: ["tenant-nav-modules", tenantId],
-    enabled: import.meta.env.VITE_UI20_SERVICE_TABS !== "false" && Boolean(tenantId && token),
+    enabled: import.meta.env.VITE_UI20_SERVICE_HOME !== "false" && Boolean(tenantId && token),
     staleTime: 60_000,
     queryFn: async () => {
       const response = await fetch(`/api/tenants/${tenantId}/nav-modules`, { headers: { Authorization: `Bearer ${token}` } });
@@ -126,7 +126,7 @@ export default function Dashboard() {
 
   return (
     <div className="w-full vendor-dashboard-v2">
-      {import.meta.env.VITE_UI20_SERVICE_TABS !== "false" ? (
+      {import.meta.env.VITE_UI20_SERVICE_HOME !== "false" ? (
         <ServiceHome
           name={user?.name ?? ""}
           tenantId={tenantId}
