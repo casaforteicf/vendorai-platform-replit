@@ -1099,6 +1099,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
   const [selectedClosedSpaceId, setSelectedClosedSpaceId] = useState<string | null>(null);
   const [customWalls, setCustomWalls] = useState<CustomWall[]>([]);
   const [bimElements, setBimElements] = useState<BimModel>({ schemaVersion: 1, elements: [] });
+  const bimElementsEnabled = import.meta.env.VITE_ARQDOR_BIM_ELEMENTS === "true";
   const [customOpenings, setCustomOpenings] = useState<CustomOpening[]>([]);
   const [wallFirstFloors, setWallFirstFloors] = useState<number[]>([0]);
   const [showDimensions, setShowDimensions] = useState(true);
@@ -1672,7 +1673,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
         setShowDimensions(draft.configuration?.showDimensions ?? true);
         setCustomWalls(loadedWalls);
         const storedBim = draft.configuration?.bimElements;
-        if (storedBim?.schemaVersion === 1 && Array.isArray(storedBim.elements) && inspectBimModel(storedBim).length === 0) {
+        if (bimElementsEnabled && storedBim?.schemaVersion === 1 && Array.isArray(storedBim.elements) && storedBim.elements.every((item) => item && typeof item === "object" && ["stair", "slab", "roof"].includes(item.kind) && item.parameters && typeof item.parameters === "object" && (item.kind !== "slab" || Array.isArray(item.parameters.openings))) && inspectBimModel(storedBim).length === 0) {
           setBimElements(storedBim);
         } else {
           setBimElements({ schemaVersion: 1, elements: [] });
@@ -1797,7 +1798,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
         wallFirstFloors: nextWallFirstFloors,
         showDimensions,
         customWalls: nextCustomWalls,
-        bimElements,
+        ...(bimElementsEnabled ? { bimElements } : {}),
         customOpenings: nextCustomOpenings,
         spaceProfiles: nextSpaceProfiles,
         objects: nextObjects,
@@ -1845,7 +1846,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
     const sendRequest = async () => {
       // Validação da geometria no fluxo real de POST/PATCH do editor.
       // Não corrige silenciosamente paredes nem altera o controle de revisão.
-      if (inspectBimModel(bimElements).length > 0) throw new Error("Revise os elementos BIM antes de salvar.");
+      if (bimElementsEnabled && inspectBimModel(bimElements).length > 0) throw new Error("Revise os elementos BIM antes de salvar.");
       const wallIssues = validateConceptWalls(
         nextCustomWalls.map((wall) => ({
           id: wall.id, floor: wall.floor, x1: wall.x1, y1: wall.y1,
