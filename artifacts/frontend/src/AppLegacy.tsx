@@ -648,7 +648,9 @@ function AppRoutes() {
         <Route path="/"><PublicRoute component={Login} /></Route>
         <Route path="/app"><RedirectPage to="/" /></Route>
         <Route path="/app/"><RedirectPage to="/" /></Route>
-        <Route path="/dashboard"><ProtectedRoute component={Dashboard} /></Route>
+        {/* TAD é a entrada única. Preservar painel executivo sob rota própria. */}
+        <Route path="/dashboard"><RedirectPage to="/tad" /></Route>
+        <Route path="/dashboard/executivo"><ProtectedRoute component={Dashboard} /></Route>
         <Route path="/tad"><FullscreenProtectedRoute component={TadCentralRoute} /></Route>
         <Route path="/trabalho/:id"><ProtectedRoute component={LeadWorkspace} /></Route>
         <Route path="/trabalho"><ProtectedRoute component={WorkCenterHome} /></Route>
