@@ -78,7 +78,7 @@ function ProgressOverlay({ stage, elapsedSeconds, isRecovering }: { stage: strin
 function SelectionCanvas({ isActive, renderUrl, targetImageRef, onSelection, onUpdateSelection, existingSelections, onClearSelection, hideSeed = false }: {
   isActive: boolean;
   renderUrl: string;
-  targetImageRef: React.RefObject<HTMLImageElement>;
+  targetImageRef: React.RefObject<HTMLImageElement | null>;
   onSelection: (sel: Omit<SelectionRect, "id" | "label">) => void;
   onUpdateSelection?: (id: string, patch: Partial<Pick<SelectionRect, "x" | "y" | "w" | "h">>) => void;
   existingSelections: SelectionRect[];
@@ -154,7 +154,7 @@ function SelectionCanvas({ isActive, renderUrl, targetImageRef, onSelection, onU
     if(!isActive||!dragRef.current.active) return; const p=coords(e), d=dragRef.current;
     if(d.mode==="create"){setCurrentRect({x:Math.min(d.startX,p.x),y:Math.min(d.startY,p.y),w:Math.abs(p.x-d.startX),h:Math.abs(p.y-d.startY)});return;}
     const s=d.selection;if(!s)return; const dx=p.x-d.startX,dy=p.y-d.startY,min=2;
-    if(d.mode==="move"){onUpdateSelection(s.id,{x:clamp(s.x+dx,0,100-s.w),y:clamp(s.y+dy,0,100-s.h)});return;}
+    if(d.mode==="move"){onUpdateSelection?.(s.id,{x:clamp(s.x+dx,0,100-s.w),y:clamp(s.y+dy,0,100-s.h)});return;}
     let x1=s.x,y1=s.y,x2=s.x+s.w,y2=s.y+s.h;
     if(d.mode.includes("n")) y1=clamp(s.y+dy,0,y2-min);
     if(d.mode.includes("s")) y2=clamp(s.y+s.h+dy,y1+min,100);
