@@ -577,6 +577,23 @@ router.post("/deals/:dealId/handoff-company", async (req, res) => {
     return res.status(403).json({ error: "Este negócio ainda não foi compartilhado com esta empresa." });
   }
 
+  // A participação da empresa não autoriza automaticamente todos os seus usuários.
+  // Reutilizar as regras de usuários autorizados e responsável operacional antes do handoff.
+  if (!isSuperAdmin(req) && senderTenantId === participantTenantId && participation) {
+    // O vínculo apresentado deve ser exatamente o vínculo ativo da participação:
+    // outra parceria entre as mesmas empresas não concede acesso a este negócio.
+    if (participation.partnershipId !== partnership.id) {
+      return res.status(403).json({ error: "FORBIDDEN" });
+    }
+    const access = await assertParticipationAccess(req, participation.id);
+    if (access.error) {
+      return res.status(access.error === "NOT_FOUND" ? 404 : 403).json({ error: access.error });
+    }
+    if (!access.participation?.permissions?.includes("move_pipeline")) {
+      return res.status(403).json({ error: "FORBIDDEN" });
+    }
+  }
+
   const destinationTenantId = senderTenantId === participantTenantId
     ? originTenantId
     : participantTenantId;
@@ -1237,6 +1254,14 @@ router.get("/commercial-partnerships/:partnershipId/users", async (req, res) => 
   const tenantId = currentTenantId(req);
   if (!isSuperAdmin(req) && tenantId !== partnership.ownerTenantId && tenantId !== partnership.partnerTenantId) {
     return res.status(403).json({ error: "FORBIDDEN" });
+  }
+
+  // A lista contém dados pessoais de usuários de outro tenant. Participar da
+  // parceria não autoriza enumerar toda a equipe da empresa representante.
+  if (!isSuperAdmin(req) && !canManageOwnerTenant(req, partnership.ownerTenantId)) {
+    const isPartnerAdmin = tenantId === partnership.partnerTenantId &&
+      (req.user?.platformRole === "tenant_admin" || req.user?.userFunction === "administrador");
+    if (!isPartnerAdmin) return res.status(403).json({ error: "FORBIDDEN" });
   }
 
   const rows = await db.select({
