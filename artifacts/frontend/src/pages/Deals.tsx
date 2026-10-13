@@ -2710,6 +2710,12 @@ export default function Deals() {
     [dealParticipations],
   );
 
+  const [createLeadSearch, setCreateLeadSearch] = useState("");
+  const matchingCreateLeads = leads.filter((lead) => {
+    const term = createLeadSearch.trim().toLocaleLowerCase("pt-BR");
+    return !term || [lead.nome, lead.empresa, lead.telefone, lead.email]
+      .some((value) => String(value ?? "").toLocaleLowerCase("pt-BR").includes(term));
+  });
   const leadMap = new Map(leads.map((l) => [l.id, l.nome]));
 
   const briefingMap = new Map(briefings.map((b) => [b.leadId, b]));
@@ -2859,6 +2865,10 @@ export default function Deals() {
   });
 
   function onCreateSubmit(values: z.infer<typeof createSchema>) {
+    if (!values.leadId || !leads.some((lead) => lead.id === values.leadId)) {
+      toast({ title: "Selecione um lead cadastrado antes de criar o negócio.", variant: "destructive" });
+      return;
+    }
     if (createQuoteFile && createBudgetReviewStatus !== "approved") {
       toast({ title: "Revise e aprove o orçamento importado antes de salvar.", variant: "destructive" });
       return;
@@ -3613,31 +3623,44 @@ export default function Deals() {
                   name="leadId"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Lead associado</FormLabel>
-                      {leads.length > 0 ? (
-                        <Select
-                          onValueChange={(v) => field.onChange(v === "__none__" ? "" : v)}
-                          value={field.value || "__none__"}
-                        >
-                          <FormControl>
-                            <SelectTrigger data-testid="select-lead">
-                              <SelectValue placeholder="Selecionar lead..." />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent>
-                            <SelectItem value="__none__">Nenhum</SelectItem>
-                            {leads.map((l) => (
-                              <SelectItem key={l.id} value={l.id}>
-                                {l.nome}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      ) : (
+                      <FormLabel>Cliente / lead associado *</FormLabel>
+                      <Input
+                        placeholder="Buscar por nome, empresa, telefone ou e-mail"
+                        aria-label="Buscar lead cadastrado"
+                        value={createLeadSearch}
+                        onChange={(event) => setCreateLeadSearch(event.target.value)}
+                      />
+                      <Select onValueChange={(value) => {
+                        field.onChange(value);
+                        const selected = leads.find((lead) => lead.id === value);
+                        if (selected && !createForm.getValues("titulo")?.trim())
+                          createForm.setValue("titulo", "Atendimento - " + selected.nome);
+                      }} value={field.value || undefined}>
                         <FormControl>
-                          <Input data-testid="input-leadId" placeholder="ID do lead" {...field} />
+                          <SelectTrigger data-testid="select-lead">
+                            <SelectValue placeholder="Selecionar lead cadastrado..." />
+                          </SelectTrigger>
                         </FormControl>
-                      )}
+                        <SelectContent>
+                          {matchingCreateLeads.map((lead) => (
+                            <SelectItem key={lead.id} value={lead.id}>
+                              {lead.nome}{lead.empresa ? " — " + lead.empresa : ""}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      {field.value && (() => {
+                        const selected = leads.find((lead) => lead.id === field.value);
+                        return selected ? (
+                          <p className="text-xs text-muted-foreground">
+                            {selected.empresa || "Pessoa física"} · {selected.telefone || selected.email || "Contato não informado"}
+                          </p>
+                        ) : null;
+                      })()}
+                      <Button type="button" variant="outline" className="w-full"
+                        onClick={() => { setIsCreateOpen(false); navigate("/leads"); }}>
+                        <Plus className="h-4 w-4 mr-2" /> Cadastrar novo lead
+                      </Button>
                       <FormMessage />
                     </FormItem>
                   )}
