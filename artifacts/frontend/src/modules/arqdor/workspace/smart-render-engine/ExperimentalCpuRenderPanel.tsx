@@ -39,8 +39,23 @@ export function ExperimentalCpuRenderPanel({options,tenantId,authToken,arqdorPro
   finally{setLoadingVersions(false);}
  };
  const savedGeneration=useRef(0);
+ const settingsInitialized=useRef(false);
  useEffect(()=>()=>{generation.current++;job.current?.cancel();job.current=null;},[]);
  useEffect(()=>{generation.current++;job.current?.cancel();job.current=null;setProgress(0);setCompleted(false);setHistory([]);setSavedVersions([]);historySequence.current=0;setComparison(null);setLatestCompletedImage(null);savedGeneration.current++;mediaProjectRef.current=null;setStatus("Cena alterada — renderizar novamente");},[options]);
+ // Changes to the render settings invalidate the last image, including during asynchronous saves.
+ // Otherwise a preview rendered with older settings could be exported as the current result.
+ useEffect(()=>{
+  if(!settingsInitialized.current){settingsInitialized.current=true;return;}
+  generation.current++;
+  job.current?.cancel();
+  job.current=null;
+  savedGeneration.current++;
+  setCompleted(false);
+  setProgress(0);
+  setLatestCompletedImage(null);
+  setComparison(null);
+  setStatus("Parâmetros alterados — renderize novamente");
+ },[samples,denoise,exposure,sunIntensity,bounceCount,selectedMaterial,roughness,transmission]);
  const stop=()=>{generation.current++;job.current?.cancel();job.current=null;setCompleted(false);setStatus("Cancelado");};
  const exportPng=()=>{
   if(!completed||!canvas.current||job.current)return;
