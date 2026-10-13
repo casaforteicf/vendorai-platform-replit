@@ -75,6 +75,7 @@ import { evaluateConceptAcceptance } from "./conceptAcceptance";
 import { autoRepairConceptLayout } from "./conceptAutoRepair";
 import { buildExplainableFindings } from "./conceptExplainableEvaluation";
 import { clampObjectToLot, clampRoomToLot, clampWallToLot, normalizeOpeningDimensions } from "./conceptParametricEditing";
+import { buildConceptWallDiagnostics } from "./conceptWallDiagnostics";
 
 const ConceptPlan2D = lazy(() => import("./ConceptPlan2D"));
 const ConceptTypologyPreview = lazy(() => import("./ConceptTypologyPreview"));
@@ -83,6 +84,7 @@ const ConceptFacadeEditor = lazy(() => import("./ConceptFacadeEditor"));
 const ConceptClientBriefPanel = lazy(() => import("./ConceptClientBriefPanel"));
 const ConceptSitePlacementPanel = lazy(() => import("./ConceptSitePlacementPanel"));
 const ConceptModel3D = lazy(() => import("./ConceptModel3D"));
+const ConceptWallDiagnosticsPanel = lazy(() => import("./ConceptWallDiagnosticsPanel").then((m) => ({ default: m.ConceptWallDiagnosticsPanel })));
 const ConceptRenderGalleryActions = lazy(() => import("./ConceptRenderGalleryActions").then((m) => ({ default: m.ConceptRenderGalleryActions })));
 const ConceptCatalogPanels = lazy(() => import("./ConceptCatalogPanels"));
 const ConceptConstructionLibraryPanel = lazy(() => import("./ConceptConstructionLibraryPanel"));
@@ -1090,6 +1092,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
   const [selectedOpeningId, setSelectedOpeningId] = useState<string | null>(null);
   const [selectedWallId, setSelectedWallId] = useState<string | null>(null);
   const [selectedCustomWallId, setSelectedCustomWallId] = useState<string | null>(null);
+  const [wallDiagnosticsOpen, setWallDiagnosticsOpen] = useState(false);
   const [selectedClosedSpaceId, setSelectedClosedSpaceId] = useState<string | null>(null);
   const [customWalls, setCustomWalls] = useState<CustomWall[]>([]);
   const [customOpenings, setCustomOpenings] = useState<CustomOpening[]>([]);
@@ -3913,6 +3916,11 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
     selectedWall,
     wallMaterialOptions,
   ]);
+
+  const wallDiagnosticReport = useMemo(
+    () => buildConceptWallDiagnostics(safeCustomWalls.filter((wall) => wall.floor === activeFloor), { width: lotWidth, depth: lotDepth }),
+    [safeCustomWalls, activeFloor, lotWidth, lotDepth],
+  );
 
   const customWallTopology = useMemo(
     () =>
@@ -9177,6 +9185,33 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
 
                   {editorView === "plan" && (
                     <>
+                      {!terrainOnly && !hideCurrentGeometryForReferenceReview && (
+                        <div className="absolute right-3 top-16 z-[62] w-[min(330px,calc(100%-24px))] space-y-2">
+                          <button type="button" onClick={() => setWallDiagnosticsOpen((open) => !open)}
+                            aria-expanded={wallDiagnosticsOpen} aria-controls="arqdor-wall-diagnostics"
+                            className="ml-auto block rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-xs font-semibold text-emerald-300 shadow-lg">
+                            Revisar paredes {wallDiagnosticReport.hasBlockingIssues ? `(${wallDiagnosticReport.issues.length + wallDiagnosticReport.overlaps.length})` : "✓"}
+                          </button>
+                          {wallDiagnosticsOpen && (
+                            <div id="arqdor-wall-diagnostics">
+                              <Suspense fallback={<div className="rounded bg-zinc-900 p-3 text-xs text-zinc-200">Carregando diagnóstico...</div>}>
+                                <ConceptWallDiagnosticsPanel report={wallDiagnosticReport} onSelectWall={(wallId) => {
+                                  const wall = safeCustomWalls.find((item) => item.id === wallId);
+                                  if (!wall) return;
+                                  setActiveFloor(wall.floor);
+                                  setInteractionMode("navigate");
+                                  setSelectedCustomWallId(wall.id);
+                                  setSelectedWallId(null);
+                                  setSelectedId(null);
+                                  setSelectedOpeningId(null);
+                                  setSelectedObjectId(null);
+                                  setSelectedClosedSpaceId(null);
+                                }} />
+                              </Suspense>
+                            </div>
+                          )}
+                        </div>
+                      )}
                       {geometryImportState === "review" && geometryImportPreview && (
                         <div className="absolute left-1/2 top-16 z-[66] w-[min(680px,calc(100%-24px))] -translate-x-1/2 rounded-2xl border border-amber-300 bg-amber-50/95 px-4 py-3 shadow-xl backdrop-blur">
                           <div className="flex flex-wrap items-start justify-between gap-3">
