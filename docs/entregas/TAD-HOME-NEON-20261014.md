@@ -51,7 +51,8 @@
 - **Implementado:** sim.
 - **Validado tecnicamente:** sim. Build local + build na Contabo (EXIT 0).
 - **Homologado:** pendente. O frontend de homologação não tem publicação separada; a validação visual foi feita com API mockada. Teste com login real ainda pendente.
-- **Aprovado / publicado:** não. Merge na `main` publica em produção via auto-deploy, aguardando autorização do solicitante.
+- **Aprovado:** sim. O solicitante autorizou a publicação ("PUBLICA") em 2026-10-14.
+- **Publicado:** merge squash do PR #3551 na `main` → auto-deploy da Contabo (frontend `deploy-frontend-auto.sh` e backend `deploy-backend.sh` homolog→prod). Resultado do deploy registrado no comentário de publicação do PR.
 
 ## Próximo passo
 
