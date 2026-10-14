@@ -43,7 +43,7 @@ export ARQDOR_CYCLES_GPU_BACKEND=OPTIX
 export ARQDOR_RENDER_WORKERS=1
 export ARQDOR_RENDER_QUEUE_DB=/var/lib/arqdor-render/jobs.sqlite3
 export ARQDOR_MODEL_ROOT=/opt/arqdor/models
-/opt/arqdor-venv/bin/python /opt/arqdor-venv/bin/pip --version
+/opt/arqdor-venv/bin/python -m pip --version
 ./gpu-smoke-test.sh
 ```
 
