@@ -6,7 +6,8 @@
 - **Objetivo:** corrigir a tela inicial do TAD (logo, controles mockados, card "11 serviços autorizados", sino) e aplicar o layout neon de referência (desktop + mobile). Corrige também o build do frontend quebrado na `main`.
 - **Escopo autorizado:** pedido do solicitante em 2026-10-14 ("logo alterada, botões mockados, CasaForteICF, 11 serviços autorizados, sino mockado, melhorar layout conforme modelo").
 - **Branch:** `devin/1791975048-tad-home-neon`
-- **PR:** ver PR aberto a partir desta branch.
+- **PR:** [#3551](https://github.com/casaforteicf/vendorai-platform-replit/pull/3551)
+- **Commits:** `e9ef3d6` (implementação), `140be32` (ajuste mobile), + atualização deste registro.
 
 ## Diagnóstico
 
@@ -39,13 +40,14 @@
 
 - `tsc --noEmit` (frontend): sem erros nos arquivos alterados. O projeto tem erros pré-existentes (TS6305 `lib/api-client-react/dist` não construído e derivados), fora do escopo.
 - `pnpm run build` (frontend): **EXIT 0**, bundle-budget OK.
+- **Build na Contabo** (cópia isolada `/root/devin-validate-tad-140be32`, via `git archive` do commit `140be32`, sem tocar em `/opt/vendorai/deploy-src`): `pnpm@10.26.1 install --frozen-lockfile` + `pnpm run build` do frontend → **EXIT=0** (`built in 1m 3s`, bundle-budget OK). Diretório removido após o teste.
 - Screenshots locais (`vite preview` + API mockada) desktop 1440px e mobile 390px: anexados ao PR.
 
 ## Estado
 
 - **Implementado:** sim.
-- **Validado tecnicamente:** build/typecheck local (ver acima).
-- **Homologado:** pendente.
+- **Validado tecnicamente:** sim. Build local + build na Contabo (EXIT 0).
+- **Homologado:** pendente. O frontend de homologação não tem publicação separada; a validação visual foi feita com API mockada. Teste com login real ainda pendente.
 - **Aprovado / publicado:** não. Merge na `main` publica em produção via auto-deploy, aguardando autorização do solicitante.
 
 ## Próximo passo
