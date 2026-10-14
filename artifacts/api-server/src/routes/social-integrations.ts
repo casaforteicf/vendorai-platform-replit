@@ -59,7 +59,8 @@ async function auditSocialConnectionChange(input: {
   if (!audited) logger.warn({ tenantId: input.tenantId, provider: input.selected }, "configuracoes: falha ao auditar integração social");
 }
 
-router.get("/auth/:provider", authenticate, (req, res) => {
+// Rotas estáticas como /auth/switchable-tenants são montadas depois deste router.
+router.get("/auth/:provider", (req, res, next) => (provider(req.params.provider) ? next() : next("route")), authenticate, (req, res) => {
   const selected = provider(req.params.provider);
   if (!selected) return res.status(404).json({ error: "provider_not_supported" });
   if (!req.user?.sub || !req.user.tenantId) return res.status(401).json({ error: "Unauthorized" });
