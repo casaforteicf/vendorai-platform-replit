@@ -600,11 +600,11 @@ export default function PipelineOperacional() {
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-col gap-4 p-4 md:p-8">
-      <div className="flex flex-wrap items-center justify-between gap-3">
+    <div className="vendor-product-page vendor-page-canvas vendor-pipeline-page flex h-full min-h-0 flex-col gap-4">
+      <div className="vendor-product-hero flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Pipeline</h1>
-          <p className="text-sm text-muted-foreground">Comercial, execução, suporte, aquecimento e parceiros ligados à mesma base de clientes.</p>
+          <h1 className="vendor-product-title">Pipeline</h1>
+          <p className="vendor-product-subtitle">Comercial, execução, suporte, aquecimento e parceiros ligados à mesma base de clientes.</p>
         </div>
         <div className="flex flex-wrap gap-2">
           {pipeline === "execucao" ? (

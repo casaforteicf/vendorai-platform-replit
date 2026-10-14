@@ -5,8 +5,15 @@
  * - one compact typography scale across pages;
  * - consistent manual cards/controls built outside shared shadcn primitives;
  * - safer responsive behavior for filters, tabs, tables and dialogs;
- * - preserve specialized/full-screen modules (Conversations, Deals, ARQDOR,
- *   Video and Site Generator keep their own dedicated layout rules).
+ * - specialized full-screen modules (ARQDOR, Video and Site Generator) keep
+ *   their own dedicated layout rules.
+ *
+ * Opting a page in is class-based: `.vendor-page-canvas` for the frame,
+ * typography, controls and tables; `.vendor-product-*`, `.vendor-kpi-*` and
+ * `.vendor-work-*` for the premium product language. CRM screens additionally
+ * carry a per-screen class (`vendor-leads-page`, `vendor-deals-page`,
+ * `vendor-pipeline-page`, `vendor-companies-page`) that the dedicated section
+ * at the bottom of this file keys off.
  */
 
 :root {
@@ -797,17 +804,23 @@ main.vendor-scrollbar {
    ========================================================================== */
 
 .vendor-leads-page,
-.vendor-deals-page {
+.vendor-deals-page,
+.vendor-pipeline-page,
+.vendor-companies-page {
   min-width: 0;
 }
 
 .vendor-leads-page .vendor-product-hero,
-.vendor-deals-page .vendor-product-hero {
+.vendor-deals-page .vendor-product-hero,
+.vendor-pipeline-page .vendor-product-hero,
+.vendor-companies-page .vendor-product-hero {
   margin-bottom: 14px;
 }
 
 .vendor-leads-page :where(.rounded-xl.border.bg-card, .rounded-lg.border.bg-card),
 .vendor-deals-page :where(.rounded-xl.border.bg-card, .rounded-lg.border.bg-card),
+.vendor-pipeline-page :where(.rounded-xl.border.bg-card, .rounded-lg.border.bg-card),
+.vendor-companies-page :where(.rounded-xl.border.bg-card, .rounded-lg.border.bg-card),
 .vendor-config-page :where(.rounded-xl.border.bg-card, .rounded-lg.border.bg-card) {
   border-color: hsl(var(--border) / .7);
   box-shadow: 0 1px 2px rgba(15,23,42,.025);
@@ -840,15 +853,19 @@ main.vendor-scrollbar {
   min-height: 40px;
 }
 
-.vendor-deals-page {
+/* Board columns: the pipeline screens render the same column swimlane as Deals. */
+.vendor-deals-page,
+.vendor-pipeline-page {
   overflow: hidden;
 }
 
-.vendor-deals-page :where(.overflow-x-auto) {
+.vendor-deals-page :where(.overflow-x-auto),
+.vendor-pipeline-page :where(.overflow-x-auto) {
   scroll-padding-inline: 12px;
 }
 
-.vendor-deals-page :where(.w-72) {
+.vendor-deals-page :where(.w-72),
+.vendor-pipeline-page :where(.w-72) {
   width: 18rem;
 }
 
@@ -900,19 +917,24 @@ main.vendor-scrollbar {
     min-width: 980px;
   }
 
-  .vendor-deals-page {
+  .vendor-deals-page,
+  .vendor-pipeline-page {
     overflow: visible;
   }
 }
 
 @media (max-width: 767px) {
   .vendor-leads-page,
-  .vendor-deals-page {
+  .vendor-deals-page,
+  .vendor-pipeline-page,
+  .vendor-companies-page {
     padding-inline: 14px;
   }
 
   .vendor-leads-page .vendor-product-hero,
-  .vendor-deals-page .vendor-product-hero {
+  .vendor-deals-page .vendor-product-hero,
+  .vendor-pipeline-page .vendor-product-hero,
+  .vendor-companies-page .vendor-product-hero {
     gap: 12px;
   }
 
