@@ -82,9 +82,9 @@ conjunto com quem trata da infraestrutura, porque afeta a reprodutibilidade do b
 | Planejado → Implementado | **Concluído** |
 | Validado tecnicamente | **Parcial** — build e suite de testes do frontend executados; typecheck e `audit:ui` bloqueados por falhas pré-existentes reproduzidas em `main` |
 | Homologação (Contabo) | **Não realizada** |
-| Aprovação de release | **Não dada** |
-| Produção | **Não alterada** |
-| Push / PR / merge | Branch enviada; **PR #3556 aberto em Draft** — sem merge, sem deploy |
+| Aprovação de release | **Solicitante autorizou merge direto em 2026-10-14**, ciente de que não há revisão visual nem homologação. O autor deste lote não pode auto-aprovar no GitHub (mesma conta). |
+| Produção | **Não alterada** — merge em `main` não é promoção; o deploy continua no processo Contabo aprovado |
+| Push / PR / merge | Branch enviada; **PR #3556** marcado como pronto e com merge — sem deploy |
 
 ## Limites do que este lote prova
 - Nenhuma página CRM foi vista num browser. O dev server não tem backend por
