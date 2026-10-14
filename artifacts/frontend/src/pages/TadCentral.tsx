@@ -117,7 +117,7 @@ interface SwitchableTenantsResponse {
 
 /** Seletor de empresa: troca real via /api/auth/switch-tenant (mesmo fluxo do StoreSwitcher). */
 function CompanySwitcher({ companyName }: { companyName?: string }) {
-  const { token } = useAuth();
+  const { token, tenantOverride, clearTenantOverride } = useAuth();
   const [open, setOpen] = useState(false);
   const [switchingTo, setSwitchingTo] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -138,7 +138,8 @@ function CompanySwitcher({ companyName }: { companyName?: string }) {
   const others = data?.tenants ?? [];
   const name = companyName ?? data?.currentTenant?.name;
   if (!name) return null;
-  const canSwitch = others.length > 0;
+  // Em preview de tenant (super-admin) o nome exibido não é o tenant do JWT; não oferecer troca.
+  const canSwitch = others.length > 0 && !tenantOverride;
 
   async function handleSwitch(targetTenantId: string) {
     if (switchingTo || !token) return;
@@ -153,6 +154,7 @@ function CompanySwitcher({ companyName }: { companyName?: string }) {
       if (!r.ok) throw new Error(`switch-tenant ${r.status}`);
       const { token: newToken } = (await r.json()) as { token: string };
       localStorage.setItem(TOKEN_KEY, newToken);
+      clearTenantOverride();
       window.location.href = "/tad";
     } catch {
       setSwitchingTo(null);

@@ -27,6 +27,7 @@
 | Atalhos | Usuários → `/usuarios`; Equipe e permissões → `/configuracoes/equipe`; Integrações → `/configuracoes/integracoes`; Todas as configurações → `/configuracoes`; FAQ → `/faq`; Base de conhecimento → `/base-conhecimento`; Ajuda (?) → `/faq`; Ctrl+K foca a busca. |
 | Dados fictícios | Removidos "+32%/+18%"; calendário mostra o mês/semana atuais. |
 | Layout | Cards neon por módulo (ícone grande, borda com brilho, "Acessar"), grade 2 colunas no celular / 3 no desktop, busca no topo no mobile, menus com fechamento por clique fora/Esc. |
+| Correções do Review | Lista do seletor só com empresas para as quais a troca é permitida (backend); em preview de tenant de super-admin o seletor não oferece troca e o override é limpo após a troca. |
 | Autorização | Inalterada: só módulos autorizados + com rota viram link; demais ficam "Acesso em validação". |
 
 ## Arquivos alterados
@@ -35,12 +36,14 @@
 - `artifacts/frontend/src/pages/TadCentralRoute.tsx` (contagem de novidades passou para o `NovidadesBell`)
 - `artifacts/frontend/src/components/NovidadesBell.tsx` (variante `icon`; variante padrão da sidebar inalterada)
 - `docs/entregas/TAD-HOME-NEON-20261014.md`
+- `artifacts/api-server/src/routes/tenant_switch.ts`: `GET /auth/switchable-tenants` passa a seguir a mesma regra do `POST /auth/switch-tenant` (só tenants da organização do tenant atual, com o usuário membro dela). Correção apontada pelo Devin Review.
 
 ## Testes / build
 
 - `tsc --noEmit` (frontend): sem erros nos arquivos alterados. O projeto tem erros pré-existentes (TS6305 `lib/api-client-react/dist` não construído e derivados), fora do escopo.
 - `pnpm run build` (frontend): **EXIT 0**, bundle-budget OK.
 - **Build na Contabo** (cópia isolada `/root/devin-validate-tad-140be32`, via `git archive` do commit `140be32`, sem tocar em `/opt/vendorai/deploy-src`): `pnpm@10.26.1 install --frozen-lockfile` + `pnpm run build` do frontend → **EXIT=0** (`built in 1m 3s`, bundle-budget OK). Diretório removido após o teste.
+- Backend (após correção do Review): `tsc -p tsconfig.launch-ci.json --noEmit` **EXIT 0**; `node ./build.mjs` **EXIT 0**. Frontend rebuild **EXIT 0**.
 - Screenshots locais (`vite preview` + API mockada) desktop 1440px e mobile 390px: anexados ao PR.
 
 ## Estado

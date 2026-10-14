@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { eq, and, inArray, ne } from "drizzle-orm";
+import { eq, and, ne } from "drizzle-orm";
 import { z } from "zod/v4";
 import {
   db,
@@ -38,29 +38,40 @@ router.get("/auth/switchable-tenants", authenticate, async (req, res) => {
 
   const orgIds = memberships.map((m) => m.organizacaoId);
 
-  const [currentTenantRow, switchableTenants] = await Promise.all([
-    db
-      .select({ id: tenantsTable.id, name: tenantsTable.name })
-      .from(tenantsTable)
-      .where(eq(tenantsTable.id, currentTenantId)),
-    db
-      .select({
-        id: tenantsTable.id,
-        name: tenantsTable.name,
-        slug: tenantsTable.slug,
-        organizacaoId: tenantsTable.organizacaoId,
-      })
-      .from(tenantsTable)
-      .where(
-        and(
-          inArray(tenantsTable.organizacaoId, orgIds),
-          ne(tenantsTable.id, currentTenantId)
-        )
-      ),
-  ]);
+  const [currentTenantRow] = await db
+    .select({
+      id: tenantsTable.id,
+      name: tenantsTable.name,
+      organizacaoId: tenantsTable.organizacaoId,
+    })
+    .from(tenantsTable)
+    .where(eq(tenantsTable.id, currentTenantId));
+
+  // Mesma regra do POST /auth/switch-tenant: só tenants da organização do
+  // tenant atual, desde que o usuário seja membro dessa organização.
+  const currentOrgId = currentTenantRow?.organizacaoId ?? null;
+  const switchableTenants =
+    currentOrgId && orgIds.includes(currentOrgId)
+      ? await db
+          .select({
+            id: tenantsTable.id,
+            name: tenantsTable.name,
+            slug: tenantsTable.slug,
+            organizacaoId: tenantsTable.organizacaoId,
+          })
+          .from(tenantsTable)
+          .where(
+            and(
+              eq(tenantsTable.organizacaoId, currentOrgId),
+              ne(tenantsTable.id, currentTenantId)
+            )
+          )
+      : [];
 
   res.json({
-    currentTenant: currentTenantRow[0] ?? null,
+    currentTenant: currentTenantRow
+      ? { id: currentTenantRow.id, name: currentTenantRow.name }
+      : null,
     tenants: switchableTenants,
   });
 });
