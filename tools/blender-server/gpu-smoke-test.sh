@@ -4,13 +4,14 @@ set -euo pipefail
 
 BLENDER_BIN="${BLENDER_PATH:-/opt/blender/blender}"
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-SCENE_FILE="$(mktemp /tmp/arqdor-gpu-scene.XXXXXX.json)"
-OUTPUT_FILE="/tmp/arqdor-gpu-smoke.png"
-LOG_FILE="/tmp/arqdor-gpu-smoke.log"
+TMP_DIR="$(mktemp -d /tmp/arqdor-gpu-smoke.XXXXXX)"
+SCENE_FILE="$TMP_DIR/scene.json"
+OUTPUT_FILE="/tmp/arqdor-gpu-smoke-$.png"
+LOG_FILE="$TMP_DIR/blender.log"
 BACKEND="${ARQDOR_CYCLES_GPU_BACKEND:-OPTIX}"
 
 cleanup() {
-  rm -f "$SCENE_FILE"
+  rm -rf "$TMP_DIR"
 }
 trap cleanup EXIT
 
