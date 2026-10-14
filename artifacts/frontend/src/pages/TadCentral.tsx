@@ -400,7 +400,7 @@ export default function TadCentral({ audience, enabledModules, permittedModules,
               <article
                 key={module.key}
                 aria-disabled={canOpen ? undefined : true}
-                className={"group relative flex min-h-[150px] gap-3 overflow-hidden rounded-2xl border bg-gradient-to-br via-[#0a1524] to-[#08111d] p-3.5 transition-all duration-200 sm:min-h-[190px] sm:gap-4 sm:p-5 motion-safe:hover:-translate-y-0.5 " + tone.card + (wide ? " col-span-2 min-h-0 sm:min-h-[132px]" : "") + (canOpen ? "" : " opacity-60")}
+                className={"group relative flex gap-3 overflow-hidden rounded-2xl border bg-gradient-to-br via-[#0a1524] to-[#08111d] p-3.5 transition-all duration-200 sm:min-h-[190px] sm:gap-4 sm:p-5 motion-safe:hover:-translate-y-0.5 " + tone.card + (wide ? " col-span-2 min-h-[120px] sm:min-h-[132px]" : " min-h-[150px]") + (canOpen ? "" : " opacity-60")}
               >
                 <div className="flex min-w-0 flex-1 flex-col">
                   <div className="flex items-start gap-2.5 sm:gap-3.5">
