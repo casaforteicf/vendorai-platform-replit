@@ -1,0 +1,41 @@
+# GPU worker only. Keep the API port bound to localhost until a private,
+# authenticated network path from Contabo to this worker has been configured.
+services:
+  blender-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.gpu
+      args:
+        BLENDER_VERSION: "4.5.14"
+    image: arqdor-blender-gpu:4.5.14
+    container_name: arqdor-blender-gpu
+    restart: unless-stopped
+    init: true
+    gpus: all
+    env_file:
+      - .env.gpu
+    environment:
+      PORT: "8080"
+      ARQDOR_CYCLES_GPU_BACKEND: "OPTIX"
+      ARQDOR_RENDER_WORKERS: "1"
+      ARQDOR_RENDER_QUEUE_DB: "/var/lib/arqdor-render/jobs.sqlite3"
+      ARQDOR_MODEL_ROOT: "/models"
+    ports:
+      - "127.0.0.1:8080:8080"
+    volumes:
+      - arqdor-render-state:/var/lib/arqdor-render
+      - arqdor-render-output:/tmp/renders
+      - arqdor-models:/models:ro
+    stop_grace_period: 30s
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    pids_limit: 256
+    mem_limit: 24g
+    cpus: "8.0"
+
+volumes:
+  arqdor-render-state:
+  arqdor-render-output:
+  arqdor-models:
