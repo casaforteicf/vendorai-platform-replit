@@ -27,7 +27,7 @@ const TIPO_CONFIG: Record<string, { label: string; className: string; icon: Reac
   correcao: { label: "Correção", className: "bg-emerald-50 text-emerald-700 border-emerald-200", icon: <Bug className="h-3 w-3" /> },
 };
 
-export function NovidadesBell() {
+export function NovidadesBell({ variant = "sidebar" }: { variant?: "sidebar" | "icon" } = {}) {
   const [open, setOpen] = useState(false);
   const qc = useQueryClient();
 
@@ -71,15 +71,31 @@ export function NovidadesBell() {
 
   return (
     <>
-      <Button variant="ghost" size="sm" className="relative w-full justify-start text-muted-foreground hover:text-foreground" onClick={() => handleOpen(true)}>
-        <Bell className="h-4 w-4 mr-2" />
-        Novidades
-        {count > 0 && (
-          <span className="ml-auto bg-primary text-primary-foreground text-[10px] font-bold rounded-full h-5 min-w-5 px-1 flex items-center justify-center">
-            {count > 9 ? "9+" : count}
-          </span>
-        )}
-      </Button>
+      {variant === "icon" ? (
+        <button
+          type="button"
+          onClick={() => handleOpen(true)}
+          className="relative rounded-lg p-2 text-slate-300 hover:bg-white/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-300"
+          aria-label={count > 0 ? `Novidades: ${count} não lidas` : "Novidades"}
+        >
+          <Bell className="h-[18px] w-[18px]" />
+          {count > 0 && (
+            <span className="absolute -right-0.5 -top-0.5 flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-rose-500 px-1 text-[10px] font-bold text-white ring-2 ring-[#070f1a]">
+              {count > 99 ? "99+" : count}
+            </span>
+          )}
+        </button>
+      ) : (
+        <Button variant="ghost" size="sm" className="relative w-full justify-start text-muted-foreground hover:text-foreground" onClick={() => handleOpen(true)}>
+          <Bell className="h-4 w-4 mr-2" />
+          Novidades
+          {count > 0 && (
+            <span className="ml-auto bg-primary text-primary-foreground text-[10px] font-bold rounded-full h-5 min-w-5 px-1 flex items-center justify-center">
+              {count > 9 ? "9+" : count}
+            </span>
+          )}
+        </Button>
+      )}
 
       <Sheet open={open} onOpenChange={handleOpen}>
         <SheetContent side="right" className="w-full sm:max-w-md overflow-y-auto">
