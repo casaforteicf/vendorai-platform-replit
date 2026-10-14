@@ -1,5 +1,4 @@
 import { useEffect, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
 import {
   getGetTenantQueryKey,
   getGetBusinessProfileByTenantQueryKey,
@@ -43,18 +42,6 @@ export default function TadCentralRoute() {
     (user as { tenantName?: string | null } | null)?.tenantName?.trim() ||
     undefined;
 
-  // Contagem de novidades não lidas — mesmo endpoint do sino de novidades.
-  const unreadQuery = useQuery<{ count: number }>({
-    queryKey: ["changelog-unread"],
-    enabled: !!token,
-    staleTime: 60_000,
-    queryFn: async () => {
-      const r = await fetch("/api/changelog/unread-count", { headers: { Authorization: `Bearer ${token}` } });
-      if (!r.ok) throw new Error("unread-count failed");
-      return r.json();
-    },
-  });
-  const notificationCount = unreadQuery.data?.count ?? 0;
   useEffect(() => {
     if (!user?.tenantId || !token) return;
     const controller = new AbortController();
@@ -103,7 +90,7 @@ export default function TadCentralRoute() {
       </div>}
       <TadCentral audience="business" enabledModules={enabled}
         permittedModules={permitted} previewModules={enabled}
-        companyName={companyName} notificationCount={notificationCount} />
+        companyName={companyName} />
     </>
   );
 }
