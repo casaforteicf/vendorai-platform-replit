@@ -15,8 +15,21 @@ function inside(cells: RoofCell[], x: number, y: number) {
 }
 
 export function buildRoofPlan(levels: RoofLevel[], step = 0.25) {
+  if (!Number.isFinite(step) || step <= 0) throw new RangeError("ROOF_STEP_INVALID");
+  let sampledCells = 0;
   const byFloor = new Map<number, RoofCell[]>();
   for (const level of levels) {
+    if (!Number.isSafeInteger(level.floor)) throw new RangeError("ROOF_FLOOR_INVALID");
+    for (const cell of level.cells ?? []) {
+      if (![cell.x, cell.y, cell.width, cell.height, cell.x + cell.width, cell.y + cell.height].every(Number.isFinite)) {
+        throw new RangeError("ROOF_CELL_INVALID");
+      }
+      if (cell.width <= 0.05 || cell.height <= 0.05) continue;
+      const columns = Math.max(1, Math.round(cell.width / step));
+      const rows = Math.max(1, Math.round(cell.height / step));
+      sampledCells += columns * rows;
+      if (!Number.isSafeInteger(sampledCells) || sampledCells > 250000) throw new RangeError("ROOF_GRID_LIMIT");
+    }
     const valid = (level.cells ?? []).filter((cell) => cell.width > 0.05 && cell.height > 0.05);
     byFloor.set(level.floor, [...(byFloor.get(level.floor) ?? []), ...valid]);
   }
