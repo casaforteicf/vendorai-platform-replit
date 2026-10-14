@@ -1,8 +1,9 @@
 # Lote CRM-UI-01 — Padrão visual nas superfícies CRM (Fase 1)
 
 Data: 2026-10-14
-Branch: `feat/crm-ui-padrao` (a partir de `main` @ `1ea6f2700`)
-Commits: `1fc9d35b0`, `5f4e6cf1c` — **locais, não enviados**
+Branch: `feat/crm-ui-padrao` (a partir de `main` @ `1ea6f2700`) — **enviada**
+Commits: `1fc9d35b0`, `5f4e6cf1c`
+Pull request: [#3556](https://github.com/casaforteicf/vendorai-platform-replit/pull/3556) — **Draft**, sem merge
 Escopo aprovado: **só CRM**, em duas fases (aspeto primeiro, decomposição depois)
 
 ## Objetivo
@@ -83,7 +84,7 @@ conjunto com quem trata da infraestrutura, porque afeta a reprodutibilidade do b
 | Homologação (Contabo) | **Não realizada** |
 | Aprovação de release | **Não dada** |
 | Produção | **Não alterada** |
-| Push / PR / merge | **Não efetuados** |
+| Push / PR / merge | Branch enviada; **PR #3556 aberto em Draft** — sem merge, sem deploy |
 
 ## Limites do que este lote prova
 - Nenhuma página CRM foi vista num browser. O dev server não tem backend por
