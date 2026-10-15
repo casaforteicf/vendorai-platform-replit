@@ -1305,7 +1305,7 @@ router.get("/propostas/:id/sources", async (req, res) => {
 });
 
 // ── GET /propostas/:id/pdf — capa + tabela A4 ─────────────────────────────
-router.get("/propostas/:id/pdf", async (req, res) => {
+router.get(["/propostas/:id/pdf", "/propostas/:id/print-document"], async (req, res) => {
   const propostaId = String(req.params.id);
   try {
     const [proposta] = await db.select().from(propostasTable).where(eq(propostasTable.id, propostaId));
@@ -1315,6 +1315,11 @@ router.get("/propostas/:id/pdf", async (req, res) => {
     }
     if (req.user?.platformRole !== "super_admin" && proposta.tenantId !== req.user?.tenantId) {
       res.status(403).json({ error: "Access denied to this tenant" });
+      return;
+    }
+
+    if (!(await canAccessProposalOwnership(req, proposta))) {
+      res.status(403).json({ error: "Access denied to this proposal" });
       return;
     }
 
@@ -1392,6 +1397,11 @@ router.get("/propostas/:id/pdf", async (req, res) => {
       lead,
     });
 
+    if (req.path.endsWith("/print-document")) {
+      res.setHeader("Cache-Control", "no-store");
+      res.json({ html });
+      return;
+    }
     const pdfBuffer = await generateProposalPDF(html);
     const isPdf = pdfBuffer.length >= 4 && pdfBuffer[0] === 0x25 && pdfBuffer[1] === 0x50;
     if (!isPdf) {
