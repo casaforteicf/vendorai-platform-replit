@@ -1,3 +1,4 @@
+import { embedProposalStorageImages, type ProposalAssetSession } from "./proposal-pdf-assets.js";
 /**
  * Proposal generation engine — AI-driven SPIN proposal builder
  * Uses Anthropic when available, with automatic OpenAI fallback for provider failures.
@@ -478,7 +479,8 @@ function resolveChromiumPath(): string {
   return "/usr/bin/chromium";
 }
 
-export async function generateProposalPDF(htmlContent: string): Promise<Buffer> {
+export async function generateProposalPDF(htmlContent: string, session: ProposalAssetSession = {}): Promise<Buffer> {
+  htmlContent = await embedProposalStorageImages(htmlContent, session);
   let browser: any = null;
   try {
     const puppeteer = (await import("puppeteer-core")).default;
@@ -551,17 +553,21 @@ export async function generateProposalPDF(htmlContent: string): Promise<Buffer> 
       `,
     });
 
-    await page.evaluate(async () => {
+    const imageFailures = await page.evaluate(async () => {
+      Array.from(document.images).forEach((img) => { img.loading = "eager"; });
       const pending = Array.from(document.images).filter((img) => !img.complete);
       await Promise.all(
         pending.map((img) => new Promise<void>((resolve) => {
           const finish = () => resolve();
           img.addEventListener("load", finish, { once: true });
           img.addEventListener("error", finish, { once: true });
-          setTimeout(finish, 3_500);
+          setTimeout(finish, 15_000);
         })),
       );
+      await document.fonts.ready;
+      return Array.from(document.images).filter((img) => Boolean(img.getAttribute("src")) && (!img.complete || img.naturalWidth === 0)).length;
     });
+    if (imageFailures > 0) throw new Error("PROPOSAL_PDF_IMAGE_UNAVAILABLE");
     const pdf = await page.pdf({
       format: "A4",
       preferCSSPageSize: true,
@@ -570,6 +576,7 @@ export async function generateProposalPDF(htmlContent: string): Promise<Buffer> 
     });
     return Buffer.from(pdf);
   } catch (err) {
+    if (err instanceof Error && err.message === "PROPOSAL_PDF_IMAGE_UNAVAILABLE") throw err;
     logger.warn({ err }, "proposal-engine: puppeteer failed, returning HTML fallback");
     return Buffer.from(htmlContent, "utf-8");
   } finally {
