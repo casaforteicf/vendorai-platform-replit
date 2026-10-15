@@ -1,3 +1,4 @@
+import { CompleteBudgetPrint } from "@/components/CompleteBudgetPrint";
 import { useEffect, useState } from "react";
 import { useParams, useLocation } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
@@ -114,6 +115,7 @@ export default function PropostaPrint() {
   const { toast } = useToast();
   const qc = useQueryClient();
   const [markingVendido, setMarkingVendido] = useState(false);
+  const [completePrintOpen, setCompletePrintOpen] = useState(true);
   const [updatingExecutionIndex, setUpdatingExecutionIndex] = useState<number | null>(null);
   const [creatingRevision, setCreatingRevision] = useState(false);
 
@@ -448,6 +450,7 @@ export default function PropostaPrint() {
 
   return (
     <div className="min-h-screen bg-gray-50">
+      <CompleteBudgetPrint id={proposta.id} open={completePrintOpen} onOpenChange={setCompletePrintOpen} />
 
       {/* ── Action bar (hidden on print) ── */}
       <div className="no-print fixed top-0 left-0 right-0 z-50 bg-white border-b px-3 sm:px-6 py-2.5 flex items-center gap-2 shadow-sm flex-wrap">
@@ -522,7 +525,7 @@ export default function PropostaPrint() {
           <span className="hidden xs:inline">WhatsApp</span>
         </Button>
 
-        <Button size="sm" className="gap-1.5" disabled={!!proposta.leadId && (leadLoading || leadError)} onClick={() => window.print()}>
+        <Button size="sm" className="gap-1.5" onClick={() => setCompletePrintOpen(true)}>
           <Printer className="h-4 w-4" />
           <span className="hidden sm:inline">Imprimir / PDF</span>
         </Button>
