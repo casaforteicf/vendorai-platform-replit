@@ -3887,7 +3887,7 @@ ${orcamento && (builderModuleEnabled("etapas_orcamento") || builderModuleEnabled
         <tbody>${physicalFinancialRows}</tbody>
       </table>
       <div class="commercial-title" style="margin-top:4mm;">Modelo por colunas · cobrança mensal</div>
-      ${renderProposalMonthlyMatrix(scheduleRows, fmtBRL)}
+      ${renderProposalMonthlyMatrix(scheduleRows, presentation, totalExibido, fmtBRL)}
     </div>` : ""}
   ${docFooter()}
 </div>`
@@ -4093,11 +4093,68 @@ export function renderOrcamentoPdf(args: {
     .join("");
 
   const scheduleRows = buildProposalScheduleRows(groupedItems, presentation, totalExibido);
-  const executionScheduleRows = scheduleRows.map((row) => `<tr>
+  const showExecutionSchedule = presentation.mostrarCronogramaExecucao;
+  const showPhysicalFinancial = presentation.mostrarFisicoFinanceiro;
+  const monthlyPeriods = buildProposalMonthlyMatrix(scheduleRows, presentation, totalExibido);
+  const monthlyLedgerHtml = monthlyPeriods.length ? `
+    <div class="commercial-section">
+      <div class="commercial-title">Previsão mensal · físico-financeiro</div>
+      <p>Valor contratado: ${fmtBRL(totalExibido)} · Entrada: ${presentation.entradaPercentual.toFixed(2)}%
+        (${fmtBRL(totalExibido * presentation.entradaPercentual / 100)}) · Amortização: ${presentation.amortizacaoEntradaPercentual.toFixed(2)}% por medição.</p>
+      <table class="schedule-table monthly-ledger">
+        <thead><tr><th>Mês</th><th>Etapas / fases previstas</th><th class="r">% físico</th><th class="r">% acum.</th><th class="r">Bruto previsto</th><th class="r">Amortização</th><th class="r">Líquido previsto</th><th class="r">Saldo entrada</th></tr></thead>
+        <tbody>${monthlyPeriods.map((period) => `<tr>
+          <td>${escapeProposalText(period.label)}</td>
+          <td>${period.stages.filter((stage) => stage.share > 0).map((stage) => escapeProposalText(stage.nome)).join(" + ")}</td>
+          <td class="r">${period.physical.toFixed(2)}%</td>
+          <td class="r">${period.accumulatedPhysical.toFixed(2)}%</td>
+          <td class="r">${fmtBRL(period.amount)}</td>
+          <td class="r">-${fmtBRL(period.amortization)}</td>
+          <td class="r fw">${fmtBRL(period.netAmount)}</td>
+          <td class="r">${fmtBRL(period.remainingAdvance)}</td>
+        </tr>`).join("")}</tbody>
+      </table>
+    </div>` : "";
+  const generatedTextSections: Array<[string, string | string[]]> = [
+    ["Descrição do projeto", presentation.descricaoProjeto],
+    ["Premissas da obra", presentation.premissasObra],
+    ["Memorial descritivo", presentation.memorialDescritivo],
+    ["Condições detalhadas de pagamento", presentation.condicoesPagamentoDetalhadas],
+    ["Política de reajuste", presentation.politicaReajuste],
+    ["Garantias contratuais", presentation.garantiasContratuais],
+    ["Itens não inclusos", presentation.itensNaoInclusos],
+  ];
+  const generatedDetailsHtml = generatedTextSections.map(([title, value]) => {
+    if (Array.isArray(value)) {
+      if (!value.length) return "";
+      return `<section class="commercial-section"><h2 class="commercial-title">${title}</h2><ul>${value.map((line) => `<li>${escapeProposalText(line)}</li>`).join("")}</ul></section>`;
+    }
+    return value ? `<section class="commercial-section"><h2 class="commercial-title">${title}</h2><p style="white-space:pre-wrap">${escapeProposalText(value)}</p></section>` : "";
+  }).join("");
+
+  function scheduleDependencyLabel(rowId: string): string {
+    const [stageId, phaseId] = rowId.split("::");
+    const stage = presentation.cronogramaEtapas[stageId];
+    const config = phaseId ? stage?.fases?.find((phase) => phase.id === phaseId) : stage;
+    const predecessorId = phaseId ? (config as ProposalStagePhase | undefined)?.dependeDeFaseId : (config as ProposalStageSchedule | undefined)?.dependeDeEtapaId;
+    const predecessor = phaseId
+      ? stage?.fases?.find((phase) => phase.id === predecessorId)?.nome
+      : groupedItems.find((group) => group.id === predecessorId)?.nome;
+    return predecessorId
+      ? `${escapeProposalText(predecessor || predecessorId)} · ${config?.tipoDependencia ?? "FS"} · ${Number(config?.defasagemDias ?? 0)} dias`
+      : "Sequência automática / início cadastrado";
+  }
+  const datedRows = proposalExpandedScheduleRows(scheduleRows).filter((row) => row.start && row.end);
+  const effectiveDays = datedRows.length ? proposalDiffDays(
+    new Date(Math.min(...datedRows.map((row) => row.start!.getTime()))),
+    new Date(Math.max(...datedRows.map((row) => row.end!.getTime()))),
+  ) : null;
+  const executionScheduleRows = scheduleRows.flatMap((row) => [row, ...(row.phases ?? [])]).map((row) => `<tr>
     <td><strong>Etapa ${row.ordem}</strong> · ${escapeProposalText(row.nome || "Execução")}</td>
     <td>${row.start ? proposalFormatDate(row.start) : "A definir"}</td>
     <td>${row.duration ? `${row.duration} dias` : "A definir"}</td>
     <td>${row.end ? proposalFormatDate(row.end) : "A definir"}</td>
+    <td>${scheduleDependencyLabel(row.id)}</td>
   </tr>`).join("");
   const physicalFinancialRows = scheduleRows.map((row) => `<tr>
     <td><strong>Etapa ${row.ordem}</strong> · ${escapeProposalText(row.nome || "Execução")}</td>
@@ -4129,6 +4186,16 @@ export function renderOrcamentoPdf(args: {
     print-color-adjust: exact;
   }
 
+  thead { display: table-header-group; }
+  tr { break-inside: avoid; }
+  .monthly-ledger { table-layout: fixed; width: 100%; font-size: 6pt; }
+  .monthly-ledger th, .monthly-ledger td { overflow-wrap: anywhere; padding: 2mm 1mm; }
+  .monthly-ledger th:nth-child(2) { width: 26%; }
+  .commercial-section ul { padding-left: 5mm; }
+  @media print {
+    .page.orc-page { height: auto !important; max-height: none !important; overflow: visible !important; }
+    .commercial-section, .stage-block { break-inside: auto; }
+  }
   /* ── pages ── */
   .page {
     width: 210mm;
@@ -4481,6 +4548,8 @@ export function renderOrcamentoPdf(args: {
     </div>
   </div>` : ""}` : ""}
 
+  ${presentation.areaTotalConstruida > 0 ? `<div class="commercial-section"><strong>Área total construída:</strong> ${presentation.areaTotalConstruida.toLocaleString("pt-BR")} m²</div>` : ""}
+  ${generatedDetailsHtml}
   ${metaRows ? `<div class="commercial-section"><div class="commercial-title">Condições comerciais</div><div class="meta-grid">${metaRows}</div></div>` : ""}
   ${paymentRowsHtml ? `
     <div class="commercial-section">
@@ -4505,6 +4574,7 @@ ${scheduleRows.length && (presentation.mostrarCronogramaExecucao || presentation
   </div>
 
   <div class="orc-title">Cronograma de execução e físico-financeiro</div>
+  <p>Avanço físico total: ${scheduleRows.reduce((sum, row) => sum + row.physicalPercent, 0).toFixed(2)}% · Peso financeiro total: ${scheduleRows.reduce((sum, row) => sum + Number(row.financialPercent ?? 0), 0).toFixed(2)}%${effectiveDays ? ` · Prazo efetivo: ${effectiveDays} dias` : ""}</p>
   <div class="schedule-intro">
     ${presentation.previsaoInicio ? `<strong>Previsão de início:</strong> ${proposalFormatDate(presentation.previsaoInicio)}.` : "<strong>Previsão de início:</strong> a definir."}
     Cada etapa possui sua própria data de início e duração. Etapas simultâneas aparecem na mesma coluna mensal e suas cobranças são somadas no período.
@@ -4514,7 +4584,7 @@ ${scheduleRows.length && (presentation.mostrarCronogramaExecucao || presentation
     <div class="commercial-section">
       <div class="commercial-title">Cronograma de execução</div>
       <table class="schedule-table">
-        <thead><tr><th>Etapa</th><th>Início</th><th>Duração</th><th>Término</th></tr></thead>
+        <thead><tr><th>Etapa / fase</th><th>Início</th><th>Duração</th><th>Término</th><th>Dependência / defasagem</th></tr></thead>
         <tbody>${executionScheduleRows}</tbody>
       </table>
     </div>` : ""}
@@ -4527,7 +4597,8 @@ ${scheduleRows.length && (presentation.mostrarCronogramaExecucao || presentation
         <tbody>${physicalFinancialRows}</tbody>
       </table>
       <div class="commercial-title" style="margin-top:4mm;">Modelo por colunas · cobrança mensal</div>
-      ${renderProposalMonthlyMatrix(scheduleRows, fmtBRL)}
+      ${monthlyLedgerHtml}
+      ${renderProposalMonthlyMatrix(scheduleRows, presentation, totalExibido, fmtBRL)}
     </div>` : ""}
 </div>` : ""}
 
