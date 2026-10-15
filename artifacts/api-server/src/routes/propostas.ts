@@ -1,3 +1,4 @@
+import { embedProposalStorageImages } from "../lib/proposal-pdf-assets.js";
 import { Router, type IRouter } from "express";
 import { and, desc, eq, inArray, isNull, like, or, sql } from "drizzle-orm";
 import { z } from "zod/v4";
@@ -1399,10 +1400,10 @@ router.get(["/propostas/:id/pdf", "/propostas/:id/print-document"], async (req, 
 
     if (req.path.endsWith("/print-document")) {
       res.setHeader("Cache-Control", "no-store");
-      res.json({ html });
+      res.json({ html: await embedProposalStorageImages(html, { authorization: req.headers.authorization, cookie: req.headers.cookie }) });
       return;
     }
-    const pdfBuffer = await generateProposalPDF(html);
+    const pdfBuffer = await generateProposalPDF(html, { authorization: req.headers.authorization, cookie: req.headers.cookie });
     const isPdf = pdfBuffer.length >= 4 && pdfBuffer[0] === 0x25 && pdfBuffer[1] === 0x50;
     if (!isPdf) {
       logger.error({ propostaId }, "propostas: PDF generator returned non-PDF payload");
