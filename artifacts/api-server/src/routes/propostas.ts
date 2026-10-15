@@ -1205,25 +1205,6 @@ router.get("/propostas/:id", async (req, res) => {
     }
   }
 
-  void recordIntelligenceEvent({
-    tenantId: proposta.tenantId,
-    leadId: proposta.leadId,
-    eventType: parsed.data.status && parsed.data.status !== existing.status ? "proposal_status_changed" : "proposal_updated",
-    title: parsed.data.status && parsed.data.status !== existing.status
-      ? `Proposta ${proposta.numero ?? proposta.titulo}: ${existing.status} → ${proposta.status}`
-      : `Proposta atualizada: ${proposta.titulo}`,
-    summary: proposta.observacoes?.slice(0, 500) ?? null,
-    sourceModule: "propostas",
-    sourceId: proposta.id,
-    metadata: {
-      previousStatus: existing.status,
-      status: proposta.status,
-      valorTotal: proposta.valorTotal ?? null,
-      dealId: proposta.dealId ?? null,
-    },
-    log: req.log,
-  });
-
   res.json(proposta);
 });
 
