@@ -1,6 +1,6 @@
 import { Router, type IRouter, type Request } from "express";
 import { requestCanAccessLockedObject, syncProtectedObjectsForLead } from "../lib/attachment-folder-access.js";
-import { and, asc, desc, eq, gt, inArray, lt } from "drizzle-orm";
+import { and, asc, desc, eq, gt, inArray, isNull, lt } from "drizzle-orm";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { z } from "zod/v4";
 import {
@@ -21,6 +21,7 @@ import {
   leadsTable,
   usersTable,
   tenantsTable,
+  tenantUserColorsTable,
   tenantCalendarSettingsTable,
   pipelineStagesTable,
   dealTenantParticipationsTable,
@@ -1662,6 +1663,26 @@ router.get("/tenants/:tenantId/leads-overview-context", async (req, res) => {
     db.select({ leadId: propostasTable.leadId, valorTotal: propostasTable.valorTotal }).from(propostasTable).where(eq(propostasTable.tenantId, tenantId)),
     db.select({ id: usersTable.id, name: usersTable.name, email: usersTable.email }).from(usersTable).where(eq(usersTable.tenantId, tenantId)),
   ]);
+  const [pendingActivities, userColors] = await Promise.all([
+    db.select({
+      id: activitiesTable.id,
+      leadId: activitiesTable.leadId,
+      titulo: activitiesTable.titulo,
+      tipo: activitiesTable.tipo,
+      dataVencimento: activitiesTable.dataVencimento,
+    }).from(activitiesTable)
+      .innerJoin(leadsTable, eq(leadsTable.id, activitiesTable.leadId))
+      .where(and(
+        eq(activitiesTable.tenantId, tenantId),
+        inArray(activitiesTable.status, ["pendente", "planejado"]),
+        isNull(leadsTable.excluidoEm),
+        ...buildUserFunctionFilter(req, leadsTable),
+      )),
+    // A tabela vem da migration 567; sem ela, o front usa a paleta automática.
+    db.select({ userId: tenantUserColorsTable.userId, cor: tenantUserColorsTable.cor })
+      .from(tenantUserColorsTable).where(eq(tenantUserColorsTable.tenantId, tenantId))
+      .catch(() => [] as Array<{ userId: string; cor: string }>),
+  ]);
 
   const byLeadId: Record<string, Array<{ pipeline: string; etapa: string; label: string; id: string; codigo?: string }>> = {};
   const push = (leadId: string | null, process: { pipeline: string; etapa: string; label: string; id: string; codigo?: string }) => {
@@ -1711,7 +1732,21 @@ router.get("/tenants/:tenantId/leads-overview-context", async (req, res) => {
     if (next > current) proposalTotalsByLeadId[proposal.leadId] = proposal.valorTotal;
   }
   const userLabelsById = Object.fromEntries(users.map((user) => [user.id, user.name || user.email || user.id]));
-  res.json({ activeProcessesByLeadId: byLeadId, proposalTotalsByLeadId, userLabelsById });
+  type NextAction = { id: string; titulo: string; tipo: string; dataVencimento: string | null; pendentes: number };
+  const nextActionsByLeadId: Record<string, NextAction> = {};
+  for (const activity of pendingActivities) {
+    const due = activity.dataVencimento ? activity.dataVencimento.toISOString() : null;
+    const current = nextActionsByLeadId[activity.leadId];
+    if (!current) {
+      nextActionsByLeadId[activity.leadId] = { id: activity.id, titulo: activity.titulo, tipo: activity.tipo, dataVencimento: due, pendentes: 1 };
+      continue;
+    }
+    current.pendentes += 1;
+    const isEarlier = due && (!current.dataVencimento || due < current.dataVencimento);
+    if (isEarlier) Object.assign(current, { id: activity.id, titulo: activity.titulo, tipo: activity.tipo, dataVencimento: due });
+  }
+  const userColorsById = Object.fromEntries(userColors.map((row) => [row.userId, row.cor]));
+  res.json({ activeProcessesByLeadId: byLeadId, proposalTotalsByLeadId, userLabelsById, nextActionsByLeadId, userColorsById });
 });
 
 router.post("/tenants/:tenantId/work-cards", async (req, res) => {
