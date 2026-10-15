@@ -1217,8 +1217,9 @@ export default function PropostaPrint() {
           #proposta-print,
           #proposta-print * { visibility: visible !important; }
           #proposta-print {
-            position: fixed !important;
-            inset: 0 !important;
+            position: absolute !important;
+            top: 0 !important;
+            left: 0 !important;
             width: 100% !important;
             max-width: 100% !important;
             height: auto !important;
