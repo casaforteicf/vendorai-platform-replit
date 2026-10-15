@@ -34,7 +34,8 @@ vi.mock("../services/erp-webhook.js", () => ({
   dispatchVendaWebhook: vi.fn().mockResolvedValue(undefined),
 }));
 
-vi.mock("@workspace/db", () => ({
+vi.mock("@workspace/db", async () => ({
+  propostaApresentacaoSchema: (await import("zod")).z.any(),
   db: {
     select: mockDbSelect,
     update: mockDbUpdate,
@@ -128,6 +129,7 @@ describe("GET /api/propostas/:id — cross-tenant isolation", () => {
 
     expect(res.status).toBe(200);
     expect(res.body.id).toBe(RECORD_ID);
+    expect(mockDbUpdate).not.toHaveBeenCalled();
   });
 
   it("returns 200 when super_admin requests a cross-tenant record", async () => {
