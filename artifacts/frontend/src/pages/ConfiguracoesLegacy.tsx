@@ -1050,10 +1050,10 @@ export default function Configuracoes({ embedded = false, forcedTab }: { embedde
 
   useEffect(() => {
     if (tenantQuery.data !== undefined) {
-      setPracaCidade(tenantQuery.data.cidade ?? "");
-      setPracaUf(tenantQuery.data.estado ?? "");
+      setPracaCidade((tenantQuery.data as any).cidade ?? "");
+      setPracaUf((tenantQuery.data as any).estado ?? "");
     }
-  }, [tenantQuery.data?.cidade, tenantQuery.data?.estado]);
+  }, [(tenantQuery.data as any)?.cidade, (tenantQuery.data as any)?.estado]);
 
   const thresholdForm = useForm<ThresholdForm>({
     resolver: zodResolver(thresholdSchema),
@@ -2591,7 +2591,7 @@ export default function Configuracoes({ embedded = false, forcedTab }: { embedde
                 type="button"
                 disabled={tenantQuery.isLoading || updateTenant.isPending || pracaCidade.trim().length < 2 || !/^[A-Z]{2}$/.test(pracaUf.trim().toUpperCase())}
                 onClick={() => updateTenant.mutate(
-                  { id: tenantId, data: { cidade: pracaCidade.trim(), estado: pracaUf.trim().toUpperCase() } },
+                  { id: tenantId, data: { cidade: pracaCidade.trim(), estado: pracaUf.trim().toUpperCase() } as any },
                   {
                     onSuccess: () => {
                       queryClient.invalidateQueries({ queryKey: getGetTenantQueryKey(tenantId) });
