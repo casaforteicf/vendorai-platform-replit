@@ -79,7 +79,7 @@ export default function PracaQuotes() {
         </div>
         <button onClick={() => void load()} disabled={loading} className="inline-flex items-center gap-2 rounded-xl border border-[#DCE4EC] bg-white px-4 py-3 text-sm font-bold"><RefreshCw className="h-4 w-4"/>Atualizar</button>
       </div>
-      <div className="mb-5 rounded-xl border border-[#B9EDE4] bg-[#F0FCFA] p-4 text-sm leading-6 text-[#175C57]"><strong>Privacidade:</strong> você recebe um lead anônimo no CRM. Nome, telefone e e-mail do comprador só aparecem depois que ele aceita sua proposta. Não inclua contatos nas observações.</div>
+      <div className="mb-5 rounded-xl border border-[#B9EDE4] bg-[#F0FCFA] p-4 text-sm leading-6 text-[#175C57]"><strong>Privacidade:</strong> você recebe um lead anônimo no CRM. Nome, telefone e e-mail do comprador só são liberados depois que o pagamento é confirmado. Não inclua contatos nas observações.</div>
       {notice && <div role="status" className="mb-4 rounded-xl border border-[#A9E9DE] bg-[#F0FCFA] p-3 text-sm font-semibold">{notice}</div>}
       {error && <div role="alert" className="mb-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-800">{error}</div>}
       {loading ? <div className="rounded-2xl border bg-white p-8 text-sm text-[#64748B]">Carregando cotações…</div>
@@ -96,7 +96,7 @@ export default function PracaQuotes() {
           <div className="mt-3 grid gap-3 sm:grid-cols-2"><label className="text-xs font-bold">Frete total<input inputMode="decimal" value={draft.freight} onChange={(event)=>updateDraft(quote.id,{freight:event.target.value})} className="mt-1 w-full rounded-lg border border-[#CBD5E1] px-3 py-2 text-sm" placeholder="R$ 0,00"/></label><label className="text-xs font-bold">Prazo de entrega (dias)<input inputMode="numeric" value={draft.deliveryDays} onChange={(event)=>updateDraft(quote.id,{deliveryDays:event.target.value})} className="mt-1 w-full rounded-lg border border-[#CBD5E1] px-3 py-2 text-sm" placeholder="0"/></label></div>
           <label className="mt-3 block text-xs font-bold">Condições (opcional)<textarea value={draft.terms} onChange={(event)=>updateDraft(quote.id,{terms:event.target.value})} className="mt-1 min-h-16 w-full rounded-lg border border-[#CBD5E1] px-3 py-2 text-sm" placeholder="Validade e condições comerciais. Não informe seus contatos."/></label>
           <div className="mt-4 flex flex-wrap items-center justify-between gap-3"><div className="text-xs text-[#64748B]">{quote.myOffer ? <>Proposta atual: <strong>{money(quote.myOffer.subtotal + quote.myOffer.freight)}</strong></> : "Novo lead anônimo no CRM"}<p className="mt-1 font-bold text-[#0B2240]">Total desta proposta: {money(total)}</p></div><button onClick={()=>void submit(quote)} disabled={busy===quote.id} className="inline-flex items-center gap-2 rounded-xl bg-[#10D3B8] px-4 py-2.5 text-sm font-extrabold text-[#0B2240] disabled:opacity-50">{busy===quote.id?"Enviando…":<><Send className="h-4 w-4"/>Enviar proposta</>}</button></div>
-          <p className="mt-3 border-t pt-3 text-xs text-[#64748B]">A identificação do comprador é liberada quando a proposta é aceita. <ArrowUpRight className="ml-1 inline h-3 w-3"/></p>
+          <p className="mt-3 border-t pt-3 text-xs text-[#64748B]">A identificação do comprador só é liberada depois que o pagamento é confirmado. <ArrowUpRight className="ml-1 inline h-3 w-3"/></p>
         </article>;
       })}</div>}
     </div>
