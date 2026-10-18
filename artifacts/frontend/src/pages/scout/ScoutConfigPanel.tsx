@@ -102,5 +102,7 @@ const EXECUTION_MODES = [
 function executionModeFromAcao(acao: unknown): (typeof EXECUTION_MODES)[number]["value"] {
   const a = (acao && typeof acao === "object" ? acao : {}) as Record<string, unknown>;
   if (a.automaticContact === true || a.modo === "automatic" || a.mode === "automatic") return "automatic";
+  return "recommend";
+}
 
 export function ScoutConfigPanel() { return null; }

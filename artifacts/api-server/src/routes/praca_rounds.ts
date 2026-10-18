@@ -78,4 +78,26 @@ router.post("/praca-cotacoes/opportunities/:id/offers", async (req, res): Promis
   }, res);
 });
 
+router.get("/praca-pedidos", async (req, res): Promise<void> => {
+  const tenantId = tenantFromSession(req);
+  if (!tenantId) return void res.status(403).json({ error: "Acesse com uma conta de lojista." });
+  const query = new URLSearchParams({ tenantId });
+  await forward("/internal/vendor-orders?" + query.toString(), { method: "GET" }, res);
+});
+
+router.patch("/praca-pedidos/:type/:id/expedicao", async (req, res): Promise<void> => {
+  const tenantId = tenantFromSession(req);
+  if (!tenantId) return void res.status(403).json({ error: "Acesse com uma conta de lojista." });
+  const type = String(req.params.type ?? "");
+  const orderId = String(req.params.id ?? "").trim();
+  if (!["quote", "round"].includes(type) || !/^[0-9a-f-]{36}$/i.test(orderId)) {
+    return void res.status(422).json({ error: "Pedido inválido." });
+  }
+  const { status, deliveryMode, carrier, trackingCode, sellerNote } = req.body ?? {};
+  await forward("/internal/vendor-orders/" + encodeURIComponent(type) + "/" + encodeURIComponent(orderId) + "/fulfillment", {
+    method: "PATCH",
+    body: JSON.stringify({ tenantId, status, deliveryMode, carrier, trackingCode, sellerNote }),
+  }, res);
+});
+
 export default router;
