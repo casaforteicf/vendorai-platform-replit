@@ -39,6 +39,7 @@ import facebookMarketplaceRouter from "./facebook_marketplace";
 import produtosCatalogoRouter from "./produtos_catalogo";
 import pracaPreparacaoRouter from "./praca_preparacao";
 import solicitacoesCompraRouter from "./solicitacoes_compra";
+import pracaRoundsRouter from "./praca_rounds";
 import categoriasProdutoRouter from "./categorias_produto";
 import agendasRouter, { googleCallbackRouter } from "./agendas";
 import { instagramCallbackRouter } from "./instagram-auth";
@@ -425,6 +426,7 @@ router.use(facebookMarketplaceRouter);
 router.use(produtosCatalogoRouter);
 router.use(pracaPreparacaoRouter);
 router.use(solicitacoesCompraRouter);
+router.use(pracaRoundsRouter);
 router.use(categoriasProdutoRouter);
 
 // Schedule Hub
