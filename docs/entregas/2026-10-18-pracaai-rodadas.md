@@ -6,7 +6,7 @@
 - **Praça.ai branch:** `feat/pracaai-rodadas-api`
 - **Praça.ai commits:** schema `f3dc82047d2a3159422badceb0f69ee1afa89e53`; API + CRM + fechamento `05ee2e40db3413a3ae8d1d58cbb321005e603513`; tela compradora `bfa56b30e5b074f7d76b6fd265004ed6848a22f6`.
 - **AppVendor branch:** `feat/pracaai-rodadas-integracao`
-- **AppVendor commits:** proxy backend `1e94bef214fd5a09fd1269b4f96fabe035e145b9`; tela `8f3002ffbe0dd073f250cd41b280a0851633228b`; menu/rota e montagem API `f7885e7aa3c595b376f0ec0fb262fd24c56f85ca`.
+- **AppVendor commits:** montagem API `19a394c7242e8635ce738e34e4df57dda12d100a`; rota da tela `6fc518a406c567369b71d90a33394b5118d3911f`; navegação `f7885e7aa3c595b376f0ec0fb262fd24c56f85ca`; proxy backend `1e94bef214fd5a09fd1269b4f96fabe035e145b9`; tela `8f3002ffbe0dd073f250cd41b280a0851633228b`; este registro `a5433fa921a77ed5bfa0fe51d75c7e866486c2e6`.
 - **PRs:** nenhum aberto para esta versão. O PR anterior #46 já foi mesclado; este trabalho está em branches novos.
 
 ## Implementado
