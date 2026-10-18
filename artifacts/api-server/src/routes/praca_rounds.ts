@@ -100,4 +100,25 @@ router.patch("/praca-pedidos/:type/:id/expedicao", async (req, res): Promise<voi
   }, res);
 });
 
+router.get("/praca-disputas", async (req, res): Promise<void> => {
+  const tenantId = tenantFromSession(req);
+  if (!tenantId) return void res.status(403).json({ error: "Acesse com uma conta de lojista." });
+  const query = new URLSearchParams({ tenantId });
+  await forward("/internal/vendor-disputes?" + query.toString(), { method: "GET" }, res);
+});
+
+router.patch("/praca-disputas/:id/resposta", async (req, res): Promise<void> => {
+  const tenantId = tenantFromSession(req);
+  if (!tenantId) return void res.status(403).json({ error: "Acesse com uma conta de lojista." });
+  const id = String(req.params.id ?? "").trim();
+  const response = typeof req.body?.response === "string" ? req.body.response.trim() : "";
+  if (!/^[0-9a-f-]{36}$/i.test(id) || response.length < 12 || response.length > 3000) {
+    return void res.status(422).json({ error: "Escreva uma resposta de 12 a 3.000 caracteres." });
+  }
+  await forward("/internal/vendor-disputes/" + encodeURIComponent(id) + "/response", {
+    method: "PATCH",
+    body: JSON.stringify({ tenantId, response }),
+  }, res);
+});
+
 export default router;

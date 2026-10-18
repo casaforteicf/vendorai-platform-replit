@@ -27,12 +27,19 @@ type Order = {
   items: Array<{ description: string; specification?: string | null; quantity: number | string; unit: string; brand?: string | null }>;
   fulfillment?: Fulfillment | null;
 };
+type Dispute = {
+  id: string; order_type: "quote" | "round"; order_id: string; reason_code: string;
+  description: string; evidence_url?: string | null; status: string; vendor_response?: string | null;
+  resolution_text?: string | null; created_at: string; buyer_name: string; order_code?: string | null; item_title?: string | null;
+};
 type Draft = { deliveryMode: string; carrier: string; trackingCode: string; sellerNote: string };
 
 const EMPTY_DRAFT: Draft = { deliveryMode: "", carrier: "", trackingCode: "", sellerNote: "" };
 
 export default function PracaOrders() {
   const [orders, setOrders] = React.useState<Order[]>([]);
+  const [disputes, setDisputes] = React.useState<Dispute[]>([]);
+  const [disputeDrafts, setDisputeDrafts] = React.useState<Record<string, string>>({});
   const [drafts, setDrafts] = React.useState<Record<string, Draft>>({});
   const [loading, setLoading] = React.useState(true);
   const [busy, setBusy] = React.useState<string | null>(null);
@@ -43,10 +50,15 @@ export default function PracaOrders() {
     setLoading(true);
     setError("");
     try {
-      const response = await fetch("/api/praca-pedidos", { credentials: "include", cache: "no-store" });
-      const body = await response.json();
+      const [response, disputeResponse] = await Promise.all([
+        fetch("/api/praca-pedidos", { credentials: "include", cache: "no-store" }),
+        fetch("/api/praca-disputas", { credentials: "include", cache: "no-store" }),
+      ]);
+      const [body, disputeBody] = await Promise.all([response.json(), disputeResponse.json()]);
       if (!response.ok) throw new Error(body.error ?? "Não foi possível carregar os pedidos.");
+      if (!disputeResponse.ok) throw new Error(disputeBody.error ?? "Não foi possível carregar as disputas.");
       const rows = Array.isArray(body) ? body as Order[] : [];
+      setDisputes(Array.isArray(disputeBody) ? disputeBody as Dispute[] : []);
       setOrders(rows);
       setDrafts((current) => {
         const next = { ...current };
@@ -66,6 +78,23 @@ export default function PracaOrders() {
       setLoading(false);
     }
   }, []);
+
+  const respondToDispute = async (dispute: Dispute) => {
+    const responseText = (disputeDrafts[dispute.id] ?? "").trim();
+    if (responseText.length < 12) { setError("A resposta precisa ter pelo menos 12 caracteres."); return; }
+    setBusy(dispute.id); setError(""); setNotice("");
+    try {
+      const response = await fetch(`/api/praca-disputas/${encodeURIComponent(dispute.id)}/resposta`, {
+        method: "PATCH", credentials: "include", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ response: responseText }),
+      });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.error ?? "Não foi possível registrar a resposta.");
+      setNotice("Resposta enviada à Praça.ai para análise.");
+      await load();
+    } catch (cause) { setError(cause instanceof Error ? cause.message : "Falha ao responder à disputa."); }
+    finally { setBusy(null); }
+  };
 
   React.useEffect(() => { void load(); }, [load]);
 
@@ -118,6 +147,10 @@ export default function PracaOrders() {
       <div className="mb-5 rounded-xl border border-[#B9EDE4] bg-[#F0FCFA] p-4 text-sm leading-6 text-[#175C57]"><strong>Dados liberados após o pagamento:</strong> os dados do comprador aparecem somente em pedidos pagos. O repasse continua aguardando a confirmação de entrega pelo comprador no Praça.ai.</div>
       {notice && <div role="status" className="mb-4 rounded-xl border border-[#A9E9DE] bg-[#F0FCFA] p-3 text-sm font-semibold">{notice}</div>}
       {error && <div role="alert" className="mb-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-800">{error}</div>}
+      <section className="mb-6 rounded-2xl border border-[#F2D28B] bg-[#FFF9E9] p-5">
+        <div className="flex flex-wrap items-center justify-between gap-2"><div><h2 className="text-xl font-extrabold">Disputas de pedidos</h2><p className="mt-1 text-sm text-[#64748B]">A Praça.ai recebe sua resposta e conduz a análise. Os dados do comprador só são exibidos após o pagamento.</p></div><span className="rounded-full bg-white px-3 py-1 text-xs font-bold">{disputes.filter((d) => !["resolvida", "rejeitada"].includes(d.status)).length} em aberto</span></div>
+        {disputes.length === 0 ? <p className="mt-4 rounded-xl bg-white/80 p-4 text-sm text-[#64748B]">Nenhuma disputa vinculada aos seus pedidos.</p> : <div className="mt-4 grid gap-3 lg:grid-cols-2">{disputes.map((dispute) => <article key={dispute.id} className="rounded-xl border border-[#E9DDBE] bg-white p-4"><div className="flex items-start justify-between gap-3"><div><span className="text-xs font-bold uppercase text-[#008878]">{dispute.order_type === "round" ? "Rodada" : "Cotação direta"} · {dispute.order_code ?? "Pedido"}</span><h3 className="mt-1 font-extrabold">{dispute.item_title ?? "Pedido Praça.ai"}</h3></div><span className="rounded-full bg-[#F7F9FC] px-2 py-1 text-xs font-bold">{dispute.status.replaceAll("_", " ")}</span></div><p className="mt-2 text-sm"><strong>Comprador:</strong> {dispute.buyer_name}</p><p className="mt-2 whitespace-pre-wrap text-sm text-[#475569]">{dispute.description}</p>{dispute.evidence_url && <a className="mt-2 inline-block text-sm font-bold text-[#126CC5] underline" href={dispute.evidence_url} target="_blank" rel="noreferrer">Ver evidência</a>}{dispute.vendor_response ? <div className="mt-3 rounded-lg bg-[#F0FCFA] p-3 text-sm"><strong>Sua resposta</strong><p className="mt-1 whitespace-pre-wrap">{dispute.vendor_response}</p></div> : !["resolvida", "rejeitada"].includes(dispute.status) ? <div className="mt-3"><label className="block text-xs font-bold">Resposta para a análise<textarea value={disputeDrafts[dispute.id] ?? ""} onChange={(event) => setDisputeDrafts((current) => ({ ...current, [dispute.id]: event.target.value }))} maxLength={3000} minLength={12} className="mt-1 min-h-24 w-full rounded-lg border border-[#CBD5E1] px-3 py-2 text-sm" placeholder="Explique os fatos e a solução oferecida"/></label><button disabled={busy === dispute.id || (disputeDrafts[dispute.id] ?? "").trim().length < 12} onClick={() => void respondToDispute(dispute)} className="mt-2 rounded-lg bg-[#0B2240] px-3 py-2 text-sm font-bold text-white disabled:opacity-50">{busy === dispute.id ? "Enviando…" : "Enviar resposta"}</button></div> : null}{dispute.resolution_text && <p className="mt-3 rounded-lg bg-[#F7F9FC] p-3 text-sm"><strong>Atualização da Praça.ai:</strong> {dispute.resolution_text}</p>}</article>)}</div>}
+      </section>
       {loading ? <div className="rounded-2xl border bg-white p-8 text-sm text-[#64748B]">Carregando pedidos…</div>
       : orders.length === 0 ? <div className="rounded-2xl border bg-white p-10 text-center"><Package className="mx-auto h-8 w-8 text-[#008878]"/><h2 className="mt-3 font-bold">Nenhum pedido pago</h2><p className="mt-1 text-sm text-[#64748B]">Quando um comprador pagar uma proposta sua, o pedido aparecerá aqui.</p></div>
       : <div className="grid gap-4 lg:grid-cols-2">{orders.map((order) => {
