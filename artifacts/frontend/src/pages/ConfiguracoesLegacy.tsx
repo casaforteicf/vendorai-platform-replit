@@ -1045,6 +1045,15 @@ export default function Configuracoes({ embedded = false, forcedTab }: { embedde
   // ── Tenant Thresholds ──────────────────────────────────────────────────────
   const tenantQuery  = useGetTenant(tenantId, { query: { queryKey: getGetTenantQueryKey(tenantId), enabled: !!tenantId } });
   const updateTenant = useUpdateTenant();
+  const [pracaCidade, setPracaCidade] = useState("");
+  const [pracaUf, setPracaUf] = useState("");
+
+  useEffect(() => {
+    if (tenantQuery.data !== undefined) {
+      setPracaCidade(tenantQuery.data.cidade ?? "");
+      setPracaUf(tenantQuery.data.estado ?? "");
+    }
+  }, [tenantQuery.data?.cidade, tenantQuery.data?.estado]);
 
   const thresholdForm = useForm<ThresholdForm>({
     resolver: zodResolver(thresholdSchema),
@@ -2557,6 +2566,43 @@ export default function Configuracoes({ embedded = false, forcedTab }: { embedde
                   />
                 </div>
               )}
+            </div>
+          </div>
+
+          <div className="rounded-xl border bg-card p-6 space-y-4 mb-4">
+            <div>
+              <h2 className="font-semibold text-base">Localização no Praça.ai</h2>
+              <p className="text-sm text-muted-foreground mt-0.5">
+                Informe a cidade e o estado da loja. O Praça.ai usa os dois dados para mostrar produtos e enviar cotações somente a fornecedores do mesmo município.
+              </p>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-[1fr_120px] gap-3">
+              <div className="space-y-2">
+                <Label htmlFor="praca-cidade">Cidade</Label>
+                <Input id="praca-cidade" placeholder="Ex.: Chapecó" value={pracaCidade} onChange={(e) => setPracaCidade(e.target.value)} disabled={tenantQuery.isLoading || updateTenant.isPending} />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="praca-uf">UF</Label>
+                <Input id="praca-uf" placeholder="SC" maxLength={2} value={pracaUf} onChange={(e) => setPracaUf(e.target.value.toUpperCase().replace(/[^A-Z]/g, ""))} disabled={tenantQuery.isLoading || updateTenant.isPending} />
+              </div>
+            </div>
+            <div>
+              <Button
+                type="button"
+                disabled={tenantQuery.isLoading || updateTenant.isPending || pracaCidade.trim().length < 2 || !/^[A-Z]{2}$/.test(pracaUf.trim().toUpperCase())}
+                onClick={() => updateTenant.mutate(
+                  { id: tenantId, data: { cidade: pracaCidade.trim(), estado: pracaUf.trim().toUpperCase() } },
+                  {
+                    onSuccess: () => {
+                      queryClient.invalidateQueries({ queryKey: getGetTenantQueryKey(tenantId) });
+                      toast({ title: "Localização do Praça.ai salva." });
+                    },
+                    onError: () => toast({ title: "Erro ao salvar a localização.", variant: "destructive" }),
+                  }
+                )}
+              >
+                {updateTenant.isPending ? "Salvando..." : "Salvar localização"}
+              </Button>
             </div>
           </div>
 
