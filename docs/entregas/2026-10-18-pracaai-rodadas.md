@@ -4,14 +4,14 @@
 - **Objetivo:** implementar rodadas coletivas com propostas decrescentes e anonimato até o comprador aceitar a oferta vencedora.
 - **Escopo autorizado:** marketplace continua independente; cadastro/entrada em lote pelo Praça.ai; integração do lado lojista pelo AppVendor.ai; lead sem identidade no CRM durante a disputa; revelação após aceite.
 - **Praça.ai branch:** `feat/pracaai-rodadas-api`
-- **Praça.ai commits:** schema `f3dc82047d2a3159422badceb0f69ee1afa89e53`; API + CRM + fechamento `d154c5633c1c3bb8c3f13163e1c3b32e1b72dcee`; tela compradora `302a4fc99428d52c6f6d4c3e87c036c111c9554e`.
+- **Praça.ai commits:** schema `f3dc82047d2a3159422badceb0f69ee1afa89e53`; API + CRM + fechamento `b0db602dcb25836cb20fead05898418bfb09ed92`; tela compradora `fbfb63359f9344c0f5e3f129b2d687aa2ea7d007`.
 - **AppVendor branch:** `feat/pracaai-rodadas-integracao`
 - **AppVendor commits:** montagem API `19a394c7242e8635ce738e34e4df57dda12d100a`; rota da tela `6fc518a406c567369b71d90a33394b5118d3911f`; navegação `f7885e7aa3c595b376f0ec0fb262fd24c56f85ca`; proxy backend `1e94bef214fd5a09fd1269b4f96fabe035e145b9`; tela `8f3002ffbe0dd073f250cd41b280a0851633228b`; este registro `a5433fa921a77ed5bfa0fe51d75c7e866486c2e6`.
 - **PRs:** Praça.ai #47 está aberto como rascunho para revisão: https://github.com/casaforteicf/Pra-a.ai/pull/47. O PR anterior #46 já foi mesclado. AppVendor permanece em branch, aguardando a validação obrigatória na Contabo.
 
 ## Implementado
 
-- Praça.ai: cria demandas padronizadas, agrega participantes compatíveis por material, especificação, região e data de necessidade, e lista apenas lotes reais abertos.
+- Praça.ai: cria demandas padronizadas, agrega participantes compatíveis por material, especificação, região e data de necessidade, e lista apenas lotes reais abertos, registra demanda por conta autenticada e limita cada comprador a cinco rodadas abertas e cinco novas rodadas por dia.
 - Praça.ai: encerra lotes no prazo, escolhe a menor oferta efetiva (preço unitário + frete rateado), cria uma proposta individual por comprador e permite aceitar ou recusar.
 - AppVendor.ai: menu e tela “Rodadas Praça.ai”; lojas habilitadas veem demanda, região, prazo e melhor preço anônimo, e registram lances.
 - AppVendor.ai: proxy exige sessão autenticada e deriva tenant da sessão; o token servidor-servidor não vai para o browser.
