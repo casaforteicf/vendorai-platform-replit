@@ -1,0 +1,61 @@
+import { Router, type IRouter } from "express";
+
+const router: IRouter = Router();
+
+function tenantFromSession(req: any): string | null {
+  const tenantId = req.user?.tenantId;
+  return typeof tenantId === "string" && tenantId.trim() ? tenantId.trim() : null;
+}
+
+function config(res: any): { baseUrl: string; token: string } | null {
+  const baseUrl = process.env.PRACA_AI_INTERNAL_API_URL?.trim().replace(/\\/+$/, "");
+  const token = process.env.PRACA_ROUNDS_VENDOR_TOKEN?.trim();
+  if (!baseUrl || !token || token.length < 32) {
+    res.status(503).json({ error: "A integração com as rodadas Praça.ai ainda não está configurada." });
+    return null;
+  }
+  return { baseUrl, token };
+}
+
+async function forward(path: string, init: RequestInit, res: any): Promise<void> {
+  const settings = config(res);
+  if (!settings) return;
+  try {
+    const response = await fetch(settings.baseUrl + path, {
+      ...init,
+      headers: {
+        "Content-Type": "application/json",
+        "x-praca-rounds-token": settings.token,
+        ...(init.headers ?? {}),
+      },
+    });
+    const payload = await response.json().catch(() => ({}));
+    res.status(response.status).set("Cache-Control", "no-store").json(payload);
+  } catch (error) {
+    console.error("[praca-rounds] Praça.ai upstream request failed:", error);
+    res.status(502).json({ error: "Não foi possível conectar às rodadas do Praça.ai." });
+  }
+}
+
+// Protected by the global authenticate middleware in routes/index.ts.
+// Tenant identity always comes from the signed AppVendor session.
+router.get("/praca-rodadas/opportunities", async (req, res): Promise<void> => {
+  const tenantId = tenantFromSession(req);
+  if (!tenantId) return void res.status(403).json({ error: "Acesse com uma conta de lojista." });
+  const query = new URLSearchParams({ tenantId });
+  await forward("/internal/rounds?" + query.toString(), { method: "GET" }, res);
+});
+
+router.post("/praca-rodadas/opportunities/:id/bids", async (req, res): Promise<void> => {
+  const tenantId = tenantFromSession(req);
+  if (!tenantId) return void res.status(403).json({ error: "Acesse com uma conta de lojista." });
+  const roundId = String(req.params.id ?? "").trim();
+  if (!/^[0-9a-f-]{36}$/i.test(roundId)) return void res.status(422).json({ error: "Lote inválido." });
+  const { unitPrice, freight, deliveryDays, terms } = req.body ?? {};
+  await forward("/internal/rounds/" + encodeURIComponent(roundId) + "/bids", {
+    method: "POST",
+    body: JSON.stringify({ tenantId, unitPrice, freight, deliveryDays, terms }),
+  }, res);
+});
+
+export default router;
