@@ -8,7 +8,7 @@ function tenantFromSession(req: any): string | null {
 }
 
 function config(res: any): { baseUrl: string; token: string } | null {
-  const baseUrl = process.env.PRACA_AI_INTERNAL_API_URL?.trim().replace(/\\/+$/, "");
+  const baseUrl = process.env.PRACA_AI_INTERNAL_API_URL?.trim().replace(/\/+$/, "");
   const token = process.env.PRACA_ROUNDS_VENDOR_TOKEN?.trim();
   if (!baseUrl || !token || token.length < 32) {
     res.status(503).json({ error: "A integração com o Praça.ai ainda não está configurada." });
