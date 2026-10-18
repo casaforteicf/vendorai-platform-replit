@@ -23,6 +23,8 @@ A API AppVendor encaminha chamadas usando as variáveis já previstas para Praç
 
 Status: **implementação preparada; não validada; não publicada**.
 
+Na revisão estática de 2026-10-18, foi corrigida a normalização da URL do Praça.ai no proxy AppVendor. O servidor ainda precisa passar pela compilação e pelos gates abaixo; a revisão estática não substitui o build.
+
 Não foi possível executar o protocolo de gates localmente porque o terminal de desenvolvimento não está conectado nesta sessão. Permanecem pendentes, antes de abrir PR ou preparar lote:
 
 1. instalação e typecheck do pacote de bibliotecas;
