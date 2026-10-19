@@ -77,3 +77,13 @@ Rollback preparado:
 4. Antes de promoção, criar backup do banco e da imagem/contêiner atual, registrar SHA e imagem exatos e comprovar restauração no ambiente isolado.
 
 Homologação Contabo e promoção: pendentes até o SHA final ser enviado às PRs, as migrações serem executadas em banco isolado e os fluxos reais serem validados. Produção permanece intocada.
+
+### Evidência da homologação isolada na Contabo
+
+- Checkout exato validado: Praça.ai `9db406f2fc54e7e6766ea19930ed14333b825599`; AppVendor.ai `ce8f89fcf245ddcde2658d26134e280e99ea82ca`.
+- Rollback registrado antes dos testes: imagem AppVendor atual `vendorai-api:main-39b33e29f`; SHAs-base `b74f105` e `81b1b0b`; todas as flags novas permanecem desligadas.
+- Praça.ai na Contabo: instalação congelada, typecheck completo e build completo aprovados; cinco testes aprovados após ligar localmente os dois checkouts isolados.
+- AppVendor na Contabo: build real da API aprovado; build do frontend e auditoria de bundle aprovados; três testes de proxy aprovados.
+- AppVendor typecheck global continua reprovado por erros legados fora deste lote (a primeira execução também atingiu o heap padrão). Nenhum erro reportado aponta para `praca_rounds.ts` ou `SidebarLayoutLegacy.tsx`; o build das duas superfícies foi concluído.
+- PostgreSQL temporário `vendorai-praca-ciclo-db`, sem porta publicada e com armazenamento `tmpfs`: schema da homologação copiado sem dados; fixture mínima das tabelas-base do Praça.ai; cinco migrações aplicadas com `ON_ERROR_STOP=1`. Verificadas `praca_provider_events`, `praca_marketplace_delivery_receipts` e `praca_suborder_cancellations`.
+- Limite: não foi executada transação financeira real no sandbox Asaas nem E2E autenticado comprador/lojista. Portanto não promover e não habilitar flags. Produção permaneceu intocada.
