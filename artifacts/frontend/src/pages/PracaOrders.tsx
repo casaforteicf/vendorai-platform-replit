@@ -1,3 +1,4 @@
+import MarketplaceSuborders from "@/components/praca/MarketplaceSuborders";
 import NegotiationHistory from "@/components/praca/NegotiationHistory";
 import * as React from "react";
 import PracaDeliveryProof from "@/components/praca/PracaDeliveryProof";
@@ -147,7 +148,7 @@ export default function PracaOrders() {
   const date = (value?: string | null) => value ? new Intl.DateTimeFormat("pt-BR", { dateStyle: "medium", timeStyle: "short" }).format(new Date(value)) : "—";
 
   return <main className="min-h-full bg-[#F7F9FC] px-4 py-6 pb-10 text-[#0B2240] md:px-8 md:py-10">
-    <div className="mx-auto max-w-6xl">
+    <div className="mx-auto max-w-6xl"><MarketplaceSuborders/>
       <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
         <div><p className="text-xs font-extrabold uppercase tracking-[.16em] text-[#008878]">AppVendor.ai · Praça.ai</p><h1 className="mt-2 font-[Manrope] text-3xl font-extrabold sm:text-4xl">Pedidos e expedição</h1><p className="mt-2 max-w-3xl text-sm leading-6 text-[#64748B]">Pedidos pagos das suas cotações e rodadas. Informe a separação e a forma de entrega para o comprador acompanhar pelo Praça.ai.</p></div>
         <button onClick={() => void load()} disabled={loading} className="inline-flex items-center gap-2 rounded-xl border border-[#DCE4EC] bg-white px-4 py-3 text-sm font-bold"><RefreshCw className="h-4 w-4"/>Atualizar</button>

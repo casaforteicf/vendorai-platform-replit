@@ -140,4 +140,22 @@ router.get("/praca-pedidos/:type/:id/historico",async(req,res):Promise<void>=>{
  if(typeof req.query.after==="string")query.set("after",req.query.after);
  await forward("/internal/vendor-orders/"+type+"/"+encodeURIComponent(id)+"/history?"+query.toString(),{method:"GET"},res);
 });
+
+router.get("/praca-subpedidos",async(req,res):Promise<void>=>{
+ const tenantId=tenantFromSession(req);if(!tenantId)return void res.status(403).json({error:"Acesse com uma conta de lojista."});
+ await forward("/internal/vendor-suborders?"+new URLSearchParams({tenantId}),{method:"GET"},res);
+});
+router.post("/praca-subpedidos/:id/comprovantes",async(req,res):Promise<void>=>{
+ const tenantId=tenantFromSession(req);if(!tenantId)return void res.status(403).json({error:"Acesse com uma conta de lojista."});
+ const id=String(req.params.id),{photo,receivedBy,items,requestKey}=req.body??{};
+ if(!/^[0-9a-f-]{36}$/i.test(id)||typeof photo!=="string"||photo.length>1000000||!Array.isArray(items)||items.length>100)return void res.status(422).json({error:"Comprovante inválido."});
+ await forward("/internal/vendor-suborders/"+encodeURIComponent(id)+"/receipts",{method:"POST",body:JSON.stringify({tenantId,photo,receivedBy,items,requestKey})},res);
+});
+
+router.get("/praca-subpedidos/:id/historico",async(req,res):Promise<void>=>{
+ const tenantId=tenantFromSession(req),id=String(req.params.id),after=typeof req.query.after==="string"?req.query.after:"0";
+ if(!tenantId)return void res.status(403).json({error:"Acesse com uma conta de lojista."});
+ if(!/^[0-9a-f-]{36}$/i.test(id)||!/^[0-9]{1,18}$/.test(after))return void res.status(422).json({error:"Consulta inválida."});
+ await forward("/internal/vendor-suborders/"+encodeURIComponent(id)+"/history?"+new URLSearchParams({tenantId,after}),{method:"GET"},res);
+});
 export default router;
