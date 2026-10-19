@@ -131,4 +131,13 @@ router.post("/praca-pedidos/:type/:id/comprovante", async (req,res): Promise<voi
     method:"POST",body:JSON.stringify({tenantId,photo,receivedBy,allItemsDelivered})
   },res);
 });
+
+router.get("/praca-pedidos/:type/:id/historico",async(req,res):Promise<void>=>{
+ const tenantId=tenantFromSession(req),type=String(req.params.type),id=String(req.params.id);
+ if(!tenantId)return void res.status(403).json({error:"Acesse com uma conta de lojista."});
+ if(!["quote","round"].includes(type)||!/^[0-9a-f-]{36}$/i.test(id))return void res.status(422).json({error:"Pedido inválido."});
+ const query=new URLSearchParams({tenantId});
+ if(typeof req.query.after==="string")query.set("after",req.query.after);
+ await forward("/internal/vendor-orders/"+type+"/"+encodeURIComponent(id)+"/history?"+query.toString(),{method:"GET"},res);
+});
 export default router;
