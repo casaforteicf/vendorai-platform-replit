@@ -121,4 +121,14 @@ router.patch("/praca-disputas/:id/resposta", async (req, res): Promise<void> => 
   }, res);
 });
 
+router.post("/praca-pedidos/:type/:id/comprovante", async (req,res): Promise<void> => {
+  const tenantId=tenantFromSession(req),type=String(req.params.type),id=String(req.params.id);
+  if(!tenantId) return void res.status(403).json({error:"Acesse com uma conta de lojista."});
+  if(!["quote","round"].includes(type)||!/^[0-9a-f-]{36}$/i.test(id)) return void res.status(422).json({error:"Pedido inválido."});
+  const {photo,receivedBy,allItemsDelivered}=req.body??{};
+  if(typeof photo!=="string"||photo.length>1000000) return void res.status(422).json({error:"Foto inválida ou muito grande."});
+  await forward("/internal/vendor-orders/"+type+"/"+encodeURIComponent(id)+"/delivery-report",{
+    method:"POST",body:JSON.stringify({tenantId,photo,receivedBy,allItemsDelivered})
+  },res);
+});
 export default router;
