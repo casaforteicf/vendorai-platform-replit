@@ -62,6 +62,9 @@ const Configuracoes      = lazy(() => import("@/pages/Configuracoes"));
 const BrandKitSettingsOnly = lazy(() => import("@/components/BrandKitSettings").then((m) => ({ default: m.BrandKitSettings })));
 const KnowledgeBase      = lazy(() => import("@/pages/KnowledgeBase"));
 const SolicitacaoCompra  = lazy(() => import("@/pages/SolicitacaoCompra"));
+const PracaRounds = lazy(() => import("@/pages/PracaRounds"));
+const PracaQuotes = lazy(() => import("@/pages/PracaQuotes"));
+const PracaOrders = lazy(() => import("@/pages/PracaOrders"));
 const Pacotes            = lazy(() => import("@/pages/Pacotes"));
 const ContentAutopilot   = lazy(() => import("@/pages/ContentAutopilot"));
 const Ads                = lazy(() => import("@/pages/Ads"));
@@ -690,6 +693,9 @@ function AppRoutes() {
         <Route path="/catalogo/categorias">{() => <ProtectedRoute component={CategoriasProduto} />}</Route>
         <Route path="/base-conhecimento">{() => <ProtectedRoute component={KnowledgeBase} />}</Route>
         <Route path="/solicitacao-compra">{() => <ProtectedRoute component={SolicitacaoCompra} />}</Route>
+        <Route path="/praca/rodadas">{() => <ProtectedRoute component={PracaRounds} />}</Route>
+        <Route path="/praca/cotacoes">{() => <ProtectedRoute component={PracaQuotes} />}</Route>
+        <Route path="/praca/pedidos">{() => <ProtectedRoute component={PracaOrders} />}</Route>
         <Route path="/pacotes">{() => <ProtectedRoute component={Pacotes} />}</Route>
         <Route path="/content-autopilot">{() => <ProtectedRoute component={ContentAutopilot} />}</Route>
         <Route path="/ads">{() => <ProtectedRoute component={Ads} />}</Route>
