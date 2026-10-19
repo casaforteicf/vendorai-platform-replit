@@ -36,8 +36,8 @@ export default function PracaRounds() {
   const submit = async (item: Opportunity) => {
     const draft = drafts[item.id];
     if (!draft) return;
-    const unitPrice = value(draft.unitPrice), freight = value(draft.freight || "0"), deliveryDays = Number(draft.deliveryDays);
-    if (!Number.isFinite(unitPrice) || unitPrice <= 0 || !Number.isFinite(freight) || freight < 0 || !Number.isInteger(deliveryDays) || deliveryDays < 0) {
+    const unitPrice = value(draft.unitPrice), freight = value(draft.freight), deliveryDays = Number(draft.deliveryDays);
+    if (!draft.freight.trim() || !Number.isFinite(unitPrice) || unitPrice <= 0 || !Number.isFinite(freight) || freight < 0 || !Number.isInteger(deliveryDays) || deliveryDays < 0) {
       setError("Confira o preço por unidade, o frete e o prazo de entrega.");
       return;
     }
@@ -63,7 +63,7 @@ export default function PracaRounds() {
       <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
         <div>
           <p className="text-xs font-extrabold uppercase tracking-[.16em] text-[#008878]">AppVendor.ai · Praça.ai</p>
-          <h1 className="mt-2 font-[Manrope] text-3xl font-extrabold sm:text-4xl">Rodadas de negócios</h1>
+          <h1 className="mt-2 font-[Manrope] text-3xl font-extrabold sm:text-4xl">Rodadas de Compra</h1>
           <p className="mt-2 max-w-3xl text-sm leading-6 text-[#64748B]">Veja a demanda total do lote e envie sua oferta. Durante a rodada, você não verá o nome nem o contato dos compradores ou das outras lojas. Um novo lance precisa reduzir o custo efetivo da sua oferta anterior.</p>
         </div>
         <button onClick={() => void load()} disabled={loading} className="inline-flex items-center gap-2 rounded-xl border border-[#DCE4EC] bg-white px-4 py-3 text-sm font-bold"><RefreshCw className="h-4 w-4"/>Atualizar</button>
@@ -73,7 +73,7 @@ export default function PracaRounds() {
       {loading ? <div className="rounded-2xl border bg-white p-8 text-sm text-[#64748B]">Carregando oportunidades…</div>
       : items.length === 0 ? <div className="rounded-2xl border bg-white p-10 text-center"><Package className="mx-auto h-8 w-8 text-[#008878]"/><h2 className="mt-3 font-bold">Nenhuma rodada aberta para sua loja</h2><p className="mt-1 text-sm text-[#64748B]">Novas oportunidades compatíveis aparecerão aqui.</p></div>
       : <div className="grid gap-4 lg:grid-cols-2">{items.map(item => {
-        const draft = drafts[item.id] ?? { unitPrice: "", freight: "0", deliveryDays: "0" };
+        const draft = drafts[item.id] ?? { unitPrice: "", freight: "", deliveryDays: "0" };
         const best = item.bestOffer ? effective(item.bestOffer, item.totalQuantity) : null;
         const mine = item.myOffer ? effective(item.myOffer, item.totalQuantity) : null;
         return <article key={item.id} className="rounded-2xl border border-[#E5EAF0] bg-white p-5 shadow-sm">
@@ -87,20 +87,21 @@ export default function PracaRounds() {
           <div className="mt-3 flex flex-wrap gap-x-5 gap-y-1 text-xs text-[#64748B]">
             {best !== null && <p>Melhor custo efetivo por unidade: <strong className="text-[#0B2240]">R$ {best.toLocaleString("pt-BR",{minimumFractionDigits:2})}</strong></p>}
             {mine !== null && <p>Sua oferta atual por unidade: <strong className="text-[#0B2240]">R$ {mine.toLocaleString("pt-BR",{minimumFractionDigits:2})}</strong></p>}
-            <p>Identidades permanecem ocultas até o comprador aceitar a proposta selecionada.</p>
+            <p>Identidades permanecem ocultas até a confirmação do pagamento.</p>
           </div>
           <div className="mt-4 grid gap-3 sm:grid-cols-3">
             <label className="text-xs font-bold">Preço por {item.unit} (R$)<input inputMode="decimal" value={draft.unitPrice} onChange={e=>setDrafts(v=>({...v,[item.id]:{...draft,unitPrice:e.target.value}}))} className="mt-1 w-full rounded-lg border border-[#CBD5E1] px-3 py-2 text-sm" placeholder="0,00"/></label>
-            <label className="text-xs font-bold">Frete total (R$)<input inputMode="decimal" value={draft.freight} onChange={e=>setDrafts(v=>({...v,[item.id]:{...draft,freight:e.target.value}}))} className="mt-1 w-full rounded-lg border border-[#CBD5E1] px-3 py-2 text-sm" placeholder="0,00"/></label>
+            <label className="text-xs font-bold">Frete do lote completo (R$)<input inputMode="decimal" value={draft.freight} onChange={e=>setDrafts(v=>({...v,[item.id]:{...draft,freight:e.target.value}}))} className="mt-1 w-full rounded-lg border border-[#CBD5E1] px-3 py-2 text-sm" placeholder="0,00"/></label>
             <label className="text-xs font-bold">Prazo de entrega (dias)<input inputMode="numeric" value={draft.deliveryDays} onChange={e=>setDrafts(v=>({...v,[item.id]:{...draft,deliveryDays:e.target.value}}))} className="mt-1 w-full rounded-lg border border-[#CBD5E1] px-3 py-2 text-sm" placeholder="0"/></label>
           </div>
+          <p className="mt-3 text-sm font-bold">Total do lote com frete: {draft.unitPrice.trim()&&draft.freight.trim()&&Number.isFinite(value(draft.unitPrice))&&Number.isFinite(value(draft.freight))?new Intl.NumberFormat("pt-BR",{style:"currency",currency:"BRL"}).format(value(draft.unitPrice)*item.totalQuantity+value(draft.freight)):"Preencha preço e frete"}</p><p className="text-xs text-slate-600">Informe 0 para frete incluso. O frete do lote será dividido proporcionalmente à quantidade de cada comprador. A comparação considera produtos + frete.</p>
           <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
             <span className="text-xs text-[#64748B]">{mine !== null ? "Se enviar outra oferta, ela precisa reduzir seu custo efetivo atual." : "Sua primeira oferta será registrada de forma sigilosa."}</span>
             <button onClick={()=>void submit(item)} disabled={busy===item.id} className="inline-flex items-center gap-2 rounded-xl bg-[#10D3B8] px-4 py-2.5 text-sm font-extrabold text-[#0B2240] disabled:opacity-50">{busy===item.id?"Enviando…":<><ArrowDown className="h-4 w-4"/>Enviar lance</>}</button>
           </div>
         </article>
       })}</div>}
-      <p className="mt-5 text-xs leading-5 text-[#64748B]">O comprador receberá uma oferta individual após o encerramento e só verá os dados da loja depois de aceitar. Um aceite gera o lead identificado no seu CRM para você formalizar entrega e pagamento.</p>
+      <p className="mt-5 text-xs leading-5 text-[#64748B]">O comprador recebe o total individual após o encerramento. Os dados das partes só são liberados após a confirmação do pagamento.</p>
     </div>
   </main>;
 }

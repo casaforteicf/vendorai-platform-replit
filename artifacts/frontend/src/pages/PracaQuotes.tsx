@@ -28,7 +28,7 @@ export default function PracaQuotes() {
         for (const quote of body as Opportunity[]) {
           if (!next[quote.id]) next[quote.id] = {
             prices: Object.fromEntries(quote.items.map((item) => [item.id, ""])),
-            freight: "0", deliveryDays: "0", terms: "",
+            freight: "", deliveryDays: "0", terms: "",
           };
         }
         return next;
@@ -39,7 +39,7 @@ export default function PracaQuotes() {
   React.useEffect(() => { void load(); }, [load]);
 
   const updateDraft = (id: string, change: Partial<{ prices: Record<string, string>; freight: string; deliveryDays: string; terms: string }>) => {
-    setDrafts((current) => ({ ...current, [id]: { ...(current[id] ?? { prices: {}, freight: "0", deliveryDays: "0", terms: "" }), ...change } }));
+    setDrafts((current) => ({ ...current, [id]: { ...(current[id] ?? { prices: {}, freight: "", deliveryDays: "0", terms: "" }), ...change } }));
   };
   const parse = (value: string) => Number(value.replace(",", "."));
   const money = (value: number) => value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -49,8 +49,8 @@ export default function PracaQuotes() {
     const draft = drafts[quote.id];
     if (!draft) return;
     const offers = quote.items.map((item) => ({ itemId: item.id, unitPrice: parse(draft.prices[item.id] ?? "") }));
-    const freight = parse(draft.freight || "0"), deliveryDays = Number(draft.deliveryDays);
-    if (offers.some((item) => !Number.isFinite(item.unitPrice) || item.unitPrice <= 0) ||
+    const freight = parse(draft.freight), deliveryDays = Number(draft.deliveryDays);
+    if (!draft.freight.trim() || offers.some((item) => !Number.isFinite(item.unitPrice) || item.unitPrice <= 0) ||
         !Number.isFinite(freight) || freight < 0 || !Number.isInteger(deliveryDays) || deliveryDays < 0) {
       setError("Informe o preço de todos os itens, o frete e o prazo de entrega.");
       return;
@@ -85,7 +85,7 @@ export default function PracaQuotes() {
       {loading ? <div className="rounded-2xl border bg-white p-8 text-sm text-[#64748B]">Carregando cotações…</div>
       : items.length === 0 ? <div className="rounded-2xl border bg-white p-10 text-center"><Package className="mx-auto h-8 w-8 text-[#008878]"/><h2 className="mt-3 font-bold">Nenhuma cotação aberta</h2><p className="mt-1 text-sm text-[#64748B]">Solicitações compatíveis com sua loja aparecerão aqui.</p></div>
       : <div className="grid gap-4 lg:grid-cols-2">{items.map((quote) => {
-        const draft = drafts[quote.id] ?? { prices: {}, freight: "0", deliveryDays: "0", terms: "" };
+        const draft = drafts[quote.id] ?? { prices: {}, freight: "", deliveryDays: "0", terms: "" };
         const subtotal = quote.items.reduce((sum, item) => sum + item.quantity * (parse(draft.prices[item.id] ?? "") || 0), 0);
         const total = subtotal + (parse(draft.freight || "0") || 0);
         return <article key={quote.id} className="rounded-2xl border border-[#E5EAF0] bg-white p-5 shadow-sm">
@@ -93,9 +93,9 @@ export default function PracaQuotes() {
           {quote.description && <p className="mt-2 text-sm text-[#64748B]">{quote.description}</p>}
           <div className="mt-4 flex flex-wrap gap-x-5 gap-y-2 text-sm text-[#475569]"><span><MapPin className="mr-1 inline h-4 w-4"/>{quote.location}</span>{quote.neededAt && <span><Truck className="mr-1 inline h-4 w-4"/>Precisa até {new Intl.DateTimeFormat("pt-BR",{dateStyle:"medium",timeZone:"UTC"}).format(new Date(quote.neededAt))}</span>}<span><Clock3 className="mr-1 inline h-4 w-4"/>Recebida {date(quote.createdAt)}</span></div>
           <div className="mt-4 space-y-2">{quote.items.map((item) => <div key={item.id} className="grid grid-cols-[1fr_115px] items-center gap-3 rounded-xl bg-[#F7F9FC] p-3"><div><p className="text-sm font-bold">{item.description}</p><p className="text-xs text-[#64748B]">{item.quantity.toLocaleString("pt-BR")} {item.unit}{item.brand ? " · " + item.brand : ""}</p></div><label className="text-[11px] font-bold text-[#64748B]">Preço unitário<input aria-label={`Preço unitário de ${item.description}`} inputMode="decimal" value={draft.prices[item.id] ?? ""} onChange={(event) => updateDraft(quote.id, { prices: { ...draft.prices, [item.id]: event.target.value } })} className="mt-1 w-full rounded-lg border border-[#CBD5E1] bg-white px-2 py-2 text-sm text-[#0B2240]" placeholder="R$ 0,00"/></label></div>)}</div>
-          <div className="mt-3 grid gap-3 sm:grid-cols-2"><label className="text-xs font-bold">Frete total<input inputMode="decimal" value={draft.freight} onChange={(event)=>updateDraft(quote.id,{freight:event.target.value})} className="mt-1 w-full rounded-lg border border-[#CBD5E1] px-3 py-2 text-sm" placeholder="R$ 0,00"/></label><label className="text-xs font-bold">Prazo de entrega (dias)<input inputMode="numeric" value={draft.deliveryDays} onChange={(event)=>updateDraft(quote.id,{deliveryDays:event.target.value})} className="mt-1 w-full rounded-lg border border-[#CBD5E1] px-3 py-2 text-sm" placeholder="0"/></label></div>
+          <div className="mt-3 grid gap-3 sm:grid-cols-2"><label className="text-xs font-bold">Frete total (0 para incluso)<input inputMode="decimal" value={draft.freight} onChange={(event)=>updateDraft(quote.id,{freight:event.target.value})} className="mt-1 w-full rounded-lg border border-[#CBD5E1] px-3 py-2 text-sm" placeholder="R$ 0,00"/></label><label className="text-xs font-bold">Prazo de entrega (dias)<input inputMode="numeric" value={draft.deliveryDays} onChange={(event)=>updateDraft(quote.id,{deliveryDays:event.target.value})} className="mt-1 w-full rounded-lg border border-[#CBD5E1] px-3 py-2 text-sm" placeholder="0"/></label></div>
           <label className="mt-3 block text-xs font-bold">Condições (opcional)<textarea value={draft.terms} onChange={(event)=>updateDraft(quote.id,{terms:event.target.value})} className="mt-1 min-h-16 w-full rounded-lg border border-[#CBD5E1] px-3 py-2 text-sm" placeholder="Validade e condições comerciais. Não informe seus contatos."/></label>
-          <div className="mt-4 flex flex-wrap items-center justify-between gap-3"><div className="text-xs text-[#64748B]">{quote.myOffer ? <>Proposta atual: <strong>{money(quote.myOffer.subtotal + quote.myOffer.freight)}</strong></> : "Novo lead anônimo no CRM"}<p className="mt-1 font-bold text-[#0B2240]">Total desta proposta: {money(total)}</p></div><button onClick={()=>void submit(quote)} disabled={busy===quote.id} className="inline-flex items-center gap-2 rounded-xl bg-[#10D3B8] px-4 py-2.5 text-sm font-extrabold text-[#0B2240] disabled:opacity-50">{busy===quote.id?"Enviando…":<><Send className="h-4 w-4"/>Enviar proposta</>}</button></div>
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-3"><div className="text-xs text-[#64748B]">{quote.myOffer ? <>Proposta atual: <strong>{money(quote.myOffer.subtotal + quote.myOffer.freight)}</strong></> : "Novo lead anônimo no CRM"}<p className="mt-1 font-bold text-[#0B2240]">Total com frete: {draft.freight.trim()?money(total):"Informe o frete"}</p></div><button onClick={()=>void submit(quote)} disabled={busy===quote.id} className="inline-flex items-center gap-2 rounded-xl bg-[#10D3B8] px-4 py-2.5 text-sm font-extrabold text-[#0B2240] disabled:opacity-50">{busy===quote.id?"Enviando…":<><Send className="h-4 w-4"/>Enviar proposta</>}</button></div>
           <p className="mt-3 border-t pt-3 text-xs text-[#64748B]">A identificação do comprador só é liberada depois que o pagamento é confirmado. <ArrowUpRight className="ml-1 inline h-3 w-3"/></p>
         </article>;
       })}</div>}
