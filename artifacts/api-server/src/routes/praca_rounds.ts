@@ -158,4 +158,21 @@ router.get("/praca-subpedidos/:id/historico",async(req,res):Promise<void>=>{
  if(!/^[0-9a-f-]{36}$/i.test(id)||!/^[0-9]{1,18}$/.test(after))return void res.status(422).json({error:"Consulta inválida."});
  await forward("/internal/vendor-suborders/"+encodeURIComponent(id)+"/history?"+new URLSearchParams({tenantId,after}),{method:"GET"},res);
 });
+router.get("/praca-financeiro",async(req,res):Promise<void>=>{
+ const tenantId=tenantFromSession(req);if(!tenantId)return void res.status(403).json({error:"Acesse com uma conta de lojista."});
+ await forward("/internal/vendor-financial-profile?"+new URLSearchParams({tenantId}),{method:"GET"},res);
+});
+router.post("/praca-financeiro",async(req,res):Promise<void>=>{
+ const tenantId=tenantFromSession(req);if(!tenantId)return void res.status(403).json({error:"Acesse com uma conta de lojista."});
+ const allowed=["name","email","cpfCnpj","mobilePhone","incomeValue","address","addressNumber","complement","province","postalCode","companyType","taxRegime"];
+ const body=Object.fromEntries(allowed.filter((key)=>req.body?.[key]!==undefined).map((key)=>[key,req.body[key]]));
+ await forward("/internal/vendor-financial-profile",{method:"POST",body:JSON.stringify({tenantId,...body})},res);
+});
+router.post("/praca-pedidos/:type/:id/entregas-parciais",async(req,res):Promise<void>=>{
+ const tenantId=tenantFromSession(req),type=String(req.params.type),id=String(req.params.id);
+ if(!tenantId)return void res.status(403).json({error:"Acesse com uma conta de lojista."});
+ if(!["quote","round"].includes(type)||!/^[0-9a-f-]{36}$/i.test(id))return void res.status(422).json({error:"Pedido inválido."});
+ const {requestKey,receivedBy,items}=req.body??{};
+ await forward("/internal/vendor-orders/"+type+"/"+encodeURIComponent(id)+"/delivery-receipts",{method:"POST",body:JSON.stringify({tenantId,requestKey,receivedBy,items})},res);
+});
 export default router;
