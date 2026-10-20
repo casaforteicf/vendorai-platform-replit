@@ -65,3 +65,15 @@ describe("TAD module launcher access", () => {
       .toEqual({ type: "selector" });
   });
 });
+
+
+describe("Operações: alteração segura apenas de apresentação", () => {
+  it("mantém rota, permissões e identidade técnica do módulo existente", () => {
+    const modules = authorizedLauncherModules({
+      audience: "business", enabledModules: ["obras"], permittedModules: ["obras"],
+    });
+    expect(modules).toEqual([{key: "obras", title: "Operações", route: "/obras", audiences: ["professional", "business"]}]);
+    expect(resolveLauncherStart({modules, preference: "direct", principalModule: "obras"}))
+      .toEqual({type: "navigate", route: "/obras"});
+  });
+});
