@@ -6882,6 +6882,7 @@ type WhatsappConnectionItem = {
   businessName: string | null;
   assignedUserId: string | null;
   isDefault: boolean;
+  label: string | null;
   status: string;
 };
 
@@ -6916,7 +6917,7 @@ function WhatsappNumbersManager({
 
   useEffect(() => { void loadConnections(); }, [tenantId]);
 
-  async function updateConnection(connectionId: string, data: { assignedUserId?: string | null; isDefault?: boolean }) {
+  async function updateConnection(connectionId: string, data: { assignedUserId?: string | null; isDefault?: boolean; label?: string | null }) {
     const response = await fetch("/api/tenants/" + tenantId + "/whatsapp-connections/" + connectionId, {
       method: "PATCH",
       headers: headers(),
@@ -6930,7 +6931,30 @@ function WhatsappNumbersManager({
     setConnections((current) => current.map((item) =>
       item.id === updated.id ? updated : data.isDefault ? { ...item, isDefault: false } : item
     ));
-    toast({ title: data.isDefault ? "Número padrão atualizado." : "Responsável atualizado." });
+    toast({ title: data.label !== undefined ? "Uso do número atualizado." : data.isDefault ? "Número padrão atualizado." : "Responsável atualizado." });
+  }
+
+  function whatsappLink(connection: WhatsappConnectionItem): string | null {
+    const phone = (connection.displayPhoneNumber ?? "").replace(/\\D/g, "");
+    if (!phone || connection.status !== "active" || !connection.label) return null;
+    const message = connection.label === "ads_inbound"
+      ? "Olá! Vim pelo anúncio e gostaria de saber mais."
+      : connection.label === "qualified_handoff"
+        ? "Olá! Quero continuar meu atendimento por aqui."
+        : "";
+    if (!message) return null;
+    return `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
+  }
+
+  async function copyWhatsappLink(connection: WhatsappConnectionItem) {
+    const link = whatsappLink(connection);
+    if (!link) return;
+    try {
+      await navigator.clipboard.writeText(link);
+      toast({ title: connection.label === "ads_inbound" ? "Link para anúncios copiado." : "Link de continuidade copiado." });
+    } catch {
+      toast({ title: "Não foi possível copiar o link.", variant: "destructive" });
+    }
   }
 
   return (
@@ -6939,7 +6963,10 @@ function WhatsappNumbersManager({
         <div>
           <h2 className="font-semibold text-base">Números e responsáveis</h2>
           <p className="text-sm text-muted-foreground mt-1">
-            Cada número recebe suas próprias conversas e direciona os leads ao usuário escolhido.
+            Separe o número que recebe leads de anúncios do número usado para continuar o atendimento após a qualificação.
+          </p>
+          <p className="text-xs text-muted-foreground mt-1">
+            Cada link abre uma conversa nova no WhatsApp do lead. Ao ele enviar a mensagem, o Vendor.ai associa o contato ao lead pelo telefone.
           </p>
         </div>
         <Button
@@ -6957,13 +6984,24 @@ function WhatsappNumbersManager({
       ) : (
         <div className="space-y-3">
           {connections.map((connection) => (
-            <div key={connection.id} className="grid gap-3 rounded-lg border p-4 md:grid-cols-[1fr_240px_auto] md:items-center">
+            <div key={connection.id} className="grid gap-3 rounded-lg border p-4 md:grid-cols-[1fr_220px_220px_auto] md:items-center">
               <div>
                 <div className="font-medium">{connection.displayPhoneNumber || connection.businessName || "Aguardando leitura do QR Code"}</div>
                 <div className="text-xs text-muted-foreground">
                   {connection.provider === "meta" ? "Meta legado" : "QR Code / Evolution"} · {connection.status}
                 </div>
               </div>
+              <Select
+                value={connection.label ?? "unlabeled"}
+                onValueChange={(value) => void updateConnection(connection.id, { label: value === "unlabeled" ? null : value })}
+              >
+                <SelectTrigger aria-label="Uso do número"><SelectValue placeholder="Uso do número" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="unlabeled">Sem finalidade</SelectItem>
+                  <SelectItem value="ads_inbound">Anúncios / entrada</SelectItem>
+                  <SelectItem value="qualified_handoff">Continuidade qualificada</SelectItem>
+                </SelectContent>
+              </Select>
               <Select
                 value={connection.assignedUserId ?? "unassigned"}
                 onValueChange={(value) => void updateConnection(connection.id, { assignedUserId: value === "unassigned" ? null : value })}
@@ -6976,14 +7014,27 @@ function WhatsappNumbersManager({
                   ))}
                 </SelectContent>
               </Select>
-              <Button
-                type="button"
-                variant={connection.isDefault ? "default" : "outline"}
-                disabled={connection.isDefault}
-                onClick={() => void updateConnection(connection.id, { isDefault: true })}
-              >
-                {connection.isDefault ? "Padrão" : "Definir padrão"}
-              </Button>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={!whatsappLink(connection)}
+                  onClick={() => void copyWhatsappLink(connection)}
+                >
+                  <Copy className="h-4 w-4 mr-1.5" />
+                  {connection.label === "ads_inbound" ? "Copiar link anúncio" : "Copiar link"}
+                </Button>
+                <Button
+                  type="button"
+                  variant={connection.isDefault ? "default" : "outline"}
+                  size="sm"
+                  disabled={connection.isDefault}
+                  onClick={() => void updateConnection(connection.id, { isDefault: true })}
+                >
+                  {connection.isDefault ? "Padrão" : "Definir padrão"}
+                </Button>
+              </div>
             </div>
           ))}
         </div>
