@@ -32,7 +32,7 @@ Sem `VENDORAI_BACKEND_RUNTIME=contabo`, a compatibilidade anterior com Railway p
 - Contabo, consulta somente leitura: `homologHealth` e `prodHealth` retornaram `{"status":"ok"}`. `vendorai-homolog-api` está na imagem `vendorai-release:vendi-3578-d3a6470124f6`; `vendorai-prod-api-candidate` continua em `vendorai-api:main-cb9e99cb2`.
 - Operador Contabo: `VENDI-3578` tem imagem presente, SHA `d3a6470124f6651bf53749a06e184b538539bdf6`, estado `BUILT_NOT_DEPLOYED` em relação à produção.
 - Isso não comprova criação de missão em homologação nem em produção. Nenhum POST real foi feito nesta validação e nenhuma migration foi aplicada.
-- Commit/PR: não criado.
+- PR de revisão: https://github.com/casaforteicf/vendorai-platform-replit/pull/3579 (aberto como draft, sem merge); commit remoto atual `fb61c279e64954f864cc98e8febb322d5f276a7a`.
 
 ## Próximos gates
 
@@ -64,4 +64,4 @@ Sem `VENDORAI_BACKEND_RUNTIME=contabo`, a compatibilidade anterior com Railway p
 - `tsc -p tsconfig.launch-ci.json --noEmit`: passou.
 - `node ./build.mjs` da API: passou.
 - Build/typecheck do frontend não executados: dependências do frontend não estão ligadas neste checkout esparso.
-- Nenhum POST real foi executado em homologação ou produção; nenhuma migration foi aplicada; não houve commit, PR, merge ou publicação.
+- Nenhum POST real foi executado em homologação ou produção; nenhuma migration foi aplicada. O commit está em um PR draft; merge e publicação não foram executados.
