@@ -3,7 +3,7 @@
  * The caller MUST supply server-verified entitlements and record permissions.
  * No role implicitly unlocks an entitlement; no grant is stored client-side.
  */
-export type LauncherModule = "crm" | "marketing" | "omnichannel" | "agenda" |
+export type LauncherModule = "crm" | "prospector" | "marketing" | "omnichannel" | "agenda" |
   "arqdor" | "obras" | "pdv" | "erp" | "marketplace_casa" |
   "parceiros" | "portal_cliente" | "inteligencia" | "agentes_ia" | "configuracoes" | "suporte";
 
@@ -17,6 +17,7 @@ export interface LauncherModuleInfo {
 
 export const LAUNCHER_MODULES: readonly LauncherModuleInfo[] = [
   { key: "crm", title: "CRM", route: "/leads", audiences: ["professional", "business"] },
+  { key: "prospector", title: "Prospector IA", route: "/prospector", audiences: ["professional", "business"] },
   { key: "marketing", title: "Marketing", route: "/content", audiences: ["business"] },
   { key: "omnichannel", title: "Omnichannel", route: "/conversations", audiences: ["professional", "business"] },
   { key: "agenda", title: "Agenda", route: "/agenda", audiences: ["professional", "business"] },
