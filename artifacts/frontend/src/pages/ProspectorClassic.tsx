@@ -689,6 +689,7 @@ export default function ProspectorClassic() {
       const perCombination = Math.max(1, Math.min(20, Math.ceil(maxResults / combinations.length)));
       const merged = new Map<string, TaggedSearchResult>();
       let failed = 0;
+      const searchErrors: string[] = [];
 
       for (const combination of combinations) {
         try {
@@ -709,8 +710,10 @@ export default function ProspectorClassic() {
               merged.set(key, { ...result, prospectNichos: [combination.nicho], prospectLocalidades: [combination.localidade], prospectFonte: "Google Places" });
             }
           }
-        } catch {
+        } catch (error) {
           failed += 1;
+          const reason = error instanceof Error ? error.message : "Falha desconhecida";
+          searchErrors.push(`${combination.nicho} / ${combination.localidade}: ${reason}`);
         }
       }
 
@@ -721,7 +724,18 @@ export default function ProspectorClassic() {
       setProspectedIndexes(new Set());
       setDuplicateIndexes(new Set());
       setEnrichment(null);
-      toast({ title: finalResults.length ? `${finalResults.length} empresa(s) priorizada(s)` : "Nenhuma empresa encontrada", description: `${combinations.length - failed}/${combinations.length} combinação(ões) consultada(s) com sucesso.` });
+      if (failed > 0) {
+        toast({
+          title: failed === combinations.length ? "Falha na busca de empresas" : "Busca parcialmente concluída",
+          description: `${combinations.length - failed}/${combinations.length} combinação(ões) concluída(s). ${searchErrors.slice(0, 2).join(" | ")}`,
+          variant: "destructive",
+        });
+      } else {
+        toast({
+          title: finalResults.length ? `${finalResults.length} empresa(s) priorizada(s)` : "Nenhuma empresa encontrada",
+          description: `${combinations.length} combinação(ões) consultada(s) com sucesso.`,
+        });
+      }
     } finally {
       setSearching(false);
     }
