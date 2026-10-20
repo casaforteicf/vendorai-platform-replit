@@ -353,6 +353,7 @@ export function OrganicCalendarPublisher({ pathname }: { pathname: string }) {
             </div>
           )}
 
+          {loadError && <div role="alert" className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">Não foi possível conferir todos os dados de publicação. As ações ficam bloqueadas até uma nova verificação.</div>}
           {loading ? (
             <div className="flex items-center gap-2 py-3 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />Carregando peças aprovadas…</div>
           ) : (
@@ -367,7 +368,7 @@ export function OrganicCalendarPublisher({ pathname }: { pathname: string }) {
                 const isQueued = publication?.status === "queued";
                 const isPublishing = publication?.status === "publishing";
                 const isFailed = publication?.status === "failed";
-                const disabled = busy === item.id || isPublished || isQueued || isPublishing || (isFacebook && !facebook?.ready);
+                const disabled = loadError || busy === item.id || isPublished || isQueued || isPublishing || (isFacebook && !facebook?.ready);
 
                 return (
                   <div key={item.id} className="rounded-lg border bg-background/80 p-3 flex items-center justify-between gap-3">
@@ -383,7 +384,7 @@ export function OrganicCalendarPublisher({ pathname }: { pathname: string }) {
                       {isFailed && <p className="mt-1 text-xs text-destructive flex items-center gap-1"><AlertCircle className="h-3.5 w-3.5" />A tentativa falhou; a peça continua aprovada</p>}
                     </div>
                     {isFailed && publication ? (
-                      <Button size="sm" variant="outline" disabled={busy === item.id} onClick={() => void retry(publication, item)}>
+                      <Button size="sm" variant="outline" disabled={loadError || busy === item.id} onClick={() => void retry(publication, item)}>
                         {busy === item.id ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="mr-1.5 h-3.5 w-3.5" />}
                         Tentar novamente
                       </Button>
