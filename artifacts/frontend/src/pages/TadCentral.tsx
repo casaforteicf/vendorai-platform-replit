@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Link, useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
-import { Search, HelpCircle, ChevronDown, ChevronLeft, ChevronRight, ArrowRight, CalendarDays, Megaphone, BriefcaseBusiness, HardHat, Package, Store, ChartNoAxesCombined, Bot, Settings, Headphones, Layers3, LogOut, Users, MessageSquare, ShoppingBag, UserRound, ShieldCheck, Plug, SlidersHorizontal, BookOpen, CircleHelp, Building2, Check, Loader2 } from "lucide-react";
+import { Search, Radar, HelpCircle, ChevronDown, ChevronLeft, ChevronRight, ArrowRight, CalendarDays, Megaphone, BriefcaseBusiness, HardHat, Package, Store, ChartNoAxesCombined, Bot, Settings, Headphones, Layers3, LogOut, Users, MessageSquare, ShoppingBag, UserRound, ShieldCheck, Plug, SlidersHorizontal, BookOpen, CircleHelp, Building2, Check, Loader2 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { NovidadesBell } from "@/components/NovidadesBell";
 import { LAUNCHER_MODULES, authorizedLauncherModules, type LauncherAudience, type LauncherModule } from "@/lib/adaptiveModuleLauncher";
@@ -24,6 +24,7 @@ const FOCUS = "focus-visible:outline focus-visible:outline-2 focus-visible:outli
 const TOKEN_KEY = "vendorai_token";
 
 const TAD_LABELS: Partial<Record<LauncherModule, { description: string; section: string }>> = {
+  prospector: { description: "Pesquisa de empresas e qualificação por IA", section: "Comercial" },
   crm: { description: "Clientes, oportunidades, pipeline e propostas", section: "Comercial" },
   marketing: { description: "Campanhas, anúncios e conteúdos", section: "Crescimento" },
   omnichannel: { description: "Conversas e atendimento integrado", section: "Comercial" },
@@ -42,7 +43,7 @@ const TAD_LABELS: Partial<Record<LauncherModule, { description: string; section:
 };
 
 const ICON_MAP: Partial<Record<LauncherModule, typeof Users>> = {
-  crm: Users, marketing: Megaphone, omnichannel: MessageSquare, agenda: CalendarDays,
+  crm: Users, prospector: Radar, marketing: Megaphone, omnichannel: MessageSquare, agenda: CalendarDays,
   arqdor: Layers3, obras: HardHat, pdv: ShoppingBag, erp: Package,
   marketplace_casa: Store, parceiros: BriefcaseBusiness, portal_cliente: UserRound,
   inteligencia: ChartNoAxesCombined, agentes_ia: Bot, configuracoes: Settings, suporte: Headphones,
@@ -65,7 +66,7 @@ const TONES = {
 } satisfies Record<string, Tone>;
 
 const MODULE_TONE: Partial<Record<LauncherModule, Tone>> = {
-  crm: TONES.cyan, marketing: TONES.violet, omnichannel: TONES.teal, agenda: TONES.sky,
+  crm: TONES.cyan, prospector: TONES.teal, marketing: TONES.violet, omnichannel: TONES.teal, agenda: TONES.sky,
   arqdor: TONES.rose, obras: TONES.amber, pdv: TONES.teal, erp: TONES.blue,
   marketplace_casa: TONES.orange, parceiros: TONES.teal, portal_cliente: TONES.teal,
   inteligencia: TONES.fuchsia, agentes_ia: TONES.indigo, configuracoes: TONES.slate, suporte: TONES.blue,
