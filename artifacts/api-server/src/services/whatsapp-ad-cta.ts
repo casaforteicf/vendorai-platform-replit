@@ -16,7 +16,7 @@ export async function resolveWhatsappAdCtaCopy(tenantId: string): Promise<string
   if (!companyName) {
     throw new Error("Cadastre o nome da empresa em Configurações → Perfil do Negócio.");
   }
-  return `WhatsApp da ${companyName}: envie sua mensagem para autorizar o atendimento deste pedido.`;
+  return `Ao enviar no WhatsApp, você autoriza atendimento deste pedido.`;
 }
 
 export async function resolveWhatsappAdCtaUrl(
