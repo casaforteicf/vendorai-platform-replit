@@ -115,3 +115,15 @@ describe("Central de Ambientes: regressões de acesso e preferência", () => {
       .toEqual({ type: "selector" });
   });
 });
+
+describe("Central de Ambientes: cartões apresentados", () => {
+  it("não oferece ambiente habilitado no tenant sem permissão efetiva do usuário", () => {
+    const shown = authorizedLauncherModules({
+      audience: "business",
+      enabledModules: ["crm", "marketing", "marketplace_casa", "obras"],
+      permittedModules: ["crm", "obras"],
+    });
+    expect(shown.map(module => module.key)).toEqual(["crm", "obras"]);
+    expect(shown.every(module => module.route !== null)).toBe(true);
+  });
+});
