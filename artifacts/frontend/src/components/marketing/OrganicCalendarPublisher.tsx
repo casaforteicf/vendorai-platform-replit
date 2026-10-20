@@ -211,7 +211,15 @@ export function OrganicCalendarPublisher({ pathname }: { pathname: string }) {
 
   async function refreshPublications() {
     if (!token || !tenantId) return;
-    setPublications(await fetchPublications({ Authorization: `Bearer ${token}` }));
+    try {
+      const updated = await fetchPublications({ Authorization: `Bearer ${token}` });
+      setPublications(updated);
+    } catch {
+      // Do not overwrite a known publication state with an empty list.
+      // Publishing and retry actions remain locked until the data is verified.
+      setLoadError(true);
+      throw new Error("Não foi possível confirmar o estado das publicações. Verifique novamente antes de tentar outra ação.");
+    }
   }
 
   async function retry(publication: SocialPublication, item: CalendarItem) {
@@ -227,8 +235,12 @@ export function OrganicCalendarPublisher({ pathname }: { pathname: string }) {
       await refreshPublications();
       toast({ title: body.publication?.status === "published" ? "Publicação concluída" : "Nova tentativa iniciada" });
     } catch (error) {
-      await refreshPublications();
-      toast({ title: "A nova tentativa falhou", description: error instanceof Error ? error.message : undefined, variant: "destructive" });
+      try {
+        await refreshPublications();
+      } catch {
+        // The verification error is shown in the publisher panel.
+      }
+      toast({ title: "Não foi possível confirmar a nova tentativa", description: error instanceof Error ? error.message : undefined, variant: "destructive" });
     } finally {
       setBusy(null);
     }
