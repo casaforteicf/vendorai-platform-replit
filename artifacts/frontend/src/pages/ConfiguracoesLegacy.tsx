@@ -6935,7 +6935,7 @@ function WhatsappNumbersManager({
   }
 
   function whatsappLink(connection: WhatsappConnectionItem): string | null {
-    const phone = (connection.displayPhoneNumber ?? "").replace(/\\D/g, "");
+    const phone = (connection.displayPhoneNumber ?? "").replace(/\D/g, "");
     if (!phone || connection.status !== "active" || !connection.label) return null;
     const message = connection.label === "ads_inbound"
       ? "Olá! Vim pelo anúncio e gostaria de saber mais."
@@ -6966,7 +6966,7 @@ function WhatsappNumbersManager({
             Separe o número que recebe leads de anúncios do número usado para continuar o atendimento após a qualificação.
           </p>
           <p className="text-xs text-muted-foreground mt-1">
-            Cada link abre uma conversa nova no WhatsApp do lead. Ao ele enviar a mensagem, o Vendor.ai associa o contato ao lead pelo telefone.
+            Cada link abre uma conversa nova no WhatsApp do lead. Quando o lead enviar a mensagem, o Vendor.ai associa o contato ao lead pelo telefone.
           </p>
         </div>
         <Button
