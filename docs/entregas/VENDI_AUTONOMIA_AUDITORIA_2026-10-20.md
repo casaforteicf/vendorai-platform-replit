@@ -3,6 +3,8 @@
 Data da auditoria: 2026-10-20 (UTC)  
 Escopo: código default branch, PRs #3490, #3433, #3446 e #3565, estado do executor Contabo e trilha de migrations.
 
+Infra de referência: aplicação, banco e executor do Vendor.ai estão na Contabo, conforme confirmação do usuário em 2026-10-19 (America/Sao_Paulo). O estado descrito abaixo é limitado às consultas Vendi autorizadas à Contabo; uma consulta a outro contexto de banco foi descartada e não é evidência deste relatório.
+
 ## Estado comprovado
 
 | Área | Estado comprovado | Evidência | Próximo passo |
