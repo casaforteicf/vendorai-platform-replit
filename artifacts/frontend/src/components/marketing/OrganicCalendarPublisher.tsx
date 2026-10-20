@@ -116,6 +116,7 @@ export function OrganicCalendarPublisher({ pathname }: { pathname: string }) {
   const [facebook, setFacebook] = useState<FacebookCapability | null>(null);
   const [publications, setPublications] = useState<SocialPublication[]>([]);
   const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
 
   const [path, query = ""] = pathname.split("?");
@@ -126,7 +127,7 @@ export function OrganicCalendarPublisher({ pathname }: { pathname: string }) {
 
   async function fetchPublications(headers: { Authorization: string }) {
     const response = await fetch(`/api/tenants/${tenantId}/social-publications`, { headers });
-    if (!response.ok) return [];
+    if (!response.ok) throw new Error("social_publications_unavailable");
     const body = await response.json() as { publications?: SocialPublication[] };
     return Array.isArray(body.publications) ? body.publications : [];
   }
@@ -135,6 +136,7 @@ export function OrganicCalendarPublisher({ pathname }: { pathname: string }) {
     if (!visible || !tenantId || !token) return;
     let cancelled = false;
     setLoading(true);
+    setLoadError(false);
     const headers = { Authorization: `Bearer ${token}` };
     Promise.all([
       fetch(`/api/tenants/${tenantId}/content-calendar`, { headers }),
@@ -142,16 +144,18 @@ export function OrganicCalendarPublisher({ pathname }: { pathname: string }) {
       fetch(`/api/tenants/${tenantId}/facebook-organic-capability`, { headers }),
       fetchPublications(headers),
     ]).then(async ([calendarResponse, contentResponse, facebookResponse, nextPublications]) => {
-      const nextCalendar = calendarResponse.ok ? await calendarResponse.json() as CalendarItem[] : [];
-      const nextHistory = contentResponse.ok ? await contentResponse.json() as ContentHistory : { items: [] };
-      const nextFacebook = facebookResponse.ok ? await facebookResponse.json() as FacebookCapability : { ready: false };
+      if (!calendarResponse.ok || !contentResponse.ok || !facebookResponse.ok) throw new Error("marketing_calendar_unavailable");
+      const nextCalendar = await calendarResponse.json() as CalendarItem[];
+      const nextHistory = await contentResponse.json() as ContentHistory;
+      const nextFacebook = await facebookResponse.json() as FacebookCapability;
       if (!cancelled) {
         setCalendar(Array.isArray(nextCalendar) ? nextCalendar : []);
         setHistory(nextHistory ?? { items: [] });
         setFacebook(nextFacebook);
         setPublications(nextPublications);
       }
-    }).finally(() => { if (!cancelled) setLoading(false); });
+    }).catch(() => { if (!cancelled) setLoadError(true); })
+      .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
   }, [tenantId, token, visible]);
 
@@ -160,7 +164,7 @@ export function OrganicCalendarPublisher({ pathname }: { pathname: string }) {
     if (!visible || !tenantId || !token || !hasActivePublication) return;
     const headers = { Authorization: `Bearer ${token}` };
     const timer = window.setInterval(() => {
-      void fetchPublications(headers).then(setPublications);
+      void fetchPublications(headers).then(setPublications).catch(() => { setLoadError(true); });
     }, 3000);
     return () => window.clearInterval(timer);
   }, [hasActivePublication, tenantId, token, visible]);
@@ -188,7 +192,7 @@ export function OrganicCalendarPublisher({ pathname }: { pathname: string }) {
     return ["feed", "stories", "carrossel"].includes(item.tipo) && channel.includes("instagram");
   }).slice(0, 12), [briefing?.campaignName, calendar]);
 
-  if (!visible || (items.length === 0 && !loading && !hasFacebookPlanned)) return null;
+  if (!visible || (items.length === 0 && !loading && !loadError && !hasFacebookPlanned)) return null;
 
   async function reconnectMeta() {
     if (!token) return;
