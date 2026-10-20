@@ -26,3 +26,11 @@ export function ui20ServiceForPath(location: string): Ui20Service | null {
     .sort((a,b)=>b.length-a.length);
   return matches[0]?.id ?? null;
 }
+
+/** Presentation-only: the shared Media Library appears inside Marketing. */
+export function ui20SidebarServiceForPath(location: string): Ui20Service | null {
+  const path = normalize(location);
+  return path === "/midias" || path.startsWith("/midias/")
+    ? "marketing"
+    : ui20ServiceForPath(location);
+}
