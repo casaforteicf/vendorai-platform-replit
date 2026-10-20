@@ -6,6 +6,19 @@ import type { AdCampaign } from "@workspace/db";
  * Shared CTA for VendorAI ad campaigns that send clicks to WhatsApp.
  * The visitor must still review and send the prefilled message themselves.
  */
+export async function resolveWhatsappAdCtaCopy(tenantId: string): Promise<string> {
+  const [profile] = await db
+    .select({ nomeFantasia: businessProfilesTable.nomeFantasia, razaoSocial: businessProfilesTable.razaoSocial })
+    .from(businessProfilesTable)
+    .where(eq(businessProfilesTable.tenantId, tenantId))
+    .limit(1);
+  const companyName = profile?.nomeFantasia?.trim() || profile?.razaoSocial?.trim();
+  if (!companyName) {
+    throw new Error("Cadastre o nome da empresa em Configurações → Perfil do Negócio.");
+  }
+  return `Fale com ${companyName} pelo WhatsApp. Ao enviar, você autoriza o atendimento deste pedido.`;
+}
+
 export async function resolveWhatsappAdCtaUrl(
   tenantId: string,
   campaign: Pick<AdCampaign, "utmCode" | "itemLabel">,
@@ -24,7 +37,7 @@ export async function resolveWhatsappAdCtaUrl(
     .orderBy(desc(whatsappConnectionsTable.isDefault), desc(whatsappConnectionsTable.updatedAt))
     .limit(1);
 
-  const phone = connection?.phone?.replace(/\\D/g, "");
+  const phone = connection?.phone?.replace(/\D/g, "");
   if (!phone) {
     throw new Error("Defina em Configurações → WhatsApp um número ativo com a finalidade “Anúncios / entrada” antes de publicar.");
   }
