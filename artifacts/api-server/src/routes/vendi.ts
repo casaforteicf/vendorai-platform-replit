@@ -8,6 +8,7 @@ import {
 } from "@workspace/db";
 import { listVendiToolDomains, listVendiTools } from "../services/vendi-tool-registry.js";
 import { executeVendiMission } from "../services/vendi-mission-supervisor.js";
+import { getVendiPostgresErrorCode } from "../lib/vendi-db-error.js";
 
 const router: IRouter = Router();
 
@@ -69,14 +70,13 @@ router.post("/vendi/missions", async (req, res) => {
     if (!created) throw new Error("MISSION_INSERT_RETURNED_EMPTY");
     mission = created;
   } catch (error: unknown) {
-    const dbError = error as { code?: string; message?: string };
-    // Keep SQL diagnostics in server logs; never expose schema details to users.
+    const dbErrorCode = getVendiPostgresErrorCode(error);
+    // The wrapped Drizzle message contains SQL and bound mission data; never log it.
     console.error("[vendi] mission_create_failed", {
       tenantId,
-      code: dbError?.code ?? "UNKNOWN",
-      reason: dbError?.message ?? "unknown",
+      code: dbErrorCode ?? "UNKNOWN",
     });
-    const schemaMissing = dbError?.code === "42P01" || dbError?.code === "42703";
+    const schemaMissing = dbErrorCode === "42P01" || dbErrorCode === "42703";
     res.status(503).json({
       error: schemaMissing
         ? "A estrutura de missões não está disponível. Contate o administrador para revisar as migrations."
