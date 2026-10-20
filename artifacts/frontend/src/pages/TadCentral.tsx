@@ -30,7 +30,7 @@ const TAD_LABELS: Partial<Record<LauncherModule, { description: string; section:
   omnichannel: { description: "Conversas e atendimento integrado", section: "Comercial" },
   agenda: { description: "Compromissos, tarefas e visitas", section: "Produtividade" },
   arqdor: { description: "Projetos, modelagem, render e especificações", section: "Projetos" },
-  obras: { description: "Execução, checklists e assistência", section: "Operação" },
+  obras: { description: "Processos, equipes e entregas por segmento", section: "Operação" },
   pdv: { description: "Vendas de balcão", section: "Operação" },
   erp: { description: "Gestão operacional e financeira", section: "Operação" },
   marketplace_casa: { description: "Produtos, serviços e anunciantes", section: "Marketplace" },
@@ -74,7 +74,6 @@ const MODULE_TONE: Partial<Record<LauncherModule, Tone>> = {
 
 const PHOTO: Partial<Record<LauncherModule, string>> = {
   arqdor: "https://images.unsplash.com/photo-1600607687920-4e2a09cf159d?auto=format&fit=crop&w=760&q=80",
-  obras: "https://images.unsplash.com/photo-1504307651254-35680f356dfd?auto=format&fit=crop&w=760&q=80",
 };
 
 const MARKETPLACE_TILES = [
