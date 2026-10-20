@@ -5,6 +5,7 @@ import { contentCalendarItemsTable, db, socialPublicationsTable } from "@workspa
 import { authenticate } from "../middlewares/auth.js";
 import { consumeOAuthState, createOAuthState } from "../lib/oauth-state.js";
 import { logger } from "../lib/logger.js";
+import { calendarPublicationConflict } from "../lib/social-calendar-publication-guard.js";
 import { writeConfigurationAudit } from "../lib/configuration-audit.js";
 import {
   buildSocialOAuthUrl, createSocialPublication, disconnectSocial, exchangeSocialCode,
@@ -254,13 +255,8 @@ router.post("/tenants/:tenantId/social-publications/:provider", authenticate, as
         sql`${socialPublicationsTable.metadata} @> ${JSON.stringify({ calendarItemId: parsed.data.calendarItemId })}::jsonb`,
       ))
       .limit(1);
-    if (existingPublication) {
-      return res.status(409).json({
-        error: "calendar_publication_already_exists",
-        publicationId: existingPublication.id,
-        status: existingPublication.status,
-      });
-    }
+    const conflict = calendarPublicationConflict(existingPublication);
+    if (conflict) return res.status(409).json(conflict);
   }
 
   const facebookInput: Parameters<typeof createFacebookOrganicPublication>[1] = {
