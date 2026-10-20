@@ -11,6 +11,16 @@ describe("TAD module launcher access", () => {
     expect(modules.map(m => m.key)).toEqual(["crm", "erp"]);
   });
 
+  it("requires verified access for Prospector", () => {
+    const granted = authorizedLauncherModules({
+      audience: "business", enabledModules: ["prospector"], permittedModules: ["prospector"],
+    });
+    expect(granted.map(module => module.route)).toEqual(["/prospector"]);
+    expect(authorizedLauncherModules({
+      audience: "business", enabledModules: ["prospector"], permittedModules: [],
+    })).toEqual([]);
+  });
+
   it("denies module links if either permission list is empty", () => {
     expect(authorizedLauncherModules({
       audience: "business", enabledModules: ["crm"], permittedModules: [],
