@@ -2,13 +2,13 @@ import { Router, type IRouter } from "express";
 import { z } from "zod";
 import { and, asc, desc, eq } from "drizzle-orm";
 import {
-  db,
-  vendiMissionsTable,
   vendiMissionEventsTable,
+  vendiMissionsTable,
 } from "@workspace/db";
 import { listVendiToolDomains, listVendiTools } from "../services/vendi-tool-registry.js";
 import { executeVendiMission } from "../services/vendi-mission-supervisor.js";
-import { getVendiPostgresErrorCode } from "../lib/vendi-db-error.js";
+import { withVendiTenantContext } from "../services/vendi-db-context.js";
+import { getPostgresDiagnostic } from "./vendi-db-errors.js";
 
 const router: IRouter = Router();
 
@@ -56,27 +56,51 @@ router.post("/vendi/missions", async (req, res) => {
 
   let mission: typeof vendiMissionsTable.$inferSelect;
   try {
-    const [created] = await db.insert(vendiMissionsTable).values({
-      tenantId,
-      source: parsed.data.source,
-      sourceRefId: parsed.data.sourceRefId ?? null,
-      objective: parsed.data.objective,
-      priority: parsed.data.priority,
-      riskPolicy: parsed.data.riskPolicy,
-      context: parsed.data.context ?? null,
-      createdByUserId: req.user?.id ?? null,
-      status: "planning",
-    }).returning();
-    if (!created) throw new Error("MISSION_INSERT_RETURNED_EMPTY");
+    const created = await withVendiTenantContext(tenantId, async (tx) => {
+      const [inserted] = await tx
+        .insert(vendiMissionsTable)
+        .values({
+          tenantId,
+          source: parsed.data.source,
+          sourceRefId: parsed.data.sourceRefId ?? null,
+          objective: parsed.data.objective,
+          priority: parsed.data.priority,
+          riskPolicy: parsed.data.riskPolicy,
+          context: parsed.data.context ?? null,
+          createdByUserId: req.user?.id ?? null,
+          status: parsed.data.autoExecute ? "queued" : "planning",
+        })
+        .returning();
+      if (!inserted) throw new Error("MISSION_INSERT_RETURNED_EMPTY");
+
+      if (parsed.data.autoExecute) {
+        await tx.insert(vendiMissionEventsTable).values({
+          tenantId,
+          missionId: inserted.id,
+          sequence: 1,
+          type: "queued",
+          status: "pending",
+          output: { reason: "automatic_execution_requested" },
+        });
+      }
+      return inserted;
+    });
     mission = created;
   } catch (error: unknown) {
-    const dbErrorCode = getVendiPostgresErrorCode(error);
-    // The wrapped Drizzle message contains SQL and bound mission data; never log it.
+    const diagnostic = getPostgresDiagnostic(error);
+    // Never log Drizzle's wrapper message: it includes SQL and bound values.
     console.error("[vendi] mission_create_failed", {
-      tenantId,
-      code: dbErrorCode ?? "UNKNOWN",
+      requestId: typeof req.id === "string" || typeof req.id === "number"
+        ? String(req.id).slice(0, 64)
+        : undefined,
+      code: diagnostic.code ?? "UNKNOWN",
+      errorTypes: diagnostic.errorTypes,
+      schema: diagnostic.schema,
+      table: diagnostic.table,
+      column: diagnostic.column,
+      constraint: diagnostic.constraint,
     });
-    const schemaMissing = dbErrorCode === "42P01" || dbErrorCode === "42703";
+    const schemaMissing = diagnostic.code === "42P01" || diagnostic.code === "42703";
     res.status(503).json({
       error: schemaMissing
         ? "A estrutura de missões não está disponível. Contate o administrador para revisar as migrations."
@@ -90,29 +114,7 @@ router.post("/vendi/missions", async (req, res) => {
     res.status(201).json({ mission });
     return;
   }
-
-  try {
-    const execution = await executeVendiMission({
-      tenantId,
-      missionId: mission.id,
-    });
-    res.status(execution.status === "paused_approval" ? 202 : 201).json({
-      missionId: mission.id,
-      execution,
-    });
-  } catch (error: any) {
-    await db.update(vendiMissionsTable)
-      .set({
-        status: "failed",
-        lastError: error?.message ?? "VENDI_MISSION_FAILED",
-        updatedAt: new Date(),
-      })
-      .where(and(
-        eq(vendiMissionsTable.id, mission.id),
-        eq(vendiMissionsTable.tenantId, tenantId),
-      ));
-    res.status(500).json({ missionId: mission.id, error: error?.message ?? "VENDI_MISSION_FAILED" });
-  }
+  res.status(202).json({ missionId: mission.id, status: "queued" });
 });
 
 router.post("/vendi/missions/:id/run", async (req, res) => {
@@ -162,12 +164,12 @@ router.get("/vendi/missions", async (req, res) => {
     res.status(401).json({ error: "Tenant não resolvido" });
     return;
   }
-  const rows = await db
+  const rows = await withVendiTenantContext(tenantId, (tx) => tx
     .select()
     .from(vendiMissionsTable)
     .where(eq(vendiMissionsTable.tenantId, tenantId))
     .orderBy(desc(vendiMissionsTable.createdAt))
-    .limit(100);
+    .limit(100));
   res.json(rows);
 });
 
@@ -177,26 +179,30 @@ router.get("/vendi/missions/:id", async (req, res) => {
     res.status(401).json({ error: "Tenant não resolvido" });
     return;
   }
-  const [mission] = await db
-    .select()
-    .from(vendiMissionsTable)
-    .where(and(
-      eq(vendiMissionsTable.id, String(req.params.id)),
-      eq(vendiMissionsTable.tenantId, tenantId),
-    ))
-    .limit(1);
+  const { mission, events } = await withVendiTenantContext(tenantId, async (tx) => {
+    const [mission] = await tx
+      .select()
+      .from(vendiMissionsTable)
+      .where(and(
+        eq(vendiMissionsTable.id, String(req.params.id)),
+        eq(vendiMissionsTable.tenantId, tenantId),
+      ))
+      .limit(1);
+    if (!mission) return { mission: undefined, events: [] };
+    const events = await tx
+      .select()
+      .from(vendiMissionEventsTable)
+      .where(and(
+        eq(vendiMissionEventsTable.missionId, mission.id),
+        eq(vendiMissionEventsTable.tenantId, tenantId),
+      ))
+      .orderBy(asc(vendiMissionEventsTable.sequence));
+    return { mission, events };
+  });
   if (!mission) {
     res.status(404).json({ error: "Missão não encontrada" });
     return;
   }
-  const events = await db
-    .select()
-    .from(vendiMissionEventsTable)
-    .where(and(
-      eq(vendiMissionEventsTable.missionId, mission.id),
-      eq(vendiMissionEventsTable.tenantId, tenantId),
-    ))
-    .orderBy(asc(vendiMissionEventsTable.sequence));
   res.json({ mission, events });
 });
 

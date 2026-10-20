@@ -96,6 +96,7 @@ async function api<T>(url: string, init?: RequestInit): Promise<T> {
 }
 
 const STATUS_LABELS: Record<string, string> = {
+  queued: "Na fila",
   planning: "Planejando",
   running: "Executando",
   paused_approval: "Aguardando aprovação",
@@ -104,6 +105,7 @@ const STATUS_LABELS: Record<string, string> = {
 };
 
 const STATUS_VARIANT: Record<string, "default" | "secondary" | "outline" | "destructive"> = {
+  queued: "outline",
   planning: "secondary",
   running: "default",
   paused_approval: "outline",
@@ -153,12 +155,12 @@ export default function VendiOperations() {
     enabled: Boolean(missionId),
     refetchInterval: (query) => {
       const status = (query.state.data as MissionDetail | undefined)?.mission.status;
-      return status === "running" || status === "planning" || status === "paused_approval" ? 2000 : false;
+      return status === "queued" || status === "running" || status === "planning" || status === "paused_approval" ? 2000 : false;
     },
   });
 
   const createMission = useMutation({
-    mutationFn: () => api<{ missionId: string; execution?: { status?: string } }>("/api/vendi/missions", {
+    mutationFn: () => api<{ missionId: string; status?: string; execution?: { status?: string } }>("/api/vendi/missions", {
       method: "POST",
       body: JSON.stringify({
         objective,
@@ -176,7 +178,9 @@ export default function VendiOperations() {
         title: "Missão criada",
         description: data.execution?.status === "paused_approval"
           ? "O Vendi executou até encontrar uma ação que precisa da sua aprovação."
-          : "O Vendi iniciou a operação.",
+          : data.status === "queued"
+            ? "A missão foi salva e entrou na fila de execução do Vendi."
+            : "O Vendi iniciou a operação.",
       });
     },
     onError: (error: Error) => toast({ title: "Não foi possível criar a missão", description: error.message, variant: "destructive" }),
@@ -353,7 +357,7 @@ export default function VendiOperations() {
                   </div>
                   <Button
                     variant="outline"
-                    disabled={runMission.isPending || detail.mission.status === "completed"}
+                    disabled={runMission.isPending || ["queued", "running", "completed"].includes(detail.mission.status)}
                     onClick={() => runMission.mutate(detail.mission.id)}
                   >
                     {runMission.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Play className="mr-2 h-4 w-4" />}

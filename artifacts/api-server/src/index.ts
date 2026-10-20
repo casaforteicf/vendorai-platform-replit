@@ -26,6 +26,7 @@ import { startVieIntelligenceCycle } from "./services/vie-intelligence-cycle.js"
 import { startContinuousAuditAgent } from "./services/continuous-audit-agent.js";
 import { startProductionSentinel } from "./routes/dev_agent_operational_context.js";
 import { applyPendingMigrations, pool } from "@workspace/db";
+import { startVendiMissionQueueWorker } from "./services/vendi-mission-queue.js";
 import { shouldStartBackgroundJobs } from "./lib/background-jobs.js";
 
 const rawPort = process.env["PORT"];
@@ -183,6 +184,7 @@ async function start() {
       return;
     }
 
+    startVendiMissionQueueWorker(logger);
     startScheduler(logger);
     startMetaCustomAudienceReconcileScheduler(logger);
     startMediaVideoBatchRunner(logger);
