@@ -385,6 +385,7 @@ export function OrganicCalendarPublisher({ pathname }: { pathname: string }) {
                 const publication = publicationByCalendarId.get(item.id);
                 const isPublished = publication?.status === "published" || item.status === "publicado";
                 const isQueued = publication?.status === "queued";
+                const isScheduled = publication?.status === "scheduled";
                 const isPublishing = publication?.status === "publishing";
                 const isFailed = publication?.status === "failed";
                 const disabled = loading || loadError || busy !== null || isPublished || isQueued || isPublishing || publication?.status === "scheduled" || (isFacebook && !facebook?.ready);
@@ -399,6 +400,7 @@ export function OrganicCalendarPublisher({ pathname }: { pathname: string }) {
                       <p className="mt-1 text-sm font-medium truncate">{item.temaSugerido}</p>
                       {isPublished && <p className="mt-1 text-xs text-emerald-700 flex items-center gap-1"><CheckCircle2 className="h-3.5 w-3.5" />Publicado e confirmado pelo canal</p>}
                       {isQueued && <p className="mt-1 text-xs text-amber-700 flex items-center gap-1"><Clock3 className="h-3.5 w-3.5" />Aguardando processamento</p>}
+                      {isScheduled && <p className="mt-1 text-xs text-blue-700 flex items-center gap-1"><Clock3 className="h-3.5 w-3.5" />Publicação agendada</p>}
                       {isPublishing && <p className="mt-1 text-xs text-blue-700 flex items-center gap-1"><Loader2 className="h-3.5 w-3.5 animate-spin" />Publicando no canal</p>}
                       {isFailed && <p className="mt-1 text-xs text-destructive flex items-center gap-1"><AlertCircle className="h-3.5 w-3.5" />A tentativa falhou; a peça continua aprovada</p>}
                     </div>
@@ -409,8 +411,8 @@ export function OrganicCalendarPublisher({ pathname }: { pathname: string }) {
                       </Button>
                     ) : (
                       <Button size="sm" variant={isPublished ? "outline" : "default"} disabled={disabled} onClick={() => void publish(item)}>
-                        {busy === item.id || isPublishing ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : isPublished ? <CheckCircle2 className="mr-1.5 h-3.5 w-3.5" /> : isQueued ? <Clock3 className="mr-1.5 h-3.5 w-3.5" /> : <Send className="mr-1.5 h-3.5 w-3.5" />}
-                        {isPublished ? "Publicado" : isPublishing ? "Publicando" : isQueued ? "Na fila" : isFacebook && !facebook?.ready ? "Meta pendente" : "Publicar"}
+                        {busy === item.id || isPublishing ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : isPublished ? <CheckCircle2 className="mr-1.5 h-3.5 w-3.5" /> : isQueued || isScheduled ? <Clock3 className="mr-1.5 h-3.5 w-3.5" /> : <Send className="mr-1.5 h-3.5 w-3.5" />}
+                        {isPublished ? "Publicado" : isPublishing ? "Publicando" : isQueued ? "Na fila" : isScheduled ? "Agendada" : isFacebook && !facebook?.ready ? "Meta pendente" : "Publicar"}
                       </Button>
                     )}
                   </div>
