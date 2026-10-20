@@ -9,7 +9,7 @@ export const ui20RouteGroups: Record<Ui20Service, readonly string[]> = {
   intelligence: ["/vkg", "/scout", "/relatorios"],
   works: ["/obras", "/insumos", "/composicoes"],
   library: ["/midias"],
-  marketing: ["/marketing", "/content", "/ads", "/analytics", "/campanhas", "/diagnostico-planejamento"],
+  marketing: ["/marketing", "/content", "/content-studio", "/content-autopilot", "/ads", "/analytics", "/campanhas", "/diagnostico-planejamento"],
   erp: ["/erp", "/estoque", "/entregas"],
   ia: ["/agents", "/vendi", "/base-conhecimento", "/brain"],
   marketplace: ["/marketplace"],
