@@ -276,7 +276,7 @@ export function MediaPlanFailedRetryBridge() {
             itemTipo: "livre",
             itemLabel: item.temaSugerido.slice(0, 180),
             modo: "unico",
-            destinoClique: "formulario_lead",
+            destinoClique: "whatsapp",
             orcamentoDiario: "0.00",
             segmentacao: { mediaPlanDraft: { source: "media-plan", requiresBudgetBeforePublish: true, generatedAt: new Date().toISOString() } },
             creativeDraft: { headlines: [hook, item.temaSugerido, campaign.produtoServico].filter(Boolean), descriptions: [caption, campaign.mensagemCentral].filter(Boolean), imagens: images.slice(0, 10) },
