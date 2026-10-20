@@ -53,20 +53,36 @@ router.post("/vendi/missions", async (req, res) => {
     return;
   }
 
-  const [mission] = await db.insert(vendiMissionsTable).values({
-    tenantId,
-    source: parsed.data.source,
-    sourceRefId: parsed.data.sourceRefId ?? null,
-    objective: parsed.data.objective,
-    priority: parsed.data.priority,
-    riskPolicy: parsed.data.riskPolicy,
-    context: parsed.data.context ?? null,
-    createdByUserId: req.user?.id ?? null,
-    status: "planning",
-  }).returning();
-
-  if (!mission) {
-    res.status(500).json({ error: "Não foi possível criar a missão" });
+  let mission: typeof vendiMissionsTable.$inferSelect;
+  try {
+    const [created] = await db.insert(vendiMissionsTable).values({
+      tenantId,
+      source: parsed.data.source,
+      sourceRefId: parsed.data.sourceRefId ?? null,
+      objective: parsed.data.objective,
+      priority: parsed.data.priority,
+      riskPolicy: parsed.data.riskPolicy,
+      context: parsed.data.context ?? null,
+      createdByUserId: req.user?.id ?? null,
+      status: "planning",
+    }).returning();
+    if (!created) throw new Error("MISSION_INSERT_RETURNED_EMPTY");
+    mission = created;
+  } catch (error: unknown) {
+    const dbError = error as { code?: string; message?: string };
+    // Keep SQL diagnostics in server logs; never expose schema details to users.
+    console.error("[vendi] mission_create_failed", {
+      tenantId,
+      code: dbError?.code ?? "UNKNOWN",
+      reason: dbError?.message ?? "unknown",
+    });
+    const schemaMissing = dbError?.code === "42P01" || dbError?.code === "42703";
+    res.status(503).json({
+      error: schemaMissing
+        ? "A estrutura de missões não está disponível. Contate o administrador para revisar as migrations."
+        : "Não foi possível salvar a missão. Tente novamente ou contate o suporte.",
+      code: schemaMissing ? "VENDI_MISSIONS_SCHEMA_UNAVAILABLE" : "VENDI_MISSION_CREATE_FAILED",
+    });
     return;
   }
 

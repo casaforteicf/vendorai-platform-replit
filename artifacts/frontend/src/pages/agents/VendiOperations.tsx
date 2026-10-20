@@ -86,7 +86,12 @@ async function api<T>(url: string, init?: RequestInit): Promise<T> {
     headers: { ...headers(), ...(init?.headers ?? {}) },
   });
   const body = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(body?.error || `Erro ${res.status}`);
+  if (!res.ok) {
+    const message = typeof body?.error === "string"
+      ? body.error
+      : `Não foi possível concluir a operação (HTTP ${res.status}).`;
+    throw new Error(message);
+  }
   return body as T;
 }
 
