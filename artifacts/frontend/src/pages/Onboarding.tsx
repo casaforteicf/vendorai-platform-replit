@@ -222,11 +222,22 @@ export default function Onboarding() {
       return;
     }
 
-    await apiPost("/api/business-profiles", {
-      tenantId: user.tenantId,
-      razaoSocial: nomeEmpresa,
-      ...brandPayload,
-    });
+    try {
+      await apiPost("/api/business-profiles", {
+        tenantId: user.tenantId,
+        razaoSocial: nomeEmpresa,
+        ...brandPayload,
+      });
+    } catch (error) {
+      // Another onboarding request may have created this tenant's unique profile.
+      // Recover only from a confirmed duplicate; never conceal other failures.
+      if (!(error instanceof Error) || !error.message.includes("Tenant already has a business profile")) {
+        throw error;
+      }
+      const existing = await apiGet(`/api/tenants/${user.tenantId}/business-profile`) as { id?: string } | null;
+      if (!existing?.id) throw error;
+      await apiPatch(`/api/business-profiles/${existing.id}`, brandPayload);
+    }
   }
 
   // ── Step handlers ───────────────────────────────────────────────────────────
