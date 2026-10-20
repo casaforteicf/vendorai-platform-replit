@@ -14,3 +14,9 @@
 6. Somente após testes isolados, homologação e aprovação, considerar merge/publicação.
 
 **Não classificar como resolvido em backend.** Este PR contém mitigação de interface e este registro técnico, mas não assegura idempotência distribuída.
+
+## Revisão do esquema e janela segura — 20/10/2026
+- Esquema `lib/db/src/schema/social_publications.ts`: `metadata` é JSONB; não há coluna relacional exclusiva de item de calendário no modelo examinado.
+- Handler cria a publicação antes de atualizar o JSONB com `calendarItemId`. Um índice único apenas sobre a expressão JSONB precisaria avaliar registros legados e tratamento do segundo update, podendo deixar registro órfão.
+- **Nenhuma migration foi criada ou executada** nesta etapa. É necessário primeiro auditar duplicatas existentes no banco, confirmar todos os produtores da tabela e definir reserva atômica antes da criação.
+- A interface agora apresenta o status `scheduled` como **Agendada**, nunca como botão de publicação livre.
