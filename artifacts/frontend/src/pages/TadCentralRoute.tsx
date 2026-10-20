@@ -89,7 +89,7 @@ export default function TadCentralRoute() {
         Não foi possível conferir os serviços habilitados. Nenhum acesso adicional foi liberado.
       </div>}
       <TadCentral audience="business" enabledModules={enabled}
-        permittedModules={permitted} previewModules={enabled}
+        permittedModules={permitted}
         companyName={companyName} />
     </>
   );
