@@ -453,8 +453,24 @@ router.get("/tenants/:tenantId/pipeline-stages", async (req, res) => {
   if (!hasAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
   const pipeline = parsePipeline(req.query.pipeline);
-  const stages = await ensureSystemStages(tenantId, pipeline);
-  return res.json(stages);
+  try {
+    const stages = await ensureSystemStages(tenantId, pipeline);
+    res.setHeader("Cache-Control", "no-store");
+    return res.json(stages);
+  } catch (error) {
+    // Preserve the real failure: do not hide a database/migration problem by
+    // returning an empty pipeline. Correlate client failures with server logs.
+    const requestId = String(req.headers["x-request-id"] ?? req.id ?? "unavailable");
+    (req.log ?? logger).error(
+      { err: error, tenantId, pipeline, requestId },
+      "pipeline-stages: failed to list or seed stages",
+    );
+    return res.status(500).json({
+      error: "Não foi possível carregar as etapas do pipeline.",
+      code: "PIPELINE_STAGES_LOAD_FAILED",
+      requestId,
+    });
+  }
 });
 
 router.post("/tenants/:tenantId/pipeline-stages", async (req, res) => {
