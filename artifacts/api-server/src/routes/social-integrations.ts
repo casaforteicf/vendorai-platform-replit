@@ -1,5 +1,5 @@
 import { Router, type IRouter, type Request } from "express";
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, sql } from "drizzle-orm";
 import { z } from "zod/v4";
 import { contentCalendarItemsTable, db, socialPublicationsTable } from "@workspace/db";
 import { authenticate } from "../middlewares/auth.js";
@@ -243,6 +243,23 @@ router.post("/tenants/:tenantId/social-publications/:provider", authenticate, as
     if (!calendarItem) return res.status(404).json({ error: "calendar_item_not_found" });
     if (parsed.data.contentGenerationId && calendarItem.contentGenerationId && calendarItem.contentGenerationId !== parsed.data.contentGenerationId) {
       return res.status(409).json({ error: "calendar_generation_mismatch" });
+    }
+    // Best-effort duplicate protection for existing calendar publications.
+    // NOT atomic across concurrent requests: database-level idempotency is still required.
+    const [existingPublication] = await db.select({ id: socialPublicationsTable.id, status: socialPublicationsTable.status })
+      .from(socialPublicationsTable)
+      .where(and(
+        eq(socialPublicationsTable.tenantId, tenantId),
+        eq(socialPublicationsTable.provider, selected),
+        sql`${socialPublicationsTable.metadata} @> ${JSON.stringify({ calendarItemId: parsed.data.calendarItemId })}::jsonb`,
+      ))
+      .limit(1);
+    if (existingPublication) {
+      return res.status(409).json({
+        error: "calendar_publication_already_exists",
+        publicationId: existingPublication.id,
+        status: existingPublication.status,
+      });
     }
   }
 
