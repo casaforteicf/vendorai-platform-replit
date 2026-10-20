@@ -15,7 +15,7 @@ import {
   Handshake, Shield, Cpu, Bug, Coins, Wrench, Pill, Home, Car, HelpCircle, WalletCards, Camera, KanbanSquare, ClipboardCheck, FileCheck, UserCog, Instagram,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { ui20ServiceForPath } from "@/lib/ui20ServiceRoutes";
+import { ui20ServiceForPath, ui20SidebarServiceForPath } from "@/lib/ui20ServiceRoutes";
 import { getUi20VisibleServices } from "@/lib/ui20ServiceVisibility";
 import { Button } from "@/components/ui/button";
 import logoFull from "/logo-full-light.svg";
@@ -860,7 +860,7 @@ export function SidebarLayout({ children, arqdorVisible = false }: { children: R
       ];
       const permittedServices = getUi20VisibleServices({ modules: tenantNavModules, isAdmin: isTenantAdmin, arqdorEligible: arqdorVisible, loading: !tenantNavModules });
       const detected = ui20ServiceForPath(path);
-      const selected = serviceGroups.find(group => group.id === ((path === "/midias" || path.startsWith("/midias/")) ? "marketing" : detected)) ?? serviceGroups[0];
+      const selected = serviceGroups.find(group => group.id === ui20SidebarServiceForPath(path)) ?? serviceGroups[0];
       const canShowService = permittedServices.has(selected.id as Parameters<typeof permittedServices.has>[0]);
       const unique = (canShowService ? selected.links : []).filter((item, index, all) => all.findIndex((other) => other.href === item.href) === index);
       return (
