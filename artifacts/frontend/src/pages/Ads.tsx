@@ -1300,7 +1300,7 @@ export default function Ads() {
               </Select>
               {form.destinoClique === "whatsapp" && (
                 <p className="mt-1 text-xs text-muted-foreground">
-                  Padrão Vendor.ai: o anúncio abre o número definido para entrada de anúncios e prepara a mensagem para o lead enviar.
+                  Padrão Vendor.ai: o anúncio abre o número de entrada e exibe a autorização em texto discreto; a mensagem preenchida precisa ser enviada pelo lead.
                 </p>
               )}
             </div>
