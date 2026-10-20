@@ -4,6 +4,7 @@ describe("UI20 route resolution", () => {
   it.each([
     ["/tad", "home"], ["/dashboard", "home"], ["/leads", "crm"], ["/pipeline-operacional", "crm"],
     ["/marketing/instagram", "marketing"], ["/content", "marketing"],
+    ["/content-studio/video", "marketing"], ["/content-autopilot", "marketing"],
     ["/erp", "erp"], ["/erp/titulos", "erp"], ["/estoque", "erp"], ["/agents/config", "ia"], ["/marketplace", "marketplace"],
     ["/arch/projetos", "arqdor"], ["/faq", "support"], ["/configuracoes", "settings"],
     ["/leads?tab=ativos", "crm"],
@@ -11,6 +12,7 @@ describe("UI20 route resolution", () => {
   it("does not match accidental partial prefixes", () => {
     expect(ui20ServiceForPath("/archived")).toBeNull();
     expect(ui20ServiceForPath("/marketplace-new")).toBeNull();
+    expect(ui20ServiceForPath("/content-studio-old")).toBeNull();
   });
 });
 
