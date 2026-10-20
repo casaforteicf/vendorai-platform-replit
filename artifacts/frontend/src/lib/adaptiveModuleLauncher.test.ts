@@ -65,3 +65,47 @@ describe("TAD module launcher access", () => {
       .toEqual({ type: "selector" });
   });
 });
+
+
+describe("UX-UNIFY-01: regressão de visibilidade e navegação", () => {
+  it("não oferece módulo não contratado mesmo se usuário tiver permissão", () => {
+    expect(authorizedLauncherModules({
+      audience: "business", enabledModules: ["crm"], permittedModules: ["crm", "marketing", "erp"],
+    }).map(m => m.key)).toEqual(["crm"]);
+  });
+
+  it("não oferece módulo contratado sem permissão efetiva do usuário", () => {
+    expect(authorizedLauncherModules({
+      audience: "business", enabledModules: ["crm", "erp"], permittedModules: ["crm"],
+    }).map(m => m.key)).toEqual(["crm"]);
+  });
+
+  it("não expõe Portal do Cliente externo ao público empresarial", () => {
+    expect(authorizedLauncherModules({
+      audience: "business", enabledModules: ["portal_cliente"], permittedModules: ["portal_cliente"],
+    })).toEqual([]);
+    expect(authorizedLauncherModules({
+      audience: "consumer", enabledModules: ["portal_cliente"], permittedModules: ["portal_cliente"],
+    }).map(m => m.key)).toEqual(["portal_cliente"]);
+  });
+
+  it("não redireciona automaticamente para rota nula", () => {
+    for (const key of ["pdv", "parceiros"] as const) {
+      const modules = authorizedLauncherModules({
+        audience: "business", enabledModules: [key], permittedModules: [key],
+      });
+      expect(resolveLauncherStart({ modules, preference: "direct", principalModule: key }))
+        .toEqual({ type: "selector" });
+    }
+  });
+
+  it("último módulo não autorizado não pode ser reaberto automaticamente", () => {
+    const modules = authorizedLauncherModules({
+      audience: "business", enabledModules: ["crm"], permittedModules: ["crm"],
+    });
+    expect(resolveLauncherStart({ modules, preference: "last", lastModule: "erp" }))
+      .toEqual({ type: "selector" });
+    expect(resolveLauncherStart({ modules, preference: "last", lastModule: "crm" }))
+      .toEqual({ type: "navigate", route: "/leads" });
+  });
+});
