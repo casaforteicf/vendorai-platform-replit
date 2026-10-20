@@ -143,6 +143,7 @@ export default function MarketingInstagram() {
 
   const {
     data: calendar = [],
+    isLoading: calendarLoading,
     isError: calendarError,
   } = useQuery<CalendarItem[]>({
     queryKey: ["instagram-content-calendar", tenantId],
@@ -212,7 +213,15 @@ export default function MarketingInstagram() {
           ? "Permissão de publicação incompleta"
           : "Conta não conectada";
 
-  const nextAction = connectionError
+  const nextAction = connectionLoading
+    ? {
+        title: "Verificando conexão do Instagram",
+        description: "Consultando as permissões de publicação. Aguarde a verificação antes de conectar outra conta.",
+        button: "Abrir integrações",
+        href: "/configuracoes?tab=integracoes",
+        tone: "warning" as const,
+      }
+    : connectionError
     ? {
         title: "Verificar serviço do Instagram",
         description: "O VendorAI não conseguiu consultar a integração agora. Não trate isso como conta desconectada até a API responder novamente.",
@@ -228,7 +237,15 @@ export default function MarketingInstagram() {
           href: "/configuracoes?tab=integracoes",
           tone: "warning" as const,
         }
-      : websiteError
+      : websiteLoading
+        ? {
+            title: "Verificando destino de conversão",
+            description: "Consultando o site configurado para a empresa.",
+            button: "Abrir configurações",
+            href: "/configuracoes",
+            tone: "warning" as const,
+          }
+        : websiteError
         ? {
             title: "Verificar destino de conversão",
             description: "A conexão do Instagram está pronta, mas o site oficial não pôde ser consultado agora.",
@@ -244,7 +261,15 @@ export default function MarketingInstagram() {
               href: "/configuracoes",
               tone: "warning" as const,
             }
-          : calendarError
+          : calendarLoading
+            ? {
+                title: "Carregando calendário",
+                description: "Consultando a fila antes de sugerir uma nova publicação.",
+                button: "Abrir Gerador",
+                href: "/content",
+                tone: "warning" as const,
+              }
+            : calendarError
             ? {
                 title: "Verificar calendário",
                 description: "Instagram e destino estão prontos, mas a fila de publicações não pôde ser carregada agora.",
