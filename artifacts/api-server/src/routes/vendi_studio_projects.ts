@@ -1,10 +1,28 @@
 import { Router, type IRouter } from "express";
 import { z } from "zod";
 import { and, desc, eq } from "drizzle-orm";
-import { db, vendiStudioProjectsTable } from "@workspace/db";
+import { db, vendiStudioProjectsTable, tenantNavModulesTable } from "@workspace/db";
 
 // Mounted under the existing authenticated, access-scoped routes tree.
 const router: IRouter = Router();
+// Pilot access: fail closed unless explicitly enabled for a tenant admin.
+router.use(async (req: any, res, next) => {
+  const tenantId = req.user?.tenantId;
+  if (!tenantId || !req.user?.id) return void res.status(403).json({ error: "Contexto inválido" });
+  const admin = req.user?.platformRole === "super_admin" || req.user?.platformRole === "tenant_admin";
+  if (!admin) return void res.status(403).json({ error: "Módulo restrito durante o piloto" });
+  try {
+    const [grant] = await db.select({ enabled: tenantNavModulesTable.isEnabled })
+      .from(tenantNavModulesTable).where(and(
+        eq(tenantNavModulesTable.tenantId, tenantId),
+        eq(tenantNavModulesTable.moduleKey, "vendi_studio"),
+      )).limit(1);
+    if (!grant?.enabled) return void res.status(403).json({ error: "Vendi Studio não habilitado para este tenant" });
+    next();
+  } catch {
+    res.status(503).json({ error: "Não foi possível validar o acesso ao módulo" });
+  }
+});
 const kinds = ["web_app","mobile_app","website","book","ebook","course","agent","design","media","other"] as const;
 const createSchema = z.object({
   title: z.string().trim().min(1).max(160),
