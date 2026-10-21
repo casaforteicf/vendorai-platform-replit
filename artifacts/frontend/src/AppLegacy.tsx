@@ -17,6 +17,7 @@ const SidebarLayout      = lazy(() => import("@/components/layout/SidebarLayout"
 const DemoBanner         = lazy(() => import("@/components/DemoBanner").then((m) => ({ default: m.DemoBanner })));
 
 // ── Lazy page imports (code splitting — each page loads only when navigated to) ──
+const VendiStudio = lazy(() => import("@/pages/VendiStudio"));
 const VideoHome          = lazy(() => import("@/pages/video/VideoHome"));
 const VideoProjectDirectPage = lazy(() => import("@/pages/video/VideoProjectDirectPage"));
 const Login              = lazy(() => import("@/pages/Login"));
@@ -655,6 +656,8 @@ function AppRoutes() {
         <Route path="/dashboard"><RedirectPage to="/tad" /></Route>
         <Route path="/dashboard/executivo"><ProtectedRoute component={Dashboard} /></Route>
         <Route path="/tad"><FullscreenProtectedRoute component={TadCentralRoute} /></Route>
+        <Route path="/vendi-studio/projects/:id"><FullscreenProtectedRoute component={VendiStudio} /></Route>
+        <Route path="/vendi-studio"><FullscreenProtectedRoute component={VendiStudio} /></Route>
         <Route path="/trabalho/:id"><ProtectedRoute component={LeadWorkspace} /></Route>
         <Route path="/trabalho"><ProtectedRoute component={WorkCenterHome} /></Route>
         <Route path="/leads/import-config"><ProtectedRoute component={ImportConfig} /></Route>
