@@ -1,5 +1,6 @@
 import { Router, type IRouter } from "express";
 import { z } from "zod";
+import { canUseVendiStudio } from "../lib/vendi-studio-policy.js";
 import { and, desc, eq } from "drizzle-orm";
 import { db, vendiStudioProjectsTable, tenantNavModulesTable } from "@workspace/db";
 
@@ -9,15 +10,14 @@ const router: IRouter = Router();
 router.use(async (req: any, res, next) => {
   const tenantId = req.user?.tenantId;
   if (!tenantId || !req.user?.sub) return void res.status(403).json({ error: "Contexto inválido" });
-  const admin = req.user?.platformRole === "super_admin" || req.user?.platformRole === "tenant_admin";
-  if (!admin) return void res.status(403).json({ error: "Módulo restrito durante o piloto" });
+
   try {
     const [grant] = await db.select({ enabled: tenantNavModulesTable.isEnabled })
       .from(tenantNavModulesTable).where(and(
         eq(tenantNavModulesTable.tenantId, tenantId),
         eq(tenantNavModulesTable.moduleKey, "vendi_studio"),
       )).limit(1);
-    if (!grant?.enabled) return void res.status(403).json({ error: "Vendi Studio não habilitado para este tenant" });
+    if (!canUseVendiStudio(req.user, grant?.enabled === true)) return void res.status(403).json({ error: "Vendi Studio indisponível ou acesso não autorizado" });
     next();
   } catch {
     res.status(503).json({ error: "Não foi possível validar o acesso ao módulo" });
