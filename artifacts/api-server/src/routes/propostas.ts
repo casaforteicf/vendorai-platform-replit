@@ -33,6 +33,7 @@ import {
   roundOrcamentoNumber,
 } from "../lib/orcamento-numbers.js";
 import { auditProposalBudget, calculateBudgetItemsTotal } from "../lib/budget-integrity.js";
+import { buildContractualAnnexPreview } from "../lib/contractual-annex-preview.js";
 import { matchesApprovedBudget } from "../lib/budget-import-integrity.js";
 import { recordIntelligenceEvent } from "../services/customer-intelligence-history.js";
 import {
@@ -1418,6 +1419,26 @@ router.get(["/propostas/:id/pdf", "/propostas/:id/print-document"], async (req, 
     logger.error({ err: error, propostaId }, "propostas: failed to generate PDF");
     res.status(500).json({ error: "Não foi possível gerar o PDF do orçamento." });
   }
+});
+
+// Read-only dossiê PRELIMINAR; contract approval/issue requires separate verified workflow.
+router.get("/propostas/:id/anexos/previa", async (req, res) => {
+  const [proposta] = await db.select().from(propostasTable)
+    .where(eq(propostasTable.id, String(req.params.id))).limit(1);
+  if (!proposta) { res.status(404).json({ error: "Proposta não encontrada." }); return; }
+  if (req.user?.platformRole !== "super_admin" && proposta.tenantId !== req.user?.tenantId) {
+    res.status(403).json({ error: "Acesso negado." }); return;
+  }
+  if (!(await canAccessProposalOwnership(req, proposta))) {
+    res.status(403).json({ error: "Acesso negado à proposta." }); return;
+  }
+  res.setHeader("Cache-Control", "no-store");
+  res.json(buildContractualAnnexPreview({
+    id: proposta.id, numero: proposta.numero, status: proposta.status,
+    acceptedAt: proposta.acceptedAt,
+    valorTotal: proposta.valorTotal, itens: proposta.itens as PropostaItem[],
+    apresentacao: proposta.apresentacao,
+  }));
 });
 
 router.patch("/propostas/:id", async (req, res) => {
