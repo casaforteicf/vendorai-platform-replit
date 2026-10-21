@@ -1507,9 +1507,19 @@ router.get("/propostas/:id/anexos/fontes-financeiras", async (req, res) => {
   const reconciliation = amountsValid && proposta.valorTotal != null && Number.isFinite(Number(proposta.valorTotal))
     ? reconcileAnnexTotals(Number(proposta.valorTotal), receivables.map((t) => Number(t.valorOriginal)))
     : null;
+  // Always order before presenting a financial sequence; never infer the
+  // contractual entry amount from the first operational balance.
+  medicoesIdentificadas.sort((a, b) => String(a.data ?? "").localeCompare(String(b.data ?? "")) || a.id.localeCompare(b.id));
   const measurementReconciliation = reconcileAnnexMeasurements(medicoesIdentificadas);
+  const amortizacaoPendente = {
+    saldoDeEntradaVerificado: false,
+    motivo: "O valor original da entrada precisa ser extraído de uma revisão contratual assinada, não do saldo operacional.",
+    valorAmortizadoObservado: measurementReconciliation.amortizedEntryTotal,
+    totalMedicoesConsultadas: measurementReconciliation.measurementsCount,
+    emissaoAutorizada: false,
+  };
   res.json({ propostaId: proposta.id, obraId: obra.id,
-    reconciliation, measurementReconciliation, titulos, medicoes: medicoesIdentificadas, linhasBase,
+    reconciliation, measurementReconciliation, amortizacaoPendente, titulos, medicoes: medicoesIdentificadas, linhasBase,
     pendencias: [...checkMeasurementArithmetic(medicoesIdentificadas), {
       code: "CONCILIACAO_CONTRATUAL_PENDENTE",
       message: "Títulos e medições são dados operacionais, não parcelas contratuais comprovadas. A revisão assinada e o fechamento financeiro ainda precisam de conciliação.",
