@@ -18,6 +18,10 @@ import {
   leadBriefingsTable,
   obrasTable,
   obraFinanceiroTitulosTable,
+  obraEtapasTable,
+  obraEtapaFasesTable,
+  obraEtapaFaseMedicoesTable,
+  obraOrcamentosTable,
   type PropostaItem,
 } from "@workspace/db";
 import { dispatchVendaWebhook } from "../services/erp-webhook.js";
@@ -1464,11 +1468,50 @@ router.get("/propostas/:id/anexos/fontes-financeiras", async (req, res) => {
     eq(obraFinanceiroTitulosTable.obraId, obra.id),
     eq(obraFinanceiroTitulosTable.tenantId, proposta.tenantId),
   ));
+  const etapas = await db.select({
+    id: obraEtapasTable.id, nome: obraEtapasTable.nome,
+    origemEtapaId: obraEtapasTable.origemEtapaId,
+  }).from(obraEtapasTable).where(eq(obraEtapasTable.obraId, obra.id));
+  const fases = etapas.length ? await db.select({
+    id: obraEtapaFasesTable.id, etapaId: obraEtapaFasesTable.etapaId,
+  }).from(obraEtapaFasesTable).where(inArray(obraEtapaFasesTable.etapaId, etapas.map((e) => e.id))) : [];
+  const medicoes = fases.length ? await db.select({
+    id: obraEtapaFaseMedicoesTable.id,
+    faseId: obraEtapaFaseMedicoesTable.faseId,
+    data: obraEtapaFaseMedicoesTable.data,
+    valorBruto: obraEtapaFaseMedicoesTable.valorBruto,
+    amortizacaoEntrada: obraEtapaFaseMedicoesTable.amortizacaoEntrada,
+    valorLiquido: obraEtapaFaseMedicoesTable.valorLiquido,
+    saldoEntradaApos: obraEtapaFaseMedicoesTable.saldoEntradaApos,
+  }).from(obraEtapaFaseMedicoesTable).where(inArray(obraEtapaFaseMedicoesTable.faseId, fases.map((p) => p.id))) : [];
+  const faseEtapa = new Map(fases.map((fase) => [fase.id, fase.etapaId]));
+  const etapasPorId = new Map(etapas.map((etapa) => [etapa.id, etapa]));
+  const medicoesIdentificadas = medicoes.map((medicao) => {
+    const etapa = etapasPorId.get(faseEtapa.get(medicao.faseId) ?? "");
+    return { ...medicao, etapaId: etapa?.id ?? null,
+      origemEtapaId: etapa?.origemEtapaId ?? null, etapaNome: etapa?.nome ?? null };
+  });
+  const linhasBase = await db.select({
+    id: obraOrcamentosTable.id, versao: obraOrcamentosTable.versao,
+    status: obraOrcamentosTable.status, linhaBaseSnapshot: obraOrcamentosTable.linhaBaseSnapshot,
+  }).from(obraOrcamentosTable).where(and(
+    eq(obraOrcamentosTable.obraId, obra.id),
+    eq(obraOrcamentosTable.tenantId, proposta.tenantId),
+    eq(obraOrcamentosTable.propostaOrigemId, proposta.id),
+  ));
   res.json({ propostaId: proposta.id, obraId: obra.id,
+    titulos, medicoes: medicoesIdentificadas, linhasBase,
+    pendencias: [{
+      code: "CONCILIACAO_CONTRATUAL_PENDENTE",
+      message: "Títulos e medições são dados operacionais, não parcelas contratuais comprovadas. A revisão assinada e o fechamento financeiro ainda precisam de conciliação.",
+    }], emitivel: false });
+  return;
+  // Retido somente para compatibilidade do trecho anterior, sem execução.
+  /* res.json({ propostaId: proposta.id, obraId: obra.id,
     titulos, pendencias: [{
       code: "CONCILIACAO_CONTRATUAL_PENDENTE",
       message: "Títulos operacionais não comprovam parcelas do contrato. Conciliar contrato assinado, revisões, medições e amortizações antes da emissão.",
-    }], emitivel: false });
+    }], emitivel: false }); */
 });
 
 // Read-only dossiê PRELIMINAR; contract approval/issue requires separate verified workflow.
