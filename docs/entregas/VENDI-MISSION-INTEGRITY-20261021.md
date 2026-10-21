@@ -17,3 +17,6 @@ Alterações: preservar os passos pendentes por ferramenta e parâmetros, manten
 - Próximo passo: build e validação em ambiente isolado Contabo; repetir a missão de leads, negócios e atividades e conferir os três resultados; verificar que a triagem não pede envios; testar pausa/retomada e falha de ferramenta sem repetir escrita.
 
 Estado: implementado com testes focados locais; não homologado e não publicado.
+
+## Conciliação com produção VENDI-3580
+A captura do operador confirmou publicação de VENDI-3580, SHA 730c99b3dca0ee5b1dc0a338d8b2d80d7b66f119. Esta branch incorpora suas mudanças (fila, contexto transacional do tenant e diagnóstico de banco), resolvendo conflitos no supervisor sem removê-las. Dockerfile.deploy passa a executar os testes de integridade antes da instalação/typecheck/build. Build isolado da versão anterior 9845031 foi iniciado, mas não autoriza promoção: a versão conciliada precisa de novo build e homologação.

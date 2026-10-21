@@ -1,6 +1,5 @@
 import { and, asc, eq } from "drizzle-orm";
 import {
-  db,
   vendiMissionsTable,
   vendiMissionEventsTable,
   notificationsTable,
@@ -9,6 +8,7 @@ import {
 import { callOpenAI } from "../lib/ai-gateway.js";
 import { sendDirectWhatsAppMessage } from "./omnichannel.js";
 import { preservePendingSteps, isObserverReadOnlyTool, completedPlan } from "./vendi-mission-integrity.js";
+import { withVendiTenantContext } from "./vendi-db-context.js";
 import { logger } from "../lib/logger.js";
 import {
   executeVendiTool,
@@ -50,7 +50,7 @@ async function appendEvent(input: {
   evidence?: Record<string, unknown>;
   error?: string;
 }) {
-  await db.insert(vendiMissionEventsTable).values({
+  await withVendiTenantContext(input.tenantId, (tx) => tx.insert(vendiMissionEventsTable).values({
     tenantId: input.tenantId,
     missionId: input.missionId,
     sequence: input.sequence,
@@ -61,7 +61,7 @@ async function appendEvent(input: {
     output: input.output ?? null,
     evidence: input.evidence ?? null,
     error: input.error ?? null,
-  });
+  }));
 }
 
 export async function planVendiMission(input: {
@@ -136,25 +136,46 @@ export async function executeVendiMission(input: {
   tenantId: string;
   missionId: string;
   approvedToolIds?: string[];
+  /** Only the queue worker may pass this after claiming the row under lock. */
+  claimed?: boolean;
 }) {
-  const [mission] = await db
-    .select()
-    .from(vendiMissionsTable)
-    .where(and(
-      eq(vendiMissionsTable.id, input.missionId),
-      eq(vendiMissionsTable.tenantId, input.tenantId),
-    ))
-    .limit(1);
-  if (!mission) throw new Error("VENDI_MISSION_NOT_FOUND");
+  const { mission, existingEvents } = await withVendiTenantContext(input.tenantId, async (tx) => {
+    const [mission] = await tx
+      .select()
+      .from(vendiMissionsTable)
+      .where(and(
+        eq(vendiMissionsTable.id, input.missionId),
+        eq(vendiMissionsTable.tenantId, input.tenantId),
+      ))
+      .limit(1)
+      .for("update");
+    if (!mission) return { mission: null, existingEvents: [] };
+    if (mission.status === "completed") throw new Error("VENDI_MISSION_ALREADY_COMPLETED");
+    if (mission.status === "running" && !input.claimed) throw new Error("VENDI_MISSION_ALREADY_RUNNING");
+    if (input.claimed && mission.status !== "running") throw new Error("VENDI_MISSION_CLAIM_LOST");
+    if (!input.claimed) {
+      const [claimed] = await tx.update(vendiMissionsTable)
+        .set({ status: "running", startedAt: mission.startedAt ?? new Date(), updatedAt: new Date() })
+        .where(and(
+          eq(vendiMissionsTable.id, mission.id),
+          eq(vendiMissionsTable.tenantId, input.tenantId),
+          eq(vendiMissionsTable.status, mission.status),
+        ))
+        .returning({ id: vendiMissionsTable.id });
+      if (!claimed) throw new Error("VENDI_MISSION_CLAIM_LOST");
+    }
 
-  const existingEvents = await db
-    .select()
-    .from(vendiMissionEventsTable)
-    .where(and(
-      eq(vendiMissionEventsTable.missionId, mission.id),
-      eq(vendiMissionEventsTable.tenantId, input.tenantId),
-    ))
-    .orderBy(asc(vendiMissionEventsTable.sequence));
+    const existingEvents = await tx
+      .select()
+      .from(vendiMissionEventsTable)
+      .where(and(
+        eq(vendiMissionEventsTable.missionId, mission.id),
+        eq(vendiMissionEventsTable.tenantId, input.tenantId),
+      ))
+      .orderBy(asc(vendiMissionEventsTable.sequence));
+    return { mission, existingEvents };
+  });
+  if (!mission) throw new Error("VENDI_MISSION_NOT_FOUND");
 
   let sequence = nextSequence(existingEvents);
   let plan = (mission.plan ?? []) as unknown as VendiMissionStep[];
@@ -169,7 +190,7 @@ export async function executeVendiMission(input: {
     });
     plan = generated.steps;
     currentSuccessCriteria = generated.successCriteria;
-    await db.update(vendiMissionsTable)
+    await withVendiTenantContext(input.tenantId, (tx) => tx.update(vendiMissionsTable)
       .set({
         plan: plan as Array<Record<string, unknown>>,
         successCriteria: generated.successCriteria,
@@ -177,7 +198,10 @@ export async function executeVendiMission(input: {
         startedAt: mission.startedAt ?? new Date(),
         updatedAt: new Date(),
       })
-      .where(eq(vendiMissionsTable.id, mission.id));
+      .where(and(
+        eq(vendiMissionsTable.id, mission.id),
+        eq(vendiMissionsTable.tenantId, input.tenantId),
+      )));
     await appendEvent({
       tenantId: input.tenantId,
       missionId: mission.id,
@@ -187,9 +211,12 @@ export async function executeVendiMission(input: {
       output: { steps: plan.length, successCriteria: generated.successCriteria },
     });
   } else {
-    await db.update(vendiMissionsTable)
+    await withVendiTenantContext(input.tenantId, (tx) => tx.update(vendiMissionsTable)
       .set({ status: "running", startedAt: mission.startedAt ?? new Date(), updatedAt: new Date() })
-      .where(eq(vendiMissionsTable.id, mission.id));
+      .where(and(
+        eq(vendiMissionsTable.id, mission.id),
+        eq(vendiMissionsTable.tenantId, input.tenantId),
+      )));
   }
 
   const completedToolIndices = new Set(
@@ -229,27 +256,33 @@ export async function executeVendiMission(input: {
         toolInput: step.input,
         output: { stepIndex, reason: step.reason, risk: tool.risk },
       });
-      await db.update(vendiMissionsTable)
+      await withVendiTenantContext(input.tenantId, (tx) => tx.update(vendiMissionsTable)
         .set({ status: "paused_approval", updatedAt: new Date() })
-        .where(eq(vendiMissionsTable.id, mission.id));
+        .where(and(
+          eq(vendiMissionsTable.id, mission.id),
+          eq(vendiMissionsTable.tenantId, input.tenantId),
+        )));
 
       const approvalMessage = `A missão "${mission.objective}" precisa da sua aprovação para executar ${tool.description || tool.id}. Motivo: ${step.reason || "ação de alto risco"}.`;
-      await db.insert(notificationsTable).values({
+      await withVendiTenantContext(input.tenantId, (tx) => tx.insert(notificationsTable).values({
         tenantId: input.tenantId,
         recipientUserId: mission.createdByUserId ?? null,
         type: "warning",
         category: "vendi_approval_required",
         title: "Vendi aguardando sua aprovação",
         message: approvalMessage,
-      });
+      }));
 
       if (mission.createdByUserId && process.env.VENDI_APPROVAL_WHATSAPP_ENABLED === "true") {
         try {
-          const [owner] = await db
+          const [owner] = await withVendiTenantContext(input.tenantId, (tx) => tx
             .select({ telefone: usersTable.telefone })
             .from(usersTable)
-            .where(eq(usersTable.id, mission.createdByUserId))
-            .limit(1);
+            .where(and(
+              eq(usersTable.id, mission.createdByUserId!),
+              eq(usersTable.tenantId, input.tenantId),
+            ))
+            .limit(1));
           if (owner?.telefone) {
             await sendDirectWhatsAppMessage(
               input.tenantId,
@@ -356,13 +389,16 @@ export async function executeVendiMission(input: {
             const remaining = preservePendingSteps(plan.slice(stepIndex + 1), adaptive.steps);
             plan = [...completedPrefix, ...remaining];
 
-            await db.update(vendiMissionsTable)
+            await withVendiTenantContext(input.tenantId, (tx) => tx.update(vendiMissionsTable)
               .set({
                 plan: plan as Array<Record<string, unknown>>,
                 successCriteria: currentSuccessCriteria,
                 updatedAt: new Date(),
               })
-              .where(eq(vendiMissionsTable.id, mission.id));
+              .where(and(
+                eq(vendiMissionsTable.id, mission.id),
+                eq(vendiMissionsTable.tenantId, input.tenantId),
+              )));
 
             await appendEvent({
               tenantId: input.tenantId,
@@ -432,7 +468,7 @@ export async function executeVendiMission(input: {
 
           if (replacement.length) {
             plan = [...plan.slice(0, stepIndex), ...replacement];
-            await db.update(vendiMissionsTable)
+            await withVendiTenantContext(input.tenantId, (tx) => tx.update(vendiMissionsTable)
               .set({
                 plan: plan as Array<Record<string, unknown>>,
                 successCriteria: currentSuccessCriteria,
@@ -440,7 +476,10 @@ export async function executeVendiMission(input: {
                 lastError: message,
                 updatedAt: new Date(),
               })
-              .where(eq(vendiMissionsTable.id, mission.id));
+              .where(and(
+                eq(vendiMissionsTable.id, mission.id),
+                eq(vendiMissionsTable.tenantId, input.tenantId),
+              )));
 
             await appendEvent({
               tenantId: input.tenantId,
@@ -473,14 +512,17 @@ export async function executeVendiMission(input: {
         }
       }
 
-      await db.update(vendiMissionsTable)
+      await withVendiTenantContext(input.tenantId, (tx) => tx.update(vendiMissionsTable)
         .set({
           status: "failed",
           lastError: message,
           result: { outputs, recoveryCount, maxRecoveries },
           updatedAt: new Date(),
         })
-        .where(eq(vendiMissionsTable.id, mission.id));
+        .where(and(
+          eq(vendiMissionsTable.id, mission.id),
+          eq(vendiMissionsTable.tenantId, input.tenantId),
+        )));
       return {
         ok: false,
         status: "failed" as const,
@@ -495,9 +537,9 @@ export async function executeVendiMission(input: {
   const allPlannedStepsSucceeded = completedPlan(plan, outputs);
   if (!allPlannedStepsSucceeded) {
     const error = "VENDI_MISSION_INCOMPLETE";
-    await db.update(vendiMissionsTable)
+    await withVendiTenantContext(input.tenantId, (tx) => tx.update(vendiMissionsTable)
       .set({ status: "failed", lastError: error, result: { outputs }, updatedAt: new Date() })
-      .where(and(eq(vendiMissionsTable.id, mission.id), eq(vendiMissionsTable.tenantId, input.tenantId)));
+      .where(and(eq(vendiMissionsTable.id, mission.id), eq(vendiMissionsTable.tenantId, input.tenantId))));
     await appendEvent({ tenantId: input.tenantId, missionId: mission.id, sequence: sequence++, type: "verification_failed", status: "failed", error });
     return { ok: false, status: "failed" as const, missionId: mission.id, error, outputs };
   }
@@ -514,7 +556,7 @@ export async function executeVendiMission(input: {
       successCriteria: currentSuccessCriteria,
     },
   };
-  await db.update(vendiMissionsTable)
+  await withVendiTenantContext(input.tenantId, (tx) => tx.update(vendiMissionsTable)
     .set({
       status: "completed",
       result,
@@ -522,7 +564,10 @@ export async function executeVendiMission(input: {
       completedAt: new Date(),
       updatedAt: new Date(),
     })
-    .where(eq(vendiMissionsTable.id, mission.id));
+    .where(and(
+      eq(vendiMissionsTable.id, mission.id),
+      eq(vendiMissionsTable.tenantId, input.tenantId),
+    )));
 
   await appendEvent({
     tenantId: input.tenantId,
