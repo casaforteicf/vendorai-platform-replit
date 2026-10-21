@@ -27,10 +27,14 @@ export function buildContractualAnnexPreview(proposta: AnnexInput) {
   const pending: Pending[] = [];
   const add = (code: string, field: string, message: string) => pending.push({ code, field, message });
   const revision = presentation.sourceSnapshot?.revisionLabel ?? null;
-  const contracted = proposta.status === "aceita" && Boolean(proposta.acceptedAt) &&
+  // These fields are not independent proof of a signed/approved contract.
+  // The verification must be performed against server-owned contract records.
+  const baselineCandidate = proposta.status === "aceita" && Boolean(proposta.acceptedAt) &&
     Boolean(revision) && presentation.sourceSnapshot?.immutableForVersion === true;
 
-  if (!contracted) add("CONTRACT_BASELINE_NOT_VERIFIED", "status", "Falta revisão congelada e aceite comprovado para emissão contratual.");
+  add("CONTRACT_BASELINE_NOT_VERIFIED", "status", baselineCandidate
+    ? "Proposta aparenta estar aceita, mas falta confirmação independente da assinatura e revisão contratual no servidor."
+    : "Falta revisão congelada e aceite comprovado para emissão contratual.");
   if (!presentation.memorialDescritivo?.trim()) add("MEMORIAL_MISSING", "apresentacao.memorialDescritivo", "Memorial descritivo não cadastrado.");
   if (!items.length) add("ITEMS_MISSING", "itens", "Não há itens no orçamento.");
   const annexA = {
@@ -79,7 +83,7 @@ export function buildContractualAnnexPreview(proposta: AnnexInput) {
   };
   return {
     propostaId: proposta.id, numero: proposta.numero ?? null,
-    revision, contratual: contracted && pending.length === 0,
+    revision, contratual: false,
     somentePrevia: true, pending, anexoA: annexA, anexoB: annexB, anexoC: annexC,
   };
 }
