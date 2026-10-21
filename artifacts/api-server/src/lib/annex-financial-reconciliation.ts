@@ -8,3 +8,51 @@ export function reconcileAnnexTotals(contractValue: number, receivables: number[
     canIssueAnnexB: false,
   };
 }
+
+export type FinancialMeasurement = {
+  id: string;
+  valorBruto: string | number | null;
+  amortizacaoEntrada: string | number | null;
+  valorLiquido: string | number | null;
+  saldoEntradaApos: string | number | null;
+};
+
+function moneyInCents(value: string | number | null): number | null {
+  if (value == null || String(value).trim() === "") return null;
+  const number = Number(value);
+  return Number.isFinite(number) && number >= 0 ? Math.round(number * 100) : null;
+}
+
+// Independent accounting checks only. They do NOT validate contractual
+// classification, payment schedule, signing, or an approved revision.
+export function reconcileAnnexMeasurements(measurements: FinancialMeasurement[]) {
+  const issues: Array<{ code: string; measurementId: string; message: string }> = [];
+  let grossCents = 0;
+  let amortizedCents = 0;
+  let netCents = 0;
+  for (const measurement of measurements) {
+    const gross = moneyInCents(measurement.valorBruto);
+    const amortization = moneyInCents(measurement.amortizacaoEntrada);
+    const net = moneyInCents(measurement.valorLiquido);
+    if (gross == null || amortization == null || net == null) {
+      issues.push({ code: "INVALID_MEASUREMENT", measurementId: measurement.id,
+        message: "Medição com valor bruto, amortização ou líquido inválido." });
+      continue;
+    }
+    if (amortization > gross || gross - amortization !== net) {
+      issues.push({ code: "MEASUREMENT_BALANCE_MISMATCH", measurementId: measurement.id,
+        message: "Valor líquido não confere com valor bruto menos amortização da entrada." });
+    }
+    grossCents += gross;
+    amortizedCents += amortization;
+    netCents += net;
+  }
+  return {
+    grossTotal: (grossCents / 100).toFixed(2),
+    amortizedEntryTotal: (amortizedCents / 100).toFixed(2),
+    netTotal: (netCents / 100).toFixed(2),
+    measurementsCount: measurements.length,
+    issues,
+    canIssueAnnexB: false,
+  };
+}
