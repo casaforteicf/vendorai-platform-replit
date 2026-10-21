@@ -10,6 +10,9 @@ CURRENT=vendorai-prod-api-candidate
 STATE="$ROOT/state/$LOT.prod"
 LOCK=/run/lock/vendi-production-release.lock
 mkdir -p "$ROOT/state"
+# Serialize with the automatic backend deploy as well as other manual releases.
+exec 7>/opt/vendorai/deploy.lock
+flock -n 7 || { echo DEPLOY_BUSY; exit 75; }
 exec 9>"$LOCK"; flock -n 9 || { echo RELEASE_BUSY; exit 75; }
 log(){ printf '%s lot=%s action=%s %s\n' "$(date -u +%FT%TZ)" "$LOT" "$ACTION" "$1" >> /var/log/vendi-contabo-operator.log; }
 if [[ "$ACTION" == status ]]; then
@@ -50,16 +53,39 @@ assert_consistent(){
  fi
 }
 assert_consistent || { log "DENIED_INCONSISTENT_RELEASE_STATE";exit 65; }
-# Global release safety: no other lot may retain an unresolved publication.
-# An inconsistent historical release MUST be reconciled explicitly (not deleted).
+# A manifest may name exactly one verified live predecessor. Other unresolved
+# releases still block. The predecessor remains PUBLISHED until health passes.
+PREVIOUS_LOT=$(get PREVIOUS_LOT)
+PREVIOUS_STATE=""
+if [[ -n "$PREVIOUS_LOT" ]]; then
+ [[ "$PREVIOUS_LOT" =~ ^[A-Z][A-Z0-9]{1,15}-[0-9]{1,6}$ && "$PREVIOUS_LOT" != "$LOT" ]] || { echo INVALID_PREVIOUS_LOT; exit 65; }
+ PREVIOUS_STATE="$ROOT/state/$PREVIOUS_LOT.prod"
+fi
 if [[ "$ACTION" == publish ]]; then
  for record in "$ROOT"/state/*.prod; do
   [[ -f "$record" && "$record" != "$STATE" ]] || continue
   record_status=$(sed -n 's/^STATUS=//p' "$record" | head -1)
   case "$record_status" in
-   PUBLISHED|INCONSISTENT*) echo "OTHER_RELEASE_REQUIRES_RECONCILIATION"; log "BLOCKED_OTHER_RELEASE=$record"; exit 65;;
+   PUBLISHED)
+    [[ "$record" == "$PREVIOUS_STATE" ]] || { echo OTHER_RELEASE_REQUIRES_RECONCILIATION; exit 65; }
+    ;;
+   INCONSISTENT*) echo OTHER_RELEASE_REQUIRES_RECONCILIATION; exit 65;;
   esac
  done
+ if [[ -n "$PREVIOUS_STATE" ]]; then
+  [[ -f "$PREVIOUS_STATE" && "$(stat -c %u "$PREVIOUS_STATE")" == 0 ]] || { echo PREVIOUS_RECORD_MISSING; exit 65; }
+  grep -Fxq "LOT=$PREVIOUS_LOT" "$PREVIOUS_STATE" &&
+  grep -Fxq STATUS=PUBLISHED "$PREVIOUS_STATE" || { echo PREVIOUS_NOT_PUBLISHED; exit 65; }
+  prior_sha=$(sed -n 's/^SHA=//p' "$PREVIOUS_STATE" | head -1)
+  [[ "$prior_sha" =~ ^[0-9a-f]{40}$ ]] || { echo PREVIOUS_SHA_INVALID; exit 65; }
+  prior_image="vendorai-release:${PREVIOUS_LOT,,}-${prior_sha:0:12}"
+  grep -Fxq "IMAGE=$prior_image" "$PREVIOUS_STATE" || { echo PREVIOUS_IMAGE_INVALID; exit 65; }
+  [[ "$(docker inspect "$CURRENT" --format '{{.Config.Image}}')" == "$prior_image" ]] || { echo PREVIOUS_IMAGE_MISMATCH; exit 65; }
+  [[ "$(docker inspect "$CURRENT" --format '{{.Image}}')" == "$(docker image inspect "$prior_image" --format '{{.Id}}')" ]] || { echo PREVIOUS_IMAGE_ID_MISMATCH; exit 65; }
+  prior_backup=$(sed -n 's/^BACKUP=//p' "$PREVIOUS_STATE" | head -1)
+  [[ "$prior_backup" =~ ^vendorai-prod-api-candidate-backup-[a-z0-9-]+$ ]] &&
+  docker inspect "$prior_backup" >/dev/null || { echo PREVIOUS_BACKUP_MISSING; exit 65; }
+ fi
 fi
 if [[ "$ACTION" == rollback ]]; then
  [[ -f "$STATE" ]] || { echo NO_ROLLBACK_STATE;exit 65; }
@@ -67,6 +93,14 @@ if [[ "$ACTION" == rollback ]]; then
  RECORDED_STATUS=$(sed -n 's/^STATUS=//p' "$STATE")
  ACTIVE_IMAGE=$(docker inspect "$CURRENT" --format '{{.Config.Image}}' 2>/dev/null || true)
  [[ "$RECORDED_STATUS" == PUBLISHED && -n "$RECORDED_IMAGE" && "$ACTIVE_IMAGE" == "$RECORDED_IMAGE" ]] || { echo ROLLBACK_BLOCKED_PRODUCTION_VERSION_MISMATCH;exit 65; }
+ PREVIOUS_LOT=$(sed -n 's/^PREVIOUS_LOT=//p' "$STATE" | head -1)
+ PREVIOUS_STATE=""
+ if [[ -n "$PREVIOUS_LOT" ]]; then
+  [[ "$PREVIOUS_LOT" =~ ^[A-Z][A-Z0-9]{1,15}-[0-9]{1,6}$ && "$PREVIOUS_LOT" != "$LOT" ]] || { echo INVALID_PREVIOUS_LOT; exit 65; }
+  PREVIOUS_STATE="$ROOT/state/$PREVIOUS_LOT.prod"
+  grep -Fxq STATUS=SUPERSEDED "$PREVIOUS_STATE" &&
+  grep -Fxq "SUPERSEDED_BY=$LOT" "$PREVIOUS_STATE" || { echo PREVIOUS_RECORD_DIVERGED; exit 65; }
+ fi
  SAVED=$(sed -n 's/^BACKUP=//p' "$STATE")
  [[ "$SAVED" =~ ^vendorai-prod-api-candidate-backup-[a-z0-9-]+$ ]] || { echo INVALID_BACKUP_STATE;exit 65; }
  # Preserved from the installed Contabo operator: deny rollback of a release
@@ -80,6 +114,13 @@ if [[ "$ACTION" == rollback ]]; then
 
  [[ "$(sed -n 's/^STATUS=//p' "$STATE" | head -1)" == "PUBLISHED" ]] || { echo ROLLBACK_NOT_PUBLISHED;exit 65; }
  docker inspect "$SAVED" >/dev/null || { echo BACKUP_MISSING;exit 65; }
+ if [[ -n "$PREVIOUS_STATE" ]]; then
+  prior_image=$(sed -n 's/^IMAGE=//p' "$PREVIOUS_STATE" | head -1)
+  [[ "$(docker inspect "$SAVED" --format '{{.Config.Image}}')" == "$prior_image" ]] || { echo ROLLBACK_PREVIOUS_IMAGE_MISMATCH; exit 65; }
+  prior_backup=$(sed -n 's/^BACKUP=//p' "$PREVIOUS_STATE" | head -1)
+  [[ "$prior_backup" =~ ^vendorai-prod-api-candidate-backup-[a-z0-9-]+$ ]] &&
+  docker inspect "$prior_backup" >/dev/null || { echo PREVIOUS_BACKUP_MISSING; exit 65; }
+ fi
  REPLACED="${CURRENT}-failed-$(date -u +%s)"
  docker stop "$CURRENT" >/dev/null
  docker rename "$CURRENT" "$REPLACED"
@@ -99,6 +140,11 @@ if [[ "$ACTION" == rollback ]]; then
      tmpstate=$(mktemp "$ROOT/state/.rollback.XXXXXXXX")
      sed 's/^STATUS=PUBLISHED$/STATUS=ROLLED_BACK/' "$STATE" > "$tmpstate"
      chmod 600 "$tmpstate"; mv -f "$tmpstate" "$STATE"
+     if [[ -n "$PREVIOUS_STATE" ]]; then
+       tmpprior=$(mktemp "$ROOT/state/.previous.XXXXXXXX")
+       sed -e 's/^STATUS=SUPERSEDED$/STATUS=PUBLISHED/' -e '/^SUPERSEDED_BY=/d' "$PREVIOUS_STATE" > "$tmpprior"
+       chmod 600 "$tmpprior"; mv -f "$tmpprior" "$PREVIOUS_STATE"
+     fi
      echo ROLLBACK_HEALTH_200;log "ROLLBACK_OK";exit 0
    fi
    sleep 2
@@ -153,7 +199,17 @@ docker start "$CURRENT" >/dev/null
 ok=0
 for _ in $(seq 1 45); do if check; then ok=1;break;fi;sleep 2;done
 [[ "$ok" == 1 ]] || { echo RELEASE_HEALTH_FAILED;log "HEALTH_FAILED";exit 1; }
-printf 'LOT=%s\nSHA=%s\nIMAGE=%s\nBACKUP=%s\nSTATUS=PUBLISHED\n' "$LOT" "$SHA" "$IMAGE" "$BACK" > "$STATE"
 success=1
+# Write the new receipt first. A partial ledger transition blocks subsequent
+# releases and requires reconciliation; it must never silently unlock a release.
+tmpstate=$(mktemp "$ROOT/state/.publish.XXXXXXXX")
+printf 'LOT=%s\nSHA=%s\nIMAGE=%s\nBACKUP=%s\nPREVIOUS_LOT=%s\nSTATUS=PUBLISHED\n' "$LOT" "$SHA" "$IMAGE" "$BACK" "$PREVIOUS_LOT" > "$tmpstate"
+chmod 600 "$tmpstate"; mv -f "$tmpstate" "$STATE"
+if [[ -n "$PREVIOUS_STATE" ]]; then
+ tmpprior=$(mktemp "$ROOT/state/.previous.XXXXXXXX")
+ sed 's/^STATUS=PUBLISHED$/STATUS=SUPERSEDED/' "$PREVIOUS_STATE" > "$tmpprior"
+ printf 'SUPERSEDED_BY=%s\n' "$LOT" >> "$tmpprior"
+ chmod 600 "$tmpprior"; mv -f "$tmpprior" "$PREVIOUS_STATE"
+fi
 log "PUBLISHED sha=$SHA backup=$BACK"
 echo "VENDI04_PRODUCTION_HEALTH_200_BACKUP_PRESERVED"
