@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { reconcileAnnexTotals, reconcileAnnexMeasurements, reconcileClassifiedContractPayments } from "./annex-financial-reconciliation.js";
+import { reconcileAnnexTotals, reconcileAnnexMeasurements, reconcileClassifiedContractPayments, auditEntryAmortization } from "./annex-financial-reconciliation.js";
 
 describe("annex finance reconciliation", () => {
   it("compares amounts without certifying a signed contract", () => {
@@ -44,5 +44,23 @@ describe("classified contractual installments", () => {
     ]);
     expect(report.issues.map(x => x.code)).toContain("DUPLICATE_PAYMENT_LINE");
     expect(report.issues.map(x => x.code)).toContain("PAYMENT_SOURCE_MISSING");
+  });
+});
+
+describe("entry advance accounting", () => {
+  it("tracks amortization as utilization of advance, not second revenue", () => {
+    const result = auditEntryAmortization("90000", [
+      { id: "m1", valorBruto: "20000", amortizacaoEntrada: "3000", valorLiquido: "17000", saldoEntradaApos: "87000" },
+      { id: "m2", valorBruto: "30000", amortizacaoEntrada: "5000", valorLiquido: "25000", saldoEntradaApos: "82000" },
+    ]);
+    expect(result.remainingEntry).toBe("82000.00");
+    expect(result.issues).toHaveLength(0);
+    expect(result.canIssueAnnexB).toBe(false);
+  });
+  it("detects amortization beyond the contractual advance", () => {
+    const result = auditEntryAmortization("100", [
+      { id: "m1", valorBruto: "200", amortizacaoEntrada: "120", valorLiquido: "80", saldoEntradaApos: "0" },
+    ]);
+    expect(result.issues.map(x => x.code)).toContain("ENTRY_OVER_AMORTIZED");
   });
 });
