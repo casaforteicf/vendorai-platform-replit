@@ -40,6 +40,7 @@ import {
 } from "../lib/orcamento-numbers.js";
 import { auditProposalBudget, calculateBudgetItemsTotal } from "../lib/budget-integrity.js";
 import { buildContractualAnnexPreview } from "../lib/contractual-annex-preview.js";
+import { checkMeasurementArithmetic } from "../lib/annex-financial-check.js";
 import { matchesApprovedBudget } from "../lib/budget-import-integrity.js";
 import { recordIntelligenceEvent } from "../services/customer-intelligence-history.js";
 import {
@@ -1501,7 +1502,7 @@ router.get("/propostas/:id/anexos/fontes-financeiras", async (req, res) => {
   ));
   res.json({ propostaId: proposta.id, obraId: obra.id,
     titulos, medicoes: medicoesIdentificadas, linhasBase,
-    pendencias: [{
+    pendencias: [...checkMeasurementArithmetic(medicoesIdentificadas), {
       code: "CONCILIACAO_CONTRATUAL_PENDENTE",
       message: "Títulos e medições são dados operacionais, não parcelas contratuais comprovadas. A revisão assinada e o fechamento financeiro ainda precisam de conciliação.",
     }], emitivel: false });
