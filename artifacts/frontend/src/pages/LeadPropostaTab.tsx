@@ -10,6 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { OrcamentoRevisoesCard } from "@/components/OrcamentoRevisoesCard";
+import { BudgetContractualEditor } from "@/components/BudgetContractualEditor";
 import {
   Select,
   SelectContent,
@@ -2768,6 +2769,19 @@ export default function LeadPropostaTab({ leadId, tenantId, lead, onCreateBudget
       {/* Orçamento e revisões — origem comercial da proposta */}
       <div className="order-1">
         <OrcamentoRevisoesCard leadId={leadId} tenantId={tenantId} onCreateBudget={onCreateBudget} />
+        {selectedOrcamento && selectedOrcamentoId !== "__none__" && selectedOrcamento.status === "rascunho" && (
+          <div className="mt-3">
+            <BudgetContractualEditor
+              key={selectedOrcamentoId}
+              budgetId={selectedOrcamentoId}
+              token={token}
+              onSaved={() => {
+                void queryClient.invalidateQueries({ queryKey: ["listPropostas", tenantId] });
+                void queryClient.invalidateQueries({ queryKey: getListPropostasQueryKey({ tenantId }) });
+              }}
+            />
+          </div>
+        )}
       </div>
 
       {/* Proposta comercial */}
