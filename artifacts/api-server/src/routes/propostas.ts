@@ -41,6 +41,7 @@ import {
 } from "../lib/orcamento-numbers.js";
 import { auditProposalBudget, calculateBudgetItemsTotal } from "../lib/budget-integrity.js";
 import { buildContractualAnnexPreview } from "../lib/contractual-annex-preview.js";
+import { reconcileAnnexTotals } from "../lib/annex-financial-reconciliation.js";
 import { checkMeasurementArithmetic } from "../lib/annex-financial-check.js";
 import { matchesApprovedBudget } from "../lib/budget-import-integrity.js";
 import { recordIntelligenceEvent } from "../services/customer-intelligence-history.js";
@@ -1501,8 +1502,13 @@ router.get("/propostas/:id/anexos/fontes-financeiras", async (req, res) => {
     eq(obraOrcamentosTable.tenantId, proposta.tenantId),
     eq(obraOrcamentosTable.propostaOrigemId, proposta.id),
   ));
+  const receivables = titulos.filter((t) => t.tipo === "receber" && t.status !== "cancelado");
+  const amountsValid = receivables.every((t) => Number.isFinite(Number(t.valorOriginal)) && Number(t.valorOriginal) >= 0);
+  const reconciliation = amountsValid && proposta.valorTotal != null && Number.isFinite(Number(proposta.valorTotal))
+    ? reconcileAnnexTotals(Number(proposta.valorTotal), receivables.map((t) => Number(t.valorOriginal)))
+    : null;
   res.json({ propostaId: proposta.id, obraId: obra.id,
-    titulos, medicoes: medicoesIdentificadas, linhasBase,
+    reconciliation, titulos, medicoes: medicoesIdentificadas, linhasBase,
     pendencias: [...checkMeasurementArithmetic(medicoesIdentificadas), {
       code: "CONCILIACAO_CONTRATUAL_PENDENTE",
       message: "Títulos e medições são dados operacionais, não parcelas contratuais comprovadas. A revisão assinada e o fechamento financeiro ainda precisam de conciliação.",
