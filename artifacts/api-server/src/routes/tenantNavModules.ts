@@ -300,6 +300,11 @@ router.get("/tenants/:tenantId/tad-effective-modules", async (req, res) => {
     current.platformRole === "tenant_admin" || current.userFunction === "administrador";
   const grants = row?.permissions;
   const keys = NAV_MODULE_CATALOG.map(m => m.moduleKey).filter(key => {
+    // Keep TAD visibility aligned with the Vendi Studio API pilot policy.
+    // User-function "administrador" alone is NOT a Vendi Studio grant.
+    if (key === "vendi_studio") {
+      return current.platformRole === "super_admin" || current.platformRole === "tenant_admin";
+    }
     if (admin) return true;
     const accepted = TAD_USER_PERMISSION_MAP[key];
     return !!accepted && Array.isArray(grants) && accepted.some(permission => grants.includes(permission));
