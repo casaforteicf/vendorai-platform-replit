@@ -12,6 +12,7 @@ import {
   insertPropostaSchema,
   updatePropostaSchema,
   propostaApresentacaoSchema,
+  propostaItemContratualSchema,
   tenantsTable,
   dealsTable,
   leadsTable,
@@ -1527,6 +1528,62 @@ router.get("/propostas/:id/anexos/previa", async (req, res) => {
     valorTotal: proposta.valorTotal, itens: proposta.itens as PropostaItem[],
     apresentacao: proposta.apresentacao,
   }));
+});
+
+// Only edit documentary metadata of an unissued budget. Optimistic JSONB
+// compare-and-swap prevents overwriting items changed in another session.
+const contractualItemsBodySchema = z.object({
+  expectedItems: z.array(z.any()).min(1),
+  changes: z.array(z.object({
+    index: z.number().int().nonnegative(),
+    contratual: propostaItemContratualSchema,
+  })).min(1),
+});
+router.patch("/propostas/:id/itens/contratual", async (req, res) => {
+  const parsed = contractualItemsBodySchema.safeParse(req.body);
+  if (!parsed.success) { res.status(422).json({ error: parsed.error.message }); return; }
+  const [existing] = await db.select().from(propostasTable)
+    .where(eq(propostasTable.id, String(req.params.id))).limit(1);
+  if (!existing) { res.status(404).json({ error: "Orçamento não encontrado." }); return; }
+  if (req.user?.platformRole !== "super_admin" && existing.tenantId !== req.user?.tenantId) {
+    res.status(403).json({ error: "Acesso negado ao tenant." }); return;
+  }
+  if (!(await canAccessProposalOwnership(req, existing))) {
+    res.status(403).json({ error: "Acesso negado ao orçamento." }); return;
+  }
+  if (existing.status !== "rascunho") {
+    res.status(409).json({ code: "BUDGET_VERSION_IMMUTABLE",
+      error: "Orçamento emitido. Crie uma revisão antes de modificar especificações." }); return;
+  }
+  const previous = existing.itens as PropostaItem[];
+  const expected = parsed.data.expectedItems;
+  if (JSON.stringify(previous) !== JSON.stringify(expected)) {
+    res.status(409).json({ code: "BUDGET_CHANGED",
+      error: "Itens alterados em outra sessão. Recarregue o orçamento." }); return;
+  }
+  const used = new Set<number>();
+  const next = previous.map((item) => ({ ...item }));
+  for (const change of parsed.data.changes) {
+    if (change.index >= next.length || used.has(change.index)) {
+      res.status(422).json({ error: "Índice do item inválido ou duplicado." }); return;
+    }
+    used.add(change.index);
+    next[change.index].contratual = change.contratual;
+  }
+  const [updated] = await db.update(propostasTable)
+    .set({ itens: next, updatedAt: new Date() })
+    .where(and(
+      eq(propostasTable.id, existing.id),
+      eq(propostasTable.tenantId, existing.tenantId),
+      eq(propostasTable.status, "rascunho"),
+      eq(propostasTable.itens, previous),
+    )).returning();
+  if (!updated) {
+    res.status(409).json({ code: "BUDGET_CHANGED",
+      error: "Orçamento alterado simultaneamente. Recarregue." }); return;
+  }
+  res.setHeader("Cache-Control", "no-store");
+  res.json(updated);
 });
 
 router.patch("/propostas/:id", async (req, res) => {
