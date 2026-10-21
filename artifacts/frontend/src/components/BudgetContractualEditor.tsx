@@ -114,9 +114,10 @@ export function BudgetContractualEditor({ budgetId, token, onSaved }: Props) {
       {success && <p role="status" className="text-sm text-emerald-700">{success}</p>}
       {financeSources && <section className="rounded-lg border bg-muted/30 p-3 text-xs space-y-2">
         <p className="font-semibold">Fontes ERP — obra {financeSources.obraId || "não vinculada"}</p>
-        <p>{financeSources.titulos?.length ?? 0} título(s) financeiro(s) localizados por vínculo canônico da proposta.</p>
+        <p>{financeSources.titulos?.length ?? 0} título(s) financeiro(s), {financeSources.medicoes?.length ?? 0} medição(ões) de fase e {financeSources.linhasBase?.length ?? 0} linha(s) de base vinculadas à proposta.</p>
         <p>Os títulos não representam automaticamente as parcelas contratuais.</p>
         {(financeSources.pendencias ?? []).map((p: any, i: number) => <p key={i} role="status">{p.message}</p>)}
+        {(financeSources.medicoes ?? []).map((m: any) => <p key={m.id}>Medição {m.data} — {m.etapaNome || "etapa não identificada"} — bruto R$ {m.valorBruto}; amortização R$ {m.amortizacaoEntrada}; líquido R$ {m.valorLiquido}</p>)}
         {(financeSources.titulos ?? []).map((t: any) => <p key={t.id}>{t.descricao} — {t.tipo} / {t.status} — R$ {t.valorOriginal} — vencimento {t.vencimento || "pendente"} — fonte {t.origem}</p>)}
       </section>}
       {annexPreview && <section className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs space-y-2">
