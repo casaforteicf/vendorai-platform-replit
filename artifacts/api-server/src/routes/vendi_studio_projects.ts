@@ -8,7 +8,7 @@ const router: IRouter = Router();
 // Pilot access: fail closed unless explicitly enabled for a tenant admin.
 router.use(async (req: any, res, next) => {
   const tenantId = req.user?.tenantId;
-  if (!tenantId || !req.user?.id) return void res.status(403).json({ error: "Contexto inválido" });
+  if (!tenantId || !req.user?.sub) return void res.status(403).json({ error: "Contexto inválido" });
   const admin = req.user?.platformRole === "super_admin" || req.user?.platformRole === "tenant_admin";
   if (!admin) return void res.status(403).json({ error: "Módulo restrito durante o piloto" });
   try {
@@ -31,7 +31,7 @@ const createSchema = z.object({
 }).strict();
 
 function tenantOf(req: any): string | undefined { return req.user?.tenantId; }
-function userOf(req: any): string | undefined { return req.user?.id; }
+function userOf(req: any): string | undefined { return req.user?.sub; }
 function unavailable(res: any) { return res.status(503).json({ error: "Projetos indisponíveis no momento", code: "STUDIO_PROJECT_STORAGE_UNAVAILABLE" }); }
 
 router.get("/vendi-studio/projects", async (req, res) => {
