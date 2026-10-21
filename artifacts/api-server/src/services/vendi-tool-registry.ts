@@ -96,7 +96,7 @@ register({
       .where(eq(leadsTable.tenantId, tenantId))
       .orderBy(desc(leadsTable.createdAt))
       .limit(limit);
-    return { ok: true, data: rows, evidence: { source: "db:leads", count: rows.length } };
+    return { ok: true, data: rows, evidence: { source: "db:leads", count: rows.length, limit, countIsTotal: false } };
   },
 });
 
@@ -114,7 +114,7 @@ register({
       .where(eq(dealsTable.tenantId, tenantId))
       .orderBy(desc(dealsTable.createdAt))
       .limit(limit);
-    return { ok: true, data: rows, evidence: { source: "db:deals", count: rows.length } };
+    return { ok: true, data: rows, evidence: { source: "db:deals", count: rows.length, limit, countIsTotal: false } };
   },
 });
 
@@ -481,6 +481,8 @@ register({
       data: { overdueTasks, unassignedLeads },
       evidence: {
         source: "db:operational-attention",
+        limit,
+        countIsTotal: false,
         overdueTasks: overdueTasks.length,
         unassignedLeads: unassignedLeads.length,
         observedAt: now.toISOString(),

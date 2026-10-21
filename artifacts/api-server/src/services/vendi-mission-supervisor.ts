@@ -8,6 +8,7 @@ import {
 } from "@workspace/db";
 import { callOpenAI } from "../lib/ai-gateway.js";
 import { sendDirectWhatsAppMessage } from "./omnichannel.js";
+import { preservePendingSteps, isObserverReadOnlyTool, completedPlan } from "./vendi-mission-integrity.js";
 import { logger } from "../lib/logger.js";
 import {
   executeVendiTool,
@@ -68,7 +69,8 @@ export async function planVendiMission(input: {
   objective: string;
   context?: Record<string, unknown> | null;
 }): Promise<VendiMissionPlan> {
-  const tools = listVendiTools();
+  const observer = input.context?.observer === "vendi_operational_observer";
+  const tools = listVendiTools().filter((tool) => !observer || isObserverReadOnlyTool(tool));
   const result = await callOpenAI(
     input.tenantId,
     "agent_runtime" as any,
@@ -110,7 +112,7 @@ export async function planVendiMission(input: {
     .filter((step): step is VendiMissionStep => Boolean(
       step
       && typeof step.toolId === "string"
-      && getVendiTool(step.toolId)
+      && tools.some((tool) => tool.id === step.toolId)
       && step.input
       && typeof step.input === "object"
       && !Array.isArray(step.input),
@@ -157,6 +159,8 @@ export async function executeVendiMission(input: {
   let sequence = nextSequence(existingEvents);
   let plan = (mission.plan ?? []) as unknown as VendiMissionStep[];
 
+  let currentSuccessCriteria = Array.isArray(mission.successCriteria) ? mission.successCriteria : [];
+
   if (!plan.length) {
     const generated = await planVendiMission({
       tenantId: input.tenantId,
@@ -164,6 +168,7 @@ export async function executeVendiMission(input: {
       context: mission.context,
     });
     plan = generated.steps;
+    currentSuccessCriteria = generated.successCriteria;
     await db.update(vendiMissionsTable)
       .set({
         plan: plan as Array<Record<string, unknown>>,
@@ -191,16 +196,21 @@ export async function executeVendiMission(input: {
     existingEvents
       .filter((event) => event.type === "tool_result" && event.status === "executed")
       .map((event) => Number((event.output as any)?.stepIndex))
-      .filter(Number.isFinite),
+      .filter((index) => Number.isInteger(index) && existingEvents.some((event) =>
+        event.type === "tool_result" && event.status === "executed"
+        && (event.output as any)?.stepIndex === index
+        && (event.output as any)?.toolId === plan[index]?.toolId
+        && (event.output as any)?.ok === true)),
   );
 
   const approved = new Set(input.approvedToolIds ?? []);
-  const outputs: Array<Record<string, unknown>> = [];
+  const outputs: Array<Record<string, unknown>> = existingEvents
+    .filter((event) => event.type === "tool_result" && event.status === "executed")
+    .map((event) => event.output as Record<string, unknown>);
   let recoveryCount = 0;
   const maxRecoveries = 3;
   let adaptiveReplanCount = 0;
   const maxAdaptiveReplans = 3;
-  let currentSuccessCriteria = Array.isArray(mission.successCriteria) ? mission.successCriteria : [];
 
   for (let stepIndex = 0; stepIndex < plan.length; stepIndex++) {
     if (completedToolIndices.has(stepIndex)) continue;
@@ -233,7 +243,7 @@ export async function executeVendiMission(input: {
         message: approvalMessage,
       });
 
-      if (mission.createdByUserId) {
+      if (mission.createdByUserId && process.env.VENDI_APPROVAL_WHATSAPP_ENABLED === "true") {
         try {
           const [owner] = await db
             .select({ telefone: usersTable.telefone })
@@ -274,6 +284,9 @@ export async function executeVendiMission(input: {
     });
 
     try {
+      if ((mission.context as any)?.observer === "vendi_operational_observer" && !isObserverReadOnlyTool(tool)) {
+        throw new Error("VENDI_OBSERVER_READ_ONLY");
+      }
       const executed = await executeVendiTool(tool.id, {
         tenantId: input.tenantId,
         userId: mission.createdByUserId,
@@ -340,8 +353,8 @@ export async function executeVendiMission(input: {
 
           if (adaptive.steps.length) {
             const completedPrefix = plan.slice(0, stepIndex + 1);
-            plan = [...completedPrefix, ...adaptive.steps];
-            if (adaptive.successCriteria.length) currentSuccessCriteria = adaptive.successCriteria;
+            const remaining = preservePendingSteps(plan.slice(stepIndex + 1), adaptive.steps);
+            plan = [...completedPrefix, ...remaining];
 
             await db.update(vendiMissionsTable)
               .set({
@@ -361,7 +374,7 @@ export async function executeVendiMission(input: {
               output: {
                 stepIndex,
                 adaptiveReplanCount,
-                remainingSteps: adaptive.steps.map((item) => item.toolId),
+                remainingSteps: remaining.map((item) => item.toolId),
               },
               evidence: {
                 strategy: "observation_driven_replan",
@@ -396,7 +409,7 @@ export async function executeVendiMission(input: {
         error: message,
       });
 
-      if (recoveryCount < maxRecoveries) {
+      if (recoveryCount < maxRecoveries && !tool.mutates && !tool.externalEffect) {
         recoveryCount++;
         try {
           const recovery = await planVendiMission({
@@ -415,16 +428,14 @@ export async function executeVendiMission(input: {
             },
           });
 
-          const replacement = recovery.steps;
-          if (recovery.successCriteria.length) currentSuccessCriteria = recovery.successCriteria;
+          const replacement = preservePendingSteps(plan.slice(stepIndex), recovery.steps);
+
           if (replacement.length) {
             plan = [...plan.slice(0, stepIndex), ...replacement];
             await db.update(vendiMissionsTable)
               .set({
                 plan: plan as Array<Record<string, unknown>>,
-                successCriteria: recovery.successCriteria.length
-                  ? recovery.successCriteria
-                  : currentSuccessCriteria,
+                successCriteria: currentSuccessCriteria,
                 status: "running",
                 lastError: message,
                 updatedAt: new Date(),
@@ -481,12 +492,23 @@ export async function executeVendiMission(input: {
     }
   }
 
+  const allPlannedStepsSucceeded = completedPlan(plan, outputs);
+  if (!allPlannedStepsSucceeded) {
+    const error = "VENDI_MISSION_INCOMPLETE";
+    await db.update(vendiMissionsTable)
+      .set({ status: "failed", lastError: error, result: { outputs }, updatedAt: new Date() })
+      .where(and(eq(vendiMissionsTable.id, mission.id), eq(vendiMissionsTable.tenantId, input.tenantId)));
+    await appendEvent({ tenantId: input.tenantId, missionId: mission.id, sequence: sequence++, type: "verification_failed", status: "failed", error });
+    return { ok: false, status: "failed" as const, missionId: mission.id, error, outputs };
+  }
+
   const result = {
     outputs,
     executedSteps: outputs.length,
     recoveryCount,
     adaptiveReplanCount,
     verification: {
+      allPlannedStepsSucceeded,
       allExecutedStepsSucceeded: outputs.every((item) => item.ok === true),
       evidenceCount: outputs.filter((item) => item.data !== undefined || item.message !== undefined).length,
       successCriteria: currentSuccessCriteria,
