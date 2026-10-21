@@ -56,3 +56,52 @@ export function reconcileAnnexMeasurements(measurements: FinancialMeasurement[])
     canIssueAnnexB: false,
   };
 }
+
+export type ContractPaymentLine = {
+  id: string;
+  kind: "entrada" | "pvc" | "medicao" | "outro";
+  amount: string | number;
+  referenceId?: string | null;
+  dueDate?: string | null;
+};
+
+// This accepts only explicitly classified contractual lines: operational ERP
+// titles must never be guessed into categories by description or amount.
+export function reconcileClassifiedContractPayments(
+  contractTotal: string | number,
+  lines: ContractPaymentLine[],
+) {
+  const issues: Array<{ code: string; lineId?: string; message: string }> = [];
+  const expected = moneyInCents(contractTotal);
+  if (expected == null) issues.push({ code: "INVALID_CONTRACT_TOTAL", message: "Valor global do contrato inválido." });
+  const sums = { entrada: 0, pvc: 0, medicao: 0, outro: 0 };
+  const seen = new Set<string>();
+  for (const line of lines) {
+    if (seen.has(line.id)) {
+      issues.push({ code: "DUPLICATE_PAYMENT_LINE", lineId: line.id, message: "Linha contratual duplicada." });
+      continue;
+    }
+    seen.add(line.id);
+    const amount = moneyInCents(line.amount);
+    if (amount == null) {
+      issues.push({ code: "INVALID_PAYMENT_AMOUNT", lineId: line.id, message: "Valor da parcela inválido." });
+      continue;
+    }
+    if (!line.referenceId?.trim()) {
+      issues.push({ code: "PAYMENT_SOURCE_MISSING", lineId: line.id, message: "Parcela sem vínculo de origem verificável." });
+    }
+    sums[line.kind] += amount;
+  }
+  const total = Object.values(sums).reduce((sum, value) => sum + value, 0);
+  if (expected != null && total !== expected) {
+    issues.push({ code: "PAYMENT_TOTAL_MISMATCH", message: "Parcelas classificadas não fecham com o valor global do contrato." });
+  }
+  return {
+    totals: Object.fromEntries(Object.entries(sums).map(([key, value]) => [key, (value / 100).toFixed(2)])),
+    sum: (total / 100).toFixed(2),
+    contractTotal: expected == null ? null : (expected / 100).toFixed(2),
+    issues,
+    contractualApprovalVerified: false,
+    canIssueAnnexB: false,
+  };
+}
