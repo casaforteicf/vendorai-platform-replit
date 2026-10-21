@@ -105,3 +105,44 @@ export function reconcileClassifiedContractPayments(
     canIssueAnnexB: false,
   };
 }
+
+/** Conserva o adiantamento como crédito, não como segunda receita.
+ * Uma entrada recebida e sua amortização nas medições não podem ser somadas
+ * novamente ao total contratado. Somente vínculos explícitos são aceitos.
+ */
+export function auditEntryAmortization(
+  contractedEntry: string | number,
+  measurements: FinancialMeasurement[],
+) {
+  const entry = moneyInCents(contractedEntry);
+  const issues: Array<{ code: string; message: string; measurementId?: string }> = [];
+  if (entry == null) issues.push({ code: "ENTRY_INVALID", message: "Entrada contratada inválida." });
+  let amortized = 0;
+  let previousBalance: number | null = entry;
+  for (const measurement of measurements) {
+    const part = moneyInCents(measurement.amortizacaoEntrada);
+    const balance = moneyInCents(measurement.saldoEntradaApos);
+    if (part == null) {
+      issues.push({ code: "AMORTIZATION_INVALID", measurementId: measurement.id, message: "Amortização inválida." });
+      continue;
+    }
+    amortized += part;
+    if (previousBalance != null && balance != null && previousBalance - part !== balance) {
+      issues.push({ code: "ENTRY_BALANCE_MISMATCH", measurementId: measurement.id, message: "Saldo da entrada após medição não confere." });
+    }
+    // A série deve vir ordenada e completa; quando falta saldo não inferimos um.
+    previousBalance = balance;
+    if (balance == null) issues.push({ code: "ENTRY_BALANCE_MISSING", measurementId: measurement.id, message: "Saldo da entrada não registrado." });
+  }
+  if (entry != null && amortized > entry) {
+    issues.push({ code: "ENTRY_OVER_AMORTIZED", message: "Amortização acumulada supera a entrada." });
+  }
+  return {
+    contractedEntry: entry == null ? null : (entry / 100).toFixed(2),
+    amortizedTotal: (amortized / 100).toFixed(2),
+    remainingEntry: entry == null ? null : ((entry - amortized) / 100).toFixed(2),
+    issues,
+    contractualApprovalVerified: false,
+    canIssueAnnexB: false,
+  };
+}
