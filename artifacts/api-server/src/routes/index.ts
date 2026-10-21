@@ -18,6 +18,7 @@ import agentActionsLogRouter from "./agent_actions_log";
 import browserAgentRouter, { browserAgentHandoffRouter } from "./browser_agent";
 import browserAgentMcpRouter from "./browser_agent_mcp";
 import vendiRouter from "./vendi";
+import vendiStudioProjectsRouter from "./vendi_studio_projects";
 import consentsRouter from "./consents";
 import businessProfilesRouter from "./business_profiles";
 import agentConfigsRouter from "./agent_configs";
@@ -383,6 +384,7 @@ router.use(conversationsRouter);
 router.use(agentActionsLogRouter);
 router.use(browserAgentRouter);
 router.use(vendiRouter);
+router.use(vendiStudioProjectsRouter);
 router.use(consentsRouter);
 
 // Business Hub
