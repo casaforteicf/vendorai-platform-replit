@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Link, useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
-import { Search, Radar, HelpCircle, ChevronDown, ChevronLeft, ChevronRight, ArrowRight, CalendarDays, Megaphone, BriefcaseBusiness, HardHat, Package, Store, ChartNoAxesCombined, Bot, Settings, Headphones, Layers3, LogOut, Users, MessageSquare, ShoppingBag, UserRound, ShieldCheck, Plug, SlidersHorizontal, BookOpen, CircleHelp, Building2, Check, Loader2 } from "lucide-react";
+import { Search, Radar, HelpCircle, ChevronDown, ChevronLeft, ChevronRight, ArrowRight, CalendarDays, Megaphone, BriefcaseBusiness, HardHat, Package, Store, ChartNoAxesCombined, Bot, Settings, Headphones, Layers3, LogOut, Users, MessageSquare, ShoppingBag, UserRound, ShieldCheck, Plug, SlidersHorizontal, Code2, BookOpen, CircleHelp, Building2, Check, Loader2 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { NovidadesBell } from "@/components/NovidadesBell";
 import { LAUNCHER_MODULES, authorizedLauncherModules, type LauncherAudience, type LauncherModule } from "@/lib/adaptiveModuleLauncher";
@@ -37,6 +37,7 @@ const TAD_LABELS: Partial<Record<LauncherModule, { description: string; section:
   parceiros: { description: "Parceiros e fornecedores", section: "Rede" },
   portal_cliente: { description: "Projetos, pedidos e solicitações", section: "Relacionamento" },
   inteligencia: { description: "Indicadores e insights de inteligência do negócio", section: "Inteligência" },
+  vendi_studio: { description: "Crie aplicativos, sites, livros e produtos digitais com IA", section: "Criação" },
   agentes_ia: { description: "Vendas e agentes inteligentes para o seu negócio", section: "Inteligência" },
   configuracoes: { description: "Usuários, permissões e integrações", section: "Administração" },
   suporte: { description: "Ajuda, perguntas frequentes e orientação", section: "Suporte" },
@@ -46,7 +47,7 @@ const ICON_MAP: Partial<Record<LauncherModule, typeof Users>> = {
   crm: Users, prospector: Radar, marketing: Megaphone, omnichannel: MessageSquare, agenda: CalendarDays,
   arqdor: Layers3, obras: HardHat, pdv: ShoppingBag, erp: Package,
   marketplace_casa: Store, parceiros: BriefcaseBusiness, portal_cliente: UserRound,
-  inteligencia: ChartNoAxesCombined, agentes_ia: Bot, configuracoes: Settings, suporte: Headphones,
+  inteligencia: ChartNoAxesCombined, vendi_studio: Code2, agentes_ia: Bot, configuracoes: Settings, suporte: Headphones,
 };
 
 type Tone = { label: string; tile: string; card: string; bar: string };
@@ -69,7 +70,7 @@ const MODULE_TONE: Partial<Record<LauncherModule, Tone>> = {
   crm: TONES.cyan, prospector: TONES.teal, marketing: TONES.violet, omnichannel: TONES.teal, agenda: TONES.sky,
   arqdor: TONES.rose, obras: TONES.amber, pdv: TONES.teal, erp: TONES.blue,
   marketplace_casa: TONES.orange, parceiros: TONES.teal, portal_cliente: TONES.teal,
-  inteligencia: TONES.fuchsia, agentes_ia: TONES.indigo, configuracoes: TONES.slate, suporte: TONES.blue,
+  inteligencia: TONES.fuchsia, vendi_studio: TONES.teal, agentes_ia: TONES.indigo, configuracoes: TONES.slate, suporte: TONES.blue,
 };
 
 const PHOTO: Partial<Record<LauncherModule, string>> = {
