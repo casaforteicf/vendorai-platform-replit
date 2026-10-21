@@ -80,10 +80,13 @@ export function BudgetContractualEditor({ budgetId, token, onSaved }: Props) {
       if (fresh.status !== "rascunho" || JSON.stringify(fresh.itens) !== original) {
         throw new Error("A revisão ou os itens mudaram desde a abertura. Recarregue antes de salvar.");
       }
-      const response = await fetch(`/api/propostas/${encodeURIComponent(budget.id)}`, {
+      const response = await fetch(`/api/propostas/${encodeURIComponent(budget.id)}/itens/contratual`, {
         method: "PATCH",
         headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ itens: items }),
+        body: JSON.stringify({
+          expectedItems: JSON.parse(original),
+          changes: items.map((item, index) => ({ index, contratual: item.contratual ?? {} })),
+        }),
       });
       const body = await response.json().catch(() => null);
       if (!response.ok) throw new Error(body?.error ?? "Erro ao salvar especificações.");
