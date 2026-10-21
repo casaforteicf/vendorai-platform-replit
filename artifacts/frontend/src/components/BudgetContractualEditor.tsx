@@ -15,6 +15,7 @@ export function BudgetContractualEditor({ budgetId, token, onSaved }: Props) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const [annexPreview, setAnnexPreview] = useState<any | null>(null);
 
   async function getCurrent(): Promise<Budget> {
     const response = await fetch(`/api/propostas/${encodeURIComponent(budgetId)}`, {
@@ -25,8 +26,20 @@ export function BudgetContractualEditor({ budgetId, token, onSaved }: Props) {
     return data as Budget;
   }
 
+  async function loadAnnexPreview() {
+    setError(""); setAnnexPreview(null);
+    try {
+      const response = await fetch(`/api/propostas/${encodeURIComponent(budgetId)}/anexos/previa`, {
+        headers: { Authorization: `Bearer ${token}` }, cache: "no-store",
+      });
+      const body = await response.json().catch(() => null);
+      if (!response.ok) throw new Error(body?.error ?? "Falha na conferência documental.");
+      setAnnexPreview(body);
+    } catch (e) { setError(e instanceof Error ? e.message : "Falha na conferência documental."); }
+  }
+
   async function load() {
-    setBusy(true); setError(""); setSuccess("");
+    setBusy(true); setError(""); setSuccess(""); setAnnexPreview(null);
     try {
       const current = await getCurrent();
       if (current.status !== "rascunho") throw new Error("Orçamento emitido: crie uma revisão para alterar especificações.");
@@ -64,6 +77,7 @@ export function BudgetContractualEditor({ budgetId, token, onSaved }: Props) {
       setBudget(body as Budget);
       setItems((body.itens ?? []) as Item[]);
       setOriginal(JSON.stringify(body.itens ?? []));
+      setAnnexPreview(null);
       setSuccess("Especificações gravadas no orçamento. Aprovação contratual ainda depende da revisão oficial.");
       onSaved();
     } catch (e) { setError(e instanceof Error ? e.message : "Erro ao salvar."); }
@@ -77,10 +91,19 @@ export function BudgetContractualEditor({ budgetId, token, onSaved }: Props) {
           <h3 className="text-sm font-semibold">Especificações contratuais dos itens</h3>
           <p className="text-xs text-muted-foreground">Origem: orçamento salvo. Apenas rascunhos; não modifica preços ou quantidades.</p>
         </div>
-        <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => void load()}>Carregar itens atuais</Button>
+        <div className="flex flex-wrap gap-2">
+          <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => void load()}>Carregar itens atuais</Button>
+          <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => void loadAnnexPreview()}>Conferir anexos A/B/C</Button>
+        </div>
       </div>
       {error && <p role="alert" className="text-sm text-red-700">{error}</p>}
       {success && <p role="status" className="text-sm text-emerald-700">{success}</p>}
+      {annexPreview && <section className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs space-y-2">
+        <p className="font-semibold">Prévia não contratual — {annexPreview.numero || annexPreview.propostaId} / {annexPreview.revision || "revisão não identificada"}</p>
+        <p>{annexPreview.anexoA?.items?.length ?? 0} itens no memorial; {annexPreview.anexoB?.etapas?.length ?? 0} etapas previstas; {annexPreview.anexoC?.itensParaVistoria?.length ?? 0} itens candidatos à vistoria.</p>
+        <p>Emissão e aceite permanecem bloqueados até validação independente da versão aprovada no servidor.</p>
+        {(annexPreview.pending ?? []).map((p: any, i: number) => <p key={i} className="text-amber-900">• {p.message}</p>)}
+      </section>}
       {budget && <div className="space-y-3">
         {items.map((item, index) => <div key={index} className="space-y-2 rounded-lg border p-3">
           <div className="text-sm font-medium">{item.nome} — {item.quantidade} × R$ {Number(item.valorUnitario).toFixed(2)}</div>
