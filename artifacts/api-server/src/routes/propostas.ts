@@ -1505,13 +1505,7 @@ router.get("/propostas/:id/anexos/fontes-financeiras", async (req, res) => {
       code: "CONCILIACAO_CONTRATUAL_PENDENTE",
       message: "Títulos e medições são dados operacionais, não parcelas contratuais comprovadas. A revisão assinada e o fechamento financeiro ainda precisam de conciliação.",
     }], emitivel: false });
-  return;
-  // Retido somente para compatibilidade do trecho anterior, sem execução.
-  /* res.json({ propostaId: proposta.id, obraId: obra.id,
-    titulos, pendencias: [{
-      code: "CONCILIACAO_CONTRATUAL_PENDENTE",
-      message: "Títulos operacionais não comprovam parcelas do contrato. Conciliar contrato assinado, revisões, medições e amortizações antes da emissão.",
-    }], emitivel: false }); */
+
 });
 
 // Read-only dossiê PRELIMINAR; contract approval/issue requires separate verified workflow.
