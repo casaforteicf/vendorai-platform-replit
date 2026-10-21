@@ -26,6 +26,7 @@ const SUPERADMIN_ONLY_MODULE_KEYS = new Set<NavModuleKey>([
 const EFFECTIVE_DEFAULT_OFF_MODULE_KEYS = new Set<NavModuleKey>([
   ERP_MODULE_KEY,
   PRACA_AI_MODULE_KEY,
+  "vendi_studio",
 ]);
 
 function normalizeVertical(value: string | null | undefined) {
