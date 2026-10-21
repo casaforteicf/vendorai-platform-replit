@@ -1,5 +1,6 @@
 import { Router, type IRouter } from "express";
 import { z } from "zod";
+import { vendiStudioCreateSchema } from "../lib/vendi-studio-validation.js";
 import { canUseVendiStudio } from "../lib/vendi-studio-policy.js";
 import { and, desc, eq } from "drizzle-orm";
 import { db, vendiStudioProjectsTable, tenantNavModulesTable } from "@workspace/db";
@@ -23,12 +24,6 @@ router.use(async (req: any, res, next) => {
     res.status(503).json({ error: "Não foi possível validar o acesso ao módulo" });
   }
 });
-const kinds = ["web_app","mobile_app","website","book","ebook","course","agent","design","media","other"] as const;
-const createSchema = z.object({
-  title: z.string().trim().min(1).max(160),
-  kind: z.enum(kinds).default("web_app"),
-  brief: z.string().max(20000).optional(),
-}).strict();
 
 function tenantOf(req: any): string | undefined { return req.user?.tenantId; }
 function userOf(req: any): string | undefined { return req.user?.sub; }
@@ -50,7 +45,7 @@ router.get("/vendi-studio/projects", async (req, res) => {
 router.post("/vendi-studio/projects", async (req, res) => {
   const tenantId = tenantOf(req), ownerUserId = userOf(req);
   if (!tenantId || !ownerUserId) return void res.status(403).json({ error: "Acesso não autorizado" });
-  const payload = createSchema.safeParse(req.body);
+  const payload = vendiStudioCreateSchema.safeParse(req.body);
   if (!payload.success) return void res.status(422).json({ error: payload.error.flatten() });
   try {
     const [project] = await db.insert(vendiStudioProjectsTable).values({
