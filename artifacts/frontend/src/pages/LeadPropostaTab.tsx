@@ -2777,7 +2777,7 @@ export default function LeadPropostaTab({ leadId, tenantId, lead, onCreateBudget
               token={token}
               onSaved={() => {
                 void queryClient.invalidateQueries({ queryKey: ["listPropostas", tenantId] });
-                void queryClient.invalidateQueries({ queryKey: getListPropostasQueryKey({ tenantId }) });
+                void queryClient.invalidateQueries({ queryKey: getListPropostasQueryKey(tenantId, { leadId }) });
               }}
             />
           </div>
