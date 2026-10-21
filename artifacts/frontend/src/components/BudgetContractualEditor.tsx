@@ -16,6 +16,7 @@ export function BudgetContractualEditor({ budgetId, token, onSaved }: Props) {
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [annexPreview, setAnnexPreview] = useState<any | null>(null);
+  const [financeSources, setFinanceSources] = useState<any | null>(null);
 
   async function getCurrent(): Promise<Budget> {
     const response = await fetch(`/api/propostas/${encodeURIComponent(budgetId)}`, {
@@ -24,6 +25,18 @@ export function BudgetContractualEditor({ budgetId, token, onSaved }: Props) {
     const data = await response.json().catch(() => null);
     if (!response.ok || !data?.id) throw new Error(data?.error ?? "Não foi possível consultar o orçamento.");
     return data as Budget;
+  }
+
+  async function loadFinancialSources() {
+    setError(""); setFinanceSources(null);
+    try {
+      const response = await fetch(`/api/propostas/${encodeURIComponent(budgetId)}/anexos/fontes-financeiras`, {
+        headers: { Authorization: `Bearer ${token}` }, cache: "no-store",
+      });
+      const body = await response.json().catch(() => null);
+      if (!response.ok) throw new Error(body?.error ?? "Falha ao consultar fontes financeiras.");
+      setFinanceSources(body);
+    } catch (e) { setError(e instanceof Error ? e.message : "Falha ao consultar fontes financeiras."); }
   }
 
   async function loadAnnexPreview() {
@@ -94,10 +107,18 @@ export function BudgetContractualEditor({ budgetId, token, onSaved }: Props) {
         <div className="flex flex-wrap gap-2">
           <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => void load()}>Carregar itens atuais</Button>
           <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => void loadAnnexPreview()}>Conferir anexos A/B/C</Button>
+          <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => void loadFinancialSources()}>Fontes financeiras da obra</Button>
         </div>
       </div>
       {error && <p role="alert" className="text-sm text-red-700">{error}</p>}
       {success && <p role="status" className="text-sm text-emerald-700">{success}</p>}
+      {financeSources && <section className="rounded-lg border bg-muted/30 p-3 text-xs space-y-2">
+        <p className="font-semibold">Fontes ERP — obra {financeSources.obraId || "não vinculada"}</p>
+        <p>{financeSources.titulos?.length ?? 0} título(s) financeiro(s) localizados por vínculo canônico da proposta.</p>
+        <p>Os títulos não representam automaticamente as parcelas contratuais.</p>
+        {(financeSources.pendencias ?? []).map((p: any, i: number) => <p key={i} role="status">{p.message}</p>)}
+        {(financeSources.titulos ?? []).map((t: any) => <p key={t.id}>{t.descricao} — {t.tipo} / {t.status} — R$ {t.valorOriginal} — vencimento {t.vencimento || "pendente"} — fonte {t.origem}</p>)}
+      </section>}
       {annexPreview && <section className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs space-y-2">
         <p className="font-semibold">Prévia não contratual — {annexPreview.numero || annexPreview.propostaId} / {annexPreview.revision || "revisão não identificada"}</p>
         <p>{annexPreview.anexoA?.items?.length ?? 0} itens no memorial; {annexPreview.anexoB?.etapas?.length ?? 0} etapas previstas; {annexPreview.anexoC?.itensParaVistoria?.length ?? 0} itens candidatos à vistoria.</p>
