@@ -16,6 +16,8 @@ import {
   dealsTable,
   leadsTable,
   leadBriefingsTable,
+  obrasTable,
+  obraFinanceiroTitulosTable,
   type PropostaItem,
 } from "@workspace/db";
 import { dispatchVendaWebhook } from "../services/erp-webhook.js";
@@ -1419,6 +1421,54 @@ router.get(["/propostas/:id/pdf", "/propostas/:id/print-document"], async (req, 
     logger.error({ err: error, propostaId }, "propostas: failed to generate PDF");
     res.status(500).json({ error: "Não foi possível gerar o PDF do orçamento." });
   }
+});
+
+// Sources are strictly resolved by proposal->obra foreign-key relation, never by
+// fuzzy customer/project names. Titles are operational records, not contract terms.
+router.get("/propostas/:id/anexos/fontes-financeiras", async (req, res) => {
+  const [proposta] = await db.select().from(propostasTable)
+    .where(eq(propostasTable.id, String(req.params.id))).limit(1);
+  if (!proposta) { res.status(404).json({ error: "Proposta não encontrada." }); return; }
+  if (req.user?.platformRole !== "super_admin" && proposta.tenantId !== req.user?.tenantId) {
+    res.status(403).json({ error: "Acesso negado." }); return;
+  }
+  if (!(await canAccessProposalOwnership(req, proposta))) {
+    res.status(403).json({ error: "Acesso negado à proposta." }); return;
+  }
+  const obras = await db.select({
+    id: obrasTable.id, nome: obrasTable.nome, propostaOrigemId: obrasTable.propostaOrigemId,
+  }).from(obrasTable).where(and(
+    eq(obrasTable.propostaOrigemId, proposta.id),
+    eq(obrasTable.tenantId, proposta.tenantId),
+  )).limit(2);
+  res.setHeader("Cache-Control", "no-store");
+  if (obras.length !== 1) {
+    res.json({ propostaId: proposta.id, obraId: null, titulos: [],
+      pendencias: [{ code: "OBRA_CANONICA_NAO_LOCALIZADA", message: "Nenhuma obra com vínculo canônico exclusivo para esta revisão. Não usar correspondência por nome." }],
+      emitivel: false });
+    return;
+  }
+  const obra = obras[0];
+  const titulos = await db.select({
+    id: obraFinanceiroTitulosTable.id,
+    origem: obraFinanceiroTitulosTable.origem,
+    origemId: obraFinanceiroTitulosTable.origemId,
+    descricao: obraFinanceiroTitulosTable.descricao,
+    status: obraFinanceiroTitulosTable.status,
+    tipo: obraFinanceiroTitulosTable.tipo,
+    competencia: obraFinanceiroTitulosTable.competencia,
+    vencimento: obraFinanceiroTitulosTable.dataVencimento,
+    valorOriginal: obraFinanceiroTitulosTable.valorOriginal,
+    valorLiquidado: obraFinanceiroTitulosTable.valorLiquidado,
+  }).from(obraFinanceiroTitulosTable).where(and(
+    eq(obraFinanceiroTitulosTable.obraId, obra.id),
+    eq(obraFinanceiroTitulosTable.tenantId, proposta.tenantId),
+  ));
+  res.json({ propostaId: proposta.id, obraId: obra.id,
+    titulos, pendencias: [{
+      code: "CONCILIACAO_CONTRATUAL_PENDENTE",
+      message: "Títulos operacionais não comprovam parcelas do contrato. Conciliar contrato assinado, revisões, medições e amortizações antes da emissão.",
+    }], emitivel: false });
 });
 
 // Read-only dossiê PRELIMINAR; contract approval/issue requires separate verified workflow.
