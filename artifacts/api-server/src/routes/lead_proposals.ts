@@ -1,3 +1,4 @@
+import { embedProposalStorageImages } from "../lib/proposal-pdf-assets.js";
 import { Router, type IRouter } from "express";
 import { eq, desc, and } from "drizzle-orm";
 import {
@@ -335,7 +336,7 @@ router.get("/leads/:leadId/proposals/:version/download", async (req, res) => {
   const filename = `Proposta_${clientName.replace(/\s+/g, "_")}_v${version}.html`;
   res.setHeader("Content-Type", "text/html; charset=utf-8");
   res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
-  res.send(absolutifyStorageUrlsForDownload(row.htmlContent, req));
+  res.send(await embedProposalStorageImages(absolutifyStorageUrls(row.htmlContent), { authorization: req.headers.authorization, cookie: req.headers.cookie }));
 });
 
 // ── GET /leads/:leadId/proposals/:version/pdf
@@ -361,7 +362,7 @@ router.get("/leads/:leadId/proposals/:version/pdf", async (req, res) => {
   }
   const clientName = lead.empresa || lead.nome || "Cliente";
   const filename = `Proposta_${clientName.replace(/\s+/g, "_")}_v${version}.pdf`;
-  const pdfBuffer = await generateProposalPDF(absolutifyStorageUrls(row.htmlContent));
+  const pdfBuffer = await generateProposalPDF(absolutifyStorageUrls(row.htmlContent), { authorization: req.headers.authorization, cookie: req.headers.cookie });
   const isPdf = pdfBuffer.length > 0 && pdfBuffer[0] === 0x25 && pdfBuffer[1] === 0x50 && pdfBuffer[2] === 0x44 && pdfBuffer[3] === 0x46; // %PDF
   if (isPdf) {
     res.setHeader("Content-Type", "application/pdf");
