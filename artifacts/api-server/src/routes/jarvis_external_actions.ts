@@ -351,7 +351,7 @@ router.post("/support/chat", async (req, res, next) => {
     leadName: lead.nome,
     leadEmail: lead.email,
     _jarvisExternalAction: {
-      requestedBy: req.user?.id ?? req.user?.sub ?? null,
+      requestedBy: req.user?.sub ?? req.user?.sub ?? null,
       requestedAt: new Date().toISOString(),
       sourceText: text.slice(0, 1000),
     },

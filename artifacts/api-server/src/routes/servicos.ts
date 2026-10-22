@@ -972,7 +972,7 @@ router.patch("/tenants/:tenantId/servicos/ordens/:id/checklist/:itemId", async (
   const hasConcluido = Object.prototype.hasOwnProperty.call(req.body ?? {}, "concluido");
   const concluido = hasConcluido ? req.body.concluido !== false : atual.concluido;
   const observacao = String(req.body.observacao ?? atual.observacao ?? "").trim();
-  const legacyFotos = Array.isArray(req.body.fotos)
+  const legacyFotos: string[] = Array.isArray(req.body.fotos)
     ? req.body.fotos.filter((url: unknown) => typeof url === "string" && url.trim())
     : (atual.fotos ?? []);
   const midias = Object.prototype.hasOwnProperty.call(req.body ?? {}, "midias")

@@ -363,7 +363,7 @@ const nullableTimestampInput = z.coerce.date().nullable().optional();
 const paymentMethodInput = z.enum(["pix", "boleto", "cartao", "transferencia", "outro"]).nullable().optional();
 const paymentStatusInput = z.enum(["pago", "pendente", "atrasado", "isento"]).nullable().optional();
 
-export const insertTenantSchema = createInsertSchema(tenantsTable)
+export const insertTenantSchema = createInsertSchema(tenantsTable, { formaPagamento: paymentMethodInput, statusPagamento: paymentStatusInput, agentsEnabled: () => z.record(z.string(), z.unknown()) })
   .omit({
     id: true,
     tenantCode: true,
@@ -386,7 +386,7 @@ export const insertTenantSchema = createInsertSchema(tenantsTable)
     supportedCurrencies: supportedCurrenciesSchema.optional(),
   });
 
-export const updateTenantSchema = createSelectSchema(tenantsTable)
+export const updateTenantSchema = createSelectSchema(tenantsTable, { agentsEnabled: () => z.record(z.string(), z.unknown()) })
   .omit({
     id: true,
     tenantCode: true,

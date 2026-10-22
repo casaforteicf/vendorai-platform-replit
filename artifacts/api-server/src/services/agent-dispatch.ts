@@ -1,3 +1,4 @@
+import { persistedAgentName } from "../lib/agent-name.js";
 /**
  * Agent dispatch service — selects and runs the appropriate AI agent
  * for an incoming message without going through HTTP.
@@ -979,7 +980,7 @@ export async function processAgentInternal(params: {
       return { status: "skipped", reason: "plan_blocked" };
     }
 
-    const resolvedAgentCfg = config.agents?.[resolvedAgentName];
+    const resolvedAgentCfg = config.agents?.[persistedAgentName(resolvedAgentName)];
 
     // 4c. Handoff detection — compare previous agent with resolved agent
     // Read context for prompt injection (from metadata if continuing, generated fresh if handoff)

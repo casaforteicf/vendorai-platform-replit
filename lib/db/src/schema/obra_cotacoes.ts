@@ -168,7 +168,7 @@ export const insertObraCotacaoSchema = createInsertSchema(obraCotacoesTable, {
 }).omit({ id: true, createdAt: true, updatedAt: true });
 
 export const insertObraCotacaoItemSchema = createInsertSchema(obraCotacaoItensTable, {
-  quantidadeTecnica: decimalOptional,
+  quantidadeTecnica: () => decimalOptional.unwrap(),
   quantidadeCompra: decimalOptional,
   quantidadeMinimaCompra: decimalOptional,
   multiploCompra: decimalOptional,
@@ -177,6 +177,7 @@ export const insertObraCotacaoItemSchema = createInsertSchema(obraCotacaoItensTa
 }).omit({ id: true, createdAt: true, updatedAt: true });
 
 export const insertObraCotacaoPropostaSchema = createInsertSchema(obraCotacaoPropostasTable, {
+  metadata: () => z.record(z.string(), z.unknown()),
   freteValor: decimalOptional,
   impostosValor: decimalOptional,
   descontoValor: decimalOptional,
@@ -187,14 +188,15 @@ export const insertObraCotacaoPropostaSchema = createInsertSchema(obraCotacaoPro
 }).omit({ id: true, createdAt: true, updatedAt: true });
 
 export const insertObraCotacaoPropostaItemSchema = createInsertSchema(obraCotacaoPropostaItensTable, {
-  quantidadeOfertada: decimalOptional,
+  metadata: () => z.record(z.string(), z.unknown()),
+  quantidadeOfertada: () => decimalOptional.unwrap(),
   embalagemQuantidade: decimalOptional,
   quantidadeMinimaCompra: decimalOptional,
   multiploCompra: decimalOptional,
-  precoUnitarioFornecedor: decimalOptional,
+  precoUnitarioFornecedor: () => decimalOptional.unwrap(),
   precoUnitarioNormalizado: decimalOptional,
   quantidadeCompraNormalizada: decimalOptional,
-  valorTotalLinha: decimalOptional,
+  valorTotalLinha: () => decimalOptional.unwrap(),
   impostoLinha: decimalOptional,
   freteRateado: decimalOptional,
   reconciliacaoConfianca: decimalOptional,
@@ -202,6 +204,6 @@ export const insertObraCotacaoPropostaItemSchema = createInsertSchema(obraCotaca
 }).omit({ id: true, createdAt: true, updatedAt: true });
 
 export const insertObraCotacaoSelecaoSchema = createInsertSchema(obraCotacaoSelecoesTable, {
-  quantidadeSelecionada: decimalOptional,
-  custoSelecionado: decimalOptional,
+  quantidadeSelecionada: () => decimalOptional.unwrap(),
+  custoSelecionado: () => decimalOptional.unwrap(),
 }).omit({ id: true, createdAt: true });

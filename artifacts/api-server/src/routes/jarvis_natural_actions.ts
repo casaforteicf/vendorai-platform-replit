@@ -204,7 +204,7 @@ router.patch("/jarvis/cases/:id/outcome", async (req, res) => {
       effectiveness: parsed.data.effectiveness,
       actionTaken: parsed.data.actionTaken ?? null,
       financialImpactBrl: parsed.data.financialImpactBrl ?? null,
-      actorId: req.user?.id ?? req.user?.sub ?? null,
+      actorId: req.user?.sub ?? req.user?.sub ?? null,
       recordedAt: now.toISOString(),
     };
   }
@@ -253,7 +253,7 @@ router.patch("/jarvis/cases/:id/relevance-feedback", async (req, res) => {
   if (!current) return res.status(404).json({ error: "Caso Vendor não encontrado" });
 
   const now = new Date();
-  const actorId = req.user?.id ?? req.user?.sub ?? null;
+  const actorId = req.user?.sub ?? req.user?.sub ?? null;
   const evidence = current.evidence && typeof current.evidence === "object"
     ? current.evidence
     : {};

@@ -227,7 +227,7 @@ export async function generateImagesWithReference(
         });
         const item = Array.isArray((response as any)?.data) ? (response as any).data[0] : undefined;
         if (!item) continue;
-        if (item.b64_json) return await saveB64Image(item.b64_json);
+        if (item.b64_json) return await saveB64Image(tenantId, item.b64_json, "content_reference_image");
         if (item.url) return item.url as string;
       } catch {
         // Try next model

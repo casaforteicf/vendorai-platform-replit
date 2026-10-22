@@ -380,7 +380,7 @@ router.post("/tenants/:tenantId/configuration-history/:auditId/rollback", requir
     before: current,
     after: restored,
     actor: {
-      userId: req.user?.id ?? req.user?.sub ?? null,
+      userId: req.user?.sub ?? req.user?.sub ?? null,
       ip: req.ip ?? null,
     },
   });

@@ -33,7 +33,7 @@ export const vendorStoriesTable = pgTable(
   ],
 );
 
-export const insertVendorStorySchema = createInsertSchema(vendorStoriesTable)
+export const insertVendorStorySchema = createInsertSchema(vendorStoriesTable, { mediaType: z.enum(["foto", "video"]) })
   .omit({ id: true, viewsCount: true, ativo: true, createdAt: true, expiresAt: true })
   // No insert, o front nunca escolhe os dois — reforça a regra de negócio
   // (produtoId OU linkUrl, nunca ambos) direto no schema de validação.

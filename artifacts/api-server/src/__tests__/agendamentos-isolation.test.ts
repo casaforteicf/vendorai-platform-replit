@@ -370,7 +370,7 @@ describe("member ownership authorization — agendamentos", () => {
       from: () => ({ where: () => ({ limit: async () => rows }) }),
     });
     mockDbSelect.mockReturnValueOnce({ from: () => ({ where: async () => [ownedCalendarRecord] }) })
-      .mockReturnValueOnce(query([{ id: "calendar-revoked", ownerUserId: "different-user" }]))
+      .mockReturnValueOnce(query([{ id: "calendar-revoked", tenantId: TENANT_B, ownerUserId: "different-user" }]))
       .mockReturnValueOnce(query([]));
     const res = await request(app).patch(`/api/agendamentos/${RECORD_ID}`)
       .set("Authorization", `Bearer ${memberToken}`).send({ tipo: "consulta" });
@@ -394,7 +394,7 @@ describe("member ownership authorization — agendamentos", () => {
     // The delete handler loads the appointment via where(), without limit().
     mockDbSelect.mockReturnValueOnce({
       from: () => ({ where: async () => [{ ...recordOwnedByTenantB, responsavelId: memberId, agendaId: "revoked-calendar" }] }),
-    }).mockReturnValueOnce(query([{ id: "revoked-calendar", ownerUserId: "another-user" }]))
+    }).mockReturnValueOnce(query([{ id: "revoked-calendar", tenantId: TENANT_B, ownerUserId: "another-user" }]))
       .mockReturnValueOnce(query([]));
     const response = await request(app).delete(`/api/agendamentos/${RECORD_ID}`)
       .set("Authorization", `Bearer ${memberToken}`);

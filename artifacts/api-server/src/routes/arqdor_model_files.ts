@@ -16,13 +16,13 @@ const prefix = "/arch/projetos/:projectId/model-files";
 
 router.use(prefix, async (req, res, next) => {
   const tenantId = req.user?.tenantId ?? req.tenantId;
-  if (!tenantId || !req.user?.sub) return res.status(401).json({ error: "Sessão inválida" });
+  if (!tenantId || !req.user?.sub) { res.status(401).json({ error: "Sessão inválida" }); return; }
   try {
     const projectId = safeSegment(String(req.params.projectId));
     safeSegment(tenantId);
     const [project] = await db.select({ id: archProjetosTable.id }).from(archProjetosTable)
       .where(and(eq(archProjetosTable.id, projectId), eq(archProjetosTable.tenantId, tenantId))).limit(1);
-    if (!project) return res.status(404).json({ error: "Projeto não encontrado" });
+    if (!project) { res.status(404).json({ error: "Projeto não encontrado" }); return; }
     res.locals.modelScope = { projectId, tenantId, userId: req.user.sub };
     next();
   } catch (error) { next(error); }
@@ -38,27 +38,27 @@ router.get(prefix, async (_req, res, next) => {
   try {
     const storage = store();
     const { tenantId, projectId } = res.locals.modelScope;
-    return res.json({ configured: Boolean(storage), formats: ["glb"], maxBytes: MODEL_FILE_LIMIT,
-      models: storage ? await storage.list(tenantId, projectId) : [] });
+    res.json({ configured: Boolean(storage), formats: ["glb"], maxBytes: MODEL_FILE_LIMIT,
+      models: storage ? await storage.list(tenantId, projectId) : [] }); return;
   } catch (error) { next(error); }
 });
 
 router.post(prefix, (req, res, next) => {
-  if (!store()) return res.status(503).json({ error: "Armazenamento privado de modelos não configurado" });
+  if (!store()) { res.status(503).json({ error: "Armazenamento privado de modelos não configurado" }); return; }
   upload.single("file")(req, res, error => {
-    if (error) return res.status(error.code === "LIMIT_FILE_SIZE" ? 413 : 400).json({ error: "Envie um único GLB de até 45 MB" });
+    if (error) { res.status(error.code === "LIMIT_FILE_SIZE" ? 413 : 400).json({ error: "Envie um único GLB de até 45 MB" }); return; }
     next();
   });
 }, async (req, res, next) => {
-  if (!req.file || !/\.glb$/i.test(req.file.originalname)) return res.status(422).json({ error: "Envie um arquivo GLB no campo file" });
+  if (!req.file || !/\.glb$/i.test(req.file.originalname)) { res.status(422).json({ error: "Envie um arquivo GLB no campo file" }); return; }
   const storage = store();
-  if (!storage) return res.status(503).json({ error: "Armazenamento privado indisponível" });
+  if (!storage) { res.status(503).json({ error: "Armazenamento privado indisponível" }); return; }
   try {
     const { tenantId, projectId } = res.locals.modelScope;
-    return res.status(201).json(await storage.save(tenantId, projectId, req.file.originalname, req.file.buffer));
+    res.status(201).json(await storage.save(tenantId, projectId, req.file.originalname, req.file.buffer)); return;
   } catch (error) {
     if (error instanceof SyntaxError || (error instanceof Error && /GLB|glTF|malhas|recursos|Modelo excede/.test(error.message)))
-      return res.status(422).json({ error: "GLB inválido ou com recursos externos. Exporte com todas as texturas incorporadas." });
+      { res.status(422).json({ error: "GLB inválido ou com recursos externos. Exporte com todas as texturas incorporadas." }); return; }
     next(error);
   }
 });
@@ -67,21 +67,21 @@ router.post(prefix, (req, res, next) => {
 // Never enable on a general production API host without OS isolation.
 router.post(`${prefix}/convert`, (req, res, next) => {
   if (process.env.ARQDOR_ENABLE_MODEL_CONVERSION !== "true")
-    return res.status(503).json({ error: "Conversão OBJ/FBX não habilitada neste ambiente" });
-  if (!store()) return res.status(503).json({ error: "Armazenamento privado não configurado" });
+    { res.status(503).json({ error: "Conversão OBJ/FBX não habilitada neste ambiente" }); return; }
+  if (!store()) { res.status(503).json({ error: "Armazenamento privado não configurado" }); return; }
   upload.single("file")(req, res, error => {
-    if (error) return res.status(error.code === "LIMIT_FILE_SIZE" ? 413 : 400)
-      .json({ error: "Arquivo excede o limite ou upload inválido" });
+    if (error) { res.status(error.code === "LIMIT_FILE_SIZE" ? 413 : 400)
+      .json({ error: "Arquivo excede o limite ou upload inválido" }); return; }
     next();
   });
 }, async (req, res, next) => {
   if (!req.file || !/\\.(obj|fbx)$/i.test(req.file.originalname))
-    return res.status(422).json({ error: "Envie OBJ ou FBX no campo file" });
+    { res.status(422).json({ error: "Envie OBJ ou FBX no campo file" }); return; }
   const blender = process.env.ARQDOR_BLENDER_BINARY;
   const converter = process.env.ARQDOR_MODEL_CONVERTER_SCRIPT;
-  if (!blender || !converter) return res.status(503).json({ error: "Conversor isolado não configurado" });
+  if (!blender || !converter) { res.status(503).json({ error: "Conversor isolado não configurado" }); return; }
   const storage = store();
-  if (!storage) return res.status(503).json({ error: "Armazenamento privado indisponível" });
+  if (!storage) { res.status(503).json({ error: "Armazenamento privado indisponível" }); return; }
   const { tenantId, projectId } = res.locals.modelScope;
   const extension = path.extname(req.file.originalname).toLowerCase();
   const sha256 = createHash("sha256").update(req.file.buffer).digest("hex");
@@ -104,10 +104,10 @@ router.post(`${prefix}/convert`, (req, res, next) => {
     const model = await storage.save(tenantId, projectId, req.file.originalname + ".glb", converted);
     const audit = await storage.attachConvertedSource(
       tenantId, projectId, model.id, req.file.originalname, req.file.buffer, sha256, geometryReport);
-    return res.status(201).json({ model, conversion: audit });
+    res.status(201).json({ model, conversion: audit }); return;
   } catch (error) {
     if (error instanceof Error && /GLB|glTF|malhas|recursos|Modelo excede/.test(error.message))
-      return res.status(422).json({ error: "Conversão inválida: GLB não passou pela validação" });
+      { res.status(422).json({ error: "Conversão inválida: GLB não passou pela validação" }); return; }
     next(error);
   } finally {
     await rm(workDir, { recursive: true, force: true });
@@ -116,81 +116,81 @@ router.post(`${prefix}/convert`, (req, res, next) => {
 
 router.get(`${prefix}/:modelId/file`, async (req, res, next) => {
   const storage = store();
-  if (!storage) return res.status(503).json({ error: "Armazenamento privado indisponível" });
+  if (!storage) { res.status(503).json({ error: "Armazenamento privado indisponível" }); return; }
   try {
     const { tenantId, projectId } = res.locals.modelScope;
     const { buffer } = await storage.file(tenantId, projectId, safeSegment(String(req.params.modelId)));
     res.set({ "Content-Type": "model/gltf-binary", "Cache-Control": "private, no-store",
       "Content-Disposition": "attachment; filename=model.glb", "X-Content-Type-Options": "nosniff" });
-    return res.send(buffer);
+    res.send(buffer); return;
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") return res.status(404).json({ error: "Modelo não encontrado" });
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") { res.status(404).json({ error: "Modelo não encontrado" }); return; }
     next(error);
   }
 });
 
 router.get(`${prefix}/:modelId/conversion-report`, async (req, res, next) => {
   const storage = store();
-  if (!storage) return res.status(503).json({ error: "Armazenamento privado indisponível" });
+  if (!storage) { res.status(503).json({ error: "Armazenamento privado indisponível" }); return; }
   try {
     const { tenantId, projectId } = res.locals.modelScope;
     const report = await storage.conversionReport(tenantId, projectId, safeSegment(String(req.params.modelId)));
     res.set({ "Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff" });
-    return res.json(report);
+    res.json(report); return;
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT")
-      return res.status(404).json({ error: "Não há relatório de conversão para este modelo" });
+      { res.status(404).json({ error: "Não há relatório de conversão para este modelo" }); return; }
     next(error);
   }
 });
 
 router.get(`${prefix}/:modelId/parametric-draft`, async (req, res, next) => {
   const storage = store();
-  if (!storage) return res.status(503).json({ error: "Armazenamento indisponível" });
+  if (!storage) { res.status(503).json({ error: "Armazenamento indisponível" }); return; }
   try {
     const { tenantId, projectId } = res.locals.modelScope;
     res.set("Cache-Control", "private, no-store");
-    return res.json(await storage.parametricDrafts(tenantId, projectId, safeSegment(String(req.params.modelId))));
+    res.json(await storage.parametricDrafts(tenantId, projectId, safeSegment(String(req.params.modelId)))); return;
   } catch (error) { next(error); }
 });
 
 router.put(`${prefix}/:modelId/parametric-draft`, async (req, res, next) => {
   const storage = store();
-  if (!storage) return res.status(503).json({ error: "Armazenamento indisponível" });
+  if (!storage) { res.status(503).json({ error: "Armazenamento indisponível" }); return; }
   try {
     const { tenantId, projectId, userId } = res.locals.modelScope;
-    return res.json(await storage.saveParametricDraft(tenantId, projectId,
-      safeSegment(String(req.params.modelId)), userId, req.body));
+    res.json(await storage.saveParametricDraft(tenantId, projectId,
+      safeSegment(String(req.params.modelId)), userId, req.body)); return;
   } catch (error) {
     if (error instanceof Error && /Conflito de versão/.test(error.message))
-      return res.status(409).json({ error: error.message });
+      { res.status(409).json({ error: error.message }); return; }
     if (error instanceof Error && /inválid|curta/.test(error.message))
-      return res.status(422).json({ error: error.message });
+      { res.status(422).json({ error: error.message }); return; }
     next(error);
   }
 });
 
 router.get(`${prefix}/:modelId/calibrations`, async (req, res, next) => {
   const storage = store();
-  if (!storage) return res.status(503).json({ error: "Armazenamento privado indisponível" });
+  if (!storage) { res.status(503).json({ error: "Armazenamento privado indisponível" }); return; }
   try {
     const { tenantId, projectId } = res.locals.modelScope;
-    return res.json(await storage.calibrations(tenantId, projectId, safeSegment(String(req.params.modelId))));
+    res.json(await storage.calibrations(tenantId, projectId, safeSegment(String(req.params.modelId)))); return;
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") return res.status(404).json({ error: "Modelo não encontrado" });
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") { res.status(404).json({ error: "Modelo não encontrado" }); return; }
     next(error);
   }
 });
 
 router.post(`${prefix}/:modelId/calibrations`, async (req, res, next) => {
   const storage = store();
-  if (!storage) return res.status(503).json({ error: "Armazenamento privado indisponível" });
+  if (!storage) { res.status(503).json({ error: "Armazenamento privado indisponível" }); return; }
   try {
     const { tenantId, projectId, userId } = res.locals.modelScope;
-    return res.status(201).json(await storage.saveCalibration(tenantId, projectId, safeSegment(String(req.params.modelId)), userId, req.body));
+    res.status(201).json(await storage.saveCalibration(tenantId, projectId, safeSegment(String(req.params.modelId)), userId, req.body)); return;
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") return res.status(404).json({ error: "Modelo não encontrado" });
-    if (error instanceof Error && /medidas|Medidas|números|Tolerância/.test(error.message)) return res.status(422).json({ error: error.message });
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") { res.status(404).json({ error: "Modelo não encontrado" }); return; }
+    if (error instanceof Error && /medidas|Medidas|números|Tolerância/.test(error.message)) { res.status(422).json({ error: error.message }); return; }
     next(error);
   }
 });
@@ -198,25 +198,25 @@ router.post(`${prefix}/:modelId/calibrations`, async (req, res, next) => {
 
 router.get(`${prefix}/:modelId/scene-settings`, async (req, res, next) => {
   const storage = store();
-  if (!storage) return res.status(503).json({ error: "Armazenamento privado indisponível" });
+  if (!storage) { res.status(503).json({ error: "Armazenamento privado indisponível" }); return; }
   try {
     const { tenantId, projectId } = res.locals.modelScope;
-    return res.json(await storage.sceneSettings(tenantId, projectId, safeSegment(String(req.params.modelId))));
+    res.json(await storage.sceneSettings(tenantId, projectId, safeSegment(String(req.params.modelId)))); return;
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") return res.status(404).json({ error: "Modelo não encontrado" });
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") { res.status(404).json({ error: "Modelo não encontrado" }); return; }
     next(error);
   }
 });
 
 router.put(`${prefix}/:modelId/scene-settings`, async (req, res, next) => {
   const storage = store();
-  if (!storage) return res.status(503).json({ error: "Armazenamento privado indisponível" });
+  if (!storage) { res.status(503).json({ error: "Armazenamento privado indisponível" }); return; }
   try {
     const { tenantId, projectId, userId } = res.locals.modelScope;
-    return res.json(await storage.saveSceneSettings(tenantId, projectId, safeSegment(String(req.params.modelId)), userId, req.body));
+    res.json(await storage.saveSceneSettings(tenantId, projectId, safeSegment(String(req.params.modelId)), userId, req.body)); return;
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") return res.status(404).json({ error: "Modelo não encontrado" });
-    if (error instanceof Error && /inválid|fora do intervalo/.test(error.message)) return res.status(422).json({ error: error.message });
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") { res.status(404).json({ error: "Modelo não encontrado" }); return; }
+    if (error instanceof Error && /inválid|fora do intervalo/.test(error.message)) { res.status(422).json({ error: error.message }); return; }
     next(error);
   }
 });

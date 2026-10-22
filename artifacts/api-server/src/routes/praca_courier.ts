@@ -45,7 +45,7 @@ function addressLine(value: unknown): string {
 
 router.get("/tenants/:tenantId/praca-courier/returns/current", async (req,res)=>{
   const tenantId=String(req.params.tenantId),actorId=userId(req),actor=(req as any).user;
-  if(!canTenantAccess(req,tenantId)||!actorId||actor?.userFunction!=="entrega")return res.status(403).json({error:"Somente entregadores podem consultar devoluções."});
+  if(!canTenantAccess(req,tenantId)||!actorId||actor?.userFunction!=="entrega"){ res.status(403).json({error:"Somente entregadores podem consultar devoluções."}); return; }
   const result=await vendorPool.query(
     "SELECT d.id,d.pedido_id,d.modelo_logistico,d.status,d.data_servico,d.endereco_coleta,d.endereco_destino,d.sequencia_coleta,d.sequencia_destino,d.motivo_descricao,hub.nome AS ponto_redespacho_nome,p.cliente_nome,p.cliente_whatsapp,CASE WHEN d.entregador_coleta_id=$2 THEN 'coleta' ELSE 'destino' END AS responsabilidade FROM praca_devolucoes d JOIN praca_pedidos p ON p.id=d.pedido_id LEFT JOIN praca_pontos_redespacho hub ON hub.id=d.ponto_redespacho_id WHERE d.tenant_id=$1 AND (d.entregador_coleta_id=$2 OR d.entregador_destino_id=$2) AND d.status NOT IN ('recebida_vendedor','cancelada','divergencia') ORDER BY d.data_servico,d.sequencia_coleta",
     [tenantId,actorId],
@@ -55,11 +55,11 @@ router.get("/tenants/:tenantId/praca-courier/returns/current", async (req,res)=>
 
 router.get("/tenants/:tenantId/praca-courier/return-labels/:returnId",async(req,res)=>{
   const tenantId=String(req.params.tenantId);
-  if(!canTenantAccess(req,tenantId))return res.status(403).send("Forbidden");
+  if(!canTenantAccess(req,tenantId)){ res.status(403).send("Forbidden"); return; }
   const result=await vendorPool.query("SELECT d.*,p.cliente_nome FROM praca_devolucoes d JOIN praca_pedidos p ON p.id=d.pedido_id WHERE d.id=$1 AND d.tenant_id=$2",[String(req.params.returnId),tenantId]);
-  if(!result.rowCount)return res.status(404).send("Etiqueta não encontrada.");
+  if(!result.rowCount){ res.status(404).send("Etiqueta não encontrada."); return; }
   const row=result.rows[0],actor=(req as any).user,actorId=userId(req);
-  if(actor?.userFunction==="entrega"&&![row.entregador_coleta_id,row.entregador_destino_id].includes(actorId))return res.status(403).send("Devolução pertence a outro entregador.");
+  if(actor?.userFunction==="entrega"&&![row.entregador_coleta_id,row.entregador_destino_id].includes(actorId)){ res.status(403).send("Devolução pertence a outro entregador."); return; }
   const payload="APPVENDOR:RETURN:"+row.qr_code;
   const qrImage="https://api.qrserver.com/v1/create-qr-code/?size=220x220&margin=8&data="+encodeURIComponent(payload);
   res.setHeader("Content-Type","text/html; charset=utf-8");res.setHeader("Cache-Control","private, no-store");
@@ -68,9 +68,9 @@ router.get("/tenants/:tenantId/praca-courier/return-labels/:returnId",async(req,
 
 router.get("/tenants/:tenantId/praca-courier/routes/current", async (req, res) => {
   const tenantId = String(req.params.tenantId);
-  if (!canTenantAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
+  if (!canTenantAccess(req, tenantId)) { res.status(403).json({ error: "Forbidden" }); return; }
   const actorId = userId(req);
-  if (!actorId) return res.status(401).json({ error: "Usuário não identificado." });
+  if (!actorId) { res.status(401).json({ error: "Usuário não identificado." }); return; }
 
   const result = await vendorPool.query(
     `SELECT r.*, o.data_servico,
@@ -98,7 +98,7 @@ router.post("/tenants/:tenantId/praca-courier/routes/:routeId/accept", async (re
   const actorId = userId(req);
   const actor = (req as any).user;
   if (!canTenantAccess(req, tenantId) || !actorId || actor?.userFunction !== "entrega") {
-    return res.status(403).json({ error: "Somente o entregador da rota pode aceitá-la." });
+    res.status(403).json({ error: "Somente o entregador da rota pode aceitá-la." }); return;
   }
   const result = await vendorPool.query(
     `UPDATE praca_rotas_entrega
@@ -108,7 +108,7 @@ router.post("/tenants/:tenantId/praca-courier/routes/:routeId/accept", async (re
     [String(req.params.routeId), tenantId, actorId],
   );
   if (!result.rowCount) {
-    return res.status(409).json({ error: "Rota não encontrada, já aceita ou indisponível." });
+    res.status(409).json({ error: "Rota não encontrada, já aceita ou indisponível." }); return;
   }
   await vendorPool.query(
     "UPDATE praca_trechos_logisticos SET status='aceito',updated_at=now() WHERE rota_id=$1 AND status='planejado'",
@@ -119,7 +119,7 @@ router.post("/tenants/:tenantId/praca-courier/routes/:routeId/accept", async (re
 
 router.get("/tenants/:tenantId/praca-courier/labels/:volumeId", async (req, res) => {
   const tenantId = String(req.params.tenantId);
-  if (!canTenantAccess(req, tenantId)) return res.status(403).send("Forbidden");
+  if (!canTenantAccess(req, tenantId)) { res.status(403).send("Forbidden"); return; }
   const result = await vendorPool.query(
     `SELECT v.id AS volume_id,v.numero AS volume_numero,v.qr_code,
             p.id AS pedido_id,p.cliente_nome,p.endereco_entrega,
@@ -133,11 +133,11 @@ router.get("/tenants/:tenantId/praca-courier/labels/:volumeId", async (req, res)
       WHERE v.id=$1 AND v.tenant_id=$2`,
     [String(req.params.volumeId), tenantId],
   );
-  if (!result.rowCount) return res.status(404).send("Etiqueta não encontrada.");
+  if (!result.rowCount) { res.status(404).send("Etiqueta não encontrada."); return; }
   const row = result.rows[0];
   const actor = (req as any).user;
   if (actor?.userFunction === "entrega" && userId(req) !== row.entregador_id) {
-    return res.status(403).send("Volume pertence a outro entregador.");
+    res.status(403).send("Volume pertence a outro entregador."); return;
   }
 
   const payload = `APPVENDOR:V1:${row.qr_code}`;
@@ -171,11 +171,11 @@ router.get("/tenants/:tenantId/praca-courier/resolve-volume", async (req, res) =
   const actorId = userId(req);
   const actor = (req as any).user;
   if (!canTenantAccess(req, tenantId) || !actorId || actor?.userFunction !== "entrega") {
-    return res.status(403).json({ error: "Somente o entregador pode consultar o volume." });
+    res.status(403).json({ error: "Somente o entregador pode consultar o volume." }); return;
   }
   const raw = typeof req.query.qrCode === "string" ? req.query.qrCode.trim() : "";
   const qrCode = raw.startsWith("APPVENDOR:V1:") ? raw.slice(13) : raw;
-  if (!qrCode) return res.status(422).json({ error: "QR Code obrigatório." });
+  if (!qrCode) { res.status(422).json({ error: "QR Code obrigatório." }); return; }
   const result = await vendorPool.query(
     `SELECT v.id AS volume_id,v.status,p.id AS pedido_id,r.id AS rota_id,r.modalidade
        FROM praca_pedido_volumes v
@@ -193,18 +193,18 @@ router.get("/tenants/:tenantId/praca-courier/resolve-volume", async (req, res) =
       WHERE v.tenant_id=$1 AND v.qr_code=$2`,
     [tenantId, qrCode, actorId],
   );
-  if (!result.rowCount) return res.status(404).json({ error: "Volume não pertence à sua rota." });
+  if (!result.rowCount) { res.status(404).json({ error: "Volume não pertence à sua rota." }); return; }
   const row = result.rows[0];
   res.json({ volumeId: row.volume_id, pedidoId: row.pedido_id, rotaId: row.rota_id, status: row.status });
 });
 
 router.post("/tenants/:tenantId/praca-courier/scan", async (req, res) => {
   const tenantId = String(req.params.tenantId);
-  if (!canTenantAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
+  if (!canTenantAccess(req, tenantId)) { res.status(403).json({ error: "Forbidden" }); return; }
   const actor = (req as any).user;
   const actorId = userId(req);
   if (!actorId || actor?.userFunction !== "entrega") {
-    return res.status(403).json({ error: "Somente o entregador pode registrar movimentações." });
+    res.status(403).json({ error: "Somente o entregador pode registrar movimentações." }); return;
   }
 
   const rawCode = typeof req.body?.qrCode === "string" ? req.body.qrCode.trim() : "";
@@ -212,9 +212,9 @@ router.post("/tenants/:tenantId/praca-courier/scan", async (req, res) => {
   const action = String(req.body?.acao ?? "");
   const location = point(req.body);
   if (!qrCode || !["coletado","em_rota","entregue","falha_entrega"].includes(action)) {
-    return res.status(422).json({ error: "QR Code e ação válida são obrigatórios." });
+    res.status(422).json({ error: "QR Code e ação válida são obrigatórios." }); return;
   }
-  if (!location) return res.status(422).json({ error: "Latitude e longitude reais são obrigatórias." });
+  if (!location) { res.status(422).json({ error: "Latitude e longitude reais são obrigatórias." }); return; }
 
   const client = await vendorPool.connect();
   try {
@@ -250,12 +250,12 @@ router.post("/tenants/:tenantId/praca-courier/scan", async (req, res) => {
     );
     if (!found.rowCount) {
       await client.query("ROLLBACK");
-      return res.status(404).json({ error: "Volume não localizado nesta operação." });
+      res.status(404).json({ error: "Volume não localizado nesta operação." }); return;
     }
     const row = found.rows[0];
     if (row.entregador_id !== actorId) {
       await client.query("ROLLBACK");
-      return res.status(403).json({ error: "Este volume pertence à rota de outro entregador." });
+      res.status(403).json({ error: "Este volume pertence à rota de outro entregador." }); return;
     }
 
     const allowed: Record<string, string[]> = {
@@ -266,7 +266,7 @@ router.post("/tenants/:tenantId/praca-courier/scan", async (req, res) => {
     };
     if (!allowed[action].includes(row.volume_status)) {
       await client.query("ROLLBACK");
-      return res.status(409).json({ error: `Movimento ${action} não permitido após ${row.volume_status}.` });
+      res.status(409).json({ error: `Movimento ${action} não permitido após ${row.volume_status}.` }); return;
     }
 
     const stopId = action === "coletado"
@@ -276,18 +276,18 @@ router.post("/tenants/:tenantId/praca-courier/scan", async (req, res) => {
         : row.entrega_parada_id;
     if (!stopId) {
       await client.query("ROLLBACK");
-      return res.status(409).json({ error: "Esta ação não pertence ao trecho logístico atual do entregador." });
+      res.status(409).json({ error: "Esta ação não pertence ao trecho logístico atual do entregador." }); return;
     }
     if (action === "entregue") {
       const proof = req.body?.prova;
       if (!proof || !["documento","pessoa"].includes(proof.tipo) || typeof proof.fotoUrl !== "string" ||
           !evidencePathBelongsTo(proof.fotoUrl, tenantId, row.pedido_id, row.volume_id)) {
         await client.query("ROLLBACK");
-        return res.status(422).json({ error: "Entrega exige foto privada previamente autorizada e tipo documento ou pessoa." });
+        res.status(422).json({ error: "Entrega exige foto privada previamente autorizada e tipo documento ou pessoa." }); return;
       }
       if (!(await evidenceObjectExists(proof.fotoUrl))) {
         await client.query("ROLLBACK");
-        return res.status(422).json({ error: "A foto ainda não foi enviada ou não foi localizada." });
+        res.status(422).json({ error: "A foto ainda não foi enviada ou não foi localizada." }); return;
       }
       await client.query(
         `INSERT INTO praca_entrega_provas
@@ -304,16 +304,16 @@ router.post("/tenants/:tenantId/praca-courier/scan", async (req, res) => {
       const description = typeof req.body?.descricao === "string" ? req.body.descricao.trim() : "";
       if (!reasonCode || !description) {
         await client.query("ROLLBACK");
-        return res.status(422).json({ error: "Falha exige código e descrição do motivo." });
+        res.status(422).json({ error: "Falha exige código e descrição do motivo." }); return;
       }
       const failurePhoto = req.body?.fotoUrl;
       if (failurePhoto && !evidencePathBelongsTo(failurePhoto, tenantId, row.pedido_id, row.volume_id)) {
         await client.query("ROLLBACK");
-        return res.status(422).json({ error: "A foto da falha não pertence ao upload privado autorizado." });
+        res.status(422).json({ error: "A foto da falha não pertence ao upload privado autorizado." }); return;
       }
       if (failurePhoto && !(await evidenceObjectExists(failurePhoto))) {
         await client.query("ROLLBACK");
-        return res.status(422).json({ error: "A foto da falha ainda não foi enviada ou não foi localizada." });
+        res.status(422).json({ error: "A foto da falha ainda não foi enviada ou não foi localizada." }); return;
       }
       await client.query(
         `INSERT INTO praca_entrega_falhas

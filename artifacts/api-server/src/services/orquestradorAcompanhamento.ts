@@ -58,7 +58,7 @@ type ContextoLead = {
   status: string | null;
 };
 
-function canalTemExecucaoExterna(canal: CanalAcompanhamento): boolean {
+function canalTemExecucaoExterna(canal: CanalAcompanhamento): canal is "whatsapp" | "instagram" | "messenger" {
   return canal === "whatsapp" || canal === "instagram" || canal === "messenger";
 }
 

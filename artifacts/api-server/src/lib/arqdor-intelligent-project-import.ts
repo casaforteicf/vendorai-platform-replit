@@ -272,7 +272,7 @@ export function normalizeArqdorIntelligentProjectImport(
     ? memory.facades.map((item) => {
         const row = record(item);
         const orientationRaw = String(row.orientation ?? "unknown");
-        const orientation = ["front","rear","left","right"].includes(orientationRaw)
+        const orientation: "front" | "rear" | "left" | "right" | "unknown" = ["front","rear","left","right"].includes(orientationRaw)
           ? orientationRaw as "front" | "rear" | "left" | "right"
           : "unknown";
         return {

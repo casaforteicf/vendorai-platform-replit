@@ -5,10 +5,22 @@
     "tsBuildInfoFile": ".tsbuildinfo",
     "outDir": "dist",
     "rootDir": "src",
-    "types": ["node"]
+    "types": [
+      "node"
+    ],
+    "lib": [
+      "es2022",
+      "dom",
+      "dom.iterable"
+    ],
+    "allowImportingTsExtensions": true
   },
-  "include": ["src"],
+  "include": [
+    "src"
+  ],
   "references": [
-    { "path": "../../lib/integrations-anthropic-ai" }
+    {
+      "path": "../../lib/integrations-anthropic-ai"
+    }
   ]
 }

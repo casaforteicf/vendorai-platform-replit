@@ -1,4 +1,4 @@
-import { Router, type IRouter } from "express";
+import { Router, type IRouter, type Request } from "express";
 import { and, desc, eq, inArray } from "drizzle-orm";
 import {
   db,
@@ -27,21 +27,21 @@ import {
 
 const router: IRouter = Router();
 
-function canAccess(req: Express.Request, tenantId: string) {
+function canAccess(req: Request, tenantId: string) {
   const u = (req as any).user;
   return u?.tenantId === tenantId || u?.platformRole === "super_admin";
 }
 
-function isTenantAdmin(req: Express.Request) {
+function isTenantAdmin(req: Request) {
   const u = (req as any).user;
   return u?.platformRole === "super_admin" || u?.platformRole === "tenant_admin" || u?.role === "admin";
 }
 
-function userId(req: Express.Request): string | null {
+function userId(req: Request): string | null {
   return (req as any).user?.sub ?? (req as any).user?.id ?? null;
 }
 
-async function audit(req: Express.Request, input: {
+async function audit(req: Request, input: {
   tenantId: string;
   obraId?: string | null;
   modulo: string;

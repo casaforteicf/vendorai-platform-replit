@@ -254,8 +254,8 @@ async function resolveMediaPlanProfile(tenantId: string): Promise<MediaPlanProfi
 
 function buildFallbackMediaPlan(
   profile: MediaPlanProfile,
-  keywordsRelevantes: MediaPlanConteudo["keywordsRelevantes"],
-  concorrentesEncontrados: MediaPlanConteudo["concorrentesEncontrados"],
+  keywordsRelevantes: MediaPlanConteudo["keywordsRelevantes"] = [],
+  concorrentesEncontrados: MediaPlanConteudo["concorrentesEncontrados"] = [],
 ): MediaPlanConteudo {
   const nome = profile.nomeFantasia || profile.razaoSocial;
   const segmento = profile.vertical || "seu segmento";

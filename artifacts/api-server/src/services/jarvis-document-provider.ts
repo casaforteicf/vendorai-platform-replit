@@ -41,7 +41,7 @@ export async function interpretJarvisUpload(input: {
     const dataUrl = `data:${mimeType};base64,${buffer.toString("base64")}`;
     const result = await gatewayCallOpenAI(
       tenantId,
-      "jarvis_document_vision",
+      "document_extraction",
       [
         {
           role: "system",

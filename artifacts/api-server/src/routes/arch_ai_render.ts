@@ -10,7 +10,7 @@ import { RenderGalleryError, updateConceptRenderGallery } from "../services/arch
 import { getArqdorRenderVideo, startArqdorRenderVideo } from "../services/arqdor-render-video.js";
 import type { ArqdorVideoMovement } from "../lib/arqdor-render-prompts.js";
 import { ObjectStorageService } from "../lib/objectStorage.js";
-import { reviewArqdorFidelity } from "../services/arqdor-fidelity-review.js";
+import { reviewArqdorFidelity, ARQDOR_FIDELITY_APPROVAL_POLICY } from "../services/arqdor-fidelity-review.js";
 
 export const archAiRenderRouter = Router();
 const renderStorage = new ObjectStorageService();

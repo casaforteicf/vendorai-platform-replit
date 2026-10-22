@@ -24,7 +24,7 @@ export async function saveExternalAsset(objectName:string, data:Buffer, contentT
   const response = await fetch(url, {
     method:"POST",
     headers:{ ...authHeaders(), "Content-Type":contentType, "x-upsert":"true" },
-    body:data,
+    body:new Uint8Array(data),
   });
   if (!response.ok) {
     const detail = await response.text().catch(()=> "");

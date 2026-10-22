@@ -63,7 +63,7 @@ router.post("/tenants/:tenantId/praca-orders", async (req, res) => {
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
   const idempotencyKey = String(req.header("Idempotency-Key") || req.body?.idempotencyKey || "").trim();
-  const itens = Array.isArray(req.body?.itens) ? req.body.itens : [];
+  const itens: unknown[] = Array.isArray(req.body?.itens) ? req.body.itens : [];
   const clienteNome = typeof req.body?.clienteNome === "string" ? req.body.clienteNome.trim() : "";
   const clienteDocumento = typeof req.body?.clienteDocumento === "string" ? req.body.clienteDocumento.replace(/\D/g, "") : "";
   const endereco = req.body?.enderecoEntrega;
@@ -387,7 +387,7 @@ router.post("/tenants/:tenantId/praca-orders/:orderId/volumes", async (req, res)
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
   const numero = Number(req.body?.numero);
-  const itens = Array.isArray(req.body?.itens) ? req.body.itens : [];
+  const itens: unknown[] = Array.isArray(req.body?.itens) ? req.body.itens : [];
   if (!Number.isInteger(numero) || numero < 1 || itens.length === 0) {
     return res.status(422).json({ error: "Número do volume e itens são obrigatórios." });
   }

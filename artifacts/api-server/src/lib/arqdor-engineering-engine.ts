@@ -48,6 +48,7 @@ export type PerformanceEvidence = {
   reportNumber?: string | null;
   testType: string;
   acousticDb?: number | null;
+  airPermeability?: number | null;
   watertightnessPa?: number | null;
   windPressurePa?: number | null;
   conditions?: Record<string, unknown>;

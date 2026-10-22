@@ -448,7 +448,7 @@ export async function sendSdrFirstApproach(
     "sdr",
     legacyAutonomyEnabled,
   );
-  const isAutonomous = autonomyLevel === "autonomous";
+  const isAutonomous = autonomyLevel === "autonomo";
 
   const [existingPendingTask] = await db
     .select({ id: agentTasksTable.id, status: agentTasksTable.status })

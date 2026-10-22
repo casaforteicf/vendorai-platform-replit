@@ -1,3 +1,4 @@
+import { z } from "zod/v4";
 import { Router, type IRouter } from "express";
 import { eq, desc, and } from "drizzle-orm";
 import {
@@ -7,6 +8,7 @@ import {
   leadProposalsTable,
   leadProductsTable,
   propostasTable,
+  propostaApresentacaoSchema,
   conversationsTable,
   messagesTable,
   customerIntelligenceTable,
@@ -1772,19 +1774,13 @@ router.post("/leads/:leadId/proposals", async (req, res) => {
   const bodyPresentation = rawPresentation && typeof rawPresentation === "object"
     ? {
         formato:
-          rawPresentation.formato === "documento" || rawPresentation.formato === "hibrido"
-            ? rawPresentation.formato
-            : "site_interativo",
+          z.enum(["documento", "hibrido", "site_interativo"]).catch("site_interativo").parse(rawPresentation.formato),
         estiloCasa:
-          ["moderna","contemporanea","minimalista","classica","industrial"].includes(String(rawPresentation.estiloCasa))
-            ? String(rawPresentation.estiloCasa)
-            : "contemporanea",
+          z.enum(["moderna","contemporanea","minimalista","classica","industrial"]).catch("contemporanea").parse(rawPresentation.estiloCasa),
         padraoCasa:
-          ["medio","alto_padrao","luxo"].includes(String(rawPresentation.padraoCasa))
-            ? String(rawPresentation.padraoCasa)
-            : "alto_padrao",
+          z.enum(["medio","alto_padrao","luxo"]).catch("alto_padrao").parse(rawPresentation.padraoCasa),
         tipoCasa:
-          rawPresentation.tipoCasa === "terrea" ? "terrea" : "sobrado",
+          rawPresentation.tipoCasa === "terrea" ? "terrea" as const : "sobrado" as const,
         elementosVisuais:
           Array.isArray(rawPresentation.elementosVisuais)
             ? rawPresentation.elementosVisuais
@@ -1914,6 +1910,14 @@ router.post("/leads/:leadId/proposals", async (req, res) => {
           Number.isFinite(Number(rawPresentation.areaTotalConstruida)) && Number(rawPresentation.areaTotalConstruida) > 0
             ? Number(rawPresentation.areaTotalConstruida)
             : undefined,
+        entradaPercentual: Number.isFinite(Number(rawPresentation.entradaPercentual))
+          ? Math.min(100, Math.max(0, Number(rawPresentation.entradaPercentual))) : undefined,
+        amortizacaoEntradaPercentual: Number.isFinite(Number(rawPresentation.amortizacaoEntradaPercentual))
+          ? Math.min(100, Math.max(0, Number(rawPresentation.amortizacaoEntradaPercentual))) : undefined,
+        mostrarAmortizacaoEntrada: typeof rawPresentation.mostrarAmortizacaoEntrada === "boolean"
+          ? rawPresentation.mostrarAmortizacaoEntrada : undefined,
+        mostrarPortalCliente: typeof rawPresentation.mostrarPortalCliente === "boolean"
+          ? rawPresentation.mostrarPortalCliente : undefined,
         itensNaoInclusos:
           Array.isArray(rawPresentation.itensNaoInclusos)
             ? rawPresentation.itensNaoInclusos
@@ -2063,13 +2067,13 @@ router.post("/leads/:leadId/proposals", async (req, res) => {
           ? { mostrarFisicoFinanceiro: bodyPresentation.mostrarFisicoFinanceiro }
           : {}),
         ...(Number.isFinite(Number(bodyPresentation?.areaTotalConstruida)) && Number(bodyPresentation?.areaTotalConstruida) > 0
-          ? { areaTotalConstruida: Number(bodyPresentation.areaTotalConstruida) }
+          ? { areaTotalConstruida: Number(bodyPresentation?.areaTotalConstruida) }
           : {}),
         ...(Number.isFinite(Number(bodyPresentation?.entradaPercentual))
-          ? { entradaPercentual: Math.min(100, Math.max(0, Number(bodyPresentation.entradaPercentual))) }
+          ? { entradaPercentual: Math.min(100, Math.max(0, Number(bodyPresentation?.entradaPercentual))) }
           : {}),
         ...(Number.isFinite(Number(bodyPresentation?.amortizacaoEntradaPercentual))
-          ? { amortizacaoEntradaPercentual: Math.min(100, Math.max(0, Number(bodyPresentation.amortizacaoEntradaPercentual))) }
+          ? { amortizacaoEntradaPercentual: Math.min(100, Math.max(0, Number(bodyPresentation?.amortizacaoEntradaPercentual))) }
           : {}),
         ...(typeof bodyPresentation?.mostrarAmortizacaoEntrada === "boolean"
           ? { mostrarAmortizacaoEntrada: bodyPresentation.mostrarAmortizacaoEntrada }
@@ -2089,10 +2093,10 @@ router.post("/leads/:leadId/proposals", async (req, res) => {
         await db
           .update(propostasTable)
           .set({
-            apresentacao: {
+            apresentacao: propostaApresentacaoSchema.parse({
               ...(orc.apresentacao ?? {}),
               ...mergedPresentation,
-            },
+            }),
             updatedAt: new Date(),
           })
           .where(eq(propostasTable.id, orc.id));

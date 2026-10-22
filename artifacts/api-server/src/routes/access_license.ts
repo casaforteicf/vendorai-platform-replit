@@ -61,13 +61,13 @@ function serialize(license: Awaited<ReturnType<typeof getAccessLicense>>) {
 
 router.get("/access-license/status", async (req, res) => {
   const tenantId = req.user?.tenantId;
-  if (!tenantId) return res.json({ enrolled: false, mode: "admin", active: true, readOnly: false });
+  if (!tenantId) { res.json({ enrolled: false, mode: "admin", active: true, readOnly: false }); return; }
   res.json(serialize(await getAccessLicense(tenantId)));
 });
 
 router.post("/access-license/activate-monthly", async (req, res) => {
   const tenantId = req.user?.tenantId;
-  if (!tenantId) return res.status(403).json({ error: "Tenant não identificado." });
+  if (!tenantId) { res.status(403).json({ error: "Tenant não identificado." }); return; }
   try {
     const license = await activateMonthlyBenefit(tenantId);
     res.json(serialize(license));
@@ -80,7 +80,7 @@ router.post("/access-license/activate-monthly", async (req, res) => {
 
 router.get("/access-license/purchases", async (req, res) => {
   const tenantId = req.user?.tenantId;
-  if (!tenantId) return res.status(403).json({ error: "Tenant não identificado." });
+  if (!tenantId) { res.status(403).json({ error: "Tenant não identificado." }); return; }
   const rows = await db.select().from(accessPassPurchasesTable)
     .where(eq(accessPassPurchasesTable.tenantId, tenantId))
     .orderBy(desc(accessPassPurchasesTable.createdAt)).limit(30);
@@ -89,20 +89,20 @@ router.get("/access-license/purchases", async (req, res) => {
 
 router.post("/access-license/purchases", async (req, res) => {
   const tenantId = req.user?.tenantId;
-  if (!tenantId) return res.status(403).json({ error: "Tenant não identificado." });
+  if (!tenantId) { res.status(403).json({ error: "Tenant não identificado." }); return; }
   const parsed = z.object({ idempotencyKey: z.string().min(8).max(100) }).safeParse(req.body);
-  if (!parsed.success) return res.status(422).json({ error: "Identificador da compra inválido." });
-  if (!(await isAsaasConfigured())) return res.status(503).json({ error: "Pagamentos não configurados." });
+  if (!parsed.success) { res.status(422).json({ error: "Identificador da compra inválido." }); return; }
+  if (!(await isAsaasConfigured())) { res.status(503).json({ error: "Pagamentos não configurados." }); return; }
 
   const [existing] = await db.select().from(accessPassPurchasesTable).where(and(
     eq(accessPassPurchasesTable.tenantId, tenantId),
     eq(accessPassPurchasesTable.idempotencyKey, parsed.data.idempotencyKey),
   ));
-  if (existing) return res.json(existing);
+  if (existing) { res.json(existing); return; }
 
   const [tenant] = await db.select({ name: tenantsTable.name }).from(tenantsTable)
     .where(eq(tenantsTable.id, tenantId));
-  if (!tenant) return res.status(404).json({ error: "Tenant não encontrado." });
+  if (!tenant) { res.status(404).json({ error: "Tenant não encontrado." }); return; }
 
   const [purchase] = await db.insert(accessPassPurchasesTable).values({
     tenantId,
@@ -138,18 +138,18 @@ router.post("/access-license/purchases", async (req, res) => {
 
 router.get("/access-license/purchases/:id/pix", async (req, res) => {
   const tenantId = req.user?.tenantId;
-  if (!tenantId) return res.status(403).json({ error: "Tenant não identificado." });
+  if (!tenantId) { res.status(403).json({ error: "Tenant não identificado." }); return; }
   const [purchase] = await db.select().from(accessPassPurchasesTable).where(and(
     eq(accessPassPurchasesTable.id, String(req.params.id)),
     eq(accessPassPurchasesTable.tenantId, tenantId),
   ));
-  if (!purchase?.providerChargeId) return res.status(404).json({ error: "Cobrança não encontrada." });
+  if (!purchase?.providerChargeId) { res.status(404).json({ error: "Cobrança não encontrada." }); return; }
   res.json({ ...(await getPixQrCode(purchase.providerChargeId)), invoiceUrl: purchase.invoiceUrl });
 });
 
 router.post("/access-license/annual-contract", async (req, res) => {
   const tenantId = req.user?.tenantId;
-  if (!tenantId) return res.status(403).json({ error: "Tenant não identificado." });
+  if (!tenantId) { res.status(403).json({ error: "Tenant não identificado." }); return; }
   const parsed = z.object({
     responsibleName: z.string().min(3).max(150),
     responsibleCpf: z.string().transform((v) => v.replace(/\D/g, "")).pipe(z.string().length(11)),
@@ -157,7 +157,7 @@ router.post("/access-license/annual-contract", async (req, res) => {
     responsibleEmail: z.string().email(),
     accepted: z.literal(true),
   }).safeParse(req.body);
-  if (!parsed.success) return res.status(422).json({ error: "Preencha os dados e aceite o contrato." });
+  if (!parsed.success) { res.status(422).json({ error: "Preencha os dados e aceite o contrato." }); return; }
 
   const [tenant] = await db.select({ monthlyAmount: tenantsTable.mensalidadeValor })
     .from(tenantsTable).where(eq(tenantsTable.id, tenantId));
@@ -201,7 +201,7 @@ router.post("/access-license/annual-contract", async (req, res) => {
 });
 
 router.get("/admin/access-license/tenants/:tenantId", async (req, res) => {
-  if (req.user?.platformRole !== "super_admin") return res.status(403).json({ error: "Super admin only." });
+  if (req.user?.platformRole !== "super_admin") { res.status(403).json({ error: "Super admin only." }); return; }
   const tenantId = String(req.params.tenantId);
   const [license, purchases, contracts] = await Promise.all([
     getAccessLicense(tenantId),
@@ -316,9 +316,9 @@ router.delete("/admin/access-license/tenants/:tenantId/entitlements/:entitlement
 });
 
 router.post("/admin/access-license/enroll", async (req, res) => {
-  if (req.user?.platformRole !== "super_admin") return res.status(403).json({ error: "Super admin only." });
+  if (req.user?.platformRole !== "super_admin") { res.status(403).json({ error: "Super admin only." }); return; }
   const parsed = z.object({ tenantIds: z.array(z.string().min(1)).min(1).max(500) }).safeParse(req.body);
-  if (!parsed.success) return res.status(422).json({ error: "Lista de tenants inválida." });
+  if (!parsed.success) { res.status(422).json({ error: "Lista de tenants inválida." }); return; }
   const rows = await db.insert(accessLicensesTable).values(parsed.data.tenantIds.map((tenantId) => ({
     tenantId, mode: "prepaid" as const, status: "read_only" as const,
   }))).onConflictDoNothing().returning();
@@ -326,10 +326,10 @@ router.post("/admin/access-license/enroll", async (req, res) => {
 });
 
 router.post("/admin/access-license/contracts/:id/activate", async (req, res) => {
-  if (req.user?.platformRole !== "super_admin") return res.status(403).json({ error: "Super admin only." });
+  if (req.user?.platformRole !== "super_admin") { res.status(403).json({ error: "Super admin only." }); return; }
   const [contract] = await db.select().from(accessContractAcceptancesTable)
     .where(eq(accessContractAcceptancesTable.id, String(req.params.id)));
-  if (!contract || !contract.accepted) return res.status(404).json({ error: "Contrato não encontrado." });
+  if (!contract || !contract.accepted) { res.status(404).json({ error: "Contrato não encontrado." }); return; }
   const now = new Date();
   const annualEndsAt = new Date(now);
   annualEndsAt.setUTCFullYear(annualEndsAt.getUTCFullYear() + 1);
@@ -347,20 +347,20 @@ router.post("/admin/access-license/contracts/:id/activate", async (req, res) => 
 accessLicensePublicRouter.post("/internal/access-license/reminders", async (req, res) => {
   const configured = process.env.CRON_SECRET ?? "";
   const received = String(req.get("authorization") ?? "").replace(/^Bearer\s+/i, "");
-  if (!configured || !safeEqual(received, configured)) return res.status(401).json({ error: "Invalid cron token." });
+  if (!configured || !safeEqual(received, configured)) { res.status(401).json({ error: "Invalid cron token." }); return; }
   res.json(await runAccessLicenseReminders());
 });
 
 accessLicensePublicRouter.post("/webhooks/asaas/access-license", async (req, res) => {
   const configured = process.env.ASAAS_WEBHOOK_TOKEN ?? "";
   const received = String(req.get("asaas-access-token") ?? req.get("x-asaas-access-token") ?? "");
-  if (!configured || !safeEqual(received, configured)) return res.status(401).json({ error: "Invalid webhook token." });
+  if (!configured || !safeEqual(received, configured)) { res.status(401).json({ error: "Invalid webhook token." }); return; }
 
   const event = String(req.body?.event ?? "");
   const payment = req.body?.payment;
   const reference = String(payment?.externalReference ?? "");
   const match = /^access_pass:([^:]+):([^:]+)$/.exec(reference);
-  if (!match) return res.status(202).json({ ignored: true });
+  if (!match) { res.status(202).json({ ignored: true }); return; }
   const [, tenantId, purchaseId] = match;
 
   if (["PAYMENT_CONFIRMED", "PAYMENT_RECEIVED"].includes(event)) {

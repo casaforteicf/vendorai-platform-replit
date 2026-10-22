@@ -360,7 +360,7 @@ export async function synthesizeVendorAiVoice(input: {
     form.append("text", input.text);
     form.append("language", input.language ?? "pt-br");
     form.append("model_config", JSON.stringify(reference.modelConfig));
-    form.append("reference_audio", new Blob([referenceBuffer], { type: reference.mimeType }), reference.originalFilename);
+    form.append("reference_audio", new Blob([new Uint8Array(referenceBuffer)], { type: reference.mimeType }), reference.originalFilename);
 
     const headers: Record<string, string> = {};
     const workerSecret = process.env["VENDORAI_MEDIA_WORKER_SECRET"];
@@ -501,7 +501,7 @@ export async function createVendorAiVoiceStream(input: {
   form.append("text", input.text);
   form.append("language", input.language ?? "pt-br");
   form.append("model_config", JSON.stringify(reference.modelConfig));
-  form.append("reference_audio", new Blob([referenceBuffer], { type: reference.mimeType }), reference.originalFilename);
+  form.append("reference_audio", new Blob([new Uint8Array(referenceBuffer)], { type: reference.mimeType }), reference.originalFilename);
 
   const headers: Record<string, string> = {};
   const workerSecret = process.env["VENDORAI_MEDIA_WORKER_SECRET"];

@@ -98,7 +98,7 @@ export async function ensureStandardConstructionCatalog(
       continue;
     }
 
-    const insumosDaComposicao = [];
+    const insumosDaComposicao: Array<{ item: (typeof template.itens)[number]; insumo: Awaited<ReturnType<typeof getOrCreateInsumo>> }> = [];
     for (const item of template.itens) {
       const insumo = await getOrCreateInsumo(item);
       insumosDaComposicao.push({ item, insumo });

@@ -238,7 +238,7 @@ export async function applyBrandBroll(input: {
       LIMIT 250`,
     [input.tenantId],
   );
-  const candidates: BrollAsset[] = assetResult.rows.map((row) => ({
+  const candidates: BrollAsset[] = assetResult.rows.map((row): BrollAsset => ({
     id: String(row.id),
     storage_url: String(row.storage_url ?? ""),
     type: row.type === "image" ? "image" : "video",

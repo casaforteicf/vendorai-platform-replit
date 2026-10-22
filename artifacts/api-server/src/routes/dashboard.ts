@@ -846,7 +846,7 @@ router.get("/dashboard", authenticate, async (req, res) => {
     }).from(agentConfigsTable).where(eq(agentConfigsTable.tenantId, tenantId)).limit(1),
 
     // conexão WhatsApp ativa
-    db.select({ status: whatsappConnectionsTable.status })
+    db.select({ status: whatsappConnectionsTable.status, provider: whatsappConnectionsTable.provider })
       .from(whatsappConnectionsTable)
       .where(eq(whatsappConnectionsTable.tenantId, tenantId))
       .limit(1),

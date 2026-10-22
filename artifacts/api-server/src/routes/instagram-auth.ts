@@ -36,7 +36,7 @@ function getAppUrl(host?: string): string {
 }
 
 function auditActor(req: any, userId?: string | null) {
-  return { userId: userId ?? req.user?.sub ?? req.user?.id ?? null, ip: req.ip ?? null };
+  return { userId: userId ?? req.user?.sub ?? req.user?.sub ?? null, ip: req.ip ?? null };
 }
 
 router.get("/auth/instagram", authenticate, async (req, res) => {

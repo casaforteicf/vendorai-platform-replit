@@ -348,7 +348,7 @@ export async function controlLiveBrowserSession(
     if (!requested.startsWith(uploadRoot + path.sep)) throw new Error("Arquivo de upload fora do diretório permitido");
     const handle = await session.page.$(command.selector);
     if (!handle) throw new Error("Campo de upload não encontrado");
-    await handle.uploadFile(requested);
+    await (await handle.toElement("input")).uploadFile(requested);
   } else if (command.action === "download") {
     const downloadDir = path.join(os.tmpdir(), "vendorai-downloads", tenantId, sessionId);
     await mkdir(downloadDir, { recursive: true });

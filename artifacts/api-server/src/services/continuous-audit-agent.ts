@@ -396,7 +396,7 @@ async function recoverStalledImprovements(log: Logger) {
           `Resumo anterior: ${String(item.agentSummary ?? "").slice(0, 3000)}`,
         ].join("\n"),
         route: "/admin/melhorias/" + String(item.id),
-        source: "release_center_autonomous",
+        source: "release_center",
       });
 
       const resultStatus = String((result as any)?.status ?? ((result as any)?.success === false ? "failed" : "completed"));

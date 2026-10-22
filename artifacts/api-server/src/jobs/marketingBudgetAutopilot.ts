@@ -67,7 +67,7 @@ async function recordAutomaticResult(input: {
       maxTransferFractionPerCycle: input.maxTransferFractionPerCycle,
       decision: result.decision,
       schedule: result.applied ? result.schedule : null,
-      humanCeilingRespected: result.applied ? result.humanCeilingRespected : result.plan.humanCeilingRespected,
+      humanCeilingRespected: result.applied ? result.humanCeilingRespected : result.plan?.humanCeilingRespected ?? false,
     },
   });
 }

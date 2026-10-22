@@ -159,7 +159,7 @@ router.post("/solicitacoes-compra/:id/aprovar", async (req, res) => {
   if (!checkAccess(req, res, existing.tenantId)) return;
 
   const aprovado = !!req.body?.aprovado;
-  const aprovadorNome = req.user?.nome ?? req.user?.email ?? "—";
+  const aprovadorNome = req.user?.email ?? "—";
 
   const [row] = await db
     .update(solicitacoesCompraTable)

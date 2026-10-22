@@ -151,7 +151,7 @@ FORMATO:
 
   const ai = await gatewayCallOpenAI(
     input.tenantId,
-    "content_generation",
+    "content_generator",
     [
       { role: "system", content: system },
       { role: "user", content: user },

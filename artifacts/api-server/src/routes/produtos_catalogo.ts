@@ -52,11 +52,13 @@ async function categoriaPertenceAoTenant(categoriaId: string, tenantId: string):
 }
 
 async function syncArqdorMarketplaceProduct(product: typeof produtosCatalogoTable.$inferSelect): Promise<void> {
+  if (!product.tenantId) return;
+  const tenantId = product.tenantId;
   const [existing] = await db
     .select({ id: archMarketplaceItemsTable.id })
     .from(archMarketplaceItemsTable)
     .where(and(
-      eq(archMarketplaceItemsTable.vendedorTenantId, product.tenantId),
+      eq(archMarketplaceItemsTable.vendedorTenantId, tenantId),
       eq(archMarketplaceItemsTable.masterProductId, product.id),
     ))
     .limit(1);
@@ -83,7 +85,7 @@ async function syncArqdorMarketplaceProduct(product: typeof produtosCatalogoTabl
       .from(categoriasProdutoTable)
       .where(and(
         eq(categoriasProdutoTable.id, product.categoriaId),
-        eq(categoriasProdutoTable.tenantId, product.tenantId),
+        eq(categoriasProdutoTable.tenantId, tenantId),
       ))
       .limit(1);
     categoriaNome = categoria?.nome ?? null;
@@ -115,7 +117,7 @@ async function syncArqdorMarketplaceProduct(product: typeof produtosCatalogoTabl
 
   await db.insert(archMarketplaceItemsTable)
     .values({
-      vendedorTenantId: product.tenantId,
+      vendedorTenantId: tenantId,
       ...marketplaceData,
     });
 }
@@ -1015,7 +1017,8 @@ const catalogPriceUpload = multer({
   limits: { fileSize: 100 * 1024 * 1024, files: 2 },
   fileFilter: (_req, file, cb) => {
     const pdf = file.mimetype === "application/pdf" || file.originalname.toLowerCase().endsWith(".pdf");
-    cb(pdf ? null : new Error("Apenas arquivos PDF são aceitos."), pdf);
+    if (pdf) cb(null, true);
+    else cb(new Error("Apenas arquivos PDF são aceitos."));
   },
 });
 
@@ -1035,13 +1038,13 @@ router.post(
   },
   async (req, res) => {
     const tenantId = routeTenantId(req);
-    if (!canAccessTenant(req, tenantId)) return res.status(403).json({ error: "Access denied" });
+    if (!canAccessTenant(req, tenantId)) { res.status(403).json({ error: "Access denied" }); return; }
 
     const files = req.files as Record<string, Express.Multer.File[]> | undefined;
     const catalog = files?.catalog?.[0];
     const priceTable = files?.priceTable?.[0];
     if (!catalog || !priceTable) {
-      return res.status(422).json({ error: "Envie o catálogo PDF e a tabela de preços PDF." });
+      res.status(422).json({ error: "Envie o catálogo PDF e a tabela de preços PDF." }); return;
     }
 
     try {
@@ -1108,8 +1111,8 @@ router.post(
       const priceParsed = JSON.parse(cleanAiJson(priceAi.content || "{}")) as any;
       const catalogRows = Array.isArray(catalogParsed.produtos) ? catalogParsed.produtos : [];
       const priceRows = Array.isArray(priceParsed.itens) ? priceParsed.itens : [];
-      if (!catalogRows.length) return res.status(422).json({ error: "Nenhum produto foi identificado no catálogo." });
-      if (!priceRows.length) return res.status(422).json({ error: "Nenhum item de preço foi identificado na tabela." });
+      if (!catalogRows.length) { res.status(422).json({ error: "Nenhum produto foi identificado no catálogo." }); return; }
+      if (!priceRows.length) { res.status(422).json({ error: "Nenhum item de preço foi identificado na tabela." }); return; }
 
       const existingBySku = new Map(existing.filter((p) => p.sku).map((p) => [catalogMatchKey(p.sku), p]));
       const existingByName = new Map(existing.map((p) => [catalogMatchKey(p.nome), p]));
@@ -1261,7 +1264,7 @@ router.post(
       });
     } catch (error: any) {
       req.log?.error?.({ err: error, tenantId }, "catalog-price-preview failed");
-      return res.status(502).json({ error: error?.message || "Falha ao compatibilizar catálogo e tabela de preços." });
+      res.status(502).json({ error: error?.message || "Falha ao compatibilizar catálogo e tabela de preços." }); return;
     }
   },
 );

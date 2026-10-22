@@ -56,7 +56,7 @@ export async function autoCreateAdCampaignIfNeeded(
     const item = await buildResumoItem(itemTipo, itemId, tenantId);
     if (!item) return;
 
-    const gerado = await gerarCriativoRSA(item, log);
+    const gerado = await gerarCriativoRSA(item, log, tenantId);
     if (!gerado) {
       log.warn({ tenantId, itemId, campanhaId: campanha!.id }, "adAutoCreate: campanha criada mas geração de criativo falhou — usuário pode gerar manualmente na tela");
       return;

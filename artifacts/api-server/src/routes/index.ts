@@ -224,7 +224,7 @@ function mountJarvisAuxiliaryRouter(stage: IRouter) {
     // which invokes these stage routers explicitly in deterministic order.
     // Their auxiliary endpoints remain mounted normally here.
     if (req.method === "POST" && req.path === "/support/chat") return next();
-    stage.handle(req, res, next);
+    stage(req, res, next);
   };
 }
 

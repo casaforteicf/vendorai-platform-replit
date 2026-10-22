@@ -50,8 +50,8 @@ function areaAndPerimeter(points:{xM:number;yM:number}[]){
  return {areaM2:Math.abs(a)/2,perimeterM:p};
 }
 arqdorPartnerLotsRouter.use("/arqdor/partner-lots", (req,res,next)=>{
- if(!tenant(req))return res.status(401).json({error:"Tenant obrigatório"});
- if(!authorized(req))return res.status(403).json({error:"Permissão administrativa necessária"});
+ if(!tenant(req)){ res.status(401).json({error:"Tenant obrigatório"}); return; }
+ if(!authorized(req)){ res.status(403).json({error:"Permissão administrativa necessária"}); return; }
  next();
 });
 arqdorPartnerLotsRouter.post("/arqdor/partner-lots/developments",async(req:Request,res:Response)=>{

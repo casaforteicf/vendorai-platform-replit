@@ -48,7 +48,7 @@ function actionEnabled(definition: unknown, actionKey: string): boolean {
 const authenticateAppUser: RequestHandler = (req, res, next) => {
   const authHeader = req.headers.authorization;
   if (!authHeader?.startsWith("Bearer ")) {
-    return res.status(401).json({ error: "UNAUTHENTICATED" });
+    res.status(401).json({ error: "UNAUTHENTICATED" }); return;
   }
   try {
     (req as AppUserRequest).appUser = verifyAppUserToken(
@@ -57,7 +57,7 @@ const authenticateAppUser: RequestHandler = (req, res, next) => {
     );
     next();
   } catch {
-    return res.status(401).json({ error: "UNAUTHENTICATED" });
+    res.status(401).json({ error: "UNAUTHENTICATED" }); return;
   }
 };
 

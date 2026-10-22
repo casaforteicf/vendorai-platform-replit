@@ -144,6 +144,7 @@ async function dataUltimaCompraGeral(tenantId: string, leadId: string): Promise<
 }
 
 interface Acao {
+  requiresApproval?: boolean;
   mensagem?: string;
   canal?: string;
 }
@@ -252,6 +253,8 @@ export async function analisarCliente(
       dataNascimento: leadsTable.dataNascimento,
       intentScore: leadsTable.intentScore,
       constructionStage: leadsTable.constructionStage,
+      limiteCredito: leadsTable.limiteCredito,
+      creditoUtilizado: leadsTable.creditoUtilizado,
     })
     .from(leadsTable)
     .where(and(eq(leadsTable.id, clienteId), eq(leadsTable.tenantId, tenantId)));

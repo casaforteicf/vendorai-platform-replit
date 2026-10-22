@@ -224,9 +224,10 @@ export class ModelFileStore {
       for (const opening of wall.openings) {
         const o = opening as Record<string, unknown>;
         if (!o || !["door", "window"].includes(String(o.kind)) ||
-            ![o.offset, o.width, o.sill, o.height].every(n => typeof n === "number" && Number.isFinite(n)) ||
+            (typeof o.offset !== "number" || typeof o.width !== "number" || typeof o.sill !== "number" || typeof o.height !== "number") ||
+            ![o.offset, o.width, o.sill, o.height].every(Number.isFinite) ||
             o.offset < 0 || o.width <= 0 || o.sill < 0 || o.height <= 0 ||
-            o.offset + o.width > distance || o.sill + o.height > wall.height)
+            o.offset + o.width > distance || o.sill + o.height > Number(wall.height))
           throw new Error("Abertura paramétrica inválida");
       }
     }

@@ -291,7 +291,7 @@ router.post("/support/chat", async (req, res, next) => {
   const contextualIntent = extractContextNavigationIntent(text);
   if (contextualIntent) {
     const resolved = await resolveContextNavigation(tenantId, contextualIntent);
-    if ("error" in resolved) {
+    if (typeof resolved.error === "string") {
       writeSse(res, resolved.error);
       return;
     }
