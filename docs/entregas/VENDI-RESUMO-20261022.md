@@ -40,3 +40,10 @@ Estado: implementado com testes unitários locais; sem homologação ou publica�
 A revisão fcb8e124 compilou no lote VENDI-3591 e foi ativada em homologação com healthcheck OK; backup vendorai-homolog-api-before-3591-20261022-113538. O planejamento real retornou PLANEJAMENTO_OK, confirmando a correção do registro de uso IA. Entretanto incluiu agenda.appointments.list além das três consultas pedidas.
 Ajuste adicional no prompt e nas descrições do registry distingue compromissos de agenda de tarefas vencidas, indica a ferramenta correta e exige plano mínimo sem categorias não solicitadas. Não remove ferramentas por regex nem impede consultas de agenda explicitamente solicitadas. Nenhuma mudança no executor, banco ou frontend.
 Validação desta revisão: 11 testes locais de integridade/resumo passaram; transpilação sintática dos dois arquivos passou. São instruções ao modelo: ainda não garantem por si só a seleção correta. Novo build e teste real do planejamento (três consultas, e cenário que pede agenda) pendentes; produção não alterada.
+
+## Homologação real 3592 e ajuste de domínio
+- Imagem 3592 / commit 779fb407c1b3d7807708ca18bd9d9fe9712a6582 construída na Contabo; API saudável e smoke autenticado aprovado (401 sem autenticação, 404 tenant ausente, 200 tenant de teste).
+- Planejamento IA: três ferramentas CRM corretas, agenda explícita aprovada; missão 4e2a12d8-869e-4005-8b68-0aef9110b836 completed, três consultas, zero replanejamentos e três resumos.
+- Frontend extraído da mesma imagem e servido somente em homologação; configuração anterior do Nginx preservada.
+- Validação visual encontrou “Site não encontrado”: main.tsx tratava homolog.appvendorai.com como slug de site público de cliente. Adicionadas exceções exatas para homolog e homolog2, preservando os demais subdomínios.
+- Novo build e validação visual deste ajuste pendentes; produção permanece sem promoção deste lote.
