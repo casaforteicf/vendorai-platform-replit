@@ -1835,10 +1835,19 @@ router.patch("/deals/:id", async (req, res) => {
       eq(usersTable.tenantId, existing.tenantId),
     )).limit(1);
 
-    if (!targetStageConfig || !userMatchesStageResponsibleFunctions(nextOwner ?? { active: false, userFunction: null, customFunctionId: null }, targetStageConfig.responsaveisFuncoes)) {
+    // Ao avançar na mesma pipeline, preserve o responsável atual. A função
+    // da etapa só restringe uma atribuição explícita a outro usuário.
+    if (!nextOwner || nextOwner.active !== true) {
       res.status(422).json({
         error: "STAGE_RESPONSIBLE_REQUIRED",
-        message: "O responsável precisa estar ativo e ter uma função configurada como responsável pela etapa de destino.",
+        message: "O responsável atual precisa estar ativo para avançar a etapa.",
+      });
+      return;
+    }
+    if (assignedToChanged && targetStageConfig && !userMatchesStageResponsibleFunctions(nextOwner, targetStageConfig.responsaveisFuncoes)) {
+      res.status(422).json({
+        error: "STAGE_RESPONSIBLE_REQUIRED",
+        message: "O novo responsável não possui uma função autorizada para a etapa de destino.",
       });
       return;
     }
