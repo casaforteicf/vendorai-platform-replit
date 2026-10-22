@@ -3,7 +3,7 @@
 Atualizado em 22/10/2026. Estado: frontend validado localmente, validação integrada bloqueada; sem homologação ou publicação deste lote.
 
 ## Objetivo e versão
-Corrigir os erros comprovados pelo typecheck completo do frontend da imagem 3593 e preservar os fluxos de CRM, Marketing, Arqdor e operação. Branch isolada: `fix/typecheck-contabo-20261022`. Base remota: `d60222ec1d6a0eb9a760967b39c0aa570c6f0cd9`, árvore `36ac3a2aaa14a865d5e41a250955e0fb45166854`. O commit que contém este registro versiona os arquivos correspondentes. PR em preparação; sem merge.
+Corrigir os erros comprovados pelo typecheck completo do frontend da imagem 3593 e preservar os fluxos de CRM, Marketing, Arqdor e operação. Branch isolada: `fix/typecheck-contabo-20261022`. Base remota: `d60222ec1d6a0eb9a760967b39c0aa570c6f0cd9`, árvore `36ac3a2aaa14a865d5e41a250955e0fb45166854`. O commit que contém este registro versiona os arquivos correspondentes. PR #3593: https://github.com/casaforteicf/vendorai-platform-replit/pull/3593 (rascunho, sem merge). Commit de implementação: `ffa71e2ad587aea30ce238dfb574deb2d2012b91`; árvore conferida entre cópia local e GitHub: `5fdebc378a082c7d1277a589b497f2d9c24d1e79`.
 
 ## Alterações
 - Cabeçalhos HTTP tipados sem valores undefined; opções de React Query na posição correta e com as chaves de cache geradas.
@@ -40,4 +40,4 @@ Não alterar o baseline de auditoria nem silenciar erros para aprovar o gate. Pr
 ## Homologação e publicação
 Pendente validar o commit em ambiente isolado da Contabo, conforme AGENTS.md. Não há ferramenta de shell SSH arbitrário disponível nesta sessão; o operador conectado requer lote/manifesto registrados. Não foi alegada execução remota nem alterado container ativo. Sem deploy da API, troca de frontend, merge ou promoção em produção neste lote. Preservar a versão/backup existente.
 
-Próximo passo: versionar o PR, validar na Contabo e tratar os diagnósticos da API e o gate UI antes da promoção. Responsável técnico: Codex; execução remota depende do operador registrado ou terminal SSH do proprietário.
+Próximo passo: validar na Contabo e tratar os diagnósticos da API e o gate UI antes da promoção. Responsável técnico: Codex; execução remota depende do operador registrado ou terminal SSH do proprietário.
