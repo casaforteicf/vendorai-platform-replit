@@ -35,7 +35,7 @@ export default function RelatorioGanhosMes() {
     query: { queryKey: getListDealsQueryKey(tenantId), enabled: !!tenantId },
   });
 
-  const { data: leads = [] } = useListTenantLeads(tenantId, {
+  const { data: leads = [] } = useListTenantLeads(tenantId, undefined, {
     query: { queryKey: getListTenantLeadsQueryKey(tenantId), enabled: !!tenantId },
   });
   const leadMap = new Map(leads.map((l) => [l.id, l.nome]));

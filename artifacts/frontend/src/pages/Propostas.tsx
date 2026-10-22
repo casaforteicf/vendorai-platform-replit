@@ -742,10 +742,10 @@ export function CatalogoModal({
     }
   }
 
-  function openCreate() {
+  function openCreate(draft?: { nome?: string; unidade?: string; fornecedor?: string; precoBase?: number } | null) {
     setEditingProd(null);
     setImagemIaPrompt("");
-    form.reset({ nome: "", categoriaId: "", descontoMaximoPercentual: undefined, precoBase: 0, margemPercentual: 0, fretePercentual: 0, comissaoPercentual: 0, custoFinanceiroPercentual: 0, unidade: "un", descricao: "", imagemUrl: "", imagens: [], videoUrl: "", ativo: true, recorrente: false, prazoContrato: undefined, vendeNoPracaAi: "herda", precoPracaAi: undefined, vendeNoArqdor: false, precoArqdor: undefined, especificacoes: [], compatibilidadeVeicular: [], dataValidade: "" });
+    form.reset({ nome: draft?.nome ?? "", fornecedor: draft?.fornecedor ?? "", categoriaId: "", descontoMaximoPercentual: undefined, precoBase: draft?.precoBase ?? 0, margemPercentual: 0, fretePercentual: 0, comissaoPercentual: 0, custoFinanceiroPercentual: 0, unidade: draft?.unidade ?? "un", descricao: "", imagemUrl: "", imagens: [], videoUrl: "", ativo: true, recorrente: false, prazoContrato: undefined, vendeNoPracaAi: "herda", precoPracaAi: undefined, vendeNoArqdor: false, precoArqdor: undefined, especificacoes: [], compatibilidadeVeicular: [], dataValidade: "" });
     setComposicaoItens([]);
     setFormOpen(true);
   }
@@ -1167,7 +1167,7 @@ export function CatalogoModal({
                   Excluir ({selectedIds.size})
                 </Button>
               )}
-                <Button size="sm" onClick={openCreate}>
+                <Button size="sm" onClick={() => openCreate()}>
                 <Plus className="h-4 w-4 mr-1.5" />
                   Novo Produto
                 </Button>
@@ -3136,7 +3136,7 @@ function newFreeItem(): FreeItem {
     const watchPrazoEntrega = form.watch("prazoEntrega");
     const totalContrato = (watchValorMensal ?? 0) * (watchPrazoMeses ?? 0);
   
-    const { data: leads = [] } = useListTenantLeads(tenantId, {
+    const { data: leads = [] } = useListTenantLeads(tenantId, undefined, {
       query: {
         queryKey: getListTenantLeadsQueryKey(tenantId),
         enabled: !!tenantId && !lockedLeadId,
@@ -3209,6 +3209,8 @@ function newFreeItem(): FreeItem {
         politicaReajuste?: string;
         garantiasContratuais?: string;
         condicoesPagamentoDetalhadas?: string;
+        areaTotalConstruida?: number;
+        itensNaoInclusos?: string[];
       } | null | undefined;
       setPresentationDefaultMode(currentPresentation?.modoPadrao ?? "completo");
       setPresentationStageModes(currentPresentation?.etapas ?? {});
@@ -4326,7 +4328,7 @@ function newFreeItem(): FreeItem {
   function resolvedPhysicalWeightsMap() {
     const rows = orcamentoEtapas.map((stage) => {
       const configuredRaw = proposalStageSchedule[stage.id]?.percentualFisico;
-      const configured = configuredRaw === undefined || configuredRaw === null || configuredRaw === ""
+      const configured = configuredRaw === undefined || configuredRaw === null
         ? null
         : Number(configuredRaw);
       return {
@@ -6478,6 +6480,7 @@ function newFreeItem(): FreeItem {
                               <TableCell>
                                 <BudgetQuantityInput
                                   value={item.quantidade}
+                                  isComposition={false}
                                   onChange={(value) => updateImportedItem(index, { quantidade: value ?? 1 })}
                                 />
                               </TableCell>
@@ -7485,7 +7488,7 @@ export default function Propostas() {
     },
   });
 
-  const { data: leads = [] } = useListTenantLeads(tenantId, {
+  const { data: leads = [] } = useListTenantLeads(tenantId, undefined, {
     query: {
       queryKey: getListTenantLeadsQueryKey(tenantId),
       enabled: !!tenantId,
@@ -7554,7 +7557,7 @@ export default function Propostas() {
 
         if (cancelled) return;
         setArchBudgetSource({
-          projectId: urlArchProjectId,
+          projectId: urlArchProjectId!,
           projectTitle: String(project?.titulo ?? "Projeto Arqdor"),
           projectDescription: [
             project?.descricao ? String(project.descricao) : "",

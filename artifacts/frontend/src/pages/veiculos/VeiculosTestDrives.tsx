@@ -12,7 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useToast } from "@/hooks/use-toast";
 import { Plus, Car, Loader2 } from "lucide-react";
 
-function authHeaders() {
+function authHeaders(): Record<string, string> {
   const token = localStorage.getItem("vendorai_token");
   return { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
 }
@@ -127,6 +127,7 @@ function NovoTestDriveDialog({ tenantId, open, onOpenChange }: { tenantId: strin
 }
 
 export default function VeiculosTestDrives() {
+  const { toast } = useToast();
   const { user } = useAuth();
   const tenantId = user?.tenantId ?? "";
   const qc = useQueryClient();

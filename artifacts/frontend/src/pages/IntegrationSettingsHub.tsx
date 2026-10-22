@@ -247,9 +247,9 @@ const OAUTH_ENDPOINTS: Partial<Record<IntegrationKey, string>> = {
   tiktok: "/api/auth/tiktok",
 };
 
-function authHeaders() {
+function authHeaders(): Record<string, string> {
   const token = localStorage.getItem("vendorai_token");
-  return token ? { Authorization: `Bearer ${token}` } : undefined;
+  return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
 async function apiJson(path: string, init?: RequestInit) {
@@ -695,7 +695,8 @@ export default function IntegrationSettingsHub() {
     }
   };
 
-  const syncEmail = async (key: "email-google" | "email-microsoft" | "email-webmail") => {
+  const syncEmail = async (key: IntegrationKey) => {
+    if (key !== "email-google" && key !== "email-microsoft" && key !== "email-webmail") return;
     if (!tenantId) return;
     setBusy(`${key}-sync`);
     try {
@@ -717,7 +718,8 @@ export default function IntegrationSettingsHub() {
     }
   };
 
-  const saveEmailSignature = async (key: "email-google" | "email-microsoft" | "email-webmail") => {
+  const saveEmailSignature = async (key: IntegrationKey) => {
+    if (key !== "email-google" && key !== "email-microsoft" && key !== "email-webmail") return;
     if (!tenantId) return;
     const provider = key === "email-google" ? "google" : key === "email-microsoft" ? "microsoft" : "webmail";
     setBusy(`${key}-signature`);
@@ -1146,7 +1148,7 @@ export default function IntegrationSettingsHub() {
   const lastHealthCheckAt = useMemo(() => {
     const values = catalogIntegrations
       .map((item) => item.lastHealthCheckAt ? new Date(item.lastHealthCheckAt) : null)
-      .filter((value): value is Date => Boolean(value) && !Number.isNaN(value.getTime()))
+      .filter((value): value is Date => value !== null && !Number.isNaN(value.getTime()))
       .sort((a, b) => b.getTime() - a.getTime());
     return values[0]?.toLocaleString("pt-BR") ?? "Nunca";
   }, [catalogIntegrations]);

@@ -443,7 +443,7 @@ export default function SmartStoryboardAudioDirectorPanel() {
 
       const generatedVoice = await synthesizeVoice();
       let voiceAnalyser: AnalyserNode | null = null;
-      let voiceSamples: Float32Array | null = null;
+      let voiceSamples: Float32Array<ArrayBuffer> | null = null;
       if (generatedVoice?.url) {
         const voiceBuffer = await fetchAudioBuffer(audioContext, generatedVoice.url);
         voiceSource = audioContext.createBufferSource();

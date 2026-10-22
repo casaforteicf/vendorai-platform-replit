@@ -8,9 +8,11 @@
 import type { DealCobrancaTipo } from './dealCobrancaTipo';
 import type { DealEtapa } from './dealEtapa';
 import type { DealEtapaSaas } from './dealEtapaSaas';
+import type { DealRespostasEtapas } from './dealRespostasEtapas';
 import type { TipoFechamento } from './tipoFechamento';
 
 export interface Deal {
+  relationshipStage?: string | null;
   id: string;
   tenantId: string;
   leadId?: string | null;
@@ -84,6 +86,8 @@ export interface Deal {
   assignedTo?: string | null;
   /** Quando a etapa mudou pela última vez (trigger no banco) — usado pro SLA de tempo por etapa. */
   etapaAlteradaEm: Date;
+  /** Respostas às perguntas-chave de cada etapa, por chave de etapa: { etapaKey: { perguntaId: resposta } } */
+  respostasEtapas?: DealRespostasEtapas;
   createdAt: Date;
   updatedAt: Date;
 }

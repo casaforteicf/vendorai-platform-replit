@@ -33,7 +33,7 @@ function assertScope(draft: LocalDraft, expected: DraftScope) {
 async function derive(passphrase: string, salt: Uint8Array, usages: KeyUsage[]) {
   const material = await crypto.subtle.importKey("raw", encoder.encode(passphrase), "PBKDF2", false, ["deriveKey"]);
   return crypto.subtle.deriveKey(
-    { name: "PBKDF2", salt, iterations: 310000, hash: "SHA-256" },
+    { name: "PBKDF2", salt: new Uint8Array(salt), iterations: 310000, hash: "SHA-256" },
     material, { name: "AES-GCM", length: 256 }, false, usages,
   );
 }

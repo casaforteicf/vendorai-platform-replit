@@ -11348,6 +11348,12 @@ components:
     ProdutoCatalogo:
       type: object
       properties:
+        fornecedor:
+          type: string
+          nullable: true
+        prazoEntregaDias:
+          type: integer
+          nullable: true
         id:
           type: string
         tenantId:
@@ -12596,6 +12602,18 @@ components:
     CreateActivityBody:
       type: object
       properties:
+        estadoExecucao:
+          type: string
+        prioridade:
+          type: string
+        objetivo:
+          type: string
+        resultadoEsperado:
+          type: string
+        categoriaExecucao:
+          type: string
+        origem:
+          type: string
         tenantId:
           type: string
         leadId:
@@ -12744,6 +12762,11 @@ components:
     PipelineStage:
       type: object
       properties:
+        responsaveisFuncoes:
+          type: array
+          nullable: true
+          items:
+            type: string
         id:
           type: string
         tenantId:
@@ -12859,6 +12882,9 @@ components:
     Deal:
       type: object
       properties:
+        relationshipStage:
+          type: string
+          nullable: true
         id:
           type: string
         tenantId:
@@ -13071,6 +13097,9 @@ components:
     CreateDealBody:
       type: object
       properties:
+        assignedTo:
+          type: string
+          nullable: true
         tenantId:
           type: string
         leadId:
@@ -13436,6 +13465,9 @@ components:
     BusinessProfile:
       type: object
       properties:
+        logoAccessUrl:
+          type: string
+          nullable: true
         id:
           type: string
         tenantId:
@@ -13779,6 +13811,16 @@ components:
     Tenant:
       type: object
       properties:
+        corPrimaria:
+          type: string
+          nullable: true
+        parceiroRedeAtivo:
+          type: boolean
+        parceiroCategorias:
+          type: array
+          nullable: true
+          items:
+            type: string
         id:
           type: string
         name:
@@ -13980,6 +14022,16 @@ components:
     UpdateTenantBody:
       type: object
       properties:
+        corPrimaria:
+          type: string
+          nullable: true
+        parceiroRedeAtivo:
+          type: boolean
+        parceiroCategorias:
+          type: array
+          nullable: true
+          items:
+            type: string
         name:
           type: string
         slug:
@@ -15379,12 +15431,27 @@ components:
 
     UserFunction:
       type: string
-      enum: [vendedor, financeiro, suporte, entrega, administrador, outro]
+      enum: [vendedor, representante_comercial, financeiro, suporte, entrega, administrador, outro]
       description: Função/tipo do usuário dentro do tenant
 
     User:
       type: object
       properties:
+        leadAssignmentCities:
+          type: array
+          nullable: true
+          items:
+            type: string
+        leadAssignmentRegions:
+          type: array
+          nullable: true
+          items:
+            type: string
+        leadAssignmentSegments:
+          type: array
+          nullable: true
+          items:
+            type: string
         id:
           type: string
         tenantId:
@@ -15646,11 +15713,7 @@ components:
             properties:
               nome:
                 type: string
-              profissao:
-          type: string
-          nullable: true
-          description: Profissão do lead para campanhas de datas profissionais.
-        dataNascimento:
+              dataNascimento:
                 type: string
               genero:
                 type: string
@@ -15757,11 +15820,7 @@ components:
                 properties:
                   nome:
                     type: string
-                  profissao:
-          type: string
-          nullable: true
-          description: Profissão do lead para campanhas de datas profissionais.
-        dataNascimento:
+                  dataNascimento:
                     type: string
                     nullable: true
                   telefone:
@@ -15797,6 +15856,27 @@ components:
     CreateLeadBody:
       type: object
       properties:
+        instagramHandle:
+          type: string
+          nullable: true
+        tipoPessoa:
+          type: string
+          nullable: true
+        mercadoSegmento:
+          type: string
+          nullable: true
+        representativeFunctionId:
+          type: string
+          nullable: true
+        metadata:
+          type: object
+          additionalProperties: true
+        assignedTo:
+          type: string
+          nullable: true
+        source:
+          type: string
+          nullable: true
         tenantId:
           type: string
         nome:
@@ -15924,11 +16004,7 @@ components:
             properties:
               nome:
                 type: string
-              profissao:
-          type: string
-          nullable: true
-          description: Profissão do lead para campanhas de datas profissionais.
-        dataNascimento:
+              dataNascimento:
                 type: string
               genero:
                 type: string
@@ -16114,11 +16190,7 @@ components:
             properties:
               nome:
                 type: string
-              profissao:
-          type: string
-          nullable: true
-          description: Profissão do lead para campanhas de datas profissionais.
-        dataNascimento:
+              dataNascimento:
                 type: string
               genero:
                 type: string
@@ -16807,6 +16879,9 @@ components:
           items:
             type: object
             properties:
+              sku:
+                type: string
+                nullable: true
               id:
                 type: string
               nome:

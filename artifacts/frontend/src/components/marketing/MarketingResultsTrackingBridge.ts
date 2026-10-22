@@ -1,3 +1,5 @@
+export {};
+
 const RESULTS_TRACKING_HOST = "data-vendorai-results-tracking-nav";
 const TRACKING_HIDDEN = "data-vendorai-tracking-main-hidden";
 const STYLE_ID = "vendorai-results-tracking-style";

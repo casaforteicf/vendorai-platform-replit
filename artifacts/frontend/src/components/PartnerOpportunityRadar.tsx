@@ -42,7 +42,7 @@ type Signal = {
   reason: string;
 };
 
-function headers() {
+function headers(): Record<string, string> {
   const token = localStorage.getItem("vendorai_token");
   return token ? { Authorization: `Bearer ${token}` } : {};
 }

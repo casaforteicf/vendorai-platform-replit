@@ -9,6 +9,7 @@ import type { BusinessProfileDiscoveryData } from './businessProfileDiscoveryDat
 import type { Product } from './product';
 
 export interface BusinessProfile {
+  logoAccessUrl?: string | null;
   id: string;
   tenantId: string;
   razaoSocial: string;

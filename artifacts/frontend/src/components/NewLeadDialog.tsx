@@ -30,6 +30,7 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { PhoneInput } from "@/components/ui/phone-input";
 import {
   Select,
@@ -253,7 +254,7 @@ function stableIndex(seed: string, length: number) {
   return Math.abs(hash) % length;
 }
 
-function normalizeDealValue(value?: string | null): string | undefined {
+function normalizeDealValue(value?: string | null): number | undefined {
   const raw = (value ?? "").trim();
   if (!raw) return undefined;
   const compact = raw.replace(/[^\d,.-]/g, "");
@@ -261,12 +262,12 @@ function normalizeDealValue(value?: string | null): string | undefined {
     ? compact.replace(/\./g, "").replace(",", ".")
     : compact;
   const numeric = Number(normalized);
-  return Number.isFinite(numeric) ? numeric.toFixed(2) : undefined;
+  return Number.isFinite(numeric) ? Number(numeric.toFixed(2)) : undefined;
 }
 
 function defaultDealTitle(values: NewLeadValues, lead?: Lead | null) {
-  if (values.dealTitle.trim()) return values.dealTitle.trim();
-  const empresa = values.empresa.trim() || lead?.empresa?.trim();
+  if ((values.dealTitle ?? "").trim()) return (values.dealTitle ?? "").trim();
+  const empresa = (values.empresa ?? "").trim() || lead?.empresa?.trim();
   const nome = values.nome.trim() || lead?.nome?.trim() || "Novo negócio";
   return empresa ? `${empresa} — ${nome}` : nome;
 }
@@ -401,7 +402,7 @@ export function NewLeadDialog({
   function resolveAutomaticAssignee(values: NewLeadValues): string | undefined {
     if (representativeFunctionId(values.assignedTo)) return undefined;
     if (values.assignedTo !== "__auto__") return values.assignedTo;
-    if (!assignableUsers.length || !values.endereco.trim()) return undefined;
+    if (!assignableUsers.length || !(values.endereco ?? "").trim()) return undefined;
 
     const segmentoValue = values.mercadoSegmento?.trim() ?? "";
     const segmentMatches = segmentoValue
@@ -412,10 +413,10 @@ export function NewLeadDialog({
     const baseUsers = segmentMatches.length ? segmentMatches : assignableUsers;
 
     const cityMatches = baseUsers.filter((user) =>
-      (user.leadAssignmentCities ?? []).some((city) => territoryMatches(values.endereco, city)),
+      (user.leadAssignmentCities ?? []).some((city) => territoryMatches(values.endereco ?? "", city)),
     );
     const regionMatches = baseUsers.filter((user) =>
-      (user.leadAssignmentRegions ?? []).some((region) => territoryMatches(values.endereco, region)),
+      (user.leadAssignmentRegions ?? []).some((region) => territoryMatches(values.endereco ?? "", region)),
     );
     const pool = cityMatches.length ? cityMatches : regionMatches.length ? regionMatches : segmentMatches;
     if (!pool.length) return undefined;
@@ -597,12 +598,12 @@ export function NewLeadDialog({
 
   async function syncStructuredCrm(dealId: string | undefined, values: NewLeadValues) {
     let companyId: string | null = null;
-    if (values.cadastroTipo !== "pessoa" && values.empresa.trim()) {
+    if (values.cadastroTipo !== "pessoa" && (values.empresa ?? "").trim()) {
       const companyData = await crmPostJson("/api/crm/companies/manual", {
         tenantId,
-        razaoSocial: values.empresa.trim(),
-        nomeFantasia: values.empresa.trim(),
-        cnpj: values.empresaCnpj.trim() || undefined,
+        razaoSocial: (values.empresa ?? "").trim(),
+        nomeFantasia: (values.empresa ?? "").trim(),
+        cnpj: (values.empresaCnpj ?? "").trim() || undefined,
       });
       companyId = companyData.company?.id ?? null;
     }
@@ -857,7 +858,7 @@ export function NewLeadDialog({
         });
         return;
       }
-      const primaryDocument = values.documento.replace(/\D/g, "");
+      const primaryDocument = (values.documento ?? "").replace(/\D/g, "");
       const secondDocument = coClient.documento.replace(/\D/g, "");
       if (primaryDocument && secondDocument && primaryDocument === secondDocument) {
         toast({
@@ -876,7 +877,7 @@ export function NewLeadDialog({
         return;
       }
     }
-    if (values.cadastroTipo === "empresa" && values.empresa.trim().length < 2) {
+    if (values.cadastroTipo === "empresa" && (values.empresa ?? "").trim().length < 2) {
       form.setError("empresa", { message: "Informe a empresa" });
       return;
     }
@@ -1266,7 +1267,7 @@ export function NewLeadDialog({
                       <PhoneInput
                         className="mt-2"
                         value={coClient.telefone}
-                        onChange={(value) => setCoClient((current) => ({ ...current, telefone: value ?? "" }))}
+                        onChange={(event) => setCoClient((current) => ({ ...current, telefone: event.target.value }))}
                       />
                     </div>
                     <div>
@@ -1331,7 +1332,7 @@ export function NewLeadDialog({
                 </div>
               )}
 
-              {cadastroTipo !== "pessoa" && cadastroTipo !== "casal" && form.watch("empresa").trim() && (
+              {cadastroTipo !== "pessoa" && cadastroTipo !== "casal" && (form.watch("empresa") ?? "").trim() && (
                 <div className="space-y-3 rounded-lg border border-dashed p-3">
                   <div className="flex items-center justify-between gap-3">
                     <div>
@@ -1382,7 +1383,7 @@ export function NewLeadDialog({
                         />
                         <PhoneInput
                           value={contact.telefone}
-                          onChange={(value) => setExtraContacts((items) => items.map((item) => item.id === contact.id ? { ...item, telefone: value ?? "" } : item))}
+                          onChange={(event) => setExtraContacts((items) => items.map((item) => item.id === contact.id ? { ...item, telefone: event.target.value } : item))}
                         />
                         <Input
                           type="email"
@@ -1613,7 +1614,7 @@ export function NewLeadDialog({
                     />
                     <PhoneInput
                       value={endCustomer.telefone}
-                      onChange={(value) => setEndCustomer((current) => ({ ...current, telefone: value ?? "" }))}
+                      onChange={(event) => setEndCustomer((current) => ({ ...current, telefone: event.target.value }))}
                     />
                     <Input
                       type="email"
@@ -1743,7 +1744,7 @@ export function NewLeadDialog({
                           />
                           <PhoneInput
                             value={partner.telefone}
-                            onChange={(value) => setCommercialPartners((items) => items.map((item) => item.id === partner.id ? { ...item, telefone: value ?? "" } : item))}
+                            onChange={(event) => setCommercialPartners((items) => items.map((item) => item.id === partner.id ? { ...item, telefone: event.target.value } : item))}
                           />
                           <Input
                             type="email"

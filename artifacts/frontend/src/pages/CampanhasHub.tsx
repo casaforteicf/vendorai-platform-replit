@@ -81,7 +81,7 @@ type CalendarItem = {
   status: string;
 };
 
-function authHeaders() {
+function authHeaders(): Record<string, string> {
   return { Authorization: `Bearer ${localStorage.getItem("vendorai_token")}` };
 }
 
@@ -198,7 +198,7 @@ function CampaignExecutionWorkspace({ mediaPlanId, campaignId }: { mediaPlanId: 
       const response = await fetch(`/api/tenants/${tenantId}/media-plan/${plan.id}`, {
         method: "PATCH",
         headers: { ...authHeaders(), "Content-Type": "application/json" },
-        body: JSON.stringify({ patch: { campanhas } }),
+        body: JSON.stringify({ patch: { campanhas: campaigns } }),
       });
       const body = await response.json().catch(() => ({})) as MediaPlan & { error?: string };
       if (!response.ok) throw new Error(body.error || "Não foi possível salvar a capa.");

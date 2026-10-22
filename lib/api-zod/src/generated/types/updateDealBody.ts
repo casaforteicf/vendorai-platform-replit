@@ -9,6 +9,7 @@ import type { DealEtapa } from './dealEtapa';
 import type { DealEtapaSaas } from './dealEtapaSaas';
 import type { TipoFechamento } from './tipoFechamento';
 import type { UpdateDealBodyContractStatus } from './updateDealBodyContractStatus';
+import type { UpdateDealBodyRespostasEtapas } from './updateDealBodyRespostasEtapas';
 
 export interface UpdateDealBody {
   leadId?: string;
@@ -50,4 +51,5 @@ export interface UpdateDealBody {
   skipAsaasBilling?: boolean | null;
   /** Subtipo de aquecimento ('cliente' ou 'nao_cliente') */
   aquecimentoTipo?: string | null;
+  respostasEtapas?: UpdateDealBodyRespostasEtapas;
 }

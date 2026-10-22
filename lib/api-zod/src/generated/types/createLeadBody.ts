@@ -6,9 +6,17 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { CreateLeadBodyFilhosItem } from './createLeadBodyFilhosItem';
+import type { CreateLeadBodyMetadata } from './createLeadBodyMetadata';
 import type { CreateLeadBodyNaoLeadTipo } from './createLeadBodyNaoLeadTipo';
 
 export interface CreateLeadBody {
+  instagramHandle?: string | null;
+  tipoPessoa?: string | null;
+  mercadoSegmento?: string | null;
+  representativeFunctionId?: string | null;
+  metadata?: CreateLeadBodyMetadata;
+  assignedTo?: string | null;
+  source?: string | null;
   tenantId: string;
   nome: string;
   telefone?: string | null;
@@ -32,6 +40,8 @@ export interface CreateLeadBody {
   naoLeadTipo?: CreateLeadBodyNaoLeadTipo;
   naoLeadNotas?: string | null;
   naoLeadClassificadoEm?: Date | null;
+  /** Profissão do lead para campanhas de datas profissionais. */
+  profissao?: string | null;
   dataNascimento?: string | null;
   estadoCivil?: string | null;
   conjugeNome?: string | null;

@@ -550,6 +550,7 @@ function Tag({ label, color }: { label:string; color:string }) {
 
 // ─── Main Module ───────────────────────────────────────────────────────────────
 export function OfficeModule() {
+  const [movingProjectId, setMovingProjectId] = useState<string|null>(null)
   const [tab, setTab] = useState<'pipeline'|'dashboard'|'dna'|'templates'|'agenda'|'indicators'>('pipeline')
   const [pipeline,   setPipeline]   = useState<PipelineData|null>(null)
   const [dashboard,  setDashboard]  = useState<DashboardData|null>(null)

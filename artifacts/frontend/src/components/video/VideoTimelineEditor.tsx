@@ -2091,7 +2091,7 @@ export default function VideoTimelineEditor() {
             }];
           }
         }
-        const nextLayers = Array.isArray(context.layers) ? (context.layers as EditorLayer[]).map((layer) => ({
+        const nextLayers: EditorLayer[] = Array.isArray(context.layers) ? (context.layers as EditorLayer[]).map((layer) => ({
           ...layer,
           scale: Number.isFinite(Number(layer.scale)) ? Number(layer.scale) : 1,
           rotation: Number.isFinite(Number(layer.rotation)) ? Number(layer.rotation) : 0,
@@ -3348,7 +3348,7 @@ export default function VideoTimelineEditor() {
     }
 
     let nextClips = clipsRef.current.map((clip) => ({ ...clip }));
-    let nextLayers = layersRef.current.map((layer) => ({ ...layer, captionWords: layer.captionWords?.map((word) => ({ ...word })) }));
+    let nextLayers: EditorLayer[] = layersRef.current.map((layer) => ({ ...layer, captionWords: layer.captionWords?.map((word) => ({ ...word })) }));
 
     for (const suggestion of suggestions) {
       if (suggestion.type === "caption_motion" && suggestion.layerId) {
@@ -3567,7 +3567,7 @@ export default function VideoTimelineEditor() {
               <video ref={previewRef} src={activeClip.url} className="relative z-10 h-full w-full object-contain will-change-transform" style={(() => { const index = clips.findIndex((clip) => clip.id === activeClip.id); const visual = clipVisualState(Math.max(0, index), timelineTime, clips); return { opacity: visual.opacity, transform: `translate(${visual.translateX * 100}%, ${visual.translateY * 100}%) scale(${visual.scale})` }; })()} playsInline onLoadedMetadata={onPreviewLoadedMetadata} onPlay={() => setPlaying(true)} onPause={() => setPlaying(false)} onTimeUpdate={onPreviewTimeUpdate} /><div className="absolute inset-0">{layers.filter((layer) => layerIsVisible(layer, timelineTime)).map(renderPreviewLayer)}</div><div className="absolute bottom-3 left-1/2 z-30 flex -translate-x-1/2 items-center gap-2 rounded-full bg-black/70 px-3 py-2 text-white backdrop-blur"><button onClick={togglePlayback}>{playing ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}</button><span className="text-[11px] tabular-nums">{timeLabel(timelineTime)} / {timeLabel(realProjectDuration)}</span></div></> : <button onClick={() => videoInputRef.current?.click()} className="flex h-full w-full flex-col items-center justify-center gap-3 text-white/70 hover:text-white"><div className="rounded-2xl bg-white/10 p-4"><Upload className="h-7 w-7" /></div><div className="text-center"><p className="font-semibold">Adicione o primeiro clipe</p><p className="mt-1 text-xs text-white/50">Depois você pode adicionar, cortar, dividir e reorganizar outros vídeos.</p></div></button>}
             </div>
           </div>
-          {(jobStatus !== "idle" || resultUrl) && <div className="border-t bg-background px-4 py-3"><div className={cn("flex flex-wrap items-center gap-3 rounded-xl border px-3 py-2.5 text-sm", jobStatus === "error" ? "border-destructive/30 bg-destructive/5" : jobStatus === "done" ? "border-emerald-500/30 bg-emerald-500/5" : "bg-muted/30")}>{jobStatus === "rendering" || jobStatus === "processing" ? <Loader2 className="h-4 w-4 animate-spin text-primary" /> : jobStatus === "done" ? <CheckCircle2 className="h-4 w-4 text-emerald-600" /> : <X className="h-4 w-4 text-destructive" />}<span className="min-w-0 flex-1 text-xs">{jobMessage}</span>{resultUrl && <><a href={resultUrl} target="_blank" rel="noreferrer" className="rounded-lg border bg-background px-3 py-1.5 text-xs font-medium">Abrir resultado</a><button onClick={() => void applyAutomaticCaption()} className="rounded-lg border bg-background px-3 py-1.5 text-xs font-medium"><Captions className="mr-1 inline h-3.5 w-3.5" />Legendar</button></>}</div></div>}
+          {(jobStatus !== "idle" || resultUrl) && <div className="border-t bg-background px-4 py-3"><div className={cn("flex flex-wrap items-center gap-3 rounded-xl border px-3 py-2.5 text-sm", jobStatus === "error" ? "border-destructive/30 bg-destructive/5" : jobStatus === "done" ? "border-emerald-500/30 bg-emerald-500/5" : "bg-muted/30")}>{jobStatus === "rendering" || jobStatus === "processing" ? <Loader2 className="h-4 w-4 animate-spin text-primary" /> : jobStatus === "done" ? <CheckCircle2 className="h-4 w-4 text-emerald-600" /> : <X className="h-4 w-4 text-destructive" />}<span className="min-w-0 flex-1 text-xs">{jobMessage}</span>{resultUrl && <><a href={resultUrl} target="_blank" rel="noreferrer" className="rounded-lg border bg-background px-3 py-1.5 text-xs font-medium">Abrir resultado</a><button onClick={() => void applyBurnedAutomaticCaption()} className="rounded-lg border bg-background px-3 py-1.5 text-xs font-medium"><Captions className="mr-1 inline h-3.5 w-3.5" />Legendar</button></>}</div></div>}
         </main>
         <aside className="max-h-[46vh] overflow-y-auto border-t bg-card p-3 sm:max-h-[520px] sm:p-4 xl:max-h-[660px] xl:border-l xl:border-t-0">{PropertiesPanel}</aside>
       </div>

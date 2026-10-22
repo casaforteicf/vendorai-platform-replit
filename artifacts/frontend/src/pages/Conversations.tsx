@@ -1388,7 +1388,7 @@ export default function Conversations() {
   const [searchQuery, setSearchQuery] = useState("");
   const [activeView, setActiveView] = useState<ActiveView>("inbox");
   const [refreshing, setRefreshing] = useState(false);
-  const { data: unmatchedData = { items: [] as Array<{ id: string; title: string; message: string; createdAt: string; readAt?: string | null }> } } = useQuery({
+  const { data: unmatchedData = { items: [] as Array<{ id: string; title: string; message: string; createdAt: string; readAt?: string | null }> } } = useQuery<{ items: Array<{ id: string; title: string; message: string; createdAt: string; readAt?: string | null }> }>({
     queryKey: ["email-unmatched", tenantId],
     queryFn: async () => {
       const token = localStorage.getItem("vendorai_token");
@@ -1414,7 +1414,7 @@ export default function Conversations() {
       },
     });
 
-  const { data: leads = [] } = useListTenantLeads(tenantId, {
+  const { data: leads = [] } = useListTenantLeads(tenantId, undefined, {
     query: {
       enabled: !!tenantId,
       queryKey: getListTenantLeadsQueryKey(tenantId),

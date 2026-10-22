@@ -10,6 +10,12 @@ import type { ActivityTipo } from './activityTipo';
 import type { AnexoCategoria } from './anexoCategoria';
 
 export interface CreateActivityBody {
+  estadoExecucao?: string;
+  prioridade?: string;
+  objetivo?: string;
+  resultadoEsperado?: string;
+  categoriaExecucao?: string;
+  origem?: string;
   tenantId: string;
   leadId: string;
   dealId?: string;

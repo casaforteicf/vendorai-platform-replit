@@ -1,3 +1,4 @@
+import { getListPropostasQueryKey } from "@workspace/api-client-react";
 import { Fragment, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -64,7 +65,7 @@ const ORCAMENTO_LABELS = [
 
 type OrcLabel = (typeof ORCAMENTO_LABELS)[number]["value"];
 
-function authHeaders() {
+function authHeaders(): Record<string, string> {
   return { Authorization: `Bearer ${localStorage.getItem("vendorai_token") ?? ""}` };
 }
 
@@ -139,7 +140,7 @@ export function OrcamentoRevisoesCard({ leadId, tenantId, dealId, onCreateBudget
     tenantId,
     { dealId: dealId ?? "" },
     {
-      query: { enabled: !!tenantId && !!dealId },
+      query: { queryKey: getListPropostasQueryKey(tenantId, { dealId: dealId ?? "" }), enabled: !!tenantId && !!dealId },
       request: { headers: { Authorization: `Bearer ${token}` } },
     },
   );

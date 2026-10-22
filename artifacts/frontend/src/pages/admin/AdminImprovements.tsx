@@ -1149,7 +1149,7 @@ export default function AdminImprovements() {
                             <Button variant="outline" size="sm" onClick={() => setDetail(item)}>
                               Abrir
                             </Button>
-                            {simple !== "Publicado" && (
+                            {simple !== "Concluído" && (
                               <Button
                                 variant="ghost"
                                 size="sm"
@@ -1157,7 +1157,7 @@ export default function AdminImprovements() {
                                 onClick={() => post("/api/admin/improvements/" + item.id + "/start-agent", undefined, "Vendi assumiu/reiniciou esta melhoria")}
                               >
                                 <WandSparkles className="mr-1 h-3.5 w-3.5" />
-                                {simple === "Bloqueado" ? "Corrigir" : "Reexecutar"}
+                                {simple === "Precisa de atenção" ? "Corrigir" : "Reexecutar"}
                               </Button>
                             )}
                           </div>

@@ -33,7 +33,7 @@ export function validateDraft(draft: LocalDraft, authorized: DraftScope, current
   }
   if (!Number.isFinite(Date.parse(draft.savedAt))) throw new Error("OFFLINE_INVALID_TIMESTAMP");
 }
-function aad(scope: DraftScope, operationId: string): Uint8Array {
+function aad(scope: DraftScope, operationId: string): Uint8Array<ArrayBuffer> {
   return new TextEncoder().encode(JSON.stringify([scope.userId, scope.tenantId, scope.projectId, scope.contextId, operationId, 1]));
 }
 export async function encryptLocalDraft(

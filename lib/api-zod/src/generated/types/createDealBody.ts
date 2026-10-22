@@ -10,6 +10,7 @@ import type { DealEtapaSaas } from './dealEtapaSaas';
 import type { TipoFechamento } from './tipoFechamento';
 
 export interface CreateDealBody {
+  assignedTo?: string | null;
   tenantId: string;
   leadId?: string;
   titulo: string;

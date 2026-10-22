@@ -45,6 +45,12 @@ type AdminNavGroup = {
 
 const SIDEBAR_STORAGE_KEY = "vendorai_superadmin_sidebar_expanded";
 
+
+function NavigationGroup({ initiallyOpen, children, ...props }: React.ComponentProps<"details"> & { initiallyOpen: boolean }) {
+  const [open, setOpen] = useState(initiallyOpen);
+  return <details {...props} open={open} onToggle={(event) => setOpen(event.currentTarget.open)}>{children}</details>;
+}
+
 export function SuperAdminSidebarLayout({ children }: { children: React.ReactNode }) {
   const { user, logout, token, setTenantOverride } = useAuth();
   const [location, setLocation] = useLocation();
@@ -194,10 +200,10 @@ export function SuperAdminSidebarLayout({ children }: { children: React.ReactNod
         {groups.map((group) => {
           const active = group.items.some((item) => isActive(item.href));
           return (
-            <details
+            <NavigationGroup
               key={group.key}
               className="group/admin rounded-xl"
-              defaultOpen={active || group.key === "clientes"}
+              initiallyOpen={active || group.key === "clientes"}
             >
               <summary
                 className={cn(
@@ -217,7 +223,7 @@ export function SuperAdminSidebarLayout({ children }: { children: React.ReactNod
                   <NavItem key={item.href} item={item} onNavigate={onNavigate} />
                 ))}
               </div>
-            </details>
+            </NavigationGroup>
           );
         })}
       </div>

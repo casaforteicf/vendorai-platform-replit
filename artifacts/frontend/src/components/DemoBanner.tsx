@@ -30,7 +30,7 @@ type RenewalState = {
   paymentUrl?: string | null;
 };
 
-function authHeaders() {
+function authHeaders(): Record<string, string> {
   const token = localStorage.getItem("vendorai_token");
   return token ? { Authorization: `Bearer ${token}`, "Content-Type": "application/json" } : { "Content-Type": "application/json" };
 }

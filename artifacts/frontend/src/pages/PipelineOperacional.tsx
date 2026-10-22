@@ -34,6 +34,26 @@ import {
   Wrench,
 } from "lucide-react";
 
+
+type InstallationDomainItem = {
+  id: string; unitIndex: number | null; visitId: string; productName: string; quantity: number;
+  sku: string | null; location: string | null; observation: string | null;
+  status: string; attributes: Record<string, unknown>; checks: Array<Record<string, unknown>>;
+  evidenceRequired: boolean; required: boolean;
+};
+type InstallationVisit = {
+  id: string; visitNumber: number; status: string; customerAcceptanceStatus: string;
+  receiverName: string | null;
+};
+type InstallationOccurrence = {
+  id: string; visitId: string; checklistItemId: string | null; type: string;
+  status: string; description: string | null; resolution: string | null;
+};
+type InstallationDomainResponse = {
+  currentVisitId: string; visits: InstallationVisit[];
+  items: InstallationDomainItem[]; occurrences: InstallationOccurrence[];
+};
+
 type PipelineKind = "execucao" | "suporte";
 
 type WorkCard = {
@@ -377,7 +397,7 @@ export default function PipelineOperacional() {
   const [uploading, setUploading] = useState(false);
   const detailFileRef = useRef<HTMLInputElement>(null);
 
-  const authHeaders = useMemo(() => token ? { Authorization: `Bearer ${token}` } : {}, [token]);
+  const authHeaders = useMemo<Record<string, string>>((): Record<string, string> => token ? { Authorization: `Bearer ${token}` } : {}, [token]);
   const jsonHeaders = useMemo(() => ({ "Content-Type": "application/json", ...authHeaders }), [authHeaders]);
 
   async function api<T>(url: string, options?: RequestInit): Promise<T> {
@@ -432,6 +452,11 @@ export default function PipelineOperacional() {
   const proposalsQuery = useQuery<Proposal[]>({
     queryKey: ["work-card-proposals", tenantId], enabled: !!tenantId && (supportOpen || deliveryOpen),
     queryFn: () => api(`/api/tenants/${tenantId}/propostas`), staleTime: 60_000, refetchOnWindowFocus: false,
+  });
+  const installationQuery = useQuery<InstallationDomainResponse>({
+    queryKey: ["work-card-installation", selectedCard?.id],
+    enabled: Boolean(selectedCard?.pipeline === "execucao" && isInstallationStage(selectedCard.etapa)),
+    queryFn: () => api(`/api/work-cards/${selectedCard!.id}/installation`),
   });
   const attachmentsQuery = useQuery<Attachment[]>({
     queryKey: ["work-card-attachments", selectedCard?.id],
@@ -686,7 +711,7 @@ export default function PipelineOperacional() {
                       )}
                       {card.tipo === "entrega" && items.length > 0 && (
                         <div className="mt-2 rounded-md bg-muted/50 p-2 text-[11px]">
-                          {items.slice(0, 3).map((item, index) => <div key={index}>{item.quantidade} × {item.nome}</div>)}
+                          {items.slice(0, 3).map((item, index) => <div key={index}>{String(item.quantidade ?? "")} × {String(item.nome ?? "")}</div>)}
                           {items.length > 3 && <div className="text-muted-foreground">+{items.length - 3} item(ns)</div>}
                         </div>
                       )}
@@ -1396,7 +1421,7 @@ function InstallationAcceptancePanel({
   }
 
   async function uploadSignature(file: File | undefined, kind: "customer" | "company") {
-    if (!file) return;
+    if (!file || !currentVisit) return;
     const uploaded = await uploadFiles(card.id, [file], kind === "customer" ? "installation_signature_customer" : "installation_signature_company", {
       installationVisitId: currentVisit.id,
       signatureRole: kind,
@@ -1407,6 +1432,7 @@ function InstallationAcceptancePanel({
   }
 
   async function accept() {
+    if (!currentVisit) return;
     if (!receiverName.trim() || !customerSignatureUrl || !companySignatureUrl) {
       toast({ title: "Informe o recebedor e as duas assinaturas.", variant: "destructive" });
       return;
@@ -1825,7 +1851,7 @@ function SupportDialog({ open, onOpenChange, tenantId, token, leads, deals, prop
                       <input type="checkbox" className="mt-1" checked={checked} onChange={() => toggleLegacyItem(index)} />
                       <span className="min-w-0 text-xs">
                         <strong>{legacyItemLabel(item, index)}</strong>
-                        {(quantity != null || sku) && <span className="block text-muted-foreground">{quantity != null ? `Qtd: ${String(quantity)}` : ""}{quantity != null && sku ? " • " : ""}{sku ? `Código/SKU: ${String(sku)}` : ""}</span>}
+                        {(quantity != null || Boolean(sku)) && <span className="block text-muted-foreground">{quantity != null ? `Qtd: ${String(quantity)}` : ""}{quantity != null && Boolean(sku) ? " • " : ""}{sku ? `Código/SKU: ${String(sku)}` : ""}</span>}
                         {details && <span className="block break-words text-muted-foreground">{details}</span>}
                       </span>
                     </label>

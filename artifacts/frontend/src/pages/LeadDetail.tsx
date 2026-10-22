@@ -1,3 +1,4 @@
+import { getGetTenantCalendarSettingsQueryKey } from "@workspace/api-client-react";
 import { useState, useEffect, useRef } from "react";
 import { useParams, useLocation } from "wouter";
 import { useRelativeTime } from "@/hooks/useRelativeTime";
@@ -1463,7 +1464,7 @@ export default function LeadDetail() {
     }
     updateActivity({
       id: activityId,
-      data: { dataVencimento: new Date(activityDueDateDraft + "T12:00:00") },
+      data: { dataVencimento: new Date(activityDueDateDraft + "T12:00:00").toISOString() },
     });
   }
 
@@ -1509,7 +1510,7 @@ export default function LeadDetail() {
     return score(a.nome) - score(b.nome) || a.nome.localeCompare(b.nome, "pt-BR");
   });
   const { data: calendarSettings } = useGetTenantCalendarSettings(tenantId, {
-    query: { enabled: !!tenantId },
+    query: { queryKey: getGetTenantCalendarSettingsQueryKey(tenantId), enabled: !!tenantId },
   });
   const assistenciaScheduleDefault = (((calendarSettings as any)?.activityScheduleDefaults ?? []) as Array<{
     activityType: string;

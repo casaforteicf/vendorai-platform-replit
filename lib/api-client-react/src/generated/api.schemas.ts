@@ -128,6 +128,9 @@ export const UserFunction = {
 } as const;
 
 export interface User {
+  leadAssignmentCities?: string[] | null;
+  leadAssignmentRegions?: string[] | null;
+  leadAssignmentSegments?: string[] | null;
   id: string;
   tenantId: string;
   name: string;
@@ -872,6 +875,8 @@ export const ProdutoCatalogoProductType = {
 } as const;
 
 export interface ProdutoCatalogo {
+  fornecedor?: string | null;
+  prazoEntregaDias?: number | null;
   id: string;
   tenantId: string;
   nome: string;
@@ -1721,6 +1726,12 @@ export interface Activity {
 }
 
 export interface CreateActivityBody {
+  estadoExecucao?: string;
+  prioridade?: string;
+  objetivo?: string;
+  resultadoEsperado?: string;
+  categoriaExecucao?: string;
+  origem?: string;
   tenantId: string;
   leadId: string;
   dealId?: string;
@@ -1804,7 +1815,13 @@ export interface Funil {
   updatedAt: string;
 }
 
+export type PipelineStagePerguntasItem = {
+  id: string;
+  texto: string;
+};
+
 export interface PipelineStage {
+  responsaveisFuncoes?: string[] | null;
   id: string;
   tenantId: string;
   key: string;
@@ -1815,7 +1832,7 @@ export interface PipelineStage {
   isSystem: boolean;
   slaMinutos?: number | null;
   elegiveisUserIds?: string[] | null;
-  perguntas?: { id: string; texto: string }[];
+  perguntas?: PipelineStagePerguntasItem[];
   createdAt: string;
   updatedAt: string;
 }
@@ -1827,6 +1844,11 @@ export interface CreatePipelineStageBody {
   slaMinutos?: number | null;
 }
 
+export type UpdatePipelineStageBodyPerguntasItem = {
+  id: string;
+  texto: string;
+};
+
 export interface UpdatePipelineStageBody {
   label?: string;
   color?: string;
@@ -1834,7 +1856,7 @@ export interface UpdatePipelineStageBody {
   ordem?: number;
   slaMinutos?: number | null;
   elegiveisUserIds?: string[] | null;
-  perguntas?: { id: string; texto: string }[];
+  perguntas?: UpdatePipelineStageBodyPerguntasItem[];
 }
 
 export interface CreateFunilBody {
@@ -1860,7 +1882,13 @@ export const DealCobrancaTipo = {
   manual: "manual",
 } as const;
 
+/**
+ * Respostas às perguntas-chave de cada etapa, por chave de etapa: { etapaKey: { perguntaId: resposta } }
+ */
+export type DealRespostasEtapas = { [key: string]: { [key: string]: string } };
+
 export interface Deal {
+  relationshipStage?: string | null;
   id: string;
   tenantId: string;
   leadId?: string | null;
@@ -1935,7 +1963,7 @@ export interface Deal {
   /** Quando a etapa mudou pela última vez (trigger no banco) — usado pro SLA de tempo por etapa. */
   etapaAlteradaEm: string;
   /** Respostas às perguntas-chave de cada etapa, por chave de etapa: { etapaKey: { perguntaId: resposta } } */
-  respostasEtapas?: { [key: string]: { [key: string]: string } };
+  respostasEtapas?: DealRespostasEtapas;
   createdAt: string;
   updatedAt: string;
 }
@@ -1968,6 +1996,7 @@ export type DealUpdateResponse = Deal & {
 };
 
 export interface CreateDealBody {
+  assignedTo?: string | null;
   tenantId: string;
   leadId?: string;
   titulo: string;
@@ -2017,6 +2046,10 @@ export const UpdateDealBodyContractStatus = {
   na: "na",
 } as const;
 
+export type UpdateDealBodyRespostasEtapas = {
+  [key: string]: { [key: string]: string };
+};
+
 export interface UpdateDealBody {
   leadId?: string;
   titulo?: string;
@@ -2057,7 +2090,7 @@ export interface UpdateDealBody {
   skipAsaasBilling?: boolean | null;
   /** Subtipo de aquecimento ('cliente' ou 'nao_cliente') */
   aquecimentoTipo?: string | null;
-  respostasEtapas?: { [key: string]: { [key: string]: string } };
+  respostasEtapas?: UpdateDealBodyRespostasEtapas;
 }
 
 export interface IncrementBody {
@@ -2169,6 +2202,7 @@ export interface Product {
 export type BusinessProfileDiscoveryData = { [key: string]: unknown } | null;
 
 export interface BusinessProfile {
+  logoAccessUrl?: string | null;
   id: string;
   tenantId: string;
   razaoSocial: string;
@@ -2330,6 +2364,9 @@ export const TenantProvisioningMethod = {
 } as const;
 
 export interface Tenant {
+  corPrimaria?: string | null;
+  parceiroRedeAtivo?: boolean;
+  parceiroCategorias?: string[] | null;
   id: string;
   name: string;
   slug: string;
@@ -2390,7 +2427,9 @@ export interface Tenant {
   /** ID do Meta Pixel da conta do próprio tenant, usado nos sites gerados pelo Vendor.ai para esse tenant.
    */
   metaPixelId?: string | null;
+  /** Partner ID do LinkedIn Insight Tag da conta do tenant. */
   linkedinInsightTagId?: string | null;
+  /** ID do TikTok Pixel da conta do tenant. */
   tiktokPixelId?: string | null;
   /** Quando true, o fechamento de negócios pausa em uma etapa de conferência de estoque antes de gerar contrato/cobrança, aguardando aprovação do usuário responsável.
    */
@@ -2437,6 +2476,9 @@ export interface CreateTenantBody {
 export type UpdateTenantBodyAgentsEnabled = { [key: string]: unknown };
 
 export interface UpdateTenantBody {
+  corPrimaria?: string | null;
+  parceiroRedeAtivo?: boolean;
+  parceiroCategorias?: string[] | null;
   name?: string;
   slug?: string;
   status?: TenantStatus;
@@ -2481,7 +2523,9 @@ export interface UpdateTenantBody {
   /** ID do Meta Pixel da conta do próprio tenant, usado nos sites gerados pelo Vendor.ai para esse tenant.
    */
   metaPixelId?: string | null;
+  /** Partner ID do LinkedIn Insight Tag da conta do tenant. */
   linkedinInsightTagId?: string | null;
+  /** ID do TikTok Pixel da conta do tenant. */
   tiktokPixelId?: string | null;
   /** Quando true, o fechamento de negócios pausa em uma etapa de conferência de estoque antes de gerar contrato/cobrança, aguardando aprovação do usuário responsável.
    */
@@ -3305,6 +3349,8 @@ export interface Lead {
   naoLeadClassificadoEm?: string | null;
   /** Instagram Scoped User ID (IGSID) — set automatically when the lead sends an Instagram DM. */
   instagramScopedId?: string | null;
+  /** Profissão do lead para campanhas de datas profissionais. */
+  profissao?: string | null;
   /** Data de nascimento do lead (YYYY-MM-DD). */
   dataNascimento?: string | null;
   /** Estado civil: solteiro, casado, divorciado, viuvo, uniao_estavel. */
@@ -3370,6 +3416,8 @@ export interface Lead {
   updatedAt: string;
 }
 
+export type CreateLeadBodyMetadata = { [key: string]: unknown };
+
 export type CreateLeadBodyNaoLeadTipo =
   | (typeof CreateLeadBodyNaoLeadTipo)[keyof typeof CreateLeadBodyNaoLeadTipo]
   | null;
@@ -3394,6 +3442,13 @@ export type CreateLeadBodyFilhosItem = {
 };
 
 export interface CreateLeadBody {
+  instagramHandle?: string | null;
+  tipoPessoa?: string | null;
+  mercadoSegmento?: string | null;
+  representativeFunctionId?: string | null;
+  metadata?: CreateLeadBodyMetadata;
+  assignedTo?: string | null;
+  source?: string | null;
   tenantId: string;
   nome: string;
   telefone?: string | null;
@@ -3417,6 +3472,8 @@ export interface CreateLeadBody {
   naoLeadTipo?: CreateLeadBodyNaoLeadTipo;
   naoLeadNotas?: string | null;
   naoLeadClassificadoEm?: string | null;
+  /** Profissão do lead para campanhas de datas profissionais. */
+  profissao?: string | null;
   dataNascimento?: string | null;
   estadoCivil?: string | null;
   conjugeNome?: string | null;
@@ -3510,6 +3567,8 @@ export interface UpdateLeadBody {
   naoLeadTipo?: UpdateLeadBodyNaoLeadTipo;
   naoLeadNotas?: string | null;
   naoLeadClassificadoEm?: string | null;
+  /** Profissão do lead para campanhas de datas profissionais. */
+  profissao?: string | null;
   dataNascimento?: string | null;
   estadoCivil?: string | null;
   conjugeNome?: string | null;
@@ -3868,12 +3927,12 @@ export type PublicSiteResponseBusinessProfile = {
 } | null;
 
 export type PublicSiteResponseProdutosItem = {
+  sku?: string | null;
   id: string;
   nome: string;
   descricao?: string | null;
   precoBase: string;
   unidade: string;
-  sku?: string | null;
 };
 
 export interface PublicSiteResponse {
@@ -5435,6 +5494,14 @@ export type TenantCalendarSettingsCommercialDatesItem = {
   day?: number;
 };
 
+export type TenantCalendarSettingsProfessionalDatesItem = {
+  name: string;
+  active: boolean;
+  month: number;
+  day: number;
+  professions: string[];
+};
+
 export type TenantCalendarSettingsCustomDatesItem = {
   name: string;
   date: string;
@@ -5453,6 +5520,7 @@ export interface TenantCalendarSettings {
   blackFridayEnabled: boolean;
   enableSpouseGiftFlow: boolean;
   commercialDates?: TenantCalendarSettingsCommercialDatesItem[];
+  professionalDates?: TenantCalendarSettingsProfessionalDatesItem[];
   customDates?: TenantCalendarSettingsCustomDatesItem[];
   createdAt: string;
   updatedAt: string;
@@ -5466,6 +5534,14 @@ export type CreateTenantCalendarSettingsBodyCommercialDatesItem = {
   movableDate?: boolean;
   month?: number;
   day?: number;
+};
+
+export type CreateTenantCalendarSettingsBodyProfessionalDatesItem = {
+  name: string;
+  active: boolean;
+  month: number;
+  day: number;
+  professions: string[];
 };
 
 export type CreateTenantCalendarSettingsBodyCustomDatesItem = {
@@ -5484,6 +5560,7 @@ export interface CreateTenantCalendarSettingsBody {
   blackFridayEnabled?: boolean;
   enableSpouseGiftFlow?: boolean;
   commercialDates?: CreateTenantCalendarSettingsBodyCommercialDatesItem[];
+  professionalDates?: CreateTenantCalendarSettingsBodyProfessionalDatesItem[];
   customDates?: CreateTenantCalendarSettingsBodyCustomDatesItem[];
 }
 
@@ -5495,6 +5572,14 @@ export type UpdateTenantCalendarSettingsBodyCommercialDatesItem = {
   movableDate?: boolean;
   month?: number;
   day?: number;
+};
+
+export type UpdateTenantCalendarSettingsBodyProfessionalDatesItem = {
+  name: string;
+  active: boolean;
+  month: number;
+  day: number;
+  professions: string[];
 };
 
 export type UpdateTenantCalendarSettingsBodyCustomDatesItem = {
@@ -5513,6 +5598,7 @@ export interface UpdateTenantCalendarSettingsBody {
   blackFridayEnabled?: boolean;
   enableSpouseGiftFlow?: boolean;
   commercialDates?: UpdateTenantCalendarSettingsBodyCommercialDatesItem[];
+  professionalDates?: UpdateTenantCalendarSettingsBodyProfessionalDatesItem[];
   customDates?: UpdateTenantCalendarSettingsBodyCustomDatesItem[];
 }
 

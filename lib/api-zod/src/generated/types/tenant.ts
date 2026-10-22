@@ -5,12 +5,15 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
-import type { TenantAgentsEnabled } from "./tenantAgentsEnabled";
-import type { TenantProvisioningMethod } from "./tenantProvisioningMethod";
-import type { TenantStatus } from "./tenantStatus";
-import type { TipoFechamento } from "./tipoFechamento";
+import type { TenantAgentsEnabled } from './tenantAgentsEnabled';
+import type { TenantProvisioningMethod } from './tenantProvisioningMethod';
+import type { TenantStatus } from './tenantStatus';
+import type { TipoFechamento } from './tipoFechamento';
 
 export interface Tenant {
+  corPrimaria?: string | null;
+  parceiroRedeAtivo?: boolean;
+  parceiroCategorias?: string[] | null;
   id: string;
   name: string;
   slug: string;
@@ -71,7 +74,9 @@ export interface Tenant {
   /** ID do Meta Pixel da conta do próprio tenant, usado nos sites gerados pelo Vendor.ai para esse tenant.
    */
   metaPixelId?: string | null;
+  /** Partner ID do LinkedIn Insight Tag da conta do tenant. */
   linkedinInsightTagId?: string | null;
+  /** ID do TikTok Pixel da conta do tenant. */
   tiktokPixelId?: string | null;
   /** Quando true, o fechamento de negócios pausa em uma etapa de conferência de estoque antes de gerar contrato/cobrança, aguardando aprovação do usuário responsável.
    */

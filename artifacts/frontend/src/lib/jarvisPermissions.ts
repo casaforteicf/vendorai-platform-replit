@@ -105,7 +105,7 @@ export async function getMicrophonePermissionState(): Promise<DevicePermissionSt
     const status = await navigator.permissions.query({ name: "microphone" as PermissionName });
     return status.state as DevicePermissionState;
   } catch {
-    return navigator.mediaDevices?.getUserMedia ? "prompt" : "unsupported";
+    return typeof navigator.mediaDevices?.getUserMedia === "function" ? "prompt" : "unsupported";
   }
 }
 

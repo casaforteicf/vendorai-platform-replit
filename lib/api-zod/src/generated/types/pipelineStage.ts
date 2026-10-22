@@ -5,8 +5,10 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { PipelineStagePerguntasItem } from './pipelineStagePerguntasItem';
 
 export interface PipelineStage {
+  responsaveisFuncoes?: string[] | null;
   id: string;
   tenantId: string;
   key: string;
@@ -17,6 +19,7 @@ export interface PipelineStage {
   isSystem: boolean;
   slaMinutos?: number | null;
   elegiveisUserIds?: string[] | null;
+  perguntas?: PipelineStagePerguntasItem[];
   createdAt: Date;
   updatedAt: Date;
 }

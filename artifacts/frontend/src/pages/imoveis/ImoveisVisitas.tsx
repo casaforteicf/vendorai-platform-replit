@@ -13,7 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useToast } from "@/hooks/use-toast";
 import { Plus, CalendarCheck, Loader2 } from "lucide-react";
 
-function authHeaders() {
+function authHeaders(): Record<string, string> {
   const token = localStorage.getItem("vendorai_token");
   return { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
 }
@@ -128,6 +128,7 @@ function NovaVisitaDialog({ tenantId, open, onOpenChange }: { tenantId: string; 
 }
 
 export default function ImoveisVisitas() {
+  const { toast } = useToast();
   const { user } = useAuth();
   const tenantId = user?.tenantId ?? "";
   const qc = useQueryClient();

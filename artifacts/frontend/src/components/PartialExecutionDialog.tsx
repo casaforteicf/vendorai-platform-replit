@@ -1,3 +1,4 @@
+import { getListPropostasQueryKey } from "@workspace/api-client-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useListPropostas } from "@workspace/api-client-react";
 import { useAuth } from "@/contexts/AuthContext";
@@ -21,7 +22,7 @@ export function PartialExecutionDialog({ dealId, tenantId }: { dealId: string; t
   const queryClient = useQueryClient();
   const { data: propostas = [] } = useListPropostas(tenantId, undefined, {
     request: { headers: { Authorization: "Bearer " + (token ?? "") } },
-    query: { enabled: Boolean(tenantId && token) },
+    query: { queryKey: getListPropostasQueryKey(tenantId), enabled: Boolean(tenantId && token) },
   });
   const accepted = useMemo(() => propostas.filter(p => p.dealId === dealId && p.status === "aceita"), [propostas, dealId]);
   const [open, setOpen] = useState(false);

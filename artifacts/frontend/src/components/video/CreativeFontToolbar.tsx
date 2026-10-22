@@ -50,7 +50,7 @@ function patchCanvasFont() {
     },
   });
 
-  return () => Object.defineProperty(proto, "font", descriptor);
+  return () => { Object.defineProperty(proto, "font", descriptor); };
 }
 
 export default function CreativeFontToolbar() {

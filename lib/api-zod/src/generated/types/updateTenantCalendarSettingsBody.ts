@@ -7,6 +7,7 @@
  */
 import type { UpdateTenantCalendarSettingsBodyCommercialDatesItem } from './updateTenantCalendarSettingsBodyCommercialDatesItem';
 import type { UpdateTenantCalendarSettingsBodyCustomDatesItem } from './updateTenantCalendarSettingsBodyCustomDatesItem';
+import type { UpdateTenantCalendarSettingsBodyProfessionalDatesItem } from './updateTenantCalendarSettingsBodyProfessionalDatesItem';
 
 export interface UpdateTenantCalendarSettingsBody {
   pascoaEnabled?: boolean;
@@ -18,5 +19,6 @@ export interface UpdateTenantCalendarSettingsBody {
   blackFridayEnabled?: boolean;
   enableSpouseGiftFlow?: boolean;
   commercialDates?: UpdateTenantCalendarSettingsBodyCommercialDatesItem[];
+  professionalDates?: UpdateTenantCalendarSettingsBodyProfessionalDatesItem[];
   customDates?: UpdateTenantCalendarSettingsBodyCustomDatesItem[];
 }

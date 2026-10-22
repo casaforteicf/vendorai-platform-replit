@@ -7,6 +7,7 @@
  */
 
 export type PublicSiteResponseProdutosItem = {
+  sku?: string | null;
   id: string;
   nome: string;
   descricao?: string | null;
