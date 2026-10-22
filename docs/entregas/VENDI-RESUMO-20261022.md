@@ -24,3 +24,14 @@ Não altera o operador de releases do PR 3588 nem integra WhatsApp. Backend e fr
 
 ## Limites e próximo passo
 Estado: implementado com testes unitários locais; sem homologação ou publicação desta versão. Missões somente de consulta deixam de descobrir novos passos por adaptação; devem incluir as consultas necessárias no planejamento inicial. Não deduplicar inputs distintos nem reindexar planos já executados. Homologar uma nova missão de três consultas, conferir exatamente três resultados e resumo coerente. Validar também o detalhe da missão antiga sem reexecutá-la. Identificar a publicação efetiva do frontend antes de promover seu bundle. Preservar rollback da API e do frontend.
+
+## Evidência Contabo e correção do planejamento — 2026-10-22
+- Commit 03b408bf641d460bcc035e4408d6131d77ab3a16: build VENDI-3590 concluído, imagem sha256:4c89cd7da73a2a2d29cdbc7beacbc4c702c4da89c47776b3ef82c559eea79e92. Testes, compilação API, frontend e auditoria de bundle passaram no build.
+- Homologação ativada com healthcheck; backup vendorai-homolog-api-before-3590-20261022-003438.
+- Missão 2b7a590a-27f7-4c38-bd95-fe2d1496cb38: plano predefinido concluiu com 3 consultas, 0 replanejamentos e resumo de três ferramentas. Dados retornados: zero registros no tenant de teste. Este teste não comprova o planejador IA.
+- Homologação inicialmente sem OPENAI_API_KEY/MASTER_ENCRYPTION_KEY. Configurações existentes provisionadas sem exibir valores; healthcheck passou. Backup vendorai-homolog-api-before-ai-20261022-004508.
+- Diagnóstico persistido no host confirmou falha 22P02 ao registrar feature=agent_runtime em ai_usage_logs, após retorno de tokens do provedor. O enum canônico AI_FEATURES não inclui agent_runtime, embora o supervisor usasse as any.
+- Correção adicional: supervisor registra intelligence_analysis, categoria já existente no schema, removendo o cast; mantém billingScope=platform_runtime. Sem migration, sem remoção de auditoria e sem alteração dos outros chamadores de agent_runtime fora deste escopo.
+- 11 testes locais passaram novamente após a correção. Esta revisão adicional ainda exige novo build isolado, teste real do planejador e promoção; os testes da imagem anterior não homologam esta revisão.
+- Frontend ativo confirmado pelo SSH: Nginx /etc/nginx/sites-enabled/vendorai-app-prod, root /var/www/vendorai-app/current, backend 127.0.0.1:5001. Symlink apontava para release cb9e99cb2ea28cb8fdf3da4dd7ac5cd3b712e563. Pages vendorai não lista o domínio do app, tem produção automática desativada; não acionar publicação ali por suposição.
+- Produção permanece sem a melhoria deste PR. Registro deste lote: PR 3590. Homologação final e interface ainda pendentes.

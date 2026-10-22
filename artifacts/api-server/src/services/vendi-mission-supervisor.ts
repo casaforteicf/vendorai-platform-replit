@@ -74,7 +74,7 @@ export async function planVendiMission(input: {
   const tools = listVendiTools().filter((tool) => !observer || isObserverReadOnlyTool(tool));
   const result = await callOpenAI(
     input.tenantId,
-    "agent_runtime" as any,
+    "intelligence_analysis",
     [
       {
         role: "system",
