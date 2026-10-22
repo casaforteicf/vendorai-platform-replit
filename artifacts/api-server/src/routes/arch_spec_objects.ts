@@ -71,7 +71,7 @@ function tenantId(req: any): string | null {
 }
 
 function actorId(req: any): string | null {
-  return req?.user?.id ? String(req.user.id) : null;
+  return req?.user?.id ? String(req.user.sub) : null;
 }
 
 function actorName(req: any): string | null {

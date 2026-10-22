@@ -437,7 +437,7 @@ router.get("/public/proposals/:token/assets/*path", async (req, res, next) => {
     const token = String(req.params.token || "");
     const raw = req.params.path;
     const assetPath = Array.isArray(raw) ? raw.join("/") : String(raw || "");
-    if (!assetPath) return res.status(404).send("Arquivo não encontrado.");
+    if (!assetPath) { res.status(404).send("Arquivo não encontrado."); return; }
 
     const [proposal] = await db
       .select({
@@ -449,7 +449,7 @@ router.get("/public/proposals/:token/assets/*path", async (req, res, next) => {
       .limit(1);
 
     if (!proposal || !proposalItemsReferenceAsset(proposal.itens, assetPath)) {
-      return res.status(404).send("Arquivo não encontrado.");
+      res.status(404).send("Arquivo não encontrado."); return;
     }
 
     const objectPath = `/objects/${decodeURIComponent(assetPath).replace(/^\/+/, "")}`;
@@ -458,7 +458,7 @@ router.get("/public/proposals/:token/assets/*path", async (req, res, next) => {
     objectResponse.headers.forEach((value, key) => res.setHeader(key, value));
     res.setHeader("Cache-Control", "private, max-age=300");
     res.status(objectResponse.status);
-    return res.send(Buffer.from(await objectResponse.arrayBuffer()));
+    res.send(Buffer.from(await objectResponse.arrayBuffer())); return;
   } catch (err) {
     handleArqdorPublicProposalError(err, res, next);
   }
@@ -495,7 +495,7 @@ router.get("/public/generated-proposals/:id/assets/*path", async (req, res, next
     const id = String(req.params.id || "");
     const raw = req.params.path;
     const assetPath = Array.isArray(raw) ? raw.join("/") : String(raw || "");
-    if (!assetPath) return res.status(404).send("Arquivo não encontrado.");
+    if (!assetPath) { res.status(404).send("Arquivo não encontrado."); return; }
 
     const [proposal] = await db
       .select({
@@ -507,7 +507,7 @@ router.get("/public/generated-proposals/:id/assets/*path", async (req, res, next
       .limit(1);
 
     if (!proposal || !proposalHtmlReferencesAsset(proposal.htmlContent, assetPath)) {
-      return res.status(404).send("Arquivo não encontrado.");
+      res.status(404).send("Arquivo não encontrado."); return;
     }
 
     const objectPath = `/objects/${decodeURIComponent(assetPath).replace(/^\/+/, "")}`;
@@ -516,7 +516,7 @@ router.get("/public/generated-proposals/:id/assets/*path", async (req, res, next
     objectResponse.headers.forEach((value, key) => res.setHeader(key, value));
     res.setHeader("Cache-Control", "private, max-age=300");
     res.status(objectResponse.status);
-    return res.send(Buffer.from(await objectResponse.arrayBuffer()));
+    res.send(Buffer.from(await objectResponse.arrayBuffer())); return;
   } catch (err) {
     handleArqdorPublicProposalError(err, res, next);
   }

@@ -290,7 +290,7 @@ router.post("/arch/construction/:obraId/diario/:diarioId/resumo-ia", async (req,
       max_tokens: 400,
       messages: [{ role: "user", content: prompt }],
     });
-    const resumo = message.content.find((item: any) => item.type === "text")?.text?.trim() ?? "";
+    const resumo = message.content.find((item) => item.type === "text")?.text?.trim() ?? "";
     const result = await pool.query(
       `UPDATE obra_diario SET resumo_ia = $1, updated_at = now() WHERE id = $2 AND obra_id = $3 RETURNING *`,
       [resumo, diarioId, obraId],

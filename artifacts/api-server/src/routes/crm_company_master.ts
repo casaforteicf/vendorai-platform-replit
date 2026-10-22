@@ -73,6 +73,7 @@ async function loadCompanyContext(tenantId: string, companyId: string, req?: any
   const contacts = await db
     .select({
       relationId: crmTenantCompanyContactsTable.id,
+      metadata: crmTenantCompanyContactsTable.metadata,
       personId: crmPeopleMasterTable.id,
       nome: crmPeopleMasterTable.nome,
       documento: crmPeopleMasterTable.documento,

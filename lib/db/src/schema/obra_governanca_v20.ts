@@ -72,6 +72,7 @@ export const obraPermissoesOperacionaisTable = pgTable("obra_permissoes_operacio
 }));
 
 export const insertObraRelatorioSalvoSchema = createInsertSchema(obraRelatoriosSalvosTable, {
+  filtros: () => z.record(z.string(), z.unknown()),
   tipo: z.enum(RELATORIO_TIPOS),
 }).omit({ id: true, createdAt: true, updatedAt: true });
 

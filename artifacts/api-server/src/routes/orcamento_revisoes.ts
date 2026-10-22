@@ -323,7 +323,7 @@ router.post("/tenants/:tenantId/leads/:leadId/orcamento-revisoes", async (req, r
       basePropostaId: baseProposta.id,
       propostaRevisaoId: revisionProposal.id,
       revisaoNumero: revisionLabel,
-      createdBy: req.user?.id,
+      createdBy: req.user?.sub,
     })
     .returning();
 

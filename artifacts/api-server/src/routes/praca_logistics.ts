@@ -29,35 +29,35 @@ function validPoint(value: unknown): boolean {
 
 router.put("/tenants/:tenantId/praca-logistics/config", async (req, res) => {
   const tenantId = routeTenantId(req);
-  if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
+  if (!canAccess(req, tenantId)) { res.status(403).json({ error: "Forbidden" }); return; }
 
   const timezone = typeof req.body?.timezone === "string" ? req.body.timezone.trim() : "";
   const cutoff = req.body?.horarioCorte;
   const dispatch = req.body?.horarioDespacho;
   const weekdays = Array.isArray(req.body?.diasSemana)
-    ? [...new Set(req.body.diasSemana.map(Number))]
+    ? [...new Set<number>(req.body.diasSemana.map(Number))]
     : [];
   const pickupAddress = req.body?.enderecoColeta;
   const maxStops = Number(req.body?.maxParadasPorRota);
 
   if (!timezone || !validTime(cutoff) || !validTime(dispatch) || dispatch < cutoff) {
-    return res.status(422).json({ error: "Timezone e horários válidos são obrigatórios; o despacho não pode preceder o corte." });
+    res.status(422).json({ error: "Timezone e horários válidos são obrigatórios; o despacho não pode preceder o corte." }); return;
   }
   if (!weekdays.length || weekdays.some((day) => !Number.isInteger(day) || day < 1 || day > 7)) {
-    return res.status(422).json({ error: "diasSemana deve conter números ISO de 1 (segunda) a 7 (domingo)." });
+    res.status(422).json({ error: "diasSemana deve conter números ISO de 1 (segunda) a 7 (domingo)." }); return;
   }
   if (!validPoint(pickupAddress)) {
-    return res.status(422).json({ error: "enderecoColeta deve conter latitude e longitude válidas." });
+    res.status(422).json({ error: "enderecoColeta deve conter latitude e longitude válidas." }); return;
   }
   if (!Number.isInteger(maxStops) || maxStops < 1 || maxStops > 200) {
-    return res.status(422).json({ error: "maxParadasPorRota deve estar entre 1 e 200." });
+    res.status(422).json({ error: "maxParadasPorRota deve estar entre 1 e 200." }); return;
   }
 
   const timezoneResult = await vendorPool.query(
     "SELECT 1 FROM pg_timezone_names WHERE name=$1 LIMIT 1",
     [timezone],
   );
-  if (!timezoneResult.rowCount) return res.status(422).json({ error: "Timezone IANA não reconhecido." });
+  if (!timezoneResult.rowCount) { res.status(422).json({ error: "Timezone IANA não reconhecido." }); return; }
 
   const result = await vendorPool.query(
     `INSERT INTO praca_logistica_config
@@ -81,7 +81,7 @@ router.put("/tenants/:tenantId/praca-logistics/config", async (req, res) => {
 
 router.get("/tenants/:tenantId/praca-logistics/config", async (req, res) => {
   const tenantId = routeTenantId(req);
-  if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
+  if (!canAccess(req, tenantId)) { res.status(403).json({ error: "Forbidden" }); return; }
   const result = await vendorPool.query(
     "SELECT * FROM praca_logistica_config WHERE tenant_id=$1",
     [tenantId],
@@ -91,10 +91,10 @@ router.get("/tenants/:tenantId/praca-logistics/config", async (req, res) => {
 
 router.post("/tenants/:tenantId/praca-logistics/waves", async (req, res) => {
   const tenantId = routeTenantId(req);
-  if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
+  if (!canAccess(req, tenantId)) { res.status(403).json({ error: "Forbidden" }); return; }
   const serviceDate = typeof req.body?.dataServico === "string" ? req.body.dataServico : "";
   if (!/^\d{4}-\d{2}-\d{2}$/.test(serviceDate)) {
-    return res.status(422).json({ error: "dataServico deve usar o formato YYYY-MM-DD." });
+    res.status(422).json({ error: "dataServico deve usar o formato YYYY-MM-DD." }); return;
   }
   const result = await planPickupWave(tenantId, serviceDate);
   res.status(result.status === "bloqueada" ? 409 : 201).json(result);
@@ -102,7 +102,7 @@ router.post("/tenants/:tenantId/praca-logistics/waves", async (req, res) => {
 
 router.get("/tenants/:tenantId/praca-logistics/waves", async (req, res) => {
   const tenantId = routeTenantId(req);
-  if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
+  if (!canAccess(req, tenantId)) { res.status(403).json({ error: "Forbidden" }); return; }
   const limit = Math.min(Math.max(Number(req.query.limit) || 30, 1), 100);
   const result = await vendorPool.query(
     `SELECT o.*,
@@ -122,7 +122,7 @@ router.get("/tenants/:tenantId/praca-logistics/waves", async (req, res) => {
 
 router.get("/tenants/:tenantId/praca-logistics/waves/:waveId", async (req, res) => {
   const tenantId = routeTenantId(req);
-  if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
+  if (!canAccess(req, tenantId)) { res.status(403).json({ error: "Forbidden" }); return; }
   const waveId = String(req.params.waveId);
 
   const [wave, routes, pending] = await Promise.all([
@@ -149,18 +149,18 @@ router.get("/tenants/:tenantId/praca-logistics/waves/:waveId", async (req, res) 
       [waveId, tenantId],
     ),
   ]);
-  if (!wave.rowCount) return res.status(404).json({ error: "Onda não encontrada." });
+  if (!wave.rowCount) { res.status(404).json({ error: "Onda não encontrada." }); return; }
   res.json({ wave: wave.rows[0], routes: routes.rows, pending: pending.rows });
 });
 
 
 router.patch("/tenants/:tenantId/praca-logistics/pending/:pendingId", async (req, res) => {
   const tenantId = routeTenantId(req);
-  if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
+  if (!canAccess(req, tenantId)) { res.status(403).json({ error: "Forbidden" }); return; }
   const pendingId = String(req.params.pendingId);
   const resolved = req.body?.resolvida === true;
   if (!resolved) {
-    return res.status(422).json({ error: "Confirme a resolução com resolvida=true após corrigir o dado de origem." });
+    res.status(422).json({ error: "Confirme a resolução com resolvida=true após corrigir o dado de origem." }); return;
   }
   const result = await vendorPool.query(
     `UPDATE praca_logistica_pendencias
@@ -169,7 +169,7 @@ router.patch("/tenants/:tenantId/praca-logistics/pending/:pendingId", async (req
       RETURNING *`,
     [pendingId, tenantId],
   );
-  if (!result.rowCount) return res.status(404).json({ error: "Pendência aberta não encontrada." });
+  if (!result.rowCount) { res.status(404).json({ error: "Pendência aberta não encontrada." }); return; }
   res.json({
     pending: result.rows[0],
     nextStep: "O pedido corrigido e ainda em pronto_coleta entrará na próxima onda elegível.",

@@ -75,6 +75,10 @@ export const customerIntelligenceTable = pgTable("customer_intelligence", {
 export const insertCustomerIntelligenceSchema = createInsertSchema(
   customerIntelligenceTable,
   {
+    riskType: () => z.enum(["perda_comercial", "churn", "operacional", "insatisfacao", "desengajamento", "financeiro", "nenhum"]),
+    riskLevel: () => z.enum(["baixo", "atencao", "alto", "critico"]),
+    riskTrend: () => z.enum(["melhorando", "estavel", "piorando"]),
+    healthStatus: () => z.enum(["saudavel", "atencao", "alto_risco", "critico"]),
     lastAnalyzedAt: z.coerce.date().optional(),
     churnRisk: z.number().int().min(0).max(100).optional(),
     healthScore: z.number().int().min(0).max(100).optional(),
@@ -87,6 +91,10 @@ export const insertCustomerIntelligenceSchema = createInsertSchema(
 export const updateCustomerIntelligenceSchema = createSelectSchema(
   customerIntelligenceTable,
   {
+    riskType: () => z.enum(["perda_comercial", "churn", "operacional", "insatisfacao", "desengajamento", "financeiro", "nenhum"]),
+    riskLevel: () => z.enum(["baixo", "atencao", "alto", "critico"]),
+    riskTrend: () => z.enum(["melhorando", "estavel", "piorando"]),
+    healthStatus: () => z.enum(["saudavel", "atencao", "alto_risco", "critico"]),
     lastAnalyzedAt: z.coerce.date().optional(),
     churnRisk: z.number().int().min(0).max(100).optional(),
     healthScore: z.number().int().min(0).max(100).optional(),

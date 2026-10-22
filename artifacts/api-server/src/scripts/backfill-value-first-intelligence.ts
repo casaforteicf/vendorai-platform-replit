@@ -39,7 +39,7 @@ async function main() {
         tenantId: row.tenantId,
         leadId: row.leadId,
         log,
-        triggeredBy: "system",
+        triggeredBy: "auto",
       });
       updated++;
     } catch (error) {

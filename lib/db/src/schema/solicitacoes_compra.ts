@@ -61,9 +61,9 @@ export const insertFornecedorSchema = createInsertSchema(fornecedoresTable).omit
 export const updateFornecedorSchema = insertFornecedorSchema.partial();
 export type Fornecedor = typeof fornecedoresTable.$inferSelect;
 
-export const insertSolicitacaoCompraSchema = createInsertSchema(solicitacoesCompraTable)
+export const insertSolicitacaoCompraSchema = createInsertSchema(solicitacoesCompraTable, { status: z.enum(SOLICITACAO_COMPRA_STATUS).optional() })
   .omit({ id: true, createdAt: true, updatedAt: true, aprovadoPor: true, aprovadoEm: true, enviadoEm: true });
-export const updateSolicitacaoCompraSchema = createSelectSchema(solicitacoesCompraTable)
+export const updateSolicitacaoCompraSchema = createSelectSchema(solicitacoesCompraTable, { status: z.enum(SOLICITACAO_COMPRA_STATUS).optional() })
   .omit({ id: true, tenantId: true, createdAt: true, updatedAt: true })
   .partial();
 export type SolicitacaoCompra = typeof solicitacoesCompraTable.$inferSelect;

@@ -10,11 +10,11 @@ import { authenticate, requireRole } from "../middlewares/auth.js";
  */
 const router = Router();
 router.use("/arqdor/projects/:id/members", authenticate, requireRole("super_admin", "tenant_admin"), (req, res, next) => {
-  if (process.env.ARQDOR_PROJECT_ACL_ENABLED !== "true") return res.status(404).json({ error: "Recurso indisponível." });
+  if (process.env.ARQDOR_PROJECT_ACL_ENABLED !== "true") { res.status(404).json({ error: "Recurso indisponível." }); return; }
   const actor = req.user;
   if (!actor?.sub || !actor.tenantId ||
       (actor.accessScope && actor.accessScope !== "tenant") ||
-      (actor.actorType && actor.actorType !== "human")) return res.status(403).json({ error: "Acesso negado." });
+      (actor.actorType && actor.actorType !== "human")) { res.status(403).json({ error: "Acesso negado." }); return; }
   next();
 });
 router.get("/arqdor/projects/:id/members", async (req, res) => {
@@ -34,7 +34,7 @@ router.get("/arqdor/projects/:id/members", async (req, res) => {
 router.put("/arqdor/projects/:id/members/:userId", async (req, res) => {
   const tenantId = req.user!.tenantId, projectId = String(req.params.id || ""), userId = String(req.params.userId || "");
   const permission: "editor" | "viewer" | undefined = req.body?.permission === "editor" ? "editor" : req.body?.permission === "viewer" ? "viewer" : undefined;
-  if (!projectId.trim() || !userId.trim() || !["editor", "viewer"].includes(permission))
+  if (!projectId.trim() || !userId.trim() || !permission)
     return res.status(400).json({ error: "Usuário ou permissão inválidos." });
   try {
     const result = await db.transaction(async tx => {

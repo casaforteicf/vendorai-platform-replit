@@ -140,6 +140,7 @@ export const prospectsTable = pgTable("prospects", {
 
 export const insertProspectSchema = createInsertSchema(prospectsTable, {
   stage: z.enum(prospectStageEnum).optional(),
+  primaryHook: () => z.enum(["vendorai", "arqdor", "diagnostico"]),
   recommendedSolution: z.enum(prospectSolutionEnum).optional(),
   fitScore: z.number().int().min(0).max(100).nullable().optional(),
   vendoraiFitScore: z.number().int().min(0).max(100).nullable().optional(),
@@ -150,6 +151,7 @@ export const insertProspectSchema = createInsertSchema(prospectsTable, {
 
 export const updateProspectSchema = createSelectSchema(prospectsTable, {
   stage: z.enum(prospectStageEnum).optional(),
+  primaryHook: () => z.enum(["vendorai", "arqdor", "diagnostico"]),
   recommendedSolution: z.enum(prospectSolutionEnum).optional(),
   fitScore: z.number().int().min(0).max(100).nullable().optional(),
   vendoraiFitScore: z.number().int().min(0).max(100).nullable().optional(),

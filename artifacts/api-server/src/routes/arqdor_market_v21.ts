@@ -237,7 +237,7 @@ async function syncSelectedMarketProposalToBudget(input: {
     createdProposalItems.push({
       id: created.id,
       cotacaoItemId: created.cotacaoItemId,
-      quantidade,
+      quantidade: quantity,
       total: unitTotal,
     });
   }

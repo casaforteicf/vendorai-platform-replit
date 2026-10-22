@@ -275,7 +275,7 @@ export const obraEtapaFaseMedicoesTable = pgTable("obra_etapa_fase_medicoes", {
 
 export const insertObraEtapaFaseMedicaoSchema = createInsertSchema(obraEtapaFaseMedicoesTable, {
   percentualAnterior: decimalOptional,
-  percentualNovo: decimalOptional,
+  percentualNovo: () => decimalOptional.unwrap(),
   valorBruto: decimalOptional,
   amortizacaoEntrada: decimalOptional,
   valorLiquido: decimalOptional,
@@ -306,10 +306,12 @@ export const obraOrcamentosTable = pgTable("obra_orcamentos", {
 });
 
 export const insertObraOrcamentoSchema = createInsertSchema(obraOrcamentosTable, {
+  linhaBaseSnapshot: () => z.record(z.string(), z.unknown()),
   bdiGlobal: decimalOptional,
 }).omit({ id: true, createdAt: true, updatedAt: true });
 
 export const updateObraOrcamentoSchema = createSelectSchema(obraOrcamentosTable, {
+  linhaBaseSnapshot: () => z.record(z.string(), z.unknown()),
   bdiGlobal: decimalOptional,
 }).omit({ id: true, tenantId: true, obraId: true, createdAt: true, updatedAt: true }).partial();
 
@@ -393,6 +395,7 @@ export const obraOrcamentoItensTable = pgTable("obra_orcamento_itens", {
 });
 
 export const insertObraOrcamentoItemSchema = createInsertSchema(obraOrcamentoItensTable, {
+  memoriaCalculo: () => z.record(z.string(), z.unknown()),
   quantidade: decimalOptional,
   quantidadeOriginal: decimalOptional,
   quantidadeTecnica: decimalOptional,
@@ -406,6 +409,7 @@ export const insertObraOrcamentoItemSchema = createInsertSchema(obraOrcamentoIte
 }).omit({ id: true, createdAt: true, updatedAt: true });
 
 export const updateObraOrcamentoItemSchema = createSelectSchema(obraOrcamentoItensTable, {
+  memoriaCalculo: () => z.record(z.string(), z.unknown()),
   quantidade: decimalOptional,
   quantidadeOriginal: decimalOptional,
   quantidadeTecnica: decimalOptional,
@@ -444,6 +448,7 @@ export const obraOrcamentoItemQuantitativosHistoricoTable = pgTable("obra_orcame
 export const insertObraOrcamentoItemQuantitativoHistoricoSchema = createInsertSchema(
   obraOrcamentoItemQuantitativosHistoricoTable,
   {
+  memoriaCalculo: () => z.record(z.string(), z.unknown()),
     quantidadeAnterior: decimalOptional,
     quantidadeNova: decimalOptional,
     confiancaExtracao: decimalOptional,

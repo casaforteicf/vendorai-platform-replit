@@ -32,7 +32,8 @@ const BILLING_CIRCUIT_MS = Math.max(
   5 * 60_000,
   Number(process.env["MARKETING_AI_BILLING_COOLDOWN_MS"] || 60 * 60_000),
 );
-const VIDEO_AUTO_TYPES = new Set(["reels", "tiktok", "youtube_short", "youtube_video"]);
+const VIDEO_AUTO_TYPE_VALUES = ["reels", "tiktok", "youtube_short", "youtube_video"] as const;
+const VIDEO_AUTO_TYPES = new Set<string>(VIDEO_AUTO_TYPE_VALUES);
 const AUTO_TYPES = new Set(["feed", "stories", "carrossel", "linkedin_post", ...VIDEO_AUTO_TYPES]);
 
 // In-memory circuit breaker. A restart clears it, but the first provider billing
@@ -498,7 +499,7 @@ export async function reconcileAutomatedReelVideos() {
     ))
     .where(and(
       eq(contentCalendarItemsTable.status, "gerado"),
-      inArray(contentCalendarItemsTable.tipo, [...VIDEO_AUTO_TYPES]),
+      inArray(contentCalendarItemsTable.tipo, [...VIDEO_AUTO_TYPE_VALUES]),
       isNotNull(contentCalendarItemsTable.contentGenerationId),
       isNull(contentCalendarItemsTable.contentIdPublicado),
     ))

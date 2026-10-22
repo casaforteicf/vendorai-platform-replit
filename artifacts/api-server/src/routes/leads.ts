@@ -1,3 +1,4 @@
+import { pickNextVendedor } from "../lib/round-robin.js";
 import { Router, type IRouter } from "express";
 import bcrypt from "bcryptjs";
 import { parseRegistrationRequestId, fingerprintRegistrationPayload, matchesRegistrationReplay } from "../lib/crm-lead-idempotency.js";
@@ -266,7 +267,7 @@ router.post("/leads", async (req, res) => {
     res.status(error.status ?? 422).json({ error: error.message });
     return;
   }
-  const registrationActorId = req.user?.sub ?? req.user?.id ?? null;
+  const registrationActorId = req.user?.sub ?? req.user?.sub ?? null;
   const registrationPayloadHash = registrationRequestId
     ? fingerprintRegistrationPayload(data) : null;
   if (registrationRequestId && !registrationActorId) {
@@ -860,7 +861,7 @@ router.get("/tenants/:tenantId/leads", async (req, res) => {
       return [lead.nome, lead.documento, lead.empresa, lead.email, lead.telefone, lead.endereco, lead.mercadoSegmento]
         .some((value) => typeof value === "string" && value.toLocaleLowerCase("pt-BR").includes(term));
     });
-    return res.json([...leads, ...filteredShared]);
+    res.json([...leads, ...filteredShared]); return;
   }
 
   res.json(leads);

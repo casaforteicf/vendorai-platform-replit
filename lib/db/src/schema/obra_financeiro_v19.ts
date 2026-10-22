@@ -89,11 +89,12 @@ export const obraFinanceiroFluxoSnapshotsTable = pgTable("obra_financeiro_fluxo_
 });
 
 export const insertObraFinanceiroTituloSchema = createInsertSchema(obraFinanceiroTitulosTable, {
+  metadata: () => z.record(z.string(), z.unknown()),
   tipo: z.enum(FINANCEIRO_TITULO_TIPOS),
   status: z.enum(FINANCEIRO_TITULO_STATUS).optional(),
   origem: z.enum(FINANCEIRO_ORIGENS),
-  valorOriginal: decimalOptional,
-  valorAberto: decimalOptional,
+  valorOriginal: () => decimalOptional.unwrap(),
+  valorAberto: () => decimalOptional.unwrap(),
   valorLiquidado: decimalOptional,
   juros: decimalOptional,
   multa: decimalOptional,
@@ -102,5 +103,5 @@ export const insertObraFinanceiroTituloSchema = createInsertSchema(obraFinanceir
 
 export const insertObraFinanceiroMovimentoSchema = createInsertSchema(obraFinanceiroMovimentosTable, {
   tipo: z.enum(FINANCEIRO_MOVIMENTO_TIPOS),
-  valor: decimalOptional,
+  valor: () => decimalOptional.unwrap(),
 }).omit({ id: true, createdAt: true });

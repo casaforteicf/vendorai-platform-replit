@@ -1184,7 +1184,7 @@ router.post("/tenants/:tenantId/mao-obra/coberturas", async (req, res) => {
 
   let custoUnitario = numberOrZero(data.custoUnitario);
   if (data.equipeId) {
-    custoUnitario = await custoUnitarioEquipe(tid, data.equipeId, data.unidade);
+    custoUnitario = await custoUnitarioEquipe(tid, data.equipeId, data.unidade ?? "h");
   } else if (data.recursoId) {
     const [recurso] = await db.select().from(maoObraRecursosTable)
       .where(and(eq(maoObraRecursosTable.id, data.recursoId), eq(maoObraRecursosTable.tenantId, tid)));
@@ -2911,9 +2911,9 @@ router.post("/tenants/:tenantId/obras/:obraId/piscinas/:piscinaId/preconfigurar"
     ativo: true,
   }).returning();
 
-  const circuitosBase = ["filtracao", "aspiracao", "retorno", "dreno_fundo"] as const;
-  if (piscina.tipo === "borda_infinita" || piscina.tipo === "overflow") circuitosBase.push("overflow" as any);
-  if (Boolean(req.body?.aquecimento)) circuitosBase.push("aquecimento" as any);
+  const circuitosBase: string[] = ["filtracao", "aspiracao", "retorno", "dreno_fundo"];
+  if (piscina.tipo === "borda_infinita" || piscina.tipo === "overflow") circuitosBase.push("overflow");
+  if (Boolean(req.body?.aquecimento)) circuitosBase.push("aquecimento");
 
   const criados = [];
   for (const tipo of circuitosBase) {
@@ -3354,7 +3354,8 @@ router.post(
   "/tenants/:tenantId/cotacoes/:cotacaoId/propostas/importar-arquivo",
   uploadCotacao.single("file"),
   async (req, res) => {
-    const { tenantId: tid, cotacaoId } = req.params;
+    const tid = String(req.params.tenantId);
+    const cotacaoId = String(req.params.cotacaoId);
     if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
     if (!req.file) return res.status(422).json({ error: "Nenhum arquivo enviado." });
 
@@ -4805,16 +4806,7 @@ router.post("/tenants/:tenantId/insumos/importar", async (req, res) => {
     return res.status(422).json({ error: parsedBody.error.message });
   }
 
-  const validRows: Array<{
-    tenantId: string;
-    codigo?: string;
-    nome: string;
-    descricao?: string;
-    unidade: string;
-    tipo?: "material" | "mao_de_obra" | "equipamento" | "servico" | "subempreitada" | "consumivel" | "frete" | "outro_custo_direto";
-    precoUnitario?: string;
-    categoria?: string;
-  }> = [];
+  const validRows: Array<typeof insertInsumoSchema._output> = [];
   let invalidas = 0;
 
   // Deduplica o próprio arquivo. Código é a chave principal; sem código,

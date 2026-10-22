@@ -49,7 +49,7 @@ router.get("/variedades-dia/vagas-hoje", async (_req, res) => {
 
 router.get("/tenants/:tenantId/variedades-dia", async (req, res) => {
   const tenantId = routeTenantId(req);
-  if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
+  if (!canAccess(req, tenantId)) { res.status(403).json({ error: "Forbidden" }); return; }
 
   const rows = await db.select().from(variedadesDiaTable)
     .where(and(
@@ -64,7 +64,7 @@ router.get("/tenants/:tenantId/variedades-dia", async (req, res) => {
 
 router.post("/tenants/:tenantId/variedades-dia", async (req, res) => {
   const tenantId = routeTenantId(req);
-  if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
+  if (!canAccess(req, tenantId)) { res.status(403).json({ error: "Forbidden" }); return; }
 
   const parsed = insertVariedadeDiaSchema.safeParse({ ...req.body, tenantId });
   if (!parsed.success) {
@@ -100,7 +100,7 @@ router.post("/tenants/:tenantId/variedades-dia", async (req, res) => {
 
 router.delete("/tenants/:tenantId/variedades-dia/:id", async (req, res) => {
   const tenantId = routeTenantId(req);
-  if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
+  if (!canAccess(req, tenantId)) { res.status(403).json({ error: "Forbidden" }); return; }
 
   await db.update(variedadesDiaTable)
     .set({ ativo: false })

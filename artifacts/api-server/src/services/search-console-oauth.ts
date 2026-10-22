@@ -409,7 +409,7 @@ export async function verifyAndActivateSearchConsole(tenantId: string): Promise<
       throw new Error("Não foi possível renovar o token do Search Console");
     }
     conn = refreshedConn;
-    verifyRes = await verifyRequest(conn.accessToken);
+    verifyRes = await verifyRequest(refreshedConn.accessToken);
   }
 
   if (!verifyRes.ok) {

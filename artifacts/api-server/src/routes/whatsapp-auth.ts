@@ -35,7 +35,7 @@ function getAppUrl(): string {
 }
 
 function auditActor(req: any, userId?: string | null) {
-  return { userId: userId ?? req.user?.sub ?? req.user?.id ?? null, ip: req.ip ?? null };
+  return { userId: userId ?? req.user?.sub ?? req.user?.sub ?? null, ip: req.ip ?? null };
 }
 
 function routeTenantId(req: any): string {

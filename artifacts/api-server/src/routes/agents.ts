@@ -1,3 +1,4 @@
+import { persistedAgentName } from "../lib/agent-name.js";
 /**
  * AI Agent routes — 7 agents completos.
  *
@@ -116,7 +117,7 @@ async function handleAgentProcess(
     return;
   }
 
-  const agentCfg = config.agents?.[agentName];
+  const agentCfg = config.agents?.[persistedAgentName(agentName)];
   if (!agentCfg?.enabled) { res.status(422).json({ error: `Agent "${agentName}" is not enabled for this tenant` }); return; }
 
   const limits = computeLimits(config);

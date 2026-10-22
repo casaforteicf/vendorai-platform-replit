@@ -46,8 +46,11 @@ export async function getMlPrediction(
       signal: AbortSignal.timeout(3000),
     });
     if (!res.ok) return { hasModel: false, probability: null };
-    const data = await res.json();
-    return { hasModel: !!data.hasModel, probability: data.probability ?? null };
+    const data: unknown = await res.json();
+    if (!data || typeof data !== "object") return { hasModel: false, probability: null };
+    const probability = "probability" in data && typeof data.probability === "number" && Number.isFinite(data.probability)
+      ? data.probability : null;
+    return { hasModel: "hasModel" in data && data.hasModel === true, probability };
   } catch (err) {
     log?.warn({ err }, "ml-scout-client: serviço indisponível, seguindo sem sinal de ML");
     return { hasModel: false, probability: null };

@@ -35,10 +35,8 @@ type RuntimeDataSourceOk = {
   data: JsonObject | null;
 };
 
-type RuntimeDataSourceDenied = {
-  sourceKey: string;
-  status: "forbidden" | "not_found";
-};
+type RuntimeDataSourceDenied = { sourceKey: string; status: "forbidden" }
+  | { sourceKey: string; status: "not_found" };
 
 export type RuntimeDataSourceResolution =
   | RuntimeDataSourceOk

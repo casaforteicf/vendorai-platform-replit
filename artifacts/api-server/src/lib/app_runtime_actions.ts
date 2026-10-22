@@ -22,7 +22,9 @@ type ActionExecutor = (
 
 export type RuntimeActionResolution =
   | { actionKey: string; status: "ok"; data: JsonObject }
-  | { actionKey: string; status: "not_found" | "forbidden" | "invalid_input" };
+  | { actionKey: string; status: "not_found" }
+  | { actionKey: string; status: "forbidden" }
+  | { actionKey: string; status: "invalid_input" };
 
 export type RuntimeActionDescriptor = {
   key: string;

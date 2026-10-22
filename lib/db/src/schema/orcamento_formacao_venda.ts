@@ -107,6 +107,7 @@ export const updateOrcamentoFormacaoVendaSchema = createSelectSchema(orcamentoFo
 }).omit({ id: true, tenantId: true, orcamentoId: true, createdAt: true, updatedAt: true }).partial();
 
 export const insertOrcamentoFormacaoComponenteSchema = createInsertSchema(orcamentoFormacaoComponentesTable, {
+  metadata: () => z.record(z.string(), z.unknown()),
   escopo: z.enum(FORMACAO_ESCOPO),
   tipo: z.enum(FORMACAO_CUSTO_TIPOS),
   modo: z.enum(FORMACAO_MODOS),

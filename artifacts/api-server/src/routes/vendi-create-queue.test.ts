@@ -31,9 +31,9 @@ function createApp() {
   const app = express();
   app.use(express.json());
   app.use((req, _res, next) => {
-    (req as typeof req & { user?: { id: string; tenantId: string } }).user = {
-      id: "user-1",
-      tenantId: "tenant-1",
+    req.user = {
+      sub: "user-1", tenantId: "tenant-1", email: "test@example.invalid",
+      platformRole: "tenant_admin", role: "admin",
     };
     next();
   });

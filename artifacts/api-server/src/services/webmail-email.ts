@@ -268,7 +268,7 @@ function unfoldHeaders(raw: string) {
   return raw.replace(/\r?\n[ \t]+/g, " ");
 }
 
-function extractTextFromMime(raw: string) {
+function extractTextFromMime(raw: string): string {
   const [headerPart = "", ...bodyParts] = raw.split(/\r?\n\r?\n/);
   const headers = unfoldHeaders(headerPart);
   const body = bodyParts.join("\r\n\r\n");

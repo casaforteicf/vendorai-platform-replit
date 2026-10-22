@@ -191,6 +191,7 @@ export const obraPiscinaOverflowTable = pgTable("obra_piscina_overflow", {
 });
 
 export const insertObraPiscinaSchema = createInsertSchema(obraPiscinasTable, {
+  parametros: () => z.record(z.string(), z.unknown()),
   tipo: z.enum(PISCINA_TIPOS),
   estrutura: z.enum(PISCINA_ESTRUTURAS),
   comprimentoM: decimalOptional,
@@ -204,11 +205,13 @@ export const insertObraPiscinaSchema = createInsertSchema(obraPiscinasTable, {
 }).omit({ id: true, createdAt: true, updatedAt: true });
 
 export const insertObraPiscinaCasaMaquinasSchema = createInsertSchema(obraPiscinaCasasMaquinasTable, {
+  parametros: () => z.record(z.string(), z.unknown()),
   distanciaPiscinaM: decimalOptional,
   desnívelM: decimalOptional,
 }).omit({ id: true, createdAt: true, updatedAt: true });
 
 export const insertObraPiscinaCircuitoSchema = createInsertSchema(obraPiscinaCircuitosTable, {
+  parametros: () => z.record(z.string(), z.unknown()),
   tipo: z.enum(PISCINA_CIRCUITO_TIPOS),
   diametroMm: decimalOptional,
   comprimentoM: decimalOptional,
@@ -217,22 +220,26 @@ export const insertObraPiscinaCircuitoSchema = createInsertSchema(obraPiscinaCir
 }).omit({ id: true, createdAt: true, updatedAt: true });
 
 export const insertObraPiscinaEquipamentoSchema = createInsertSchema(obraPiscinaEquipamentosTable, {
+  parametros: () => z.record(z.string(), z.unknown()),
   quantidade: decimalOptional,
   potenciaKw: decimalOptional,
   vazaoM3h: decimalOptional,
 }).omit({ id: true, createdAt: true, updatedAt: true });
 
 export const insertObraPiscinaTratamentoSchema = createInsertSchema(obraPiscinaTratamentoTable, {
+  parametros: () => z.record(z.string(), z.unknown()),
   tipo: z.enum(PISCINA_TRATAMENTOS),
 }).omit({ id: true, createdAt: true, updatedAt: true });
 
 export const insertObraPiscinaAquecimentoSchema = createInsertSchema(obraPiscinaAquecimentoTable, {
+  parametros: () => z.record(z.string(), z.unknown()),
   potenciaKw: decimalOptional,
   temperaturaAlvoC: decimalOptional,
   deltaTProjetoC: decimalOptional,
 }).omit({ id: true, createdAt: true, updatedAt: true });
 
 export const insertObraPiscinaOverflowSchema = createInsertSchema(obraPiscinaOverflowTable, {
+  parametros: () => z.record(z.string(), z.unknown()),
   comprimentoCalhaM: decimalOptional,
   volumeCompensacaoM3: decimalOptional,
 }).omit({ id: true, createdAt: true, updatedAt: true });

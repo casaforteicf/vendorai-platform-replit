@@ -69,7 +69,7 @@ router.post("/vendi/missions", async (req, res) => {
           priority: parsed.data.priority,
           riskPolicy: parsed.data.riskPolicy,
           context: parsed.data.context ?? null,
-          createdByUserId: req.user?.id ?? null,
+          createdByUserId: req.user?.sub ?? null,
           status: parsed.data.autoExecute ? "queued" : "planning",
         })
         .returning();

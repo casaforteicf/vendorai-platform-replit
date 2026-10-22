@@ -65,7 +65,7 @@ async function runQueueCycle(log: Logger) {
     const mission = await claimNextQueuedMission();
     if (!mission) return;
     try {
-      const result = await executeVendiMission({ ...mission, claimed: true });
+      const result = await executeVendiMission({ tenantId: mission.tenantId, missionId: mission.id, claimed: true });
       log.info({ missionId: mission.id, status: result.status }, "vendi/mission-queue: mission processed");
     } catch (error) {
       const diagnostic = getPostgresDiagnostic(error);

@@ -265,13 +265,12 @@ export async function getMetaGrowthOverview(tenantId: string) {
     ? await db
         .select({
           leadId: dealsTable.leadId,
-          valor: dealsTable.valor,
+          valor: canonicalDealValueSql,
           etapa: dealsTable.etapa,
           wonAt: dealsTable.wonAt,
           dataFechamento: dealsTable.dataFechamento,
           createdAt: dealsTable.createdAt,
         })
-        .select({ leadId: dealsTable.leadId, valor: canonicalDealValueSql })
         .from(dealsTable)
         .where(and(
           eq(dealsTable.tenantId, tenantId),

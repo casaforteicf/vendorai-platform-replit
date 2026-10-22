@@ -183,6 +183,7 @@ export const leadsTable = pgTable("leads", {
       contratando?: boolean;
       anuncios_ativos?: boolean;
     };
+    signals?: { origem?: string | null; meta_anunciante?: boolean };
     score_breakdown?: {
       dor_operacional?: number;
       momento_expansao?: number;

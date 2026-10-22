@@ -190,23 +190,26 @@ export const sistemaInterfacesTable = pgTable("sistema_interfaces", {
 });
 
 export const insertSistemaConstrutivoSchema = createInsertSchema(sistemasConstrutivosTable, {
+  parametrosPadrao: () => z.record(z.string(), z.unknown()), memorial: () => z.record(z.string(), z.unknown()),
   chave: z.enum(COMPOSICAO_SISTEMAS_CONSTRUTIVOS),
   escoposAplicacao: z.array(z.enum(SISTEMA_ESCOPO_APLICACAO)).optional(),
 }).omit({ id: true, createdAt: true, updatedAt: true });
 
 export const updateSistemaConstrutivoSchema = createSelectSchema(sistemasConstrutivosTable, {
+  parametrosPadrao: () => z.record(z.string(), z.unknown()), memorial: () => z.record(z.string(), z.unknown()),
   chave: z.enum(COMPOSICAO_SISTEMAS_CONSTRUTIVOS).optional(),
   escoposAplicacao: z.array(z.enum(SISTEMA_ESCOPO_APLICACAO)).optional(),
 }).omit({ id: true, tenantId: true, createdAt: true, updatedAt: true }).partial();
 
-export const insertSistemaVarianteSchema = createInsertSchema(sistemaVariantesTable).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertSistemaVarianteSchema = createInsertSchema(sistemaVariantesTable, { parametros: () => z.record(z.string(), z.unknown()), criteriosAplicacao: () => z.record(z.string(), z.unknown()), memorial: () => z.record(z.string(), z.unknown()) }).omit({ id: true, createdAt: true, updatedAt: true });
 
 export const insertSistemaComposicaoRegraSchema = createInsertSchema(sistemaComposicaoRegrasTable, {
+  parametros: () => z.record(z.string(), z.unknown()), condicao: () => z.record(z.string(), z.unknown()),
   etapaKey: z.enum(COMPOSICAO_ETAPA_KEYS).nullable().optional(),
   acao: z.enum(SISTEMA_REGRA_ACOES),
 }).omit({ id: true, createdAt: true, updatedAt: true });
 
-export const insertSistemaInterfaceSchema = createInsertSchema(sistemaInterfacesTable).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertSistemaInterfaceSchema = createInsertSchema(sistemaInterfacesTable, { parametros: () => z.record(z.string(), z.unknown()), memorial: () => z.record(z.string(), z.unknown()) }).omit({ id: true, createdAt: true, updatedAt: true });
 
 export const composicoesTable = pgTable("composicoes", {
   id: text("id")
@@ -252,6 +255,7 @@ export const composicoesTable = pgTable("composicoes", {
 }));
 
 export const insertComposicaoSchema = createInsertSchema(composicoesTable, {
+  formulaCalculo: () => z.record(z.string(), z.unknown()), parametrosPadrao: () => z.record(z.string(), z.unknown()),
   custoTotal: decimalOptional,
   produtividadeDia: decimalOptional,
   horasDiaPadrao: decimalOptional,
@@ -262,6 +266,7 @@ export const insertComposicaoSchema = createInsertSchema(composicoesTable, {
 }).omit({ id: true, createdAt: true, updatedAt: true });
 
 export const updateComposicaoSchema = createSelectSchema(composicoesTable, {
+  formulaCalculo: () => z.record(z.string(), z.unknown()), parametrosPadrao: () => z.record(z.string(), z.unknown()),
   custoTotal: decimalOptional,
   produtividadeDia: decimalOptional,
   horasDiaPadrao: decimalOptional,
@@ -301,6 +306,7 @@ export const composicaoInsumosTable = pgTable("composicao_insumos", {
 });
 
 export const insertComposicaoInsumoSchema = createInsertSchema(composicaoInsumosTable, {
+  formulaQuantidade: () => z.record(z.string(), z.unknown()), condicaoAplicabilidade: () => z.record(z.string(), z.unknown()),
   quantidade: z
     .union([z.string(), z.number()])
     .transform((v) => String(v))

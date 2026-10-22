@@ -282,7 +282,7 @@ router.get("/admin/improvements", async (_req, res) => {
 router.post("/admin/improvements", async (req, res) => {
   await ensureSchema();
   const parsed = createSchema.safeParse(req.body);
-  if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+  if (!parsed.success) { res.status(422).json({ error: parsed.error.message }); return; }
   const id = randomUUID();
   const input = parsed.data;
   const result = await pool.query(`
@@ -312,7 +312,7 @@ router.post("/admin/improvements", async (req, res) => {
 router.patch("/admin/improvements/:id", async (req, res) => {
   await ensureSchema();
   const parsed = patchSchema.safeParse(req.body);
-  if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+  if (!parsed.success) { res.status(422).json({ error: parsed.error.message }); return; }
 
   const mapping: Record<string, string> = {
     title: "title", description: "description", module: "module", priority: "priority",
@@ -331,13 +331,13 @@ router.patch("/admin/improvements/:id", async (req, res) => {
     values.push(value ?? null);
     sets.push(`${column} = $${values.length}`);
   }
-  if (!sets.length) return res.status(422).json({ error: "Nenhum campo para atualizar" });
+  if (!sets.length) { res.status(422).json({ error: "Nenhum campo para atualizar" }); return; }
   values.push(String(req.params.id));
   const result = await pool.query(
     `UPDATE admin_improvements SET ${sets.join(", ")}, updated_at = now() WHERE id = $${values.length} RETURNING id`,
     values,
   );
-  if (!result.rowCount) return res.status(404).json({ error: "Melhoria não encontrada" });
+  if (!result.rowCount) { res.status(404).json({ error: "Melhoria não encontrada" }); return; }
   await pool.query(
     "INSERT INTO admin_improvement_events (id,improvement_id,event_type,message,payload,actor) VALUES ($1,$2,'updated',$3,$4::jsonb,$5)",
     [randomUUID(), String(req.params.id), "Melhoria atualizada.", JSON.stringify(parsed.data), actor(req)],
@@ -348,7 +348,7 @@ router.patch("/admin/improvements/:id", async (req, res) => {
 router.post("/admin/improvements/package", async (req, res) => {
   await ensureSchema();
   const parsed = packageSchema.safeParse(req.body);
-  if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+  if (!parsed.success) { res.status(422).json({ error: parsed.error.message }); return; }
   const result = await pool.query(
     `UPDATE admin_improvements SET package_key = $1, updated_at = now() WHERE id = ANY($2::uuid[]) RETURNING id`,
     [parsed.data.packageKey, parsed.data.ids],
@@ -359,7 +359,7 @@ router.post("/admin/improvements/package", async (req, res) => {
 router.post("/admin/improvements/approve-homologation", async (req, res) => {
   await ensureSchema();
   const parsed = idsSchema.safeParse(req.body);
-  if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+  if (!parsed.success) { res.status(422).json({ error: parsed.error.message }); return; }
 
   const check = await pool.query(
     `SELECT id, title, test_status, pr_number FROM admin_improvements WHERE id = ANY($1::uuid[])`,
@@ -367,10 +367,10 @@ router.post("/admin/improvements/approve-homologation", async (req, res) => {
   );
   const blocked = check.rows.filter((row) => row.test_status !== "passed" || !row.pr_number);
   if (blocked.length) {
-    return res.status(409).json({
+    res.status(409).json({
       error: "Existem melhorias sem teste aprovado ou sem PR vinculado.",
       blocked: blocked.map((row) => ({ id: row.id, title: row.title, testStatus: row.test_status, prNumber: row.pr_number })),
-    });
+    }); return;
   }
 
   const result = await pool.query(
@@ -389,16 +389,16 @@ router.post("/admin/improvements/approve-homologation", async (req, res) => {
 router.post("/admin/improvements/merge-homologation", async (req, res) => {
   await ensureSchema();
   const parsed = mergeSchema.safeParse(req.body);
-  if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+  if (!parsed.success) { res.status(422).json({ error: parsed.error.message }); return; }
 
   let config: GithubConfig;
   try {
     config = githubConfig();
   } catch (error) {
-    return res.status(503).json({
+    res.status(503).json({
       error: "Integração GitHub indisponível no backend de homologação.",
       code: error instanceof Error ? error.message : "GITHUB_CONFIG_ERROR",
-    });
+    }); return;
   }
 
   const items = await pool.query(
@@ -443,7 +443,7 @@ router.post("/admin/improvements/merge-homologation", async (req, res) => {
 router.post("/admin/improvements/mark-homologated", async (req, res) => {
   await ensureSchema();
   const parsed = idsSchema.safeParse(req.body);
-  if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+  if (!parsed.success) { res.status(422).json({ error: parsed.error.message }); return; }
 
   const result = await pool.query(
     `UPDATE admin_improvements SET status = 'homologado', updated_at = now()
@@ -483,7 +483,7 @@ router.post("/admin/improvements/mark-homologated", async (req, res) => {
 router.post("/admin/improvements/approve-production", async (req, res) => {
   await ensureSchema();
   const parsed = idsSchema.safeParse(req.body);
-  if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+  if (!parsed.success) { res.status(422).json({ error: parsed.error.message }); return; }
 
   const check = await pool.query(
     `SELECT id, title, status FROM admin_improvements WHERE id = ANY($1::uuid[])`,
@@ -491,10 +491,10 @@ router.post("/admin/improvements/approve-production", async (req, res) => {
   );
   const blocked = check.rows.filter((row) => row.status !== "homologado");
   if (blocked.length) {
-    return res.status(409).json({
+    res.status(409).json({
       error: "Somente melhorias homologadas podem ser aprovadas para produção.",
       blocked: blocked.map((row) => ({ id: row.id, title: row.title, status: row.status })),
-    });
+    }); return;
   }
 
   const result = await pool.query(

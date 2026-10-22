@@ -150,6 +150,7 @@ export async function loadJarvisScenarioIntelligence(tenantId: string) {
     generatedAt: new Date(),
     scenarios,
     summary: {
+      openCasesEvaluated: coverage.openCasesEvaluated,
       activeDeals: activeDeals.length,
       measurableDeals: measurableDeals.length,
       weightedPipelineBrl: baseProjected,

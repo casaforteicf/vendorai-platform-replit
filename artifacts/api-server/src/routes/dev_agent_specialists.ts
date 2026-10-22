@@ -109,7 +109,7 @@ function normalizeOpinion(value: any): SpecialistOpinion {
 }
 
 function normalizeCouncil(value: any): SpecialistCouncil {
-  const opinions = Array.isArray(value?.opinions) ? value.opinions.slice(0, 5).map(normalizeOpinion) : [];
+  const opinions: SpecialistOpinion[] = Array.isArray(value?.opinions) ? value.opinions.slice(0, 5).map(normalizeOpinion) : [];
   const primary = specialistIds.includes(value?.primary) ? value.primary : (opinions.find((item) => item.relevant)?.specialist ?? "backend_api");
   const consultedRaw = Array.isArray(value?.consulted) ? value.consulted : opinions.filter((item) => item.relevant).map((item) => item.specialist);
   const consulted = consultedRaw.filter((id: unknown): id is SpecialistOpinion["specialist"] => specialistIds.includes(id as any)).slice(0, 5);

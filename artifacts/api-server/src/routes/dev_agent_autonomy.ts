@@ -264,7 +264,7 @@ async function compareBranch(branchInput: string) {
     aheadBy: Number(data.ahead_by ?? 0),
     behindBy: Number(data.behind_by ?? 0),
     totalCommits: Number(data.total_commits ?? 0),
-    files: (data.files ?? []).slice(0, 50).map((file: any) => ({ path: String(file.filename ?? ""), status: String(file.status ?? "modified"), additions: Number(file.additions ?? 0), deletions: Number(file.deletions ?? 0), changes: Number(file.changes ?? 0), patch: typeof file.patch === "string" ? file.patch.slice(0, 5000) : undefined })),
+    files: (Array.isArray(data.files) ? data.files : []).slice(0, 50).map((file: any) => ({ path: String(file.filename ?? ""), status: String(file.status ?? "modified"), additions: Number(file.additions ?? 0), deletions: Number(file.deletions ?? 0), changes: Number(file.changes ?? 0), patch: typeof file.patch === "string" ? file.patch.slice(0, 5000) : undefined })),
   };
 }
 
@@ -577,11 +577,15 @@ export async function executeDevAutonomousWork(input: DevAutonomousExecutionInpu
       try { args = JSON.parse(call.function?.arguments ?? "{}"); } catch { args = {}; }
       try {
         const result = await runTool(name, args, executionPolicy);
-        const compactDetail = name === "get_file"
-          ? { path: result.path, ref: result.ref, sha: result.sha }
-          : name === "compare_branch"
-            ? { branch: result.branch, status: result.status, aheadBy: result.aheadBy, behindBy: result.behindBy, totalCommits: result.totalCommits, files: result.files.map((file: any) => ({ path: file.path, status: file.status, additions: file.additions, deletions: file.deletions, changes: file.changes })) }
-            : result;
+        let compactDetail: unknown = result;
+        if (name === "get_file") {
+          if (!("path" in result && "ref" in result && "sha" in result)) throw new Error("DEV_TOOL_RESULT_MISMATCH");
+          compactDetail = { path: result.path, ref: result.ref, sha: result.sha };
+        } else if (name === "compare_branch") {
+          if (!("branch" in result && "status" in result && "aheadBy" in result && "behindBy" in result && "totalCommits" in result && "files" in result)) throw new Error("DEV_TOOL_RESULT_MISMATCH");
+          compactDetail = { branch: result.branch, status: result.status, aheadBy: result.aheadBy, behindBy: result.behindBy, totalCommits: result.totalCommits,
+            files: result.files.map((file: Awaited<ReturnType<typeof compareBranch>>["files"][number]) => ({ path: file.path, status: file.status, additions: file.additions, deletions: file.deletions, changes: file.changes })) };
+        }
         actions.push({ tool: name, ok: true, detail: compactDetail });
         messages.push({ role: "tool", tool_call_id: call.id, content: JSON.stringify(result) });
       } catch (error) {

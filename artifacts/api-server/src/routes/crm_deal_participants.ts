@@ -395,7 +395,7 @@ router.patch("/crm/deals/:dealId/people/:personId", async (req, res) => {
       const safeMetadata = Object.fromEntries(Object.entries(parsed.data.metadata ?? {})
         .filter(([key]) => !["relationshipHistory", "inactive", "unlinkedAt", "unlinkedBy", "createdTenantId", "legacyRelationship"].includes(key)));
       const metadata = appendRelationshipEvent({ ...(linked.metadata ?? {}), ...safeMetadata,
-        legacyRelationship: !Array.isArray(linked.metadata?.relationshipHistory) }, "updated", req.user?.id);
+        legacyRelationship: !Array.isArray(linked.metadata?.relationshipHistory) }, "updated", req.user?.sub);
       const [link] = await tx.update(crmDealPeopleTable).set({
         role: parsed.data.role,
         isPrimary: parsed.data.isPrimary,
@@ -448,7 +448,7 @@ router.patch("/crm/deals/:dealId/people/:personId/commission", async (req, res) 
         ? (current as any).commissionHistory : [];
       const metadata = { ...current, commission,
         commissionHistory: [...history, { from: previous, to: commission,
-          actorId: req.user?.sub ?? req.user?.id ?? null, changedAt: new Date().toISOString() }] };
+          actorId: req.user?.sub ?? req.user?.sub ?? null, changedAt: new Date().toISOString() }] };
       const [updated] = await tx.update(crmDealPeopleTable).set({ metadata, updatedAt: new Date() })
         .where(eq(crmDealPeopleTable.id, existing.id)).returning();
       return updated;
@@ -626,7 +626,7 @@ router.post("/crm/deals/:dealId/couple", async (req, res) => {
           relationshipScope: "deal_only",
           metadata: appendRelationshipEvent({ clientePrincipal: true, ordemClientePrincipal: index + 1, grupoCliente: "multiplo",
             ...(registrationRequestId ? { registrationRequestId, registrationPayloadHash } : {}) },
-            "linked", req.user?.id),
+            "linked", req.user?.sub),
           updatedAt: new Date(),
         }).returning();
         people.push({ personId: created.id, link });
@@ -646,7 +646,7 @@ router.post("/crm/deals/:dealId/couple", async (req, res) => {
           { ...(existingCompanyLink?.metadata ?? {}),
             legacyRelationship: Boolean(existingCompanyLink) && !Array.isArray(existingCompanyLink.metadata?.relationshipHistory) },
           existingCompanyLink ? (existingCompanyLink.metadata?.inactive === true ? "linked" : "updated") : "linked",
-          req.user?.id,
+          req.user?.sub,
         );
         await tx.insert(crmDealCompaniesTable).values({
           tenantId, dealId: req.params.dealId, companyId: parsed.data.contextualCompanyId,
@@ -772,7 +772,7 @@ router.post("/crm/deals/:dealId/people", async (req, res) => {
       // Reativação nunca recupera automaticamente o contato principal antigo.
       const primaryContact = parsed.data.isPrimary;
       const relationshipMetadata = appendRelationshipEvent(
-        { ...(previousLink?.metadata ?? {}), ...Object.fromEntries(Object.entries(parsed.data.metadata ?? {}).filter(([key]) => !["relationshipHistory", "inactive", "unlinkedAt", "unlinkedBy", "createdTenantId", "commission", "commissionHistory"].includes(key))), relationshipHistory: previousLink?.metadata?.relationshipHistory, legacyRelationship: Boolean(previousLink) && !Array.isArray(previousLink?.metadata?.relationshipHistory) }, previousLink ? (previousLink.metadata?.inactive === true ? "linked" : "updated") : "linked", req.user?.id,
+        { ...(previousLink?.metadata ?? {}), ...Object.fromEntries(Object.entries(parsed.data.metadata ?? {}).filter(([key]) => !["relationshipHistory", "inactive", "unlinkedAt", "unlinkedBy", "createdTenantId", "commission", "commissionHistory"].includes(key))), relationshipHistory: previousLink?.metadata?.relationshipHistory, legacyRelationship: Boolean(previousLink) && !Array.isArray(previousLink?.metadata?.relationshipHistory) }, previousLink ? (previousLink.metadata?.inactive === true ? "linked" : "updated") : "linked", req.user?.sub,
       );
       const [link] = await tx.insert(crmDealPeopleTable).values({
       tenantId,
@@ -853,7 +853,7 @@ router.post("/crm/deals/:dealId/companies", async (req, res) => {
         eq(crmDealCompaniesTable.dealId, req.params.dealId),
         eq(crmDealCompaniesTable.companyId, parsed.data.companyId))).limit(1);
     const companyMetadata = appendRelationshipEvent({ ...(previousCompanyLink?.metadata ?? {}), legacyRelationship: Boolean(previousCompanyLink) && !Array.isArray(previousCompanyLink?.metadata?.relationshipHistory) },
-      previousCompanyLink ? (previousCompanyLink.metadata?.inactive === true ? "linked" : "updated") : "linked", req.user?.id);
+      previousCompanyLink ? (previousCompanyLink.metadata?.inactive === true ? "linked" : "updated") : "linked", req.user?.sub);
     const [link] = await tx.insert(crmDealCompaniesTable).values({
       tenantId,
       dealId: req.params.dealId,
@@ -891,7 +891,7 @@ router.delete("/crm/deals/:dealId/people/:relationId", async (req, res) => {
     if (relation.metadata?.inactive === true) return;
     await tx.update(crmDealPeopleTable).set({
       isPrimary: false,
-      metadata: appendRelationshipEvent(relation.metadata, "unlinked", req.user?.id),
+      metadata: appendRelationshipEvent(relation.metadata, "unlinked", req.user?.sub),
       updatedAt: new Date(),
     }).where(eq(crmDealPeopleTable.id, relation.id));
     });
@@ -914,7 +914,7 @@ router.delete("/crm/deals/:dealId/companies/:relationId", async (req, res) => {
     if (relation.metadata?.inactive === true) return;
     await tx.update(crmDealCompaniesTable).set({
       isPrimary: false,
-      metadata: appendRelationshipEvent(relation.metadata, "unlinked", req.user?.id),
+      metadata: appendRelationshipEvent(relation.metadata, "unlinked", req.user?.sub),
       updatedAt: new Date(),
     }).where(eq(crmDealCompaniesTable.id, relation.id));
     });

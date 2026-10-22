@@ -33,7 +33,7 @@ async function auditGoogleCalendar(req: any, tenantId: string, agendaId: string,
     entityId: agendaId,
     before: action === "criar" ? undefined : before,
     after: action === "excluir" ? undefined : after,
-    actor: { userId: req.user?.id ?? req.user?.sub ?? null, ip: req.ip ?? null },
+    actor: { userId: req.user?.sub ?? req.user?.sub ?? null, ip: req.ip ?? null },
   });
   if (!audited) req.log?.warn({ tenantId, agendaId }, "configuracoes: falha ao auditar Google Calendar");
 }
@@ -49,7 +49,7 @@ router.get("/tenants/:tenantId/agendas", async (req, res) => {
 
   const isAdmin = req.user?.platformRole === "super_admin" || req.user?.platformRole === "tenant_admin";
   const userId = req.user?.sub;
-  if (!isAdmin && !userId) return res.status(403).json({ error: "User identity required" });
+  if (!isAdmin && !userId) { res.status(403).json({ error: "User identity required" }); return; }
   const authorizedIds = isAdmin ? [] : (await db.select({ agendaId: agendaAccessGrantsTable.agendaId })
     .from(agendaAccessGrantsTable).where(and(eq(agendaAccessGrantsTable.tenantId, tenantId), eq(agendaAccessGrantsTable.userId, userId!)))).map(x => x.agendaId);
   const agendas = await db
@@ -76,7 +76,7 @@ router.get("/tenants/:tenantId/agendas", async (req, res) => {
 
 router.post("/tenants/:tenantId/agendas", async (req, res) => {
   const tenantId = String(req.params.tenantId);
-  if (req.user?.platformRole !== "super_admin" && req.user?.platformRole !== "tenant_admin") return res.status(403).json({ error: "Admin access required" });
+  if (req.user?.platformRole !== "super_admin" && req.user?.platformRole !== "tenant_admin") { res.status(403).json({ error: "Admin access required" }); return; }
   if (req.user?.platformRole !== "super_admin" && req.user?.tenantId !== tenantId) {
     res.status(403).json({ error: "Access denied" });
     return;
@@ -145,11 +145,11 @@ router.get("/agendas/:id", async (req, res) => {
 
   if (req.user?.platformRole !== "super_admin" && req.user?.platformRole !== "tenant_admin") {
     const userId = req.user?.sub;
-    if (!userId) return res.status(403).json({ error: "User identity required" });
+    if (!userId) { res.status(403).json({ error: "User identity required" }); return; }
     if (agenda.ownerUserId !== userId) {
       const [grant] = await db.select({ userId: agendaAccessGrantsTable.userId }).from(agendaAccessGrantsTable)
         .where(and(eq(agendaAccessGrantsTable.tenantId, agenda.tenantId), eq(agendaAccessGrantsTable.agendaId, agenda.id), eq(agendaAccessGrantsTable.userId, userId))).limit(1);
-      if (!grant) return res.status(403).json({ error: "Agenda access denied" });
+      if (!grant) { res.status(403).json({ error: "Agenda access denied" }); return; }
     }
   }
   res.json(agenda);
@@ -163,7 +163,7 @@ router.patch("/agendas/:id", async (req, res) => {
     .from(agendasTable)
     .where(eq(agendasTable.id, String(req.params.id)));
 
-  if (req.user?.platformRole !== "super_admin" && req.user?.platformRole !== "tenant_admin") return res.status(403).json({ error: "Admin access required" });
+  if (req.user?.platformRole !== "super_admin" && req.user?.platformRole !== "tenant_admin") { res.status(403).json({ error: "Admin access required" }); return; }
 
   if (!existing) {
     res.status(404).json({ error: "Agenda not found" });
@@ -216,7 +216,7 @@ router.delete("/agendas/:id", async (req, res) => {
     .from(agendasTable)
     .where(eq(agendasTable.id, String(req.params.id)));
 
-  if (req.user?.platformRole !== "super_admin" && req.user?.platformRole !== "tenant_admin") return res.status(403).json({ error: "Admin access required" });
+  if (req.user?.platformRole !== "super_admin" && req.user?.platformRole !== "tenant_admin") { res.status(403).json({ error: "Admin access required" }); return; }
 
   if (!existing) {
     res.status(404).json({ error: "Agenda not found" });
@@ -249,7 +249,7 @@ router.get("/agendas/:id/google-auth-url", async (req, res) => {
     .from(agendasTable)
     .where(eq(agendasTable.id, String(req.params.id)));
 
-  if (req.user?.platformRole !== "super_admin" && req.user?.platformRole !== "tenant_admin") return res.status(403).json({ error: "Admin access required" });
+  if (req.user?.platformRole !== "super_admin" && req.user?.platformRole !== "tenant_admin") { res.status(403).json({ error: "Admin access required" }); return; }
 
   if (!agenda) {
     res.status(404).json({ error: "Agenda not found" });
@@ -262,10 +262,10 @@ router.get("/agendas/:id/google-auth-url", async (req, res) => {
   }
 
   const host = req.get("host") ?? undefined;
-  if (!req.user?.sub) return res.status(403).json({ error: "User identity required" });
+  if (!req.user?.sub) { res.status(403).json({ error: "User identity required" }); return; }
   const url = await createRegisteredCalendarAuthUrl(agenda.id, agenda.tenantId, req.user.sub, "/agenda", host);
   const oauthState = new URL(url).searchParams.get("state");
-  if (!oauthState) return res.status(500).json({ error: "OAuth state missing" });
+  if (!oauthState) { res.status(500).json({ error: "OAuth state missing" }); return; }
   res.cookie(`vendor_calendar_oauth_${createHash("sha256").update(oauthState).digest("hex").slice(0, 16)}`, createHash("sha256").update(oauthState).digest("hex"), {
     httpOnly: true, secure: process.env.NODE_ENV === "production", sameSite: "lax",
     maxAge: 600_000, path: "/api/auth/google/calendar/callback",
@@ -281,7 +281,7 @@ router.post("/agendas/:id/google/disconnect", async (req, res) => {
     .from(agendasTable)
     .where(eq(agendasTable.id, String(req.params.id)));
 
-  if (req.user?.platformRole !== "super_admin" && req.user?.platformRole !== "tenant_admin") return res.status(403).json({ error: "Admin access required" });
+  if (req.user?.platformRole !== "super_admin" && req.user?.platformRole !== "tenant_admin") { res.status(403).json({ error: "Admin access required" }); return; }
 
   if (!existing) {
     res.status(404).json({ error: "Agenda not found" });

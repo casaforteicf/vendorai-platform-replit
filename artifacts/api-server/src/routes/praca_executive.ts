@@ -15,12 +15,12 @@ function dateParam(value:unknown,fallback:Date){
 
 router.get("/tenants/:tenantId/praca-executive-dashboard",async(req,res)=>{
   const tenantId=String(req.params.tenantId);
-  if(!canAccess(req,tenantId))return res.status(403).json({error:"Forbidden"});
+  if(!canAccess(req,tenantId)){ res.status(403).json({error:"Forbidden"}); return; }
   const today=new Date(),defaultFrom=new Date(today);defaultFrom.setUTCDate(defaultFrom.getUTCDate()-29);
   const from=dateParam(req.query.from,defaultFrom),to=dateParam(req.query.to,today);
   const end=new Date(to);end.setUTCDate(end.getUTCDate()+1);
   const days=Math.ceil((end.getTime()-from.getTime())/86400000);
-  if(days<1||days>366)return res.status(422).json({error:"O período deve ter entre 1 e 366 dias."});
+  if(days<1||days>366){ res.status(422).json({error:"O período deve ter entre 1 e 366 dias."}); return; }
   const params=[tenantId,from.toISOString(),end.toISOString()];
 
   const [orders,finance,allocations,exceptions,series,statuses,products,returns]=await Promise.all([

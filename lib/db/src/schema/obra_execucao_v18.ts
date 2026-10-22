@@ -87,8 +87,9 @@ export const obraExecucaoConsumosTable = pgTable("obra_execucao_consumos", {
 });
 
 export const insertObraExecucaoAtividadeSchema = createInsertSchema(obraExecucaoAtividadesTable, {
+  metadata: () => z.record(z.string(), z.unknown()),
   status: z.enum(EXECUCAO_ATIVIDADE_STATUS).optional(),
-  quantidadePlanejada: decimalOptional,
+  quantidadePlanejada: () => decimalOptional.unwrap(),
   quantidadeExecutada: decimalOptional,
   percentualExecutado: decimalOptional,
   custoPlanejado: decimalOptional,
@@ -98,15 +99,16 @@ export const insertObraExecucaoAtividadeSchema = createInsertSchema(obraExecucao
 }).omit({ id: true, createdAt: true, updatedAt: true });
 
 export const insertObraExecucaoMedicaoSchema = createInsertSchema(obraExecucaoMedicoesTable, {
+  metadata: () => z.record(z.string(), z.unknown()),
   origem: z.enum(EXECUCAO_MEDICAO_ORIGENS),
-  quantidadeExecutada: decimalOptional,
+  quantidadeExecutada: () => decimalOptional.unwrap(),
   percentualInformado: decimalOptional,
 }).omit({ id: true, createdAt: true });
 
 export const insertObraExecucaoConsumoSchema = createInsertSchema(obraExecucaoConsumosTable, {
-  quantidade: decimalOptional,
-  custoUnitario: decimalOptional,
-  custoTotal: decimalOptional,
+  quantidade: () => decimalOptional.unwrap(),
+  custoUnitario: () => decimalOptional.unwrap(),
+  custoTotal: () => decimalOptional.unwrap(),
   perdaQuantidade: decimalOptional,
 }).omit({ id: true, createdAt: true });
 
@@ -161,13 +163,13 @@ export const obraExecucaoSnapshotsTable = pgTable("obra_execucao_snapshots", {
 
 export const insertObraExecucaoMaoObraSchema = createInsertSchema(obraExecucaoMaoObraTable, {
   quantidadePessoas: decimalOptional,
-  horas: decimalOptional,
-  custoHora: decimalOptional,
-  custoTotal: decimalOptional,
+  horas: () => decimalOptional.unwrap(),
+  custoHora: () => decimalOptional.unwrap(),
+  custoTotal: () => decimalOptional.unwrap(),
 }).omit({ id: true, createdAt: true });
 
 export const insertObraExecucaoEquipamentoSchema = createInsertSchema(obraExecucaoEquipamentosTable, {
-  horas: decimalOptional,
-  custoHora: decimalOptional,
-  custoTotal: decimalOptional,
+  horas: () => decimalOptional.unwrap(),
+  custoHora: () => decimalOptional.unwrap(),
+  custoTotal: () => decimalOptional.unwrap(),
 }).omit({ id: true, createdAt: true });
