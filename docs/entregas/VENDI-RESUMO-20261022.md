@@ -35,3 +35,8 @@ Estado: implementado com testes unitários locais; sem homologação ou publica�
 - 11 testes locais passaram novamente após a correção. Esta revisão adicional ainda exige novo build isolado, teste real do planejador e promoção; os testes da imagem anterior não homologam esta revisão.
 - Frontend ativo confirmado pelo SSH: Nginx /etc/nginx/sites-enabled/vendorai-app-prod, root /var/www/vendorai-app/current, backend 127.0.0.1:5001. Symlink apontava para release cb9e99cb2ea28cb8fdf3da4dd7ac5cd3b712e563. Pages vendorai não lista o domínio do app, tem produção automática desativada; não acionar publicação ali por suposição.
 - Produção permanece sem a melhoria deste PR. Registro deste lote: PR 3590. Homologação final e interface ainda pendentes.
+
+## Ajuste de seleção de ferramentas — 2026-10-22
+A revisão fcb8e124 compilou no lote VENDI-3591 e foi ativada em homologação com healthcheck OK; backup vendorai-homolog-api-before-3591-20261022-113538. O planejamento real retornou PLANEJAMENTO_OK, confirmando a correção do registro de uso IA. Entretanto incluiu agenda.appointments.list além das três consultas pedidas.
+Ajuste adicional no prompt e nas descrições do registry distingue compromissos de agenda de tarefas vencidas, indica a ferramenta correta e exige plano mínimo sem categorias não solicitadas. Não remove ferramentas por regex nem impede consultas de agenda explicitamente solicitadas. Nenhuma mudança no executor, banco ou frontend.
+Validação desta revisão: 11 testes locais de integridade/resumo passaram; transpilação sintática dos dois arquivos passou. São instruções ao modelo: ainda não garantem por si só a seleção correta. Novo build e teste real do planejamento (três consultas, e cenário que pede agenda) pendentes; produção não alterada.
