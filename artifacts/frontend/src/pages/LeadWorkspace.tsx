@@ -584,7 +584,6 @@ export default function LeadWorkspace() {
       setDescription("");
       setNote("");
       setDue(tomorrow());
-      setEditEligible(false);
       setAdvancedHandoffOpen(false);
     } catch (error) {
       toast({
