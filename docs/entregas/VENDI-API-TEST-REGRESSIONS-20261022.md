@@ -44,3 +44,9 @@ Os logs mencionados são temporários desta sessão. Registrar evidência duráv
 4. O teste de navegador visual depende de `VISUAL_QA_BROWSER_TEST=1` e continua ignorado conforme a configuração existente; não foi desabilitado teste neste lote. Testes unitários não comprovam migrações/RLS nem a jornada completa em ambiente real.
 
 Responsável por implementação/registro: Codex. Execução SSH/registro no host: operador da VPS. Estado de homologação, aprovação, merge e produção: pendentes para esta versão.
+
+## Correção do build Contabo — continuidade 3596/3597
+- Operador registrou VENDI-3596 para `db354ba468243572477d85652607a69d30cc9882`. Build remoto falhou no Step 5: `ERR_MODULE_NOT_FOUND` para Vitest. O Dockerfile executava `node --test` antes de instalar dependências, embora os dois arquivos já usem Vitest. Log informado pelo operador: `/root/vendorai-mcp-backup/build-3596-20261023-010515.log`. Nenhum deploy solicitado.
+- `Dockerfile.deploy` agora instala dependências primeiro e executa os mesmos dois arquivos com `pnpm --filter @workspace/api-server exec vitest run`, preservando os gates de tipos e builds seguintes.
+- Validação local direcionada: Vitest 4.1.8, 2 arquivos, 11 testes aprovados, exit 0. Docker build completo corrigido ainda não executado; validação Contabo pendente. A chamada inicial ao pnpm global local abortou por incompatibilidade do gerenciador/ausência de TTY; o binário Vitest já instalado foi executado diretamente, sem reinstalar dependências.
+- Próxima tentativa deve usar novo manifesto/lote VENDI-3597 para não sobrescrever o manifesto imutável 3596. Sem merge ou mudança em produção.

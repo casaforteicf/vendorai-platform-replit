@@ -11,8 +11,8 @@ RUN corepack enable \
 
 COPY . .
 
-RUN node --test artifacts/api-server/src/services/vendi-mission-integrity.test.mts artifacts/api-server/src/services/vendi-mission-summary.test.mts \
-  && pnpm install --no-frozen-lockfile \
+RUN pnpm install --no-frozen-lockfile \
+  && pnpm --filter @workspace/api-server exec vitest run src/services/vendi-mission-integrity.test.mts src/services/vendi-mission-summary.test.mts \
   && pnpm --filter @workspace/api-server exec tsc -p tsconfig.launch-ci.json --noEmit \
   && pnpm --filter @workspace/api-server run build \
   && pnpm --filter @workspace/frontend run build
