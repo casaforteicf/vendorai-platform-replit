@@ -35,7 +35,8 @@ vi.mock("../lib/lead-scope-access.js", () => ({
   leadOwnedByUserCondition: vi.fn(() => "lead-owned-condition"),
 }));
 
-vi.mock("@workspace/db", () => ({
+vi.mock("@workspace/db", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@workspace/db")>()),
   db: {
     select: mockDbSelect,
     update: mockDbUpdate,
@@ -242,6 +243,21 @@ describe("DELETE /api/activities/:id — cross-tenant isolation", () => {
       .set("Authorization", `Bearer ${tokenA}`);
 
     expect(res.status).toBe(404);
+  });
+});
+
+describe("activity mutation scope", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    setupSelectReturning([recordOwnedByTenantB]);
+    mockCanAccessActivity.mockResolvedValue(false);
+  });
+  it.each(["patch", "delete"] as const)("denies %s outside the same-tenant activity scope without writing", async method => {
+    const response = await request(app)[method](`/api/activities/${RECORD_ID}`)
+      .set("Authorization", `Bearer ${tokenB}`).send({ status: "concluida" });
+    expect(response.status).toBe(403);
+    expect(mockDbUpdate).not.toHaveBeenCalled();
+    expect(mockDbDelete).not.toHaveBeenCalled();
   });
 });
 

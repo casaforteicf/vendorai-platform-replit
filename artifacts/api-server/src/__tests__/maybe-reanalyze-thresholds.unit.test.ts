@@ -1,3 +1,4 @@
+import { mockSelectQuery } from "./helpers/isolation.js";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { Logger } from "pino";
 
@@ -102,11 +103,7 @@ async function flushPromises(): Promise<void> {
  * Builds a minimal select chain: db.select({...}).from(table).where(...) → rows
  */
 function makeSelectChain(rows: unknown[]) {
-  return {
-    from: vi.fn().mockReturnValue({
-      where: vi.fn().mockResolvedValue(rows),
-    }),
-  };
+  return mockSelectQuery(rows);
 }
 
 /**
@@ -198,7 +195,7 @@ describe("maybeReanalyze — per-tenant threshold overrides", () => {
         // 2. CI record — 3h ago: stale by tenant's 2h, fresh by global 24h
         .mockReturnValueOnce(makeSelectChain([{ lastAnalyzedAt: hoursAgo(3) }]))
         // 3. Lead lookup inside analyzeLeadIntelligence
-        .mockReturnValueOnce(makeSelectChain([leadRow]));
+        .mockReturnValueOnce(makeSelectChain([leadRow])).mockReturnValue(makeSelectChain([]));
 
       // Simulate "already in flight" so the DB lock insert returns 0 rows,
       // causing an AnalysisAlreadyInFlightError. This verifies analysis was
@@ -265,7 +262,7 @@ describe("maybeReanalyze — per-tenant threshold overrides", () => {
         // 3. Message count — 25 new messages, above tenant's 20
         .mockReturnValueOnce(makeSelectChain([{ newMessageCount: 25 }]))
         // 4. Lead lookup inside analyzeLeadIntelligence
-        .mockReturnValueOnce(makeSelectChain([leadRow]));
+        .mockReturnValueOnce(makeSelectChain([leadRow])).mockReturnValue(makeSelectChain([]));
 
       mockDbInsert.mockReturnValue(makeInsertChain([]));
 
@@ -297,7 +294,7 @@ describe("maybeReanalyze — per-tenant threshold overrides", () => {
         // 2. CI record — 25h ago (stale by global 24h default)
         .mockReturnValueOnce(makeSelectChain([{ lastAnalyzedAt: hoursAgo(25) }]))
         // 3. Lead lookup inside analyzeLeadIntelligence
-        .mockReturnValueOnce(makeSelectChain([leadRow]));
+        .mockReturnValueOnce(makeSelectChain([leadRow])).mockReturnValue(makeSelectChain([]));
 
       mockDbInsert.mockReturnValue(makeInsertChain([]));
 
@@ -329,7 +326,7 @@ describe("maybeReanalyze — per-tenant threshold overrides", () => {
         // 3. Message count — 6 new messages, meets global threshold of 5
         .mockReturnValueOnce(makeSelectChain([{ newMessageCount: 6 }]))
         // 4. Lead lookup inside analyzeLeadIntelligence
-        .mockReturnValueOnce(makeSelectChain([leadRow]));
+        .mockReturnValueOnce(makeSelectChain([leadRow])).mockReturnValue(makeSelectChain([]));
 
       mockDbInsert.mockReturnValue(makeInsertChain([]));
 

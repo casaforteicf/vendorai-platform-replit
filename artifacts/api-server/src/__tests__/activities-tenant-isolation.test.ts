@@ -7,7 +7,8 @@ const { mockDbSelect } = vi.hoisted(() => ({
   mockDbSelect: vi.fn(),
 }));
 
-vi.mock("@workspace/db", () => ({
+vi.mock("@workspace/db", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@workspace/db")>()),
   db: {
     select: mockDbSelect,
   },

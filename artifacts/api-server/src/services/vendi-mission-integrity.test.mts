@@ -1,4 +1,4 @@
-import { test } from 'node:test';
+import { test } from 'vitest';
 import assert from 'node:assert/strict';
 import { preservePendingSteps, isObserverReadOnlyTool, completedPlan, consultationOnly, compactConsultationPlan } from './vendi-mission-integrity.ts';
 const step = (toolId: string, input: Record<string, unknown> = {}) => ({toolId, input, reason: ''});

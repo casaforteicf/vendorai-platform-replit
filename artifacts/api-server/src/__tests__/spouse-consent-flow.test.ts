@@ -93,7 +93,7 @@ describe("POST /api/leads/:leadId/spouse-consent — first consent granted", () 
     mockDbSelect.mockImplementation(() => {
       selectCall++;
       if (selectCall === 1) return createSelectChain([leadWithSpouse]);
-      if (selectCall === 2) return createSelectChain([]);
+      if (selectCall === 2 || selectCall >= 4) return createSelectChain([]);
       return createSelectChain([{ enableSpouseGiftFlow: true }]);
     });
 
@@ -123,7 +123,7 @@ describe("POST /api/leads/:leadId/spouse-consent — first consent granted", () 
       .set("Authorization", `Bearer ${tokenB}`)
       .send({ consentGiven: true });
 
-    expect(res.status).toBe(201);
+    expect(res.status, JSON.stringify(res.body)).toBe(201);
     expect(res.body.spouseLeadId).toBe("spouse-lead-1");
     expect(res.body.consentStatus).toBe("given");
 
@@ -164,9 +164,13 @@ describe("POST /api/leads/:leadId/spouse-consent — first consent granted", () 
       .set("Authorization", `Bearer ${tokenB}`)
       .send({ consentGiven: false });
 
-    expect(res.status).toBe(201);
+    expect(res.status, JSON.stringify(res.body)).toBe(201);
     expect(mockDispatchAgentBackground).not.toHaveBeenCalled();
     // only the consent row is inserted (no spouse lead)
     expect(mockDbInsert).toHaveBeenCalledTimes(1);
   });
+});
+
+app.use((error: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+  res.status(500).json({ error: error instanceof Error ? error.message : String(error) });
 });

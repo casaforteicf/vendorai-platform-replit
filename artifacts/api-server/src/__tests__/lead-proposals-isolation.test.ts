@@ -20,7 +20,8 @@ const { mockDbSelect, mockDbInsert, mockDbDelete, mockDbUpdate } = vi.hoisted(()
 const mockCallProposalAI = vi.hoisted(() => vi.fn());
 const mockGenerateProposalPDF = vi.hoisted(() => vi.fn());
 
-vi.mock("@workspace/db", () => ({
+vi.mock("@workspace/db", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@workspace/db")>()),
   db: {
     select: mockDbSelect,
     insert: mockDbInsert,
@@ -168,7 +169,7 @@ describe("GET /api/leads/:leadId/products — cross-tenant isolation", () => {
       .get(`/api/leads/${LEAD_ID}/products`)
       .set("Authorization", `Bearer ${tokenA}`);
 
-    expect(res.status).toBe(404);
+    expect(res.status, JSON.stringify(res.body)).toBe(404);
     expect(res.body).toMatchObject({ error: expect.stringContaining("Not found") });
   });
 
@@ -177,7 +178,7 @@ describe("GET /api/leads/:leadId/products — cross-tenant isolation", () => {
       .get(`/api/leads/${LEAD_ID}/products`)
       .set("Authorization", `Bearer ${tokenB}`);
 
-    expect(res.status).toBe(200);
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
   });
 });
 
@@ -194,7 +195,7 @@ describe("POST /api/leads/:leadId/products — cross-tenant isolation", () => {
       .set("Authorization", `Bearer ${tokenA}`)
       .send({ nome: "Widget" });
 
-    expect(res.status).toBe(404);
+    expect(res.status, JSON.stringify(res.body)).toBe(404);
     expect(res.body).toMatchObject({ error: expect.stringContaining("Not found") });
   });
 
@@ -204,7 +205,7 @@ describe("POST /api/leads/:leadId/products — cross-tenant isolation", () => {
       .set("Authorization", `Bearer ${tokenB}`)
       .send({ nome: "Widget", imagemUrl: "https://img.com/w.jpg" });
 
-    expect(res.status).toBe(201);
+    expect(res.status, JSON.stringify(res.body)).toBe(201);
     expect(res.body.nome).toBe("Widget");
   });
 
@@ -214,7 +215,7 @@ describe("POST /api/leads/:leadId/products — cross-tenant isolation", () => {
       .set("Authorization", `Bearer ${tokenB}`)
       .send({});
 
-    expect(res.status).toBe(400);
+    expect(res.status, JSON.stringify(res.body)).toBe(400);
     expect(res.body.error).toContain("nome");
   });
 });
@@ -230,7 +231,7 @@ describe("DELETE /api/leads/:leadId/products/:productId — cross-tenant isolati
       .delete(`/api/leads/${LEAD_ID}/products/prod-1`)
       .set("Authorization", `Bearer ${tokenA}`);
 
-    expect(res.status).toBe(404);
+    expect(res.status, JSON.stringify(res.body)).toBe(404);
     expect(res.body).toMatchObject({ error: expect.stringContaining("Not found") });
   });
 
@@ -239,7 +240,7 @@ describe("DELETE /api/leads/:leadId/products/:productId — cross-tenant isolati
       .delete(`/api/leads/${LEAD_ID}/products/prod-1`)
       .set("Authorization", `Bearer ${tokenB}`);
 
-    expect(res.status).toBe(204);
+    expect(res.status, JSON.stringify(res.body)).toBe(204);
   });
 });
 
@@ -275,7 +276,7 @@ describe("POST /api/leads/:leadId/proposals — cross-tenant isolation", () => {
       .set("Authorization", `Bearer ${tokenA}`)
       .send({ segmento: "varejo" });
 
-    expect(res.status).toBe(404);
+    expect(res.status, JSON.stringify(res.body)).toBe(404);
     expect(res.body).toMatchObject({ error: expect.stringContaining("not found") });
   });
 
@@ -288,7 +289,7 @@ describe("POST /api/leads/:leadId/proposals — cross-tenant isolation", () => {
       .set("Authorization", `Bearer ${tokenB}`)
       .send({ segmento: "varejo", logoUrl: "https://logo.com/img.png", corDestaque: "#A78BFA", corSecundaria: "#C4B5FD" });
 
-    expect(res.status).toBe(201);
+    expect(res.status, JSON.stringify(res.body)).toBe(201);
     expect(res.body.version).toBe(1);
     expect(res.body._provider).toBe("anthropic");
   });
@@ -300,7 +301,7 @@ describe("POST /api/leads/:leadId/proposals — cross-tenant isolation", () => {
       .set("Authorization", `Bearer ${tokenA}`)
       .send({ segmento: "varejo" });
 
-    expect(res.status).toBe(404);
+    expect(res.status, JSON.stringify(res.body)).toBe(404);
   });
 
   it("returns 502 when AI returns invalid JSON", async () => {
@@ -316,7 +317,7 @@ describe("POST /api/leads/:leadId/proposals — cross-tenant isolation", () => {
       .set("Authorization", `Bearer ${tokenB}`)
       .send({});
 
-    expect(res.status).toBe(502);
+    expect(res.status, JSON.stringify(res.body)).toBe(502);
     expect(res.body.error).toContain("JSON");
   });
 });
@@ -335,7 +336,7 @@ describe("GET /api/leads/:leadId/proposals — cross-tenant isolation", () => {
       .get(`/api/leads/${LEAD_ID}/proposals`)
       .set("Authorization", `Bearer ${tokenA}`);
 
-    expect(res.status).toBe(403);
+    expect(res.status, JSON.stringify(res.body)).toBe(403);
     expect(res.body).toMatchObject({ error: expect.stringContaining("Access denied") });
   });
 
@@ -344,7 +345,7 @@ describe("GET /api/leads/:leadId/proposals — cross-tenant isolation", () => {
       .get(`/api/leads/${LEAD_ID}/proposals`)
       .set("Authorization", `Bearer ${tokenB}`);
 
-    expect(res.status).toBe(200);
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
   });
 });
 
@@ -362,7 +363,7 @@ describe("GET /api/leads/:leadId/proposals/:version/download — cross-tenant is
       .get(`/api/leads/${LEAD_ID}/proposals/1/download`)
       .set("Authorization", `Bearer ${tokenA}`);
 
-    expect(res.status).toBe(403);
+    expect(res.status, JSON.stringify(res.body)).toBe(403);
     expect(res.body).toMatchObject({ error: expect.stringContaining("Access denied") });
   });
 
@@ -379,7 +380,7 @@ describe("GET /api/leads/:leadId/proposals/:version/download — cross-tenant is
       .get(`/api/leads/${LEAD_ID}/proposals/1/download`)
       .set("Authorization", `Bearer ${tokenB}`);
 
-    expect(res.status).toBe(200);
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
     expect(res.text).toBe("<h1>Proposta</h1>");
     expect(res.headers["content-type"]).toContain("text/html");
   });
@@ -400,7 +401,7 @@ describe("GET /api/leads/:leadId/proposals/:version/pdf — cross-tenant isolati
       .get(`/api/leads/${LEAD_ID}/proposals/1/pdf`)
       .set("Authorization", `Bearer ${tokenA}`);
 
-    expect(res.status).toBe(403);
+    expect(res.status, JSON.stringify(res.body)).toBe(403);
     expect(res.body).toMatchObject({ error: expect.stringContaining("Access denied") });
   });
 
@@ -417,7 +418,7 @@ describe("GET /api/leads/:leadId/proposals/:version/pdf — cross-tenant isolati
       .get(`/api/leads/${LEAD_ID}/proposals/1/pdf`)
       .set("Authorization", `Bearer ${tokenB}`);
 
-    expect(res.status).toBe(200);
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
     expect(res.headers["content-type"]).toContain("application/pdf");
   });
 
@@ -435,7 +436,7 @@ describe("GET /api/leads/:leadId/proposals/:version/pdf — cross-tenant isolati
       .get(`/api/leads/${LEAD_ID}/proposals/1/pdf`)
       .set("Authorization", `Bearer ${tokenB}`);
 
-    expect(res.status).toBe(200);
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
     expect(res.headers["content-type"]).toContain("text/html");
   });
 });
@@ -446,36 +447,40 @@ describe("GET /api/leads/:leadId/proposals/:version/pdf — cross-tenant isolati
 describe("Unauthenticated access — lead proposals", () => {
   it("returns 401 for GET products without token", async () => {
     const res = await request(app).get(`/api/leads/${LEAD_ID}/products`);
-    expect(res.status).toBe(401);
+    expect(res.status, JSON.stringify(res.body)).toBe(401);
   });
 
   it("returns 401 for POST products without token", async () => {
     const res = await request(app).post(`/api/leads/${LEAD_ID}/products`).send({ nome: "X" });
-    expect(res.status).toBe(401);
+    expect(res.status, JSON.stringify(res.body)).toBe(401);
   });
 
   it("returns 401 for DELETE product without token", async () => {
     const res = await request(app).delete(`/api/leads/${LEAD_ID}/products/p1`);
-    expect(res.status).toBe(401);
+    expect(res.status, JSON.stringify(res.body)).toBe(401);
   });
 
   it("returns 401 for GET proposals without token", async () => {
     const res = await request(app).get(`/api/leads/${LEAD_ID}/proposals`);
-    expect(res.status).toBe(401);
+    expect(res.status, JSON.stringify(res.body)).toBe(401);
   });
 
   it("returns 401 for POST proposals without token", async () => {
     const res = await request(app).post(`/api/leads/${LEAD_ID}/proposals`).send({});
-    expect(res.status).toBe(401);
+    expect(res.status, JSON.stringify(res.body)).toBe(401);
   });
 
   it("returns 401 for GET proposal download without token", async () => {
     const res = await request(app).get(`/api/leads/${LEAD_ID}/proposals/1/download`);
-    expect(res.status).toBe(401);
+    expect(res.status, JSON.stringify(res.body)).toBe(401);
   });
 
   it("returns 401 for GET proposal PDF without token", async () => {
     const res = await request(app).get(`/api/leads/${LEAD_ID}/proposals/1/pdf`);
-    expect(res.status).toBe(401);
+    expect(res.status, JSON.stringify(res.body)).toBe(401);
   });
+});
+
+app.use((error: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+  res.status(500).json({ error: error instanceof Error ? error.message : String(error) });
 });

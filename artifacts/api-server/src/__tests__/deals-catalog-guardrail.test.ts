@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import request from "supertest";
 import { TENANT_B, tokenB } from "./helpers/auth.js";
-import { MockRow, createDbHelpers } from "./helpers/isolation.js";
+import { MockRow, createDbHelpers, mockSelectQuery } from "./helpers/isolation.js";
 
 const { mockDbSelect, mockDbUpdate, mockDbDelete, mockDbInsert, mockCheckCatalogMatch } = vi.hoisted(
   () => ({
@@ -13,8 +13,10 @@ const { mockDbSelect, mockDbUpdate, mockDbDelete, mockDbInsert, mockCheckCatalog
   })
 );
 
-vi.mock("@workspace/db", () => ({
+vi.mock("@workspace/db", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@workspace/db")>()),
   db: {
+    transaction: async (callback: (tx: unknown) => unknown) => callback({ update: mockDbUpdate, insert: mockDbInsert, select: mockDbSelect }),
     select: mockDbSelect,
     update: mockDbUpdate,
     delete: mockDbDelete,
@@ -146,10 +148,7 @@ const { setupInsertReturning } = createDbHelpers({
 });
 
 function queueSimpleSelect(rows: MockRow[]) {
-  const chain = {
-    from: vi.fn().mockReturnThis(),
-    where: vi.fn().mockResolvedValue(rows),
-  };
+  const chain = mockSelectQuery(rows);
   mockDbSelect.mockReturnValueOnce(chain);
 }
 
@@ -180,11 +179,13 @@ const baseDeal: MockRow = {
 describe("PATCH /api/deals/:id — etapa=ganho catalog guardrail", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockDbSelect.mockReset();
   });
 
   it("blocks direct close and creates an agent_task when value diverges from catalog", async () => {
     // 1) initial `existing` select, 2) dealForCheck select, 3) proposta select (empty)
     queueSimpleSelect([baseDeal]);
+    queueSimpleSelect([{ id: "lead-b-1", tenantId: TENANT_B, excluidoEm: null }]);
     queueSimpleSelect([baseDeal]);
     queuePropostaSelect([]);
     mockCheckCatalogMatch.mockResolvedValue({
@@ -202,7 +203,7 @@ describe("PATCH /api/deals/:id — etapa=ganho catalog guardrail", () => {
       .set("Authorization", `Bearer ${tokenB}`)
       .send({ etapa: "ganho" });
 
-    expect(res.status).toBe(202);
+    expect(res.status, JSON.stringify(res.body)).toBe(202);
     expect(res.body).toMatchObject({ pendingApproval: true, agentTaskId: "task-1" });
     expect(mockDbUpdate).not.toHaveBeenCalled();
 
@@ -236,15 +237,21 @@ describe("PATCH /api/deals/:id — etapa=ganho catalog guardrail", () => {
       .set("Authorization", `Bearer ${tokenB}`)
       .send({ etapa: "ganho" });
 
-    expect(res.status).toBe(422);
+    expect(res.status, JSON.stringify(res.body)).toBe(422);
     expect(mockDbUpdate).not.toHaveBeenCalled();
     expect(mockDbInsert).not.toHaveBeenCalled();
   });
 
   it("proceeds to the normal update flow when value matches the catalog", async () => {
     queueSimpleSelect([baseDeal]);
+    queueSimpleSelect([{ id: "lead-b-1", tenantId: TENANT_B, excluidoEm: null }]);
     queueSimpleSelect([baseDeal]);
     queuePropostaSelect([]);
+    queueSimpleSelect([]); // no mandatory pending activities
+    queueSimpleSelect([{ id: "user-b", tenantId: TENANT_B, active: true }]); // new owner
+    queueSimpleSelect([{ id: "stage-won", tenantId: TENANT_B, responsaveisFuncoes: ["builtin:vendedor"] }]);
+    queueSimpleSelect([{ id: "user-b", tenantId: TENANT_B, active: true, userFunction: "vendedor", customFunctionId: null }]);
+    mockDbSelect.mockReturnValue(mockSelectQuery([]));
     mockCheckCatalogMatch.mockResolvedValue({
       hasCatalogBasis: true,
       matches: true,
@@ -268,8 +275,12 @@ describe("PATCH /api/deals/:id — etapa=ganho catalog guardrail", () => {
     // planoContratado becomes null post-update in this fixture, so the route
     // should hit the PLANO_OBRIGATORIO guard further down — proving it passed
     // the catalog guardrail and reached the pre-existing validation logic.
-    expect(mockDbUpdate).toHaveBeenCalled();
-    expect(res.status).toBe(400);
+    expect(mockDbUpdate, JSON.stringify(res.body)).toHaveBeenCalled();
+    expect(res.status, JSON.stringify(res.body)).toBe(400);
     expect(res.body).toMatchObject({ error: "PLANO_OBRIGATORIO" });
   });
+});
+
+app.use((error: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+  res.status(500).json({ error: error instanceof Error ? error.message : String(error) });
 });

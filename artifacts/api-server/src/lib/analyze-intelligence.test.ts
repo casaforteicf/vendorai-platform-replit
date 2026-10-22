@@ -1,3 +1,4 @@
+import { mockSelectQuery } from "../__tests__/helpers/isolation.js";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { Logger } from "pino";
 
@@ -105,11 +106,7 @@ async function flushPromises(): Promise<void> {
  * Builds a minimal select chain: db.select({...}).from(table).where(...) → rows
  */
 function makeSelectChain(rows: unknown[]) {
-  return {
-    from: vi.fn().mockReturnValue({
-      where: vi.fn().mockResolvedValue(rows),
-    }),
-  };
+  return mockSelectQuery(rows);
 }
 
 /**
@@ -154,7 +151,7 @@ function setupStalenessSelects(lastAnalyzedAt: Date | null, leadRow: unknown) {
       makeSelectChain(lastAnalyzedAt ? [{ lastAnalyzedAt }] : [])
     )
     // 3. Lead lookup inside analyzeLeadIntelligence
-    .mockReturnValueOnce(makeSelectChain([leadRow]));
+    .mockReturnValueOnce(makeSelectChain([leadRow])).mockReturnValue(makeSelectChain([]));
 }
 
 /**
@@ -184,7 +181,7 @@ function setupMessageCountSelects(
 
   if (leadRow !== undefined) {
     // 4. Lead lookup inside analyzeLeadIntelligence
-    mockDbSelect.mockReturnValueOnce(makeSelectChain([leadRow]));
+    mockDbSelect.mockReturnValueOnce(makeSelectChain([leadRow])).mockReturnValue(makeSelectChain([]));
   }
 }
 

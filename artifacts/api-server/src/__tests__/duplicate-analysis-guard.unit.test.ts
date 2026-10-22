@@ -1,3 +1,4 @@
+import { mockSelectQuery } from "./helpers/isolation.js";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { Logger } from "pino";
 
@@ -88,10 +89,7 @@ const fakeLog = {
  * Used for the lead-validation query inside analyzeLeadIntelligence.
  */
 function makeSelectChain(rows: unknown[]) {
-  return {
-    from: vi.fn().mockReturnThis(),
-    where: vi.fn().mockResolvedValue(rows),
-  };
+  return mockSelectQuery(rows);
 }
 
 /**

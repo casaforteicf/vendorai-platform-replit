@@ -8,7 +8,7 @@ import {
   tokenB,
   tokenSuperAdmin,
 } from "./helpers/auth.js";
-import { MockRow, createDbHelpers } from "./helpers/isolation.js";
+import { MockRow, createDbHelpers, mockSelectQuery } from "./helpers/isolation.js";
 
 const { mockDbSelect, mockDbUpdate, mockDbDelete, mockDbInsert, mockDbTransaction } = vi.hoisted(
   () => ({
@@ -20,7 +20,8 @@ const { mockDbSelect, mockDbUpdate, mockDbDelete, mockDbInsert, mockDbTransactio
   })
 );
 
-vi.mock("@workspace/db", () => ({
+vi.mock("@workspace/db", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@workspace/db")>()),
   db: {
     select: mockDbSelect,
     update: mockDbUpdate,
@@ -84,21 +85,24 @@ const RECORD_ID = "lead-owned-by-b";
 const recordOwnedByTenantB: MockRow = {
   id: RECORD_ID,
   tenantId: TENANT_B,
+  assignedTo: "owner-b",
   nome: "Acme Corp",
 };
 
 describe("GET /api/leads/:id — cross-tenant isolation", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockDbSelect.mockReset();
     setupSelectReturning([recordOwnedByTenantB]);
   });
 
   it("returns 403 when tenant A requests a record owned by tenant B", async () => {
+    mockDbSelect.mockReturnValueOnce(mockSelectQuery([recordOwnedByTenantB])).mockReturnValue(mockSelectQuery([]));
     const res = await request(app)
       .get(`/api/leads/${RECORD_ID}`)
       .set("Authorization", `Bearer ${tokenA}`);
 
-    expect(res.status).toBe(403);
+    expect(res.status, JSON.stringify(res.body)).toBe(403);
     expect(res.body).toMatchObject({ error: expect.stringContaining("Access denied") });
   });
 
@@ -107,7 +111,7 @@ describe("GET /api/leads/:id — cross-tenant isolation", () => {
       .get(`/api/leads/${RECORD_ID}`)
       .set("Authorization", `Bearer ${tokenB}`);
 
-    expect(res.status).toBe(200);
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
     expect(res.body.id).toBe(RECORD_ID);
   });
 
@@ -116,7 +120,7 @@ describe("GET /api/leads/:id — cross-tenant isolation", () => {
       .get(`/api/leads/${RECORD_ID}`)
       .set("Authorization", `Bearer ${tokenSuperAdmin}`);
 
-    expect(res.status).toBe(200);
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
     expect(res.body.id).toBe(RECORD_ID);
   });
 
@@ -127,13 +131,14 @@ describe("GET /api/leads/:id — cross-tenant isolation", () => {
       .get(`/api/leads/nonexistent`)
       .set("Authorization", `Bearer ${tokenA}`);
 
-    expect(res.status).toBe(404);
+    expect(res.status, JSON.stringify(res.body)).toBe(404);
   });
 });
 
 describe("PATCH /api/leads/:id — cross-tenant isolation", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockDbSelect.mockReset();
     setupSelectReturning([recordOwnedByTenantB]);
     setupUpdateReturning([{ ...recordOwnedByTenantB, nome: "Updated Corp" }]);
   });
@@ -144,7 +149,7 @@ describe("PATCH /api/leads/:id — cross-tenant isolation", () => {
       .set("Authorization", `Bearer ${tokenA}`)
       .send({ nome: "Updated Corp" });
 
-    expect(res.status).toBe(403);
+    expect(res.status, JSON.stringify(res.body)).toBe(403);
     expect(res.body).toMatchObject({ error: expect.stringContaining("Access denied") });
   });
 
@@ -154,7 +159,7 @@ describe("PATCH /api/leads/:id — cross-tenant isolation", () => {
       .set("Authorization", `Bearer ${tokenB}`)
       .send({ nome: "Updated Corp" });
 
-    expect(res.status).toBe(200);
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
   });
 
   it("returns 200 when super_admin patches a cross-tenant record", async () => {
@@ -163,7 +168,7 @@ describe("PATCH /api/leads/:id — cross-tenant isolation", () => {
       .set("Authorization", `Bearer ${tokenSuperAdmin}`)
       .send({ nome: "Updated Corp" });
 
-    expect(res.status).toBe(200);
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
   });
 
   it("returns 404 when the record does not exist", async () => {
@@ -174,15 +179,16 @@ describe("PATCH /api/leads/:id — cross-tenant isolation", () => {
       .set("Authorization", `Bearer ${tokenA}`)
       .send({ nome: "Updated Corp" });
 
-    expect(res.status).toBe(404);
+    expect(res.status, JSON.stringify(res.body)).toBe(404);
   });
 });
 
 describe("DELETE /api/leads/:id — cross-tenant isolation", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockDbSelect.mockReset();
     setupSelectReturning([recordOwnedByTenantB]);
-    setupDeleteSuccess();
+    setupUpdateReturning([{ ...recordOwnedByTenantB, excluidoEm: new Date() }]);
     mockDbTransaction.mockImplementation(async (callback) =>
       callback({ delete: mockDbDelete }),
     );
@@ -193,24 +199,28 @@ describe("DELETE /api/leads/:id — cross-tenant isolation", () => {
       .delete(`/api/leads/${RECORD_ID}`)
       .set("Authorization", `Bearer ${tokenA}`);
 
-    expect(res.status).toBe(403);
+    expect(res.status, JSON.stringify(res.body)).toBe(403);
     expect(res.body).toMatchObject({ error: expect.stringContaining("Access denied") });
   });
 
-  it("returns 204 when tenant B deletes its own record", async () => {
+  it("returns 200 when tenant B deletes its own record", async () => {
     const res = await request(app)
       .delete(`/api/leads/${RECORD_ID}`)
       .set("Authorization", `Bearer ${tokenB}`);
 
-    expect(res.status).toBe(204);
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    expect(res.body.excluidoEm).toBeTruthy();
+    expect(mockDbDelete).not.toHaveBeenCalled();
   });
 
-  it("returns 204 when super_admin deletes a cross-tenant record", async () => {
+  it("returns 200 when super_admin deletes a cross-tenant record", async () => {
     const res = await request(app)
       .delete(`/api/leads/${RECORD_ID}`)
       .set("Authorization", `Bearer ${tokenSuperAdmin}`);
 
-    expect(res.status).toBe(204);
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    expect(res.body.excluidoEm).toBeTruthy();
+    expect(mockDbDelete).not.toHaveBeenCalled();
   });
 
   it("returns 404 when the record does not exist", async () => {
@@ -220,25 +230,25 @@ describe("DELETE /api/leads/:id — cross-tenant isolation", () => {
       .delete(`/api/leads/nonexistent`)
       .set("Authorization", `Bearer ${tokenA}`);
 
-    expect(res.status).toBe(404);
+    expect(res.status, JSON.stringify(res.body)).toBe(404);
   });
 });
 
 describe("Unauthenticated access — leads", () => {
   it("returns 401 for GET without a token", async () => {
     const res = await request(app).get(`/api/leads/${RECORD_ID}`);
-    expect(res.status).toBe(401);
+    expect(res.status, JSON.stringify(res.body)).toBe(401);
   });
 
   it("returns 401 for PATCH without a token", async () => {
     const res = await request(app)
       .patch(`/api/leads/${RECORD_ID}`)
       .send({ nome: "X" });
-    expect(res.status).toBe(401);
+    expect(res.status, JSON.stringify(res.body)).toBe(401);
   });
 
   it("returns 401 for DELETE without a token", async () => {
     const res = await request(app).delete(`/api/leads/${RECORD_ID}`);
-    expect(res.status).toBe(401);
+    expect(res.status, JSON.stringify(res.body)).toBe(401);
   });
 });

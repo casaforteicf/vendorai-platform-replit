@@ -20,8 +20,8 @@ describe("Browser Agent MCP contract", () => {
   it("keeps tenant resolution and connection selection tenant-scoped", () => {
     expect(source).toContain('eq(browserAgentConnectionsTable.tenantId, tenantId)');
     expect(source).toContain('or(');
-    expect(source).toContain('eq(tenantsTable.slug, tenantKey)');
-    expect(source).toContain('eq(tenantsTable.subdomainSlug, tenantKey)');
+    expect(source).toContain('eq(tenantsTable.slug, normalizedKey)');
+    expect(source).toContain('eq(tenantsTable.subdomainSlug, normalizedKey)');
   });
 
   it("preserves persistent session/profile and first-party auth handoff", () => {
@@ -35,7 +35,7 @@ describe("Browser Agent MCP contract", () => {
   });
 
   it("keeps write operations gated by autonomy/approval", () => {
-    expect(source).toContain('const allowWrite = globalVendiAutonomy ? true : (parsed.data.allowWrite ?? autonomyEnabled);');
+    expect(source).toMatch(/const allowWrite = parsed\.data\.allowWrite === false\s*\? false\s*: \(globalVendiAutonomy \? true : \(parsed\.data\.allowWrite \?\? autonomyEnabled\)\);/);
     expect(agentSource).toContain('APPROVAL_REQUIRED');
   });
 });

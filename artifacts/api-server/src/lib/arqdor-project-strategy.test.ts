@@ -26,7 +26,7 @@ const base = {
 
 describe("estratégia arquitetônica · etapa 93", () => {
   it("define partido antes da geometria e inclui regras não negociáveis", () => {
-    const strategy = buildArchitecturalProjectStrategy(base);
+    const strategy = buildArchitecturalProjectStrategy({ ...base, lotDepth: 28 });
     expect(strategy.party).toBe("l_courtyard");
     expect(strategy.zoning.social.length).toBeGreaterThan(20);
     expect(strategy.circulationLogic.length).toBeGreaterThan(20);
@@ -42,6 +42,10 @@ describe("estratégia arquitetônica · etapa 93", () => {
     });
     expect(strategy.party).toBe("linear_spine");
     expect(strategy.circulationLogic).toContain("eixo principal");
+  });
+
+  it("preserva a espinha linear quando a profundidade atinge duas vezes a largura", () => {
+    expect(buildArchitecturalProjectStrategy(base).party).toBe("linear_spine");
   });
 
   it("protege setor íntimo quando privacidade é prioridade", () => {

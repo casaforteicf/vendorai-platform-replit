@@ -1,4 +1,4 @@
-import { test } from "node:test";
+import { test } from "vitest";
 import assert from "node:assert/strict";
 import { summarizeMission, summarizeMissionEvents } from "./vendi-mission-summary.ts";
 test("repeated observations use latest counts, never their sum", () => {

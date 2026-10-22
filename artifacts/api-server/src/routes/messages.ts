@@ -98,6 +98,11 @@ router.post("/messages", async (req, res): Promise<void> => {
     return;
   }
 
+  if (parsed.data.conversationId && !(await canAccessConversation(req, parsed.data.tenantId, parsed.data.conversationId))) {
+    res.status(403).json({ error: "Access denied to this conversation" });
+    return;
+  }
+
   let midia: ResolvedMidia | undefined;
   try {
     midia = await resolveMidia(req, parsed.data.tenantId, req.body?.midia);

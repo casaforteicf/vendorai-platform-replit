@@ -102,7 +102,7 @@ describe("POST /api/messages — cross-tenant isolation", () => {
       .set("Authorization", `Bearer ${tokenA}`)
       .send({ tenantId: TENANT_B, leadId: "lead-1", conversationId: "conv-1", conteudo: "hi" });
 
-    expect(res.status).toBe(403);
+    expect(res.status, JSON.stringify(res.body)).toBe(403);
     expect(res.body).toMatchObject({ error: expect.stringContaining("Access denied") });
   });
 
@@ -132,8 +132,9 @@ describe("POST /api/messages — cross-tenant isolation", () => {
         direcao: "saida",
       });
 
-    expect(res.status).toBe(403);
+    expect(res.status, JSON.stringify(res.body)).toBe(403);
     expect(res.body).toMatchObject({ error: expect.stringContaining("conversation") });
+    expect(mockDbInsert).not.toHaveBeenCalled();
   });
 
   it("returns 201 when tenant posts a message for their own tenant", async () => {
@@ -149,7 +150,7 @@ describe("POST /api/messages — cross-tenant isolation", () => {
       .set("Authorization", `Bearer ${tokenB}`)
       .send({ tenantId: TENANT_B, leadId: "lead-1", conversationId: "conv-1", conteudo: "hi" });
 
-    expect(res.status).toBe(201);
+    expect(res.status, JSON.stringify(res.body)).toBe(201);
     expect(res.body.id).toBe("new-msg");
   });
 
@@ -166,7 +167,7 @@ describe("POST /api/messages — cross-tenant isolation", () => {
       .set("Authorization", `Bearer ${tokenSuperAdmin}`)
       .send({ tenantId: TENANT_B, leadId: "lead-1", conversationId: "conv-1", conteudo: "hi" });
 
-    expect(res.status).toBe(201);
+    expect(res.status, JSON.stringify(res.body)).toBe(201);
   });
 });
 
@@ -183,8 +184,9 @@ describe("GET message reads — conversation privacy", () => {
       .get(`/api/tenants/${TENANT_B}/conversations/conv-private/messages`)
       .set("Authorization", `Bearer ${tokenB}`);
 
-    expect(res.status).toBe(403);
+    expect(res.status, JSON.stringify(res.body)).toBe(403);
     expect(res.body).toMatchObject({ error: expect.stringContaining("conversation") });
+    expect(mockDbInsert).not.toHaveBeenCalled();
   });
 
   it("returns 403 when a same-tenant user cannot access an individual message conversation", async () => {
@@ -194,8 +196,9 @@ describe("GET message reads — conversation privacy", () => {
       .get(`/api/messages/${RECORD_ID}`)
       .set("Authorization", `Bearer ${tokenB}`);
 
-    expect(res.status).toBe(403);
+    expect(res.status, JSON.stringify(res.body)).toBe(403);
     expect(res.body).toMatchObject({ error: expect.stringContaining("conversation") });
+    expect(mockDbInsert).not.toHaveBeenCalled();
   });
 
   it("returns 403 when tenant A requests tenant B message feed", async () => {
@@ -203,7 +206,7 @@ describe("GET message reads — conversation privacy", () => {
       .get(`/api/tenants/${TENANT_B}/messages`)
       .set("Authorization", `Bearer ${tokenA}`);
 
-    expect(res.status).toBe(403);
+    expect(res.status, JSON.stringify(res.body)).toBe(403);
     expect(res.body).toMatchObject({ error: expect.stringContaining("tenant") });
   });
 });
@@ -225,7 +228,7 @@ describe("PATCH /api/messages/:id — cross-tenant isolation", () => {
       .set("Authorization", `Bearer ${tokenA}`)
       .send({ conteudo: "Updated" });
 
-    expect(res.status).toBe(403);
+    expect(res.status, JSON.stringify(res.body)).toBe(403);
     expect(res.body).toMatchObject({ error: expect.stringContaining("Access denied") });
   });
 
@@ -235,7 +238,7 @@ describe("PATCH /api/messages/:id — cross-tenant isolation", () => {
       .set("Authorization", `Bearer ${tokenB}`)
       .send({ conteudo: "Updated" });
 
-    expect(res.status).toBe(200);
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
   });
 
   it("returns 200 when super_admin patches a cross-tenant record", async () => {
@@ -244,7 +247,7 @@ describe("PATCH /api/messages/:id — cross-tenant isolation", () => {
       .set("Authorization", `Bearer ${tokenSuperAdmin}`)
       .send({ conteudo: "Updated" });
 
-    expect(res.status).toBe(200);
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
   });
 
   it("returns 404 when the record does not exist", async () => {
@@ -255,7 +258,7 @@ describe("PATCH /api/messages/:id — cross-tenant isolation", () => {
       .set("Authorization", `Bearer ${tokenA}`)
       .send({ conteudo: "Updated" });
 
-    expect(res.status).toBe(404);
+    expect(res.status, JSON.stringify(res.body)).toBe(404);
   });
 });
 
@@ -275,7 +278,7 @@ describe("DELETE /api/messages/:id — cross-tenant isolation", () => {
       .delete(`/api/messages/${RECORD_ID}`)
       .set("Authorization", `Bearer ${tokenA}`);
 
-    expect(res.status).toBe(403);
+    expect(res.status, JSON.stringify(res.body)).toBe(403);
     expect(res.body).toMatchObject({ error: expect.stringContaining("Access denied") });
   });
 
@@ -284,7 +287,7 @@ describe("DELETE /api/messages/:id — cross-tenant isolation", () => {
       .delete(`/api/messages/${RECORD_ID}`)
       .set("Authorization", `Bearer ${tokenB}`);
 
-    expect(res.status).toBe(204);
+    expect(res.status, JSON.stringify(res.body)).toBe(204);
   });
 
   it("returns 204 when super_admin deletes a cross-tenant record", async () => {
@@ -292,7 +295,7 @@ describe("DELETE /api/messages/:id — cross-tenant isolation", () => {
       .delete(`/api/messages/${RECORD_ID}`)
       .set("Authorization", `Bearer ${tokenSuperAdmin}`);
 
-    expect(res.status).toBe(204);
+    expect(res.status, JSON.stringify(res.body)).toBe(204);
   });
 
   it("returns 404 when the record does not exist", async () => {
@@ -302,25 +305,25 @@ describe("DELETE /api/messages/:id — cross-tenant isolation", () => {
       .delete(`/api/messages/nonexistent`)
       .set("Authorization", `Bearer ${tokenA}`);
 
-    expect(res.status).toBe(404);
+    expect(res.status, JSON.stringify(res.body)).toBe(404);
   });
 });
 
 describe("Unauthenticated access — messages", () => {
   it("returns 401 for POST without a token", async () => {
     const res = await request(app).post("/api/messages").send({ conteudo: "hi" });
-    expect(res.status).toBe(401);
+    expect(res.status, JSON.stringify(res.body)).toBe(401);
   });
 
   it("returns 401 for PATCH without a token", async () => {
     const res = await request(app)
       .patch(`/api/messages/${RECORD_ID}`)
       .send({ conteudo: "Updated" });
-    expect(res.status).toBe(401);
+    expect(res.status, JSON.stringify(res.body)).toBe(401);
   });
 
   it("returns 401 for DELETE without a token", async () => {
     const res = await request(app).delete(`/api/messages/${RECORD_ID}`);
-    expect(res.status).toBe(401);
+    expect(res.status, JSON.stringify(res.body)).toBe(401);
   });
 });

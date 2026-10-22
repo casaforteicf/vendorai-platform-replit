@@ -1,3 +1,4 @@
+const mockLockedObjectAccess = vi.hoisted(() => vi.fn());
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import request from "supertest";
 import express from "express";
@@ -28,6 +29,8 @@ vi.mock("../lib/objectStorage", () => {
   return { ObjectStorageService, ObjectNotFoundError };
 });
 
+vi.mock("../lib/attachment-folder-access.js", () => ({ requestCanAccessLockedObject: mockLockedObjectAccess }));
+
 import storageRouter from "../routes/storage.js";
 
 const app = express();
@@ -40,6 +43,7 @@ app.use((err: unknown, _req: express.Request, res: express.Response, _next: expr
 describe("private storage isolation", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockLockedObjectAccess.mockResolvedValue(true);
     mocks.getObjectEntityFile.mockResolvedValue({ id: "file" });
     mocks.downloadObject.mockResolvedValue(new Response(Buffer.from("ok"), {
       status: 200,
@@ -74,6 +78,16 @@ describe("private storage isolation", () => {
     expect(res.text).toBe("ok");
     expect(mocks.getObjectEntityFile).toHaveBeenCalledWith(path);
     expect(res.headers["cache-control"]).toContain("private");
+  });
+
+  it("denies a locked object even when its path belongs to the authenticated tenant", async () => {
+    mockLockedObjectAccess.mockResolvedValue(false);
+    const path = `/objects/tenants/${TENANT_A}/uploads/locked`;
+    const response = await request(app).get(`/api/storage${path}`)
+      .set("Authorization", `Bearer ${tokenA}`);
+    expect(response.status).toBe(423);
+    expect(mockLockedObjectAccess).toHaveBeenCalledWith(expect.objectContaining({ user: expect.objectContaining({ tenantId: TENANT_A }) }), TENANT_A, path);
+    expect(mocks.getObjectEntityFile).not.toHaveBeenCalled();
   });
 
   it("requires a tenant database reference for legacy paths", async () => {
