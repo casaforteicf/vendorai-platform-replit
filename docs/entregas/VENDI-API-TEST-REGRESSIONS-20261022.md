@@ -3,7 +3,7 @@
 Atualizado em 22/10/2026. Estado: implementado e verificado localmente; homologação desta versão pendente. Sem merge ou deploy.
 
 ## Escopo, base e dependências
-Continuidade autorizada para resolver as 72 falhas históricas e erros de execução da suíte completa da API, preservando isolamento entre tenants, CRM e Vendi. Branch `fix/api-test-regressions-20261022`, base remota `1183a8df93a5c3199af5993f48b7c4c4df65d860` da branch `fix/api-typecheck-20261022` (PR #3594), árvore `957bab277af1a2fd947a47591b7b50c0f3e28839`. Depende de #3594 e #3593. PR deste lote em preparação.
+Continuidade autorizada para resolver as 72 falhas históricas e erros de execução da suíte completa da API, preservando isolamento entre tenants, CRM e Vendi. Branch `fix/api-test-regressions-20261022`, base remota `1183a8df93a5c3199af5993f48b7c4c4df65d860` da branch `fix/api-typecheck-20261022` (PR #3594), árvore `957bab277af1a2fd947a47591b7b50c0f3e28839`. Depende de #3594 e #3593. PR #3596: https://github.com/casaforteicf/vendorai-platform-replit/pull/3596 (rascunho). Implementação remota `ac3618541592556c7465c75700da93ee876545af`, árvore testada `1a614204db5b07f83885579b86f55a62fe1d60e5`. O commit posterior altera somente este registro.
 
 ## Correções de produto
 - Atividades: GET, PATCH e DELETE por ID passam pela função existente `canAccessActivity`, além dos filtros de tenant e demais regras já presentes. Uma negativa de escopo impede leitura e mutações; testes cobrem a negativa sem operações de escrita.
