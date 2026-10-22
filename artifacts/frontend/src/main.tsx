@@ -286,7 +286,10 @@ installSuperAdminVerticalNavigationBridge();
 
 const hostname = window.location.hostname;
 const tenantSiteMatch = hostname.match(/^([a-z0-9-]+)\.appvendorai\.com$/);
-const isAppHost = hostname === "app.appvendorai.com" || /^[a-z0-9-]+\.app\.appvendorai\.com$/.test(hostname);
+const isAppHost = hostname === "app.appvendorai.com"
+  || hostname === "homolog.appvendorai.com"
+  || hostname === "homolog2.appvendorai.com"
+  || /^[a-z0-9-]+\.app\.appvendorai\.com$/.test(hostname);
 const tenantSlugForSite = isAppHost ? null : (tenantSiteMatch?.[1] ?? null);
 
 function RouteScopedStyles() {

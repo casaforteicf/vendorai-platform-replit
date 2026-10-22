@@ -29,3 +29,23 @@ export function completedPlan(plan: Step[], outputs: Array<Record<string, unknow
   return plan.length > 0 && plan.every((step, stepIndex) => outputs.some((output) =>
     output.stepIndex === stepIndex && output.toolId === step.toolId && output.ok === true));
 }
+
+// Only consultation-only plans can be compacted: reads separated by writes may
+// intentionally observe different states. Distinct filters/limits remain intact.
+export function consultationOnly(plan: Step[], lookup: (id: string) => { mutates: boolean; externalEffect: boolean } | undefined): boolean {
+  return plan.length > 0 && plan.every(step => {
+    const tool = lookup(step.toolId);
+    return Boolean(tool && isObserverReadOnlyTool(tool));
+  });
+}
+
+export function compactConsultationPlan<T extends Step>(plan: T[], lookup: (id: string) => { mutates: boolean; externalEffect: boolean } | undefined): T[] {
+  if (!consultationOnly(plan, lookup)) return plan;
+  const seen = new Set<string>();
+  return plan.filter(step => {
+    const key = canonical({ toolId: step.toolId, input: step.input });
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}

@@ -68,6 +68,7 @@ type MissionEvent = {
 };
 
 type MissionDetail = {
+  summary?: Array<{ toolId: string; text: string }>;
   mission: Mission;
   events: MissionEvent[];
 };
@@ -398,6 +399,16 @@ export default function VendiOperations() {
                   </div>
                 )}
               </Card>
+
+              {detail.mission.status === "completed" && (detail.summary?.length ?? 0) > 0 && (
+                <Card className="p-4">
+                  <h3 className="font-semibold">Resultado da missão</h3>
+                  <p className="mt-1 text-xs text-muted-foreground">Resumo das últimas evidências registradas por ferramenta, sem somar consultas repetidas.</p>
+                  <ul className="mt-3 space-y-3 text-sm">
+                    {detail.summary!.map(item => <li key={item.toolId}>{item.text}</li>)}
+                  </ul>
+                </Card>
+              )}
 
               <div className="grid gap-5 lg:grid-cols-2">
                 <Card className="p-4">
