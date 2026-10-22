@@ -3,7 +3,7 @@
 Atualizado em 22/10/2026. Estado: implementado com verificações locais; validação integrada e homologação na Contabo pendentes. Sem merge ou publicação.
 
 ## Objetivo, versão e dependência
-Corrigir o typecheck completo da API que permanecia bloqueado após a correção do frontend. Branch isolada `fix/api-typecheck-20261022`, baseada na branch `fix/typecheck-contabo-20261022` (PR #3593), commit remoto `763600363bc7121a455ff532b1996008e85eadd9`, árvore `e285ad455b7a926eda3959c9df807ea9f2eb733f`. O commit deste registro identifica a versão dos arquivos testados. PR da API em preparação.
+Corrigir o typecheck completo da API que permanecia bloqueado após a correção do frontend. Branch isolada `fix/api-typecheck-20261022`, baseada na branch `fix/typecheck-contabo-20261022` (PR #3593), commit remoto `763600363bc7121a455ff532b1996008e85eadd9`, árvore `e285ad455b7a926eda3959c9df807ea9f2eb733f`. O commit deste registro identifica a versão dos arquivos testados. PR #3594: https://github.com/casaforteicf/vendorai-platform-replit/pull/3594 (rascunho). Implementação remota `477c73abf4a786ed36a583607d3ba35e5e4c0fbf`, árvore testada `c190d463fd41b5198d9006164fa8ac31dc4a6c7d`. O commit posterior apenas atualiza este registro, sem mudar código.
 
 ## Implementação
 - Corrige o despacho da fila Vendi: o supervisor recebe `missionId`, `tenantId` e `claimed`, incluindo teste de execução e registro de falha no contexto do tenant.
