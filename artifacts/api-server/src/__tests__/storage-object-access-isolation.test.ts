@@ -1,3 +1,4 @@
+const mockLockedObjectAccess = vi.hoisted(() => vi.fn());
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import express from "express";
 import request from "supertest";
@@ -41,6 +42,8 @@ vi.mock("../lib/objectStorage", () => {
   return { ObjectStorageService, ObjectNotFoundError };
 });
 
+vi.mock("../lib/attachment-folder-access.js", () => ({ requestCanAccessLockedObject: mockLockedObjectAccess }));
+
 import storageRouter from "../routes/storage.js";
 
 const app = express();
@@ -58,6 +61,7 @@ app.use("/api", (req, _res, next) => {
 describe("storage object access isolation", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockLockedObjectAccess.mockResolvedValue(true);
     mockVerifyToken.mockImplementation((token: string) => {
       if (token === "token-a") return { sub: "user-a", tenantId: "tenant-a", platformRole: "tenant_admin" };
       if (token === "token-b") return { sub: "user-b", tenantId: "tenant-b", platformRole: "tenant_admin" };

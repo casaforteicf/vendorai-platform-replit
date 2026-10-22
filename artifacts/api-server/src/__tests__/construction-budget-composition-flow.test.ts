@@ -13,9 +13,10 @@ describe("P0 orçamento + composições + obras contract", () => {
   });
 
   it("calculates composition cost from the master input price", () => {
-    expect(source).toContain("const precoPorInsumo = new Map");
-    expect(source).toContain("Number(item.quantidade ?? 0) * preco");
-    expect(source).toContain("custoTotal: custoTotal.toFixed(4)");
+    expect(source).toContain("precoMestre: insumosTable.precoUnitario");
+    expect(source).toContain(".leftJoin(insumosTable, eq(composicaoInsumosTable.insumoId, insumosTable.id))");
+    expect(source).toContain("quantidade * (1 + perda / 100) * preco");
+    expect(source).toContain("custoTotal: total.toFixed(4)");
   });
 
   it("propagates master-price changes to compositions and draft budgets", () => {

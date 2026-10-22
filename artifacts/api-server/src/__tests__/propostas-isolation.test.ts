@@ -8,7 +8,7 @@ import {
   tokenB,
   tokenSuperAdmin,
 } from "./helpers/auth.js";
-import { MockRow, createDbHelpers } from "./helpers/isolation.js";
+import { MockRow, createDbHelpers, mockSelectQuery } from "./helpers/isolation.js";
 
 const { mockDbSelect, mockDbUpdate, mockDbDelete, mockDbInsert } = vi.hoisted(
   () => ({
@@ -115,6 +115,7 @@ const recordOwnedByTenantB: MockRow = {
 describe("GET /api/propostas/:id — cross-tenant isolation", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockDbSelect.mockReset();
     setupSelectReturning([recordOwnedByTenantB]);
   });
 
@@ -123,7 +124,7 @@ describe("GET /api/propostas/:id — cross-tenant isolation", () => {
       .get(`/api/propostas/${RECORD_ID}`)
       .set("Authorization", `Bearer ${tokenA}`);
 
-    expect(res.status).toBe(403);
+    expect(res.status, JSON.stringify(res.body)).toBe(403);
     expect(res.body).toMatchObject({ error: expect.stringContaining("Access denied") });
   });
 
@@ -132,7 +133,7 @@ describe("GET /api/propostas/:id — cross-tenant isolation", () => {
       .get(`/api/propostas/${RECORD_ID}`)
       .set("Authorization", `Bearer ${tokenB}`);
 
-    expect(res.status).toBe(200);
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
     expect(res.body.id).toBe(RECORD_ID);
     expect(mockDbUpdate).not.toHaveBeenCalled();
   });
@@ -142,7 +143,7 @@ describe("GET /api/propostas/:id — cross-tenant isolation", () => {
       .get(`/api/propostas/${RECORD_ID}`)
       .set("Authorization", `Bearer ${tokenSuperAdmin}`);
 
-    expect(res.status).toBe(200);
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
     expect(res.body.id).toBe(RECORD_ID);
   });
 
@@ -153,13 +154,14 @@ describe("GET /api/propostas/:id — cross-tenant isolation", () => {
       .get(`/api/propostas/nonexistent`)
       .set("Authorization", `Bearer ${tokenA}`);
 
-    expect(res.status).toBe(404);
+    expect(res.status, JSON.stringify(res.body)).toBe(404);
   });
 });
 
 describe("PATCH /api/propostas/:id — cross-tenant isolation", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockDbSelect.mockReset();
     setupSelectReturning([recordOwnedByTenantB]);
     setupUpdateReturning([{ ...recordOwnedByTenantB, titulo: "Updated Proposta" }]);
   });
@@ -170,7 +172,7 @@ describe("PATCH /api/propostas/:id — cross-tenant isolation", () => {
       .set("Authorization", `Bearer ${tokenA}`)
       .send({ titulo: "Updated Proposta" });
 
-    expect(res.status).toBe(403);
+    expect(res.status, JSON.stringify(res.body)).toBe(403);
     expect(res.body).toMatchObject({ error: expect.stringContaining("Access denied") });
   });
 
@@ -180,7 +182,7 @@ describe("PATCH /api/propostas/:id — cross-tenant isolation", () => {
       .set("Authorization", `Bearer ${tokenB}`)
       .send({ titulo: "Updated Proposta" });
 
-    expect(res.status).toBe(200);
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
   });
 
   it("returns 200 when super_admin patches a cross-tenant record", async () => {
@@ -189,7 +191,7 @@ describe("PATCH /api/propostas/:id — cross-tenant isolation", () => {
       .set("Authorization", `Bearer ${tokenSuperAdmin}`)
       .send({ titulo: "Updated Proposta" });
 
-    expect(res.status).toBe(200);
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
   });
 
   it("returns 404 when the record does not exist", async () => {
@@ -200,13 +202,14 @@ describe("PATCH /api/propostas/:id — cross-tenant isolation", () => {
       .set("Authorization", `Bearer ${tokenA}`)
       .send({ titulo: "Updated Proposta" });
 
-    expect(res.status).toBe(404);
+    expect(res.status, JSON.stringify(res.body)).toBe(404);
   });
 });
 
 describe("PATCH /api/propostas/:id/status — cross-tenant isolation", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockDbSelect.mockReset();
     setupSelectReturning([recordOwnedByTenantB]);
     setupUpdateReturning([{ ...recordOwnedByTenantB, status: "enviada" }]);
   });
@@ -217,7 +220,7 @@ describe("PATCH /api/propostas/:id/status — cross-tenant isolation", () => {
       .set("Authorization", `Bearer ${tokenA}`)
       .send({ status: "enviada" });
 
-    expect(res.status).toBe(403);
+    expect(res.status, JSON.stringify(res.body)).toBe(403);
     expect(res.body).toMatchObject({ error: expect.stringContaining("Access denied") });
   });
 
@@ -227,7 +230,7 @@ describe("PATCH /api/propostas/:id/status — cross-tenant isolation", () => {
       .set("Authorization", `Bearer ${tokenB}`)
       .send({ status: "enviada" });
 
-    expect(res.status).toBe(200);
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
   });
 
   it("returns 200 when super_admin transitions status on a cross-tenant record", async () => {
@@ -236,7 +239,7 @@ describe("PATCH /api/propostas/:id/status — cross-tenant isolation", () => {
       .set("Authorization", `Bearer ${tokenSuperAdmin}`)
       .send({ status: "enviada" });
 
-    expect(res.status).toBe(200);
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
   });
 
   it("returns 404 when the record does not exist", async () => {
@@ -247,13 +250,14 @@ describe("PATCH /api/propostas/:id/status — cross-tenant isolation", () => {
       .set("Authorization", `Bearer ${tokenA}`)
       .send({ status: "enviada" });
 
-    expect(res.status).toBe(404);
+    expect(res.status, JSON.stringify(res.body)).toBe(404);
   });
 });
 
 describe("DELETE /api/propostas/:id — cross-tenant isolation", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockDbSelect.mockReset();
     setupSelectReturning([recordOwnedByTenantB]);
     setupDeleteSuccess();
   });
@@ -263,7 +267,7 @@ describe("DELETE /api/propostas/:id — cross-tenant isolation", () => {
       .delete(`/api/propostas/${RECORD_ID}`)
       .set("Authorization", `Bearer ${tokenA}`);
 
-    expect(res.status).toBe(403);
+    expect(res.status, JSON.stringify(res.body)).toBe(403);
     expect(res.body).toMatchObject({ error: expect.stringContaining("Access denied") });
   });
 
@@ -272,7 +276,7 @@ describe("DELETE /api/propostas/:id — cross-tenant isolation", () => {
       .delete(`/api/propostas/${RECORD_ID}`)
       .set("Authorization", `Bearer ${tokenB}`);
 
-    expect(res.status).toBe(204);
+    expect(res.status, JSON.stringify(res.body)).toBe(204);
   });
 
   it("returns 204 when super_admin deletes a cross-tenant record", async () => {
@@ -280,7 +284,7 @@ describe("DELETE /api/propostas/:id — cross-tenant isolation", () => {
       .delete(`/api/propostas/${RECORD_ID}`)
       .set("Authorization", `Bearer ${tokenSuperAdmin}`);
 
-    expect(res.status).toBe(204);
+    expect(res.status, JSON.stringify(res.body)).toBe(204);
   });
 
   it("returns 404 when the record does not exist", async () => {
@@ -290,7 +294,7 @@ describe("DELETE /api/propostas/:id — cross-tenant isolation", () => {
       .delete(`/api/propostas/nonexistent`)
       .set("Authorization", `Bearer ${tokenA}`);
 
-    expect(res.status).toBe(404);
+    expect(res.status, JSON.stringify(res.body)).toBe(404);
   });
 });
 
@@ -306,7 +310,7 @@ describe("GET /api/tenants/:tenantId/propostas — leadId filter isolation", () 
       .get(`/api/tenants/${TENANT_A}/propostas?leadId=${leadA}`)
       .set("Authorization", `Bearer ${tokenA}`);
 
-    expect(res.status).toBe(200);
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
     expect(Array.isArray(res.body)).toBe(true);
   });
 
@@ -319,7 +323,7 @@ describe("GET /api/tenants/:tenantId/propostas — leadId filter isolation", () 
       .get(`/api/tenants/${TENANT_A}/propostas`)
       .set("Authorization", `Bearer ${tokenA}`);
 
-    expect(res.status).toBe(200);
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
     expect(Array.isArray(res.body)).toBe(true);
   });
 });
@@ -330,19 +334,20 @@ describe("GET propostas — same-tenant responsible isolation", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    mockDbSelect.mockReset();
   });
 
   it("returns 403 for an individual proposal owned by another lead responsible", async () => {
     const proposal = { id: "proposal-other-owner", tenantId: TENANT_A, leadId: "lead-other", dealId: null, titulo: "Privada", status: "rascunho", itens: [] };
     mockDbSelect
-      .mockReturnValueOnce({ from: vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue([proposal]) }) })
+      .mockReturnValueOnce(mockSelectQuery([proposal]))
       .mockReturnValueOnce({ from: vi.fn().mockReturnValue({ where: vi.fn().mockReturnValue({ limit: vi.fn().mockResolvedValue([{ assignedTo: "another-user" }]) }) }) });
 
     const res = await request(app)
       .get("/api/propostas/proposal-other-owner")
       .set("Authorization", `Bearer ${memberToken}`);
 
-    expect(res.status).toBe(403);
+    expect(res.status, JSON.stringify(res.body)).toBe(403);
     expect(res.body).toMatchObject({ error: expect.stringContaining("proposal") });
   });
 
@@ -362,7 +367,7 @@ describe("GET propostas — same-tenant responsible isolation", () => {
       .get(`/api/tenants/${TENANT_A}/propostas`)
       .set("Authorization", `Bearer ${memberToken}`);
 
-    expect(res.status).toBe(200);
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
     expect(res.body.map((p: { id: string }) => p.id)).toEqual(["p-own"]);
   });
 });
@@ -382,6 +387,7 @@ describe("Proposal mutations — same-tenant responsible isolation", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    mockDbSelect.mockReset();
   });
 
   it.each([
@@ -392,70 +398,69 @@ describe("Proposal mutations — same-tenant responsible isolation", () => {
     ["delete", "/api/propostas/proposal-other-owner", undefined],
   ] as const)("returns 403 for %s on another seller proposal", async (method, url, body) => {
     mockDbSelect
-      .mockReturnValueOnce({ from: vi.fn().mockReturnValue({ where: vi.fn().mockReturnValue({ limit: vi.fn().mockResolvedValue([otherProposal]), then: undefined }) }) })
+      .mockReturnValueOnce(mockSelectQuery([otherProposal]))
       .mockReturnValueOnce({ from: vi.fn().mockReturnValue({ where: vi.fn().mockReturnValue({ limit: vi.fn().mockResolvedValue([{ assignedTo: "another-user" }]) }) }) });
 
     let req = request(app)[method](url).set("Authorization", `Bearer ${memberToken}`);
     if (body !== undefined) req = req.send(body);
     const res = await req;
 
-    expect(res.status).toBe(403);
+    expect(res.status, JSON.stringify(res.body)).toBe(403);
   });
 });
 
 describe("Unauthenticated access — propostas", () => {
   it("returns 401 for GET without a token", async () => {
     const res = await request(app).get(`/api/propostas/${RECORD_ID}`);
-    expect(res.status).toBe(401);
+    expect(res.status, JSON.stringify(res.body)).toBe(401);
   });
 
   it("returns 401 for PATCH without a token", async () => {
     const res = await request(app)
       .patch(`/api/propostas/${RECORD_ID}`)
       .send({ titulo: "X" });
-    expect(res.status).toBe(401);
+    expect(res.status, JSON.stringify(res.body)).toBe(401);
   });
 
   it("returns 401 for PATCH /status without a token", async () => {
     const res = await request(app)
       .patch(`/api/propostas/${RECORD_ID}/status`)
       .send({ status: "enviada" });
-    expect(res.status).toBe(401);
+    expect(res.status, JSON.stringify(res.body)).toBe(401);
   });
 
   it("returns 401 for DELETE without a token", async () => {
     const res = await request(app).delete(`/api/propostas/${RECORD_ID}`);
-    expect(res.status).toBe(401);
+    expect(res.status, JSON.stringify(res.body)).toBe(401);
   });
 });
 
 describe("GET documento completo — isolamento e formato", () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => { vi.clearAllMocks(); mockDbSelect.mockReset(); });
   it.each(["print-document", "pdf"])("bloqueia tenant diferente em %s", async (suffix) => {
     setupSelectReturning([recordOwnedByTenantB]);
     const res = await request(app).get(`/api/propostas/${RECORD_ID}/${suffix}`).set("Authorization", `Bearer ${tokenA}`);
-    expect(res.status).toBe(403);
+    expect(res.status, JSON.stringify(res.body)).toBe(403);
   });
   it.each(["print-document", "pdf"])("bloqueia outro responsável em %s", async (suffix) => {
     const proposal = { ...recordOwnedByTenantB, tenantId: TENANT_A, leadId: "lead-other", dealId: null };
     mockDbSelect
-      .mockReturnValueOnce({ from: vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue([proposal]) }) })
+      .mockReturnValueOnce(mockSelectQuery([proposal]))
       .mockReturnValueOnce({ from: vi.fn().mockReturnValue({ where: vi.fn().mockReturnValue({ limit: vi.fn().mockResolvedValue([{ assignedTo: "another-user" }]) }) }) });
     const res = await request(app).get(`/api/propostas/${RECORD_ID}/${suffix}`).set("Authorization", `Bearer ${makeToken(TENANT_A, "member")}`);
-    expect(res.status).toBe(403);
+    expect(res.status, JSON.stringify(res.body)).toBe(403);
   });
   it("retorna HTML autorizado sem depender de Chromium e sem gravar dados", async () => {
     const proposal = { ...recordOwnedByTenantB, itens: [], leadId: null };
-    mockDbSelect.mockReturnValue({
-      from: () => ({
-        where: () => Object.assign(Promise.resolve([proposal]), { limit: async () => [] }),
-        leftJoin: () => ({ where: () => ({ limit: async () => [] }) }),
-      }),
-    });
+    mockDbSelect.mockReturnValueOnce(mockSelectQuery([proposal])).mockReturnValue(mockSelectQuery([]));
     const res = await request(app).get(`/api/propostas/${RECORD_ID}/print-document`).set("Authorization", `Bearer ${tokenB}`);
-    expect(res.status).toBe(200);
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
     expect(res.headers["cache-control"]).toBe("no-store");
     expect(res.body.html).toContain("Orçamento completo");
     expect(mockDbUpdate).not.toHaveBeenCalled();
   });
+});
+
+app.use((error: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+  res.status(500).json({ error: error instanceof Error ? error.message : String(error) });
 });

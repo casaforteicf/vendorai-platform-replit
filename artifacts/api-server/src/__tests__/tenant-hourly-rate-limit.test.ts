@@ -1,3 +1,4 @@
+import { mockSelectQuery } from "./helpers/isolation.js";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import request from "supertest";
 import { tokenA, TENANT_A } from "./helpers/auth.js";
@@ -33,7 +34,8 @@ const {
 // ---------------------------------------------------------------------------
 // Module mocks
 // ---------------------------------------------------------------------------
-vi.mock("@workspace/db", () => ({
+vi.mock("@workspace/db", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@workspace/db")>()),
   db: {
     select: mockDbSelect,
     insert: vi.fn(),
@@ -132,6 +134,8 @@ const LEAD_ID = "lead-hourly-rate-limit-test";
  */
 function setupHourlyCountSelect(recentCount: number) {
   mockDbSelect
+    // Validate lead scope before rate-limit accounting.
+    .mockReturnValueOnce(mockSelectQuery([{ id: "lead-test" }]))
     // 1. Hourly rolling-window count (intelligenceAnalysisLogTable)
     .mockReturnValueOnce({
       from: vi.fn().mockReturnThis(),

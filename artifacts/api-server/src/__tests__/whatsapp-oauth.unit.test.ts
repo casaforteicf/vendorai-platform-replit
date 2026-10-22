@@ -1,5 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+// These tests exercise OAuth URLs and Graph response handling without database access.
+vi.mock("@workspace/db", () => ({ db: {}, whatsappConnectionsTable: {}, agentConfigsTable: {}, usersTable: {} }));
+
 afterEach(() => {
   vi.unstubAllEnvs();
   vi.unstubAllGlobals();
@@ -8,14 +11,15 @@ afterEach(() => {
 
 describe("WhatsApp OAuth", () => {
   it("usa o Embedded Signup configurado no Railway", async () => {
-    vi.stubEnv("WHATSAPP_APP_ID", "app-123");
+    vi.stubEnv("WHATSAPP_APP_ID", "123456789");
+    vi.stubEnv("WHATSAPP_APP_SECRET", "test-app-secret");
     vi.stubEnv("WHATSAPP_EMBEDDED_CONFIG_ID", "config-456");
     vi.resetModules();
 
     const { buildWhatsappOAuthUrl } = await import("../services/whatsapp-oauth.js");
     const url = new URL(buildWhatsappOAuthUrl("tenant-1", "state-1"));
 
-    expect(url.searchParams.get("client_id")).toBe("app-123");
+    expect(url.searchParams.get("client_id")).toBe("123456789");
     expect(url.searchParams.get("config_id")).toBe("config-456");
     expect(url.searchParams.get("override_default_response_type")).toBe("true");
   });

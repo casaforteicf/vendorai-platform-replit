@@ -37,10 +37,13 @@ describe("email omnichannel implementation", () => {
 
   it("guards every tenant email integration route before tenant-scoped work", () => {
     const routes = source("../routes/email-integrations.ts");
-    const guardedAssignments = routes.match(/tenant-audit: reviewed guarded immediately by authenticated same-tenant\/super-admin access/g) ?? [];
-
-    expect(guardedAssignments).toHaveLength(8);
-    expect(routes).toContain("if (!canAccess(req, tenantId))");
+    const tenantRoutes = routes.split(/\nrouter\.(?:get|post|patch|put|delete)\(/)
+      .slice(1).filter(handler => handler.startsWith('"/tenants/:tenantId/'));
+    expect(tenantRoutes.length).toBeGreaterThan(0);
+    for (const handler of tenantRoutes) {
+      expect(handler).toContain("authenticate,");
+      expect(handler).toContain("if (!canAccess(req, tenantId))");
+    }
     expect(routes).toContain('consumeOAuthState(state, stateProvider(selected))');
     expect(routes).toContain('email-connections/:provider/settings');
   });

@@ -1,3 +1,4 @@
+import { canAccessActivity } from "../lib/lead-scope-access.js";
 import { Router, type IRouter } from "express";
 import { requestCanAccessLockedObject, syncProtectedObjectsForLead } from "../lib/attachment-folder-access.js";
 import { and, eq, lt, isNotNull, isNull, notExists } from "drizzle-orm";
@@ -502,6 +503,11 @@ router.get("/activities/:id", async (req, res) => {
     return;
   }
 
+  if (!(await canAccessActivity(req, activity.tenantId, activity.id))) {
+    res.status(403).json({ error: "Access denied to this activity" });
+    return;
+  }
+
   const actRole = req.user?.platformRole;
   const actFn = req.user?.userFunction as string | undefined;
   const actIsSeller =
@@ -558,6 +564,11 @@ router.patch("/activities/:id", async (req, res) => {
 
   if (req.user?.platformRole !== "super_admin" && existing.tenantId !== req.user?.tenantId) {
     res.status(403).json({ error: "Access denied to this tenant" });
+    return;
+  }
+
+  if (!(await canAccessActivity(req, existing.tenantId, existing.id))) {
+    res.status(403).json({ error: "Access denied to this activity" });
     return;
   }
 
@@ -733,6 +744,11 @@ router.delete("/activities/:id", async (req, res) => {
 
   if (req.user?.platformRole !== "super_admin" && existing.tenantId !== req.user?.tenantId) {
     res.status(403).json({ error: "Access denied to this tenant" });
+    return;
+  }
+
+  if (!(await canAccessActivity(req, existing.tenantId, existing.id))) {
+    res.status(403).json({ error: "Access denied to this activity" });
     return;
   }
 

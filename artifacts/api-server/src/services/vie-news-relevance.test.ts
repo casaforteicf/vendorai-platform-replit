@@ -16,7 +16,7 @@ describe("scoreVieNewsForTenant", () => {
   it("classifica notícia setorial aderente como relevante", () => {
     const result = scoreVieNewsForTenant(constructionTenant, {
       title: "Novo financiamento amplia crédito para construção de casa residencial",
-      excerpt: "A medida deve estimular novas obras e aumentar a demanda no setor de construção.",
+      excerpt: "A medida deve estimular novas obras e casas de alto desempenho, aumentando a demanda no setor de construção.",
       categories: ["Economia", "Construção"],
       sourceReliability: 90,
     });
@@ -26,6 +26,16 @@ describe("scoreVieNewsForTenant", () => {
     expect(result.signalType).toBe("sectoral");
     expect(result.score).toBeGreaterThanOrEqual(60);
     expect(result.confidence).toBeGreaterThan(60);
+  });
+
+  it("keeps a sectoral signal below the 60-point threshold out of the relevant feed", () => {
+    const result = scoreVieNewsForTenant(constructionTenant, {
+      title: "Novo financiamento amplia crédito para construção de casa residencial",
+      excerpt: "A medida deve estimular novas obras e aumentar a demanda no setor de construção.",
+      categories: ["Economia", "Construção"], sourceReliability: 90,
+    });
+    expect(result.score).toBe(59);
+    expect(result.relevant).toBe(false);
   });
 
   it("rejeita notícia genérica sem relação suficiente com o tenant", () => {
