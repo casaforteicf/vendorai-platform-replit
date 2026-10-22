@@ -7,6 +7,7 @@
  */
 import type { TenantCalendarSettingsCommercialDatesItem } from './tenantCalendarSettingsCommercialDatesItem';
 import type { TenantCalendarSettingsCustomDatesItem } from './tenantCalendarSettingsCustomDatesItem';
+import type { TenantCalendarSettingsProfessionalDatesItem } from './tenantCalendarSettingsProfessionalDatesItem';
 
 export interface TenantCalendarSettings {
   id: string;
@@ -20,6 +21,7 @@ export interface TenantCalendarSettings {
   blackFridayEnabled: boolean;
   enableSpouseGiftFlow: boolean;
   commercialDates?: TenantCalendarSettingsCommercialDatesItem[];
+  professionalDates?: TenantCalendarSettingsProfessionalDatesItem[];
   customDates?: TenantCalendarSettingsCustomDatesItem[];
   createdAt: Date;
   updatedAt: Date;

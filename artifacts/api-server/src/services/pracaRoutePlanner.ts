@@ -1,4 +1,4 @@
-import type { PoolClient } from "pg";
+import type { PoolClient } from "@workspace/db";
 import type { Logger } from "pino";
 import { vendorPool } from "../lib/vendorDb";
 import { logger } from "../lib/logger.js";

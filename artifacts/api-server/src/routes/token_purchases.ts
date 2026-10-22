@@ -262,7 +262,7 @@ router.post(
     const tenantId = String(req.params["tenantId"]);
     try {
       const purchase = await createFixedAiCreditPack(tenantId);
-      if ("error" in purchase) {
+      if (typeof purchase.status === "number") {
         res.status(purchase.status).json({ error: purchase.error });
         return;
       }
@@ -360,7 +360,7 @@ router.post(
 
     try {
       const purchase = await createVendorCreditPackPurchase(tenantId, pack.key, "PIX");
-      if ("error" in purchase) {
+      if (typeof purchase.status === "number") {
         res.status(purchase.status).json({ error: purchase.error, packs: VENDOR_CREDIT_PACKS });
         return;
       }
@@ -405,7 +405,7 @@ router.post(
 
     try {
       const purchase = await createVendorCreditPackPurchase(tenantId, pack.key, "PIX");
-      if ("error" in purchase) {
+      if (typeof purchase.status === "number") {
         res.status(purchase.status).json({ error: purchase.error, packs: VENDOR_CREDIT_PACKS });
         return;
       }
@@ -487,7 +487,7 @@ router.post(
 
     try {
       const purchase = await createFixedAiCreditPack(tenantId);
-      if ("error" in purchase) {
+      if (typeof purchase.status === "number") {
         res.status(purchase.status).json({ error: purchase.error });
         return;
       }

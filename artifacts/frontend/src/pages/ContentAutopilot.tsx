@@ -72,7 +72,7 @@ type SiteAnalytics = {
 
 const VIEWS: HubView[] = ["overview", "generator", "autopilot", "seo", "analytics", "settings"];
 
-function authHeaders() {
+function authHeaders(): Record<string, string> {
   const token = localStorage.getItem("vendorai_token");
   return token ? { Authorization: `Bearer ${token}` } : {};
 }

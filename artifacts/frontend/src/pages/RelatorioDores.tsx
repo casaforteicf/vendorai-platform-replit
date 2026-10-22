@@ -27,7 +27,7 @@ export default function RelatorioDores() {
   const { data: ciList = [] } = useListCustomerIntelligence(tenantId, {
     query: { queryKey: getListCustomerIntelligenceQueryKey(tenantId), enabled: !!tenantId },
   });
-  const { data: leads = [] } = useListTenantLeads(tenantId, {
+  const { data: leads = [] } = useListTenantLeads(tenantId, undefined, {
     query: { queryKey: getListTenantLeadsQueryKey(tenantId), enabled: !!tenantId },
   });
 

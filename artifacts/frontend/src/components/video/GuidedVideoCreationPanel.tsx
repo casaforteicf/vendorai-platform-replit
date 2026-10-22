@@ -702,7 +702,7 @@ export default function GuidedVideoCreationPanel() {
       if (!candidate) throw new Error("A IA não retornou uma cena aproveitável");
       const used = new Set(scenes.filter((item) => item.id !== sceneId && item.assetId).map((item) => item.assetId));
       const suggested = suggestAssetForScene(candidate, visualAssets, used, retrievalContext);
-      const nextScenes = scenes.map((item) => item.id === sceneId ? {
+      const nextScenes: ProfessionalScene[] = scenes.map((item) => item.id === sceneId ? {
         ...item,
         fala: candidate.fala || item.fala,
         visual: candidate.visual || item.visual,

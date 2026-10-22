@@ -34,6 +34,8 @@ export interface UpdateLeadBody {
   naoLeadTipo?: UpdateLeadBodyNaoLeadTipo;
   naoLeadNotas?: string | null;
   naoLeadClassificadoEm?: Date | null;
+  /** Profissão do lead para campanhas de datas profissionais. */
+  profissao?: string | null;
   dataNascimento?: string | null;
   estadoCivil?: string | null;
   conjugeNome?: string | null;

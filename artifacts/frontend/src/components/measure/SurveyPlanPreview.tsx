@@ -5,7 +5,7 @@ export default function SurveyPlanPreview({ elements }: { elements: SurveyElemen
   const [floor, setFloor] = useState(0);
   const floors = Array.from(new Set(elements.filter(e => e.elementType === "wall").map(e => e.floorIndex ?? 0))).sort((a,b)=>a-b);
   const currentFloor = floors.includes(floor) ? floor : (floors[0] ?? 0);
-  const walls = elements.filter((e) => e.elementType === "wall" && (e.floorIndex ?? 0) === currentFloor && e.verified && [e.x1Mm, e.y1Mm, e.x2Mm, e.y2Mm].every((n) => typeof n === "number" && Number.isFinite(n) && Math.abs(n) < 1000000));
+  const walls = elements.filter((e): e is SurveyElement & { x1Mm: number; y1Mm: number; x2Mm: number; y2Mm: number } => e.elementType === "wall" && (e.floorIndex ?? 0) === currentFloor && e.verified && [e.x1Mm, e.y1Mm, e.x2Mm, e.y2Mm].every((n) => typeof n === "number" && Number.isFinite(n) && Math.abs(n) < 1000000));
   if (!walls.length) return <p className="text-xs">Informe duas extremidades e confira uma parede para visualizar a planta.</p>;
   const coordinates = walls.flatMap((w) => [[w.x1Mm!, w.y1Mm!], [w.x2Mm!, w.y2Mm!]]);
   const minX = Math.min(...coordinates.map((p) => p[0])) - 300;

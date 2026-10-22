@@ -7,7 +7,7 @@ export const contentLibraryTable = pgTable("content_library", {
     .primaryKey()
     .$defaultFn(() => crypto.randomUUID()),
   tenantId: text("tenant_id").notNull(),
-  type: text("type").notNull().$type<ContentType>(),
+  type: text("type").notNull().$type<ContentType | "tiktok">(),
   variation: jsonb("variation").notNull().$type<ContentVariation>(),
   theme: text("theme"),
   title: text("title"),

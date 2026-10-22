@@ -29,7 +29,7 @@ export default function RelatorioTipoCliente() {
   const tenantId = user?.tenantId ?? "";
   const [, navigate] = useLocation();
 
-  const { data: leads = [] } = useListTenantLeads(tenantId, {
+  const { data: leads = [] } = useListTenantLeads(tenantId, undefined, {
     query: { queryKey: getListTenantLeadsQueryKey(tenantId), enabled: !!tenantId },
   });
 

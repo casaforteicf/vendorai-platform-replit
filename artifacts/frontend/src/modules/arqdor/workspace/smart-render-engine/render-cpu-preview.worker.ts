@@ -45,7 +45,7 @@ self.onmessage = (event: MessageEvent<Request>) => {
       if (sample >= samples) {
         if(outputFrame){
           const filtered=denoisePreviewRgba(outputFrame,options.width,options.height,strength);
-          self.postMessage({type:"frame",id,width:options.width,height:options.height,rgba:filtered.buffer,sampleCount:samples},[filtered.buffer]);
+          self.postMessage({type:"frame",id,width:options.width,height:options.height,rgba:filtered.buffer,sampleCount:samples}, { transfer: [filtered.buffer] });
         }
         active.delete(id);
         self.postMessage({ type: "done", id, samples });
@@ -72,7 +72,7 @@ self.onmessage = (event: MessageEvent<Request>) => {
         type: "tile", id, y, width: options.width, height, rgba: rgba.buffer,
         sampleCount: sample + 1, totalSamples: samples,
         progress: (sample * options.height + y + height) / (samples * options.height),
-      }, [rgba.buffer]);
+      }, { transfer: [rgba.buffer] });
       y += height;
       setTimeout(run, 0);
     } catch (e) {

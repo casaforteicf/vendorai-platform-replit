@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { Pool } from "pg";
+import type { Pool } from "@workspace/db";
 
 export class RenderGalleryError extends Error {
   constructor(public status: number, message: string) { super(message); }

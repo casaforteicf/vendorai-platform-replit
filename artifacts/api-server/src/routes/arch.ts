@@ -1638,6 +1638,7 @@ router.post("/arch/concept-projects/:id/reference-plan", authenticate, upload.si
       id: archConceptProjectsTable.id,
       status: archConceptProjectsTable.status,
       configuration: archConceptProjectsTable.configuration,
+      lot: archConceptProjectsTable.lot,
     })
     .from(archConceptProjectsTable)
     .where(and(
@@ -3333,7 +3334,7 @@ router.post("/arch/concept-projects/:id/promote", authenticate, async (req, res)
   const windowCount = customWindowCount > 0 ? customWindowCount : derivedWindows;
   const openingCount = Math.max(1, doorCount + windowCount);
 
-  const linkedOpeningProductIds = [...new Set(
+  const linkedOpeningProductIds = [...new Set<string>(
     linkedCustomOpenings.map((opening: any) => String(opening.catalogProductId))
   )];
   const linkedOpeningCatalogRows = linkedOpeningProductIds.length
@@ -8862,7 +8863,7 @@ router.put("/arqdor/projects/:id/member-conditional", authenticate, async (req, 
         sql`EXISTS (SELECT 1 FROM arqdor_workspace_members m JOIN users u
           ON u.id = m.user_id AND u.tenant_id = m.tenant_id
           WHERE m.tenant_id = ${tid} AND m.project_id = ${id}
-          AND m.user_id = ${req.user.sub} AND m.permission IN ('owner','editor') AND u.active = TRUE)`,
+          AND m.user_id = ${req.user!.sub} AND m.permission IN ('owner','editor') AND u.active = TRUE)`,
       )).returning({ revision: sql<string>`xmin::text` });
     });
     if (!saved) return res.status(409).json({ error: "Revisão incompatível, vínculo revogado ou projeto indisponível." });

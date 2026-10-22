@@ -157,6 +157,7 @@ export const obraHidraulicaEquipamentosTable = pgTable("obra_hidraulica_equipame
 });
 
 export const insertObraHidraulicaRedeSchema = createInsertSchema(obraHidraulicaRedesTable, {
+  metadata: () => z.record(z.string(), z.unknown()),
   funcao: z.enum(HIDRAULICA_FUNCOES),
   tipoRede: z.enum(HIDRAULICA_REDE_TIPOS),
   tecnologia: z.enum(HIDRAULICA_TECNOLOGIAS),
@@ -174,12 +175,14 @@ export const insertObraHidraulicaPontoSchema = createInsertSchema(obraHidraulica
 }).omit({ id: true, createdAt: true, updatedAt: true });
 
 export const insertObraHidraulicaSegmentoSchema = createInsertSchema(obraHidraulicaSegmentosTable, {
+  parametros: () => z.record(z.string(), z.unknown()),
   tecnologia: z.enum(HIDRAULICA_TECNOLOGIAS).optional(),
   diametroMm: decimalOptional,
   comprimentoM: decimalOptional,
 }).omit({ id: true, createdAt: true, updatedAt: true });
 
 export const insertObraHidraulicaEquipamentoSchema = createInsertSchema(obraHidraulicaEquipamentosTable, {
+  parametros: () => z.record(z.string(), z.unknown()),
   funcao: z.enum(HIDRAULICA_FUNCOES).optional(),
   vazaoLMin: decimalOptional,
   pressaoMca: decimalOptional,
@@ -333,6 +336,7 @@ export const obraHidraulicaReservatoriosTable = pgTable("obra_hidraulica_reserva
 });
 
 export const insertObraHidraulicaAreaTecnicaSchema = createInsertSchema(obraHidraulicaAreasTecnicasTable, {
+  parametros: () => z.record(z.string(), z.unknown()),
   tipo: z.enum(HIDRAULICA_AREA_TECNICA_TIPOS),
   larguraM: decimalOptional,
   profundidadeM: decimalOptional,
@@ -340,6 +344,7 @@ export const insertObraHidraulicaAreaTecnicaSchema = createInsertSchema(obraHidr
 }).omit({ id: true, createdAt: true, updatedAt: true });
 
 export const insertObraHidraulicaManifoldSchema = createInsertSchema(obraHidraulicaManifoldsTable, {
+  parametros: () => z.record(z.string(), z.unknown()),
   funcao: z.enum(HIDRAULICA_FUNCOES),
   tecnologia: z.enum(HIDRAULICA_TECNOLOGIAS),
   diametroEntradaMm: decimalOptional,
@@ -347,6 +352,7 @@ export const insertObraHidraulicaManifoldSchema = createInsertSchema(obraHidraul
 }).omit({ id: true, createdAt: true, updatedAt: true });
 
 export const insertObraHidraulicaAquecimentoSchema = createInsertSchema(obraHidraulicaAquecimentoTable, {
+  parametros: () => z.record(z.string(), z.unknown()),
   tipoGeracao: z.enum(HIDRAULICA_GERACAO_AGUA_QUENTE),
   potenciaKw: decimalOptional,
   volumeAcumulacaoL: decimalOptional,
@@ -355,6 +361,7 @@ export const insertObraHidraulicaAquecimentoSchema = createInsertSchema(obraHidr
 }).omit({ id: true, createdAt: true, updatedAt: true });
 
 export const insertObraHidraulicaPressurizacaoSchema = createInsertSchema(obraHidraulicaPressurizacaoTable, {
+  parametros: () => z.record(z.string(), z.unknown()),
   vazaoProjetoLMin: decimalOptional,
   pressaoProjetoMca: decimalOptional,
   potenciaKw: decimalOptional,
@@ -362,8 +369,9 @@ export const insertObraHidraulicaPressurizacaoSchema = createInsertSchema(obraHi
 }).omit({ id: true, createdAt: true, updatedAt: true });
 
 export const insertObraHidraulicaReservatorioSchema = createInsertSchema(obraHidraulicaReservatoriosTable, {
+  parametros: () => z.record(z.string(), z.unknown()),
   tipo: z.enum(HIDRAULICA_RESERVATORIO_TIPOS),
-  volumeL: decimalOptional,
+  volumeL: () => decimalOptional.unwrap(),
   reservaTecnicaL: decimalOptional,
 }).omit({ id: true, createdAt: true, updatedAt: true });
 

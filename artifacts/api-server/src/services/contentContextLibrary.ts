@@ -108,7 +108,7 @@ export async function resolveContentContext(input: {
       item,
       score: score([item.nome, item.product_type, item.descricao, item.descricao_longa, item.marca, ...(item.tags ?? [])].join(" "), queryTerms, preferredProducts, item.id),
     }))
-    .filter(({ score: itemScore }) => itemScore > 0 || preferredProducts.has(item.id))
+    .filter(({ item, score: itemScore }) => itemScore > 0 || preferredProducts.has(item.id))
     .sort((a, b) => b.score - a.score)
     .slice(0, Math.min(5, limit));
 

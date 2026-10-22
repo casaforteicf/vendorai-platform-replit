@@ -251,24 +251,20 @@ callbackRouter.post("/webhooks/email/resend", async (req, res) => {
     return res.status(400).json({ error: "invalid_webhook_headers" });
   }
 
-  let event: {
-    type: string;
-    created_at: string;
-    data?: { email_id?: string; [key: string]: unknown };
-  };
+  let event: ReturnType<Resend["webhooks"]["verify"]>;
   try {
     const resend = new Resend(apiKey);
     event = resend.webhooks.verify({
       payload: rawBody,
       headers: { id, timestamp, signature },
       webhookSecret,
-    }) as typeof event;
+    });
   } catch (error) {
     req.log?.warn?.({ error }, "Invalid Resend webhook signature");
     return res.status(401).json({ error: "invalid_webhook_signature" });
   }
 
-  const emailId = typeof event.data?.email_id === "string" ? event.data.email_id : "";
+  const emailId = "email_id" in event.data && typeof event.data.email_id === "string" ? event.data.email_id : "";
   if (!emailId || !event.type.startsWith("email.")) {
     return res.json({ received: true, ignored: true });
   }

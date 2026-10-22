@@ -2025,7 +2025,7 @@ archProductionProcurementRouter.post("/arch/construction/:obraId/diario", async 
       ) VALUES ($1,$2,$3,$4,$5,$6,'rascunho',$7,$8,$9,now(),now()) RETURNING *`,
       [
         crypto.randomUUID(), obraId, data, conteudo,
-        req?.user?.sub ?? null, req?.user?.name ?? req?.user?.email ?? null,
+        req?.user?.sub ?? null, req?.user?.email ?? null,
         req.body?.climaTempo ?? null,
         req.body?.maoDeObra === undefined || req.body?.maoDeObra === "" ? null : Number(req.body.maoDeObra),
         req.body?.observacoes ?? null,

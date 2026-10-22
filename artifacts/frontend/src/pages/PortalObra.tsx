@@ -438,9 +438,9 @@ export default function PortalObra() {
   if (loading) return <div className="flex min-h-screen items-center justify-center bg-gray-50"><div className="text-center"><Loader2 className="mx-auto mb-3 h-8 w-8 animate-spin text-indigo-600" /><p className="text-sm text-gray-500">Carregando portal…</p></div></div>;
   if (data?.locked || forceAuth) return <PortalAuthGate
     token={token}
-    tenantName={data.tenant?.name ?? "Empresa"}
-    obraName={data.obra?.nome ?? "Portal do Cliente"}
-    allowRegistration={data.auth?.allowSelfRegistration !== false}
+    tenantName={data?.tenant?.name ?? "Empresa"}
+    obraName={data?.obra?.nome ?? "Portal do Cliente"}
+    allowRegistration={data?.auth?.allowSelfRegistration !== false}
     onAuthenticated={(sessionToken) => {
       setPortalSession(sessionToken);
       setForceAuth(false);

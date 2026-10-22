@@ -10,6 +10,9 @@ import type { UserFunction } from './userFunction';
 import type { UserRole } from './userRole';
 
 export interface User {
+  leadAssignmentCities?: string[] | null;
+  leadAssignmentRegions?: string[] | null;
+  leadAssignmentSegments?: string[] | null;
   id: string;
   tenantId: string;
   name: string;

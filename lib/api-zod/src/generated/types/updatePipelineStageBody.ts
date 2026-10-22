@@ -5,6 +5,7 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { UpdatePipelineStageBodyPerguntasItem } from './updatePipelineStageBodyPerguntasItem';
 
 export interface UpdatePipelineStageBody {
   label?: string;
@@ -12,4 +13,6 @@ export interface UpdatePipelineStageBody {
   bg?: string;
   ordem?: number;
   slaMinutos?: number | null;
+  elegiveisUserIds?: string[] | null;
+  perguntas?: UpdatePipelineStageBodyPerguntasItem[];
 }

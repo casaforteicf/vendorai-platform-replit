@@ -85,7 +85,7 @@ async function getActiveConnection(tenantId: string) {
   if (!conn?.accessToken || !conn.adAccountId || conn.status !== "active") {
     throw new Error("Não foi possível obter uma conexão Meta Ads ativa.");
   }
-  return conn;
+  return { ...conn, accessToken: conn.accessToken, adAccountId: conn.adAccountId };
 }
 
 async function metaPost(path: string, accessToken: string, params: Record<string, string>) {

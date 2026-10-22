@@ -9,6 +9,8 @@ import type { ProdutoCatalogoProductType } from './produtoCatalogoProductType';
 import type { ProdutoCatalogoRecorrencia } from './produtoCatalogoRecorrencia';
 
 export interface ProdutoCatalogo {
+  fornecedor?: string | null;
+  prazoEntregaDias?: number | null;
   id: string;
   tenantId: string;
   nome: string;

@@ -86,6 +86,7 @@ export function StageQuestionsPanel({
   const answeredCount = perguntas.filter((p) => draft[p.id]?.trim()).length;
 
   function saveQuestionSet() {
+    if (!stage) return;
     updateStage.mutate(
       { tenantId, id: stage.id, data: { perguntas: editList, acompanhamentoConfig: followupConfig } as any },
       {

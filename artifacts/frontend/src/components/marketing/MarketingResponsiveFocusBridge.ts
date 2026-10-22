@@ -1,3 +1,5 @@
+export {};
+
 const NAV_HOST_ATTR = "data-vendorai-marketing-mobile-nav";
 const HIDDEN_ATTR = "data-vendorai-marketing-focus-hidden";
 const STYLE_ID = "vendorai-marketing-focus-style";

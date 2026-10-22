@@ -392,12 +392,12 @@ function sanitizeNavigation(value: unknown, pageIds: Set<string>): JsonObject[] 
 
 const authenticateAppUser: RequestHandler = (req, res, next) => {
   const authHeader = req.headers.authorization;
-  if (!authHeader?.startsWith("Bearer ")) return res.status(401).json({ error: "UNAUTHENTICATED" });
+  if (!authHeader?.startsWith("Bearer ")) { res.status(401).json({ error: "UNAUTHENTICATED" }); return; }
   try {
     (req as AppUserRequest).appUser = verifyAppUserToken(authHeader.slice(7), String(req.params.appId));
     next();
   } catch {
-    return res.status(401).json({ error: "UNAUTHENTICATED" });
+    res.status(401).json({ error: "UNAUTHENTICATED" }); return;
   }
 };
 

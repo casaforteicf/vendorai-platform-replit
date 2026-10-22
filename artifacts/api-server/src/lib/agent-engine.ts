@@ -1,3 +1,4 @@
+import { persistedAgentName, type AgentName } from "./agent-name.js";
 /**
  * Shared AI agent engine — types, context loading, limit checking,
  * OpenAI calls, counter updates, task insertion, and all 7 prompt builders.
@@ -54,7 +55,7 @@ export type LimitOk = {
 type LimitExceeded = { ok: false; httpStatus: 429; body: object };
 export type LimitResult = LimitOk | LimitExceeded;
 
-export type AgentName    = "sdr" | "closer" | "followup" | "reactivation" | "scheduler" | "service" | "onboarding" | "relacionamento" | "financeiro" | "cobranca" | "reception" | "pharmacy";
+export type { AgentName } from "./agent-name.js";
 export type PromptBuilder = (customPrompt: string | undefined, ctx: AgentContext, scenario?: Record<string, unknown> | null, systemPromptOverride?: string | null) => string;
 
 /** A single SPIN qualification question customized for a tenant's niche. */
@@ -408,7 +409,7 @@ export async function insertAndRun(params: {
     .values({
       tenantId,
       leadId,
-      agentName,
+      agentName: persistedAgentName(agentName),
       actionType,
       payload: {
         leadId,

@@ -66,7 +66,7 @@ type CalendarItem = {
   status: string;
 };
 
-function authHeaders() {
+function authHeaders(): Record<string, string> {
   return { Authorization: `Bearer ${localStorage.getItem("vendorai_token")}` };
 }
 
@@ -181,7 +181,7 @@ export default function MarketingInstagram() {
         mediaType: imageUrls.length > 1 ? "CAROUSEL_ALBUM" as const : "IMAGE" as const,
       };
     })
-    .filter((d): d is DraftOption => Boolean(d.thumbnailUrl));
+    .filter((d) => Boolean(d.thumbnailUrl));
 
   const instagramCalendar = calendar.filter(isInstagramItem);
   const today = new Date();

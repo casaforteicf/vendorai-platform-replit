@@ -541,7 +541,7 @@ export default function Projetos() {
                             <div className="px-3 py-3 text-sm">
                               <p className="font-medium">Nenhum lead encontrado</p>
                               <p className="text-xs text-muted-foreground mt-1 mb-2">Busque por nome, telefone ou e-mail, ou cadastre um novo lead.</p>
-                              <Button type="button" size="sm" variant="outline" className="w-full" onClick={openCreateLead}>
+                              <Button type="button" size="sm" variant="outline" className="w-full" onClick={() => openCreateLead()}>
                                 <UserPlus className="h-4 w-4 mr-2" />
                                 Cadastrar novo lead
                               </Button>

@@ -1,5 +1,5 @@
 import { randomUUID } from "crypto";
-import { createMediaJob, updateMediaJob } from "./media-jobs.js";
+import { createMediaJob, updateMediaJob, type MediaJobResultItem } from "./media-jobs.js";
 import { createProcessingMediaProject, setMediaProjectStatus } from "./media-library.js";
 import {
   processVendorAiImageTool,
@@ -71,7 +71,10 @@ export async function startVendorAiMediaBatch(input: {
   });
 
   void (async () => {
-    const results: Array<Record<string, unknown>> = [];
+    const results: Array<MediaJobResultItem & {
+      index: number; sourceAssetId: string; operation: VendorAiNativeImageOperation;
+      projectId?: string; assetId?: string; versionId?: string; storageUrl?: string;
+    }> = [];
     let successCount = 0;
     let failureCount = 0;
 
@@ -88,6 +91,7 @@ export async function startVendorAiMediaBatch(input: {
         });
         successCount += 1;
         results.push({
+          name: `${input.title} — ${index + 1}`,
           index,
           sourceAssetId: item.assetId,
           operation: item.operation,
@@ -100,6 +104,7 @@ export async function startVendorAiMediaBatch(input: {
       } catch (error) {
         failureCount += 1;
         results.push({
+          name: `${input.title} — ${index + 1}`,
           index,
           sourceAssetId: item.assetId,
           operation: item.operation,

@@ -208,7 +208,7 @@ router.get("/tenants/:tenantId/payment-recipients", async (req, res) => {
 
 router.get("/tenants/:tenantId/praca-payment-options", async (req, res) => {
   const tenantId = String(req.params.tenantId);
-  if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
+  if (!canAccess(req, tenantId)) { res.status(403).json({ error: "Forbidden" }); return; }
   const [courierRecipients, relayPoints] = await Promise.all([
     vendorPool.query(
       `SELECT u.id,u.name,u.email,u.telefone,r.wallet_id AS "walletId"
@@ -244,7 +244,7 @@ router.post("/tenants/:tenantId/praca-orders/:orderId/payment-intents", async (r
   const courierId = typeof req.body?.courierId === "string" ? req.body.courierId.trim() || null : null;
   const requestedMode = req.body?.modeloLogistico === "redespacho" ? "redespacho" : "direto";
   const relayPointId = typeof req.body?.pontoRedespachoId === "string" ? req.body.pontoRedespachoId.trim() : "";
-  const requestedCourierSplits = Array.isArray(req.body?.courierSplits)
+  const requestedCourierSplits: Array<{ courierId: string; amountCentavos: number; trecho: string }> = Array.isArray(req.body?.courierSplits)
     ? req.body.courierSplits.map((item: any) => ({
         courierId: typeof item?.courierId === "string" ? item.courierId.trim() : "",
         amountCentavos: Number(item?.amountCentavos),

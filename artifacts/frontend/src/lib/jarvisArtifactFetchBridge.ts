@@ -88,7 +88,7 @@ function withArtifactDirective(payload: ChatPayload, directive: string): ChatPay
 
 export function installJarvisArtifactFetchBridge() {
   const globalKey = "__vendoraiJarvisArtifactBridgeInstalled";
-  const bridgeWindow = window as Window & Record<string, unknown>;
+  const bridgeWindow = window as Window & { __vendoraiJarvisArtifactBridgeInstalled?: boolean };
   if (bridgeWindow[globalKey]) return;
   bridgeWindow[globalKey] = true;
 

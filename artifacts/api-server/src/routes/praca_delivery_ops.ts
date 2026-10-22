@@ -47,7 +47,7 @@ function message(value: unknown): string {
 
 pracaDeliveryPublicRouter.get("/public/praca-delivery/:trackingToken", publicDeliveryRateLimiter, async (req, res) => {
   const token = String(req.params.trackingToken);
-  if (!/^[a-f0-9]{64}$/.test(token)) return res.status(404).json({ error: "Rastreamento não encontrado." });
+  if (!/^[a-f0-9]{64}$/.test(token)) { res.status(404).json({ error: "Rastreamento não encontrado." }); return; }
   const order = await vendorPool.query(
     `SELECT p.id,p.status,p.cliente_nome,p.ocorrido_em,p.updated_at,p.modelo_logistico,
             hub.nome AS ponto_redespacho_nome,
@@ -61,7 +61,7 @@ pracaDeliveryPublicRouter.get("/public/praca-delivery/:trackingToken", publicDel
       ORDER BY s.created_at DESC LIMIT 1`,
     [token],
   );
-  if (!order.rowCount) return res.status(404).json({ error: "Rastreamento não encontrado." });
+  if (!order.rowCount) { res.status(404).json({ error: "Rastreamento não encontrado." }); return; }
   const [interactions,legs,transfers] = await Promise.all([
     vendorPool.query(
       `SELECT remetente_tipo,canal,mensagem,created_at
@@ -97,13 +97,13 @@ pracaDeliveryPublicRouter.post("/public/praca-delivery/:trackingToken/messages",
   const token = String(req.params.trackingToken);
   const body = message(req.body?.mensagem);
   if (!/^[a-f0-9]{64}$/.test(token) || !body || body.length > 4000) {
-    return res.status(422).json({ error: "Mensagem inválida." });
+    res.status(422).json({ error: "Mensagem inválida." }); return;
   }
   const order = await vendorPool.query(
     "SELECT id,tenant_id FROM praca_pedidos WHERE tracking_token=$1",
     [token],
   );
-  if (!order.rowCount) return res.status(404).json({ error: "Rastreamento não encontrado." });
+  if (!order.rowCount) { res.status(404).json({ error: "Rastreamento não encontrado." }); return; }
   const created = await vendorPool.query(
     `INSERT INTO praca_entrega_interacoes
       (tenant_id,pedido_id,remetente_tipo,canal,mensagem)
@@ -117,7 +117,7 @@ pracaDeliveryPublicRouter.post("/public/praca-delivery/:trackingToken/messages",
 router.post("/tenants/:tenantId/praca-delivery/evidence-uploads", async (req, res) => {
   const tenantId = String(req.params.tenantId);
   const user = actor(req);
-  if (!canAccess(req, tenantId) || !user.id) return res.status(403).json({ error: "Forbidden" });
+  if (!canAccess(req, tenantId) || !user.id) { res.status(403).json({ error: "Forbidden" }); return; }
   const volumeId = String(req.body?.volumeId ?? "");
   const contentType = String(req.body?.contentType ?? "");
   const size = Number(req.body?.size);
@@ -131,9 +131,9 @@ router.post("/tenants/:tenantId/praca-delivery/evidence-uploads", async (req, re
       WHERE v.id=$1 AND v.tenant_id=$2 ORDER BY s.created_at DESC LIMIT 1`,
     [volumeId, tenantId],
   );
-  if (!volume.rowCount) return res.status(404).json({ error: "Volume não encontrado." });
+  if (!volume.rowCount) { res.status(404).json({ error: "Volume não encontrado." }); return; }
   if (user.userFunction === "entrega" && volume.rows[0].entregador_id !== user.id) {
-    return res.status(403).json({ error: "Volume pertence a outro entregador." });
+    res.status(403).json({ error: "Volume pertence a outro entregador." }); return;
   }
   const upload = await createEvidenceUpload(tenantId, volume.rows[0].pedido_id, volumeId, contentType, size);
   res.status(201).json(upload);
@@ -141,26 +141,26 @@ router.post("/tenants/:tenantId/praca-delivery/evidence-uploads", async (req, re
 
 router.get("/tenants/:tenantId/praca-delivery/evidence/:kind/:evidenceId/url", async (req, res) => {
   const tenantId = String(req.params.tenantId);
-  if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
+  if (!canAccess(req, tenantId)) { res.status(403).json({ error: "Forbidden" }); return; }
   const kind = String(req.params.kind);
-  if (!["proof","failure"].includes(kind)) return res.status(404).json({ error: "Evidência não encontrada." });
+  if (!["proof","failure"].includes(kind)) { res.status(404).json({ error: "Evidência não encontrada." }); return; }
   const table = kind === "proof" ? "praca_entrega_provas" : "praca_entrega_falhas";
   const result = await vendorPool.query(
     `SELECT foto_url,rota_id FROM ${table} WHERE id=$1 AND tenant_id=$2`,
     [String(req.params.evidenceId), tenantId],
   );
-  if (!result.rowCount || !result.rows[0].foto_url) return res.status(404).json({ error: "Evidência não encontrada." });
+  if (!result.rowCount || !result.rows[0].foto_url) { res.status(404).json({ error: "Evidência não encontrada." }); return; }
   const user = actor(req);
   if (user.userFunction === "entrega") {
     const route = await vendorPool.query("SELECT entregador_id FROM praca_rotas_entrega WHERE id=$1", [result.rows[0].rota_id]);
-    if (route.rows[0]?.entregador_id !== user.id) return res.status(403).json({ error: "Forbidden" });
+    if (route.rows[0]?.entregador_id !== user.id) { res.status(403).json({ error: "Forbidden" }); return; }
   }
   res.json({ url: await createEvidenceReadUrl(result.rows[0].foto_url), expiresIn: 300 });
 });
 
 router.get("/tenants/:tenantId/praca-delivery/monitor", async (req, res) => {
   const tenantId = String(req.params.tenantId);
-  if (!canAccess(req, tenantId) || actor(req).userFunction === "entrega") return res.status(403).json({ error: "Forbidden" });
+  if (!canAccess(req, tenantId) || actor(req).userFunction === "entrega") { res.status(403).json({ error: "Forbidden" }); return; }
   const [summary, orders, pendingMessages] = await Promise.all([
     vendorPool.query(
       `SELECT count(*) FILTER (WHERE p.status IN ('coleta_agendada','coletado','em_rota'))::int AS em_operacao,
@@ -223,9 +223,9 @@ router.get("/tenants/:tenantId/praca-delivery/monitor", async (req, res) => {
 router.post("/tenants/:tenantId/praca-delivery/orders/:orderId/messages", async (req, res) => {
   const tenantId = String(req.params.tenantId);
   const user = actor(req);
-  if (!canAccess(req, tenantId) || !user.id) return res.status(403).json({ error: "Forbidden" });
+  if (!canAccess(req, tenantId) || !user.id) { res.status(403).json({ error: "Forbidden" }); return; }
   const body = message(req.body?.mensagem);
-  if (!body || body.length > 4000) return res.status(422).json({ error: "Mensagem inválida." });
+  if (!body || body.length > 4000) { res.status(422).json({ error: "Mensagem inválida." }); return; }
 
   const order = await vendorPool.query(
     `SELECT p.id,p.cliente_whatsapp,r.id AS rota_id,r.entregador_id
@@ -235,11 +235,11 @@ router.post("/tenants/:tenantId/praca-delivery/orders/:orderId/messages", async 
       WHERE p.id=$1 AND p.tenant_id=$2 ORDER BY s.created_at DESC LIMIT 1`,
     [String(req.params.orderId), tenantId],
   );
-  if (!order.rowCount) return res.status(404).json({ error: "Pedido não encontrado." });
+  if (!order.rowCount) { res.status(404).json({ error: "Pedido não encontrado." }); return; }
   if (user.userFunction === "entrega" && order.rows[0].entregador_id !== user.id) {
-    return res.status(403).json({ error: "Pedido pertence a outro entregador." });
+    res.status(403).json({ error: "Pedido pertence a outro entregador." }); return;
   }
-  if (!order.rows[0].cliente_whatsapp) return res.status(422).json({ error: "Cliente sem WhatsApp cadastrado." });
+  if (!order.rows[0].cliente_whatsapp) { res.status(422).json({ error: "Cliente sem WhatsApp cadastrado." }); return; }
 
   const client = await vendorPool.connect();
   try {
@@ -272,12 +272,12 @@ router.post("/tenants/:tenantId/praca-delivery/orders/:orderId/reattempt", async
   const tenantId = String(req.params.tenantId);
   const user = actor(req);
   if (!canAccess(req, tenantId) || !user.id || user.userFunction === "entrega") {
-    return res.status(403).json({ error: "Somente o operador pode autorizar reentrega." });
+    res.status(403).json({ error: "Somente o operador pode autorizar reentrega." }); return;
   }
   const serviceDate = req.body?.dataServico;
   const reason = message(req.body?.motivo);
   if (!validDate(serviceDate) || !reason) {
-    return res.status(422).json({ error: "Data de serviço e motivo são obrigatórios." });
+    res.status(422).json({ error: "Data de serviço e motivo são obrigatórios." }); return;
   }
 
   const client = await vendorPool.connect();
@@ -293,7 +293,7 @@ router.post("/tenants/:tenantId/praca-delivery/orders/:orderId/reattempt", async
     );
     if (!order.rowCount) {
       await client.query("ROLLBACK");
-      return res.status(409).json({ error: "Pedido não possui falha elegível para reentrega." });
+      res.status(409).json({ error: "Pedido não possui falha elegível para reentrega." }); return;
     }
     const configDay = await client.query(
       `SELECT 1 FROM praca_logistica_config c
@@ -309,7 +309,7 @@ router.post("/tenants/:tenantId/praca-delivery/orders/:orderId/reattempt", async
     );
     if (!configDay.rowCount) {
       await client.query("ROLLBACK");
-      return res.status(422).json({ error: "Data fora dos dias de operação ou anterior à data local do tenant." });
+      res.status(422).json({ error: "Data fora dos dias de operação ou anterior à data local do tenant." }); return;
     }
     const retry = await client.query(
       `INSERT INTO praca_reentregas
@@ -341,7 +341,7 @@ router.post("/tenants/:tenantId/praca-delivery/orders/:orderId/reattempt", async
     res.status(201).json({ reattempt: retry.rows[0] });
   } catch (error: any) {
     await client.query("ROLLBACK");
-    if (error?.code === "23505") return res.status(409).json({ error: "Reentrega já cadastrada para esta data." });
+    if (error?.code === "23505") { res.status(409).json({ error: "Reentrega já cadastrada para esta data." }); return; }
     throw error;
   } finally {
     client.release();
@@ -351,9 +351,9 @@ router.post("/tenants/:tenantId/praca-delivery/orders/:orderId/reattempt", async
 
 router.post("/tenants/:tenantId/praca-returns/:returnId/evidence-uploads",async(req,res)=>{
   const tenantId=String(req.params.tenantId),user=actor(req);
-  if(!canAccess(req,tenantId)||!user.id||user.userFunction==="entrega")return res.status(403).json({error:"Somente a operação pode registrar o recebimento."});
+  if(!canAccess(req,tenantId)||!user.id||user.userFunction==="entrega"){ res.status(403).json({error:"Somente a operação pode registrar o recebimento."}); return; }
   const found=await vendorPool.query("SELECT d.pedido_id,v.id AS volume_id FROM praca_devolucoes d JOIN LATERAL (SELECT id FROM praca_pedido_volumes WHERE pedido_id=d.pedido_id ORDER BY numero LIMIT 1) v ON true WHERE d.id=$1 AND d.tenant_id=$2",[String(req.params.returnId),tenantId]);
-  if(!found.rowCount)return res.status(404).json({error:"Devolução ou volume não encontrado."});
+  if(!found.rowCount){ res.status(404).json({error:"Devolução ou volume não encontrado."}); return; }
   const contentType=String(req.body?.contentType||""),size=Number(req.body?.size);
   const upload=await createEvidenceUpload(tenantId,found.rows[0].pedido_id,found.rows[0].volume_id,contentType,size);
   res.status(201).json(upload);
@@ -361,7 +361,7 @@ router.post("/tenants/:tenantId/praca-returns/:returnId/evidence-uploads",async(
 
 router.get("/tenants/:tenantId/praca-returns", async (req, res) => {
   const tenantId = String(req.params.tenantId);
-  if (!canAccess(req, tenantId) || actor(req).userFunction === "entrega") return res.status(403).json({ error: "Forbidden" });
+  if (!canAccess(req, tenantId) || actor(req).userFunction === "entrega") { res.status(403).json({ error: "Forbidden" }); return; }
   const result = await vendorPool.query(
     "SELECT d.*,p.cliente_nome,p.cliente_whatsapp,p.total_centavos,hub.nome AS ponto_redespacho_nome,c1.name AS entregador_coleta_nome,c2.name AS entregador_destino_nome,(SELECT count(*)::int FROM praca_devolucao_eventos e WHERE e.devolucao_id=d.id) AS total_eventos FROM praca_devolucoes d JOIN praca_pedidos p ON p.id=d.pedido_id LEFT JOIN praca_pontos_redespacho hub ON hub.id=d.ponto_redespacho_id LEFT JOIN users c1 ON c1.id=d.entregador_coleta_id LEFT JOIN users c2 ON c2.id=d.entregador_destino_id WHERE d.tenant_id=$1 ORDER BY CASE WHEN d.status IN ('recebida_vendedor','cancelada') THEN 1 ELSE 0 END,d.data_servico,d.solicitada_em",
     [tenantId],
@@ -371,9 +371,9 @@ router.get("/tenants/:tenantId/praca-returns", async (req, res) => {
 
 router.get("/tenants/:tenantId/praca-returns/:returnId", async (req, res) => {
   const tenantId = String(req.params.tenantId);
-  if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
+  if (!canAccess(req, tenantId)) { res.status(403).json({ error: "Forbidden" }); return; }
   const item = await vendorPool.query("SELECT d.*,p.cliente_nome,p.cliente_whatsapp,p.total_centavos FROM praca_devolucoes d JOIN praca_pedidos p ON p.id=d.pedido_id WHERE d.id=$1 AND d.tenant_id=$2",[String(req.params.returnId),tenantId]);
-  if (!item.rowCount) return res.status(404).json({ error: "Devolução não encontrada." });
+  if (!item.rowCount) { res.status(404).json({ error: "Devolução não encontrada." }); return; }
   const events = await vendorPool.query("SELECT * FROM praca_devolucao_eventos WHERE devolucao_id=$1 ORDER BY ocorrido_em,id",[item.rows[0].id]);
   res.json({ return:item.rows[0],events:events.rows });
 });
@@ -382,7 +382,7 @@ router.post("/tenants/:tenantId/praca-orders/:orderId/returns", async (req, res)
   const tenantId = String(req.params.tenantId);
   const orderId = String(req.params.orderId);
   const user = actor(req);
-  if (!canAccess(req, tenantId) || !user.id || user.userFunction === "entrega") return res.status(403).json({ error: "Somente a operação pode abrir devoluções." });
+  if (!canAccess(req, tenantId) || !user.id || user.userFunction === "entrega") { res.status(403).json({ error: "Somente a operação pode abrir devoluções." }); return; }
   const key = String(req.header("Idempotency-Key") || req.body?.idempotencyKey || "").trim();
   const reasonCode = message(req.body?.motivoCodigo);
   const reason = message(req.body?.motivoDescricao);
@@ -394,31 +394,31 @@ router.post("/tenants/:tenantId/praca-orders/:orderId/returns", async (req, res)
   const pickupSequence = Number(req.body?.sequenciaColeta || 1);
   const destinationSequence = Number(req.body?.sequenciaDestino || 2);
   if (!key || key.length>200 || !reasonCode || reason.length<5 || !validDate(serviceDate) || !firstCourier || !Number.isInteger(pickupSequence) || !Number.isInteger(destinationSequence) || pickupSequence<1 || destinationSequence<1) {
-    return res.status(422).json({ error: "Idempotência, motivo, data, entregador e sequências são obrigatórios." });
+    res.status(422).json({ error: "Idempotência, motivo, data, entregador e sequências são obrigatórios." }); return;
   }
   if (mode==="redespacho" && (!relayPointId || !secondCourier || firstCourier===secondCourier)) {
-    return res.status(422).json({ error: "Redespacho exige ponto e dois entregadores diferentes." });
+    res.status(422).json({ error: "Redespacho exige ponto e dois entregadores diferentes." }); return;
   }
 
   const client=await vendorPool.connect();
   try {
     await client.query("BEGIN");
     const replay=await client.query("SELECT * FROM praca_devolucoes WHERE tenant_id=$1 AND idempotency_key=$2",[tenantId,key]);
-    if(replay.rowCount){await client.query("COMMIT");return res.json({ return:replay.rows[0],idempotentReplay:true });}
+    if(replay.rowCount){await client.query("COMMIT");res.json({ return:replay.rows[0],idempotentReplay:true }); return;}
     const order=await client.query(
       "SELECT p.*,c.endereco_coleta AS endereco_vendedor,pi.status AS pagamento_status FROM praca_pedidos p JOIN praca_logistica_config c ON c.tenant_id=p.tenant_id AND c.ativo=true LEFT JOIN praca_payment_intents pi ON pi.order_id=p.id WHERE p.id=$1 AND p.tenant_id=$2 FOR UPDATE OF p",
       [orderId,tenantId],
     );
-    if(!order.rowCount){await client.query("ROLLBACK");return res.status(404).json({error:"Pedido ou configuração logística não encontrado."});}
+    if(!order.rowCount){await client.query("ROLLBACK");res.status(404).json({error:"Pedido ou configuração logística não encontrado."}); return;}
     const row=order.rows[0];
-    if(!["entregue","falha_entrega"].includes(row.status)){await client.query("ROLLBACK");return res.status(409).json({error:"Devolução permitida somente após entrega ou falha definitiva."});}
-    if(!["confirmed","received"].includes(row.pagamento_status)){await client.query("ROLLBACK");return res.status(409).json({error:"O pedido não possui pagamento elegível para devolução."});}
+    if(!["entregue","falha_entrega"].includes(row.status)){await client.query("ROLLBACK");res.status(409).json({error:"Devolução permitida somente após entrega ou falha definitiva."}); return;}
+    if(!["confirmed","received"].includes(row.pagamento_status)){await client.query("ROLLBACK");res.status(409).json({error:"O pedido não possui pagamento elegível para devolução."}); return;}
     const courierIds=[firstCourier,...(mode==="redespacho"?[secondCourier]:[])];
     const couriers=await client.query("SELECT id FROM users WHERE tenant_id=$1 AND active=true AND user_function='entrega' AND id=ANY($2::text[])",[tenantId,courierIds]);
-    if(couriers.rowCount!==courierIds.length){await client.query("ROLLBACK");return res.status(422).json({error:"Um dos entregadores não está ativo neste tenant."});}
+    if(couriers.rowCount!==courierIds.length){await client.query("ROLLBACK");res.status(422).json({error:"Um dos entregadores não está ativo neste tenant."}); return;}
     if(mode==="redespacho"){
       const point=await client.query("SELECT 1 FROM praca_pontos_redespacho WHERE id=$1 AND tenant_id=$2 AND ativo=true",[relayPointId,tenantId]);
-      if(!point.rowCount){await client.query("ROLLBACK");return res.status(422).json({error:"Ponto de redespacho inválido ou inativo."});}
+      if(!point.rowCount){await client.query("ROLLBACK");res.status(422).json({error:"Ponto de redespacho inválido ou inativo."}); return;}
     }
     const created=await client.query(
       "INSERT INTO praca_devolucoes (tenant_id,pedido_id,idempotency_key,motivo_codigo,motivo_descricao,modelo_logistico,status,data_servico,endereco_coleta,endereco_destino,ponto_redespacho_id,entregador_coleta_id,entregador_destino_id,sequencia_coleta,sequencia_destino,solicitada_por,agendada_em) VALUES ($1,$2,$3,$4,$5,$6,'agendada',$7,$8::jsonb,$9::jsonb,$10,$11,$12,$13,$14,$15,now()) RETURNING *",
@@ -432,7 +432,7 @@ router.post("/tenants/:tenantId/praca-orders/:orderId/returns", async (req, res)
     res.status(201).json({return:created.rows[0]});
   } catch(error:any) {
     await client.query("ROLLBACK");
-    if(error?.code==="23505") return res.status(409).json({error:"Este pedido já possui uma devolução."});
+    if(error?.code==="23505") { res.status(409).json({error:"Este pedido já possui uma devolução."}); return; }
     throw error;
   } finally { client.release(); }
 });
@@ -440,35 +440,35 @@ router.post("/tenants/:tenantId/praca-orders/:orderId/returns", async (req, res)
 router.post("/tenants/:tenantId/praca-returns/:returnId/events", async (req,res)=>{
   const tenantId=String(req.params.tenantId),returnId=String(req.params.returnId);
   const user=actor(req);
-  if(!canAccess(req,tenantId)||!user.id)return res.status(403).json({error:"Forbidden"});
+  if(!canAccess(req,tenantId)||!user.id){ res.status(403).json({error:"Forbidden"}); return; }
   const action=String(req.body?.acao||"");
   const rawQr=message(req.body?.qrCode),qrCode=rawQr.startsWith("APPVENDOR:RETURN:")?rawQr.slice(17):rawQr;
-  if(!qrCode)return res.status(422).json({error:"QR Code da devolução é obrigatório."});
+  if(!qrCode){ res.status(422).json({error:"QR Code da devolução é obrigatório."}); return; }
   const lat=req.body?.latitude==null?null:Number(req.body.latitude),lng=req.body?.longitude==null?null:Number(req.body.longitude);
-  if((lat!=null&&(!Number.isFinite(lat)||lat< -90||lat>90))||(lng!=null&&(!Number.isFinite(lng)||lng< -180||lng>180)))return res.status(422).json({error:"Coordenadas inválidas."});
+  if((lat!=null&&(!Number.isFinite(lat)||lat< -90||lat>90))||(lng!=null&&(!Number.isFinite(lng)||lng< -180||lng>180))){ res.status(422).json({error:"Coordenadas inválidas."}); return; }
   const client=await vendorPool.connect();
   try{
     await client.query("BEGIN");
     const found=await client.query("SELECT d.*,p.cliente_whatsapp FROM praca_devolucoes d JOIN praca_pedidos p ON p.id=d.pedido_id WHERE d.id=$1 AND d.tenant_id=$2 FOR UPDATE OF d",[returnId,tenantId]);
-    if(!found.rowCount){await client.query("ROLLBACK");return res.status(404).json({error:"Devolução não encontrada."});}
+    if(!found.rowCount){await client.query("ROLLBACK");res.status(404).json({error:"Devolução não encontrada."}); return;}
     const row=found.rows[0],isCourier=user.userFunction==="entrega";
-    if(qrCode!==row.qr_code){await client.query("ROLLBACK");return res.status(422).json({error:"QR Code não pertence a esta devolução."});}
+    if(qrCode!==row.qr_code){await client.query("ROLLBACK");res.status(422).json({error:"QR Code não pertence a esta devolução."}); return;}
     const transitions:any={
       direto:{coletar_cliente:["agendada","em_rota_vendedor"],receber_vendedor:["em_rota_vendedor","recebida_vendedor"]},
       redespacho:{coletar_cliente:["agendada","em_rota_redespacho"],receber_redespacho:["em_rota_redespacho","recebida_redespacho"],sair_redespacho:["recebida_redespacho","em_rota_vendedor"],receber_vendedor:["em_rota_vendedor","recebida_vendedor"]},
     };
     const transition=transitions[row.modelo_logistico]?.[action];
-    if(!transition||row.status!==transition[0]){await client.query("ROLLBACK");return res.status(409).json({error:"Movimento incompatível com a etapa atual da devolução."});}
+    if(!transition||row.status!==transition[0]){await client.query("ROLLBACK");res.status(409).json({error:"Movimento incompatível com a etapa atual da devolução."}); return;}
     if(isCourier){
       const allowedCourier=action==="coletar_cliente"?row.entregador_coleta_id:row.entregador_destino_id;
-      if(action==="receber_vendedor"||allowedCourier!==user.id){await client.query("ROLLBACK");return res.status(403).json({error:"A etapa pertence a outro responsável."});}
-      if(lat==null||lng==null){await client.query("ROLLBACK");return res.status(422).json({error:"Entregador deve registrar localização real."});}
+      if(action==="receber_vendedor"||allowedCourier!==user.id){await client.query("ROLLBACK");res.status(403).json({error:"A etapa pertence a outro responsável."}); return;}
+      if(lat==null||lng==null){await client.query("ROLLBACK");res.status(422).json({error:"Entregador deve registrar localização real."}); return;}
     } else if(action!=="receber_vendedor"){
-      await client.query("ROLLBACK");return res.status(403).json({error:"Esta etapa deve ser registrada pelo entregador responsável."});
+      await client.query("ROLLBACK");res.status(403).json({error:"Esta etapa deve ser registrada pelo entregador responsável."}); return;
     }
     const evidence=req.body?.evidencia&&typeof req.body.evidencia==="object"?req.body.evidencia:{};
     if(action==="receber_vendedor"&&(!message(req.body?.condicaoRecebimento)||!Object.keys(evidence).length)){
-      await client.query("ROLLBACK");return res.status(422).json({error:"Recebimento exige condição do produto e evidência."});
+      await client.query("ROLLBACK");res.status(422).json({error:"Recebimento exige condição do produto e evidência."}); return;
     }
     const next=transition[1];
     await client.query("UPDATE praca_devolucoes SET status=$1,coletada_em=CASE WHEN $2='coletar_cliente' THEN now() ELSE coletada_em END,recebida_em=CASE WHEN $1='recebida_vendedor' THEN now() ELSE recebida_em END,recebida_por=CASE WHEN $1='recebida_vendedor' THEN $3 ELSE recebida_por END,condicao_recebimento=CASE WHEN $1='recebida_vendedor' THEN $4 ELSE condicao_recebimento END,evidencia_recebimento=CASE WHEN $1='recebida_vendedor' THEN $5::jsonb ELSE evidencia_recebimento END,updated_at=now() WHERE id=$6",[next,action,user.id,message(req.body?.condicaoRecebimento)||null,JSON.stringify(evidence),returnId]);

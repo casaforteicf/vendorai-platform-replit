@@ -54,6 +54,7 @@ export const insumosTable = pgTable("insumos", {
 });
 
 export const insertInsumoSchema = createInsertSchema(insumosTable, {
+  especificacaoTecnica: () => z.record(z.string(), z.unknown()),
   precoUnitario: decimalOptional,
   fatorCompraParaConsumo: decimalOptional,
   embalagemQuantidade: decimalOptional,
@@ -64,6 +65,7 @@ export const insertInsumoSchema = createInsertSchema(insumosTable, {
 }).omit({ id: true, createdAt: true, updatedAt: true });
 
 export const updateInsumoSchema = createSelectSchema(insumosTable, {
+  especificacaoTecnica: () => z.record(z.string(), z.unknown()),
   precoUnitario: decimalOptional,
   fatorCompraParaConsumo: decimalOptional,
   embalagemQuantidade: decimalOptional,
@@ -206,12 +208,14 @@ export const comprasObrasTable = pgTable("compras_obras", {
 });
 
 export const insertCompraObraSchema = createInsertSchema(comprasObrasTable, {
+  escopoSnapshot: () => z.record(z.string(), z.unknown()),
   quantidade: decimalOptional,
   valorUnitario: decimalOptional,
   valorTotal: decimalOptional,
 }).omit({ id: true, createdAt: true, updatedAt: true });
 
 export const updateCompraObraSchema = createSelectSchema(comprasObrasTable, {
+  escopoSnapshot: () => z.record(z.string(), z.unknown()),
   quantidade: decimalOptional,
   valorUnitario: decimalOptional,
   valorTotal: decimalOptional,

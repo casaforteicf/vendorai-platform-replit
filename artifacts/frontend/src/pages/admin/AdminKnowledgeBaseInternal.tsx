@@ -7492,7 +7492,7 @@ const EMPTY_MODULE_FORM: ModuleForm = {
   angle: "",
 };
 
-function authHeaders() {
+function authHeaders(): Record<string, string> {
   const token = localStorage.getItem("vendorai_token");
   return { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
 }
@@ -7520,7 +7520,7 @@ function moduleToForm(module?: ScopeModule | null): ModuleForm {
 }
 
 function sanitizeStaticSegmentOverride(key: string, item: KnowledgeSegment): KnowledgeSegment {
-  const base = segmentCatalog[key];
+  const base = Object.entries(segmentCatalog).find(([segmentKey]) => segmentKey === key)?.[1];
   if (!base) return item;
 
   const ownIds = new Set(base.modules.map((module) => module.id));

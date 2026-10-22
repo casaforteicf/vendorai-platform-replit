@@ -1192,7 +1192,7 @@ export default function ConceptWebGLScene({
         .filter((edge) => edge.count === 1)
         .filter((edge) => {
           const covered = existing.some((wall) => {
-            const tolerance = Math.max(0.12, Number(wall.thickness ?? 0.14) * 1.6);
+            const tolerance = Math.max(0.12, Number(("thickness" in wall ? wall.thickness : undefined) ?? 0.14) * 1.6);
             return pointToSegmentDistance(edge.x1, edge.y1, wall.x1, wall.y1, wall.x2, wall.y2) <= tolerance
               && pointToSegmentDistance(edge.x2, edge.y2, wall.x1, wall.y1, wall.x2, wall.y2) <= tolerance;
           });
@@ -1648,7 +1648,7 @@ export default function ConceptWebGLScene({
         && (level.openings ?? []).length === 0
         && sharedMaterialIds.size === 1
         && authoredWalls.every(wall =>
-          [wall.x1, wall.y1, wall.x2, wall.y2, wall.thickness ?? 0.15].every(Number.isFinite)
+          [wall.x1, wall.y1, wall.x2, wall.y2, ("thickness" in wall ? wall.thickness : undefined) ?? 0.15].every(Number.isFinite)
           && (Math.abs(wall.y2 - wall.y1) < 1e-7 || Math.abs(wall.x2 - wall.x1) < 1e-7)
           && Math.hypot(wall.x2 - wall.x1, wall.y2 - wall.y1) >= 0.05
         );
@@ -1657,7 +1657,7 @@ export default function ConceptWebGLScene({
         const union = buildWallUnionPipeline(authoredWalls.map(wall => ({
           id: wall.id, floor: level.floor,
           x1: wall.x1, y1: wall.y1, x2: wall.x2, y2: wall.y2,
-          thickness: wall.thickness ?? 0.15, height: 2.8,
+          thickness: ("thickness" in wall ? wall.thickness : undefined) ?? 0.15, height: 2.8,
           baseElevation: floorBase + 0.16,
         })), []);
         if (union.warnings.length === 0 && union.meshes.length === 1 && union.meshes[0].indices.length) {

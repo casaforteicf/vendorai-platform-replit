@@ -8,7 +8,7 @@ function canManage(req:Express.Request,tenantId:string){const u=actor(req);retur
 const validDate=(v:unknown)=>typeof v==="string"&&/^\d{4}-\d{2}-\d{2}$/.test(v);
 
 router.get("/tenants/:tenantId/praca-reconciliations",async(req,res)=>{
- const tenantId=String(req.params.tenantId);if(!canManage(req,tenantId))return res.status(403).json({error:"Forbidden"});
+ const tenantId=String(req.params.tenantId);if(!canManage(req,tenantId)){ res.status(403).json({error:"Forbidden"}); return; }
  const result=await vendorPool.query(
   `SELECT b.*,u.name AS created_by_name,r.name AS reviewed_by_name
    FROM praca_reconciliation_batches b LEFT JOIN users u ON u.id=b.created_by LEFT JOIN users r ON r.id=b.reviewed_by
@@ -18,19 +18,19 @@ router.get("/tenants/:tenantId/praca-reconciliations",async(req,res)=>{
 });
 
 router.post("/tenants/:tenantId/praca-reconciliations",async(req,res)=>{
- const tenantId=String(req.params.tenantId),u=actor(req);if(!canManage(req,tenantId))return res.status(403).json({error:"Forbidden"});
+ const tenantId=String(req.params.tenantId),u=actor(req);if(!canManage(req,tenantId)){ res.status(403).json({error:"Forbidden"}); return; }
  const from=req.body?.from,to=req.body?.to;
- if(!validDate(from)||!validDate(to)||from>to)return res.status(422).json({error:"Período inválido."});
+ if(!validDate(from)||!validDate(to)||from>to){ res.status(422).json({error:"Período inválido."}); return; }
  const days=(new Date(to+"T00:00:00Z").getTime()-new Date(from+"T00:00:00Z").getTime())/86400000+1;
- if(days>366)return res.status(422).json({error:"O fechamento não pode exceder 366 dias."});
+ if(days>366){ res.status(422).json({error:"O fechamento não pode exceder 366 dias."}); return; }
  const result=await generatePracaReconciliation({tenantId,from,to,actorId:u.id});
  res.status(201).json(result);
 });
 
 router.get("/tenants/:tenantId/praca-reconciliations/:batchId",async(req,res)=>{
- const tenantId=String(req.params.tenantId),batchId=String(req.params.batchId);if(!canManage(req,tenantId))return res.status(403).json({error:"Forbidden"});
+ const tenantId=String(req.params.tenantId),batchId=String(req.params.batchId);if(!canManage(req,tenantId)){ res.status(403).json({error:"Forbidden"}); return; }
  const batch=await vendorPool.query("SELECT * FROM praca_reconciliation_batches WHERE id=$1 AND tenant_id=$2",[batchId,tenantId]);
- if(!batch.rowCount)return res.status(404).json({error:"Fechamento não encontrado."});
+ if(!batch.rowCount){ res.status(404).json({error:"Fechamento não encontrado."}); return; }
  const [items,events]=await Promise.all([
   vendorPool.query(`SELECT i.*,p.cliente_nome FROM praca_reconciliation_items i
    LEFT JOIN praca_pedidos p ON p.id=i.order_id WHERE i.batch_id=$1 ORDER BY
@@ -43,15 +43,15 @@ router.get("/tenants/:tenantId/praca-reconciliations/:batchId",async(req,res)=>{
 
 router.patch("/tenants/:tenantId/praca-reconciliations/:batchId/items/:itemId",async(req,res)=>{
  const tenantId=String(req.params.tenantId),batchId=String(req.params.batchId),itemId=String(req.params.itemId),u=actor(req);
- if(!canManage(req,tenantId)||!u.id)return res.status(403).json({error:"Forbidden"});
+ if(!canManage(req,tenantId)||!u.id){ res.status(403).json({error:"Forbidden"}); return; }
  const resolution=typeof req.body?.resolution==="string"?req.body.resolution.trim():"";
- if(resolution.length<10)return res.status(422).json({error:"Descreva a conferência e a correção realizada."});
+ if(resolution.length<10){ res.status(422).json({error:"Descreva a conferência e a correção realizada."}); return; }
  const client=await vendorPool.connect();
  try{
   await client.query("BEGIN");
   const item=await client.query("SELECT * FROM praca_reconciliation_items WHERE id=$1 AND batch_id=$2 AND tenant_id=$3 FOR UPDATE",[itemId,batchId,tenantId]);
-  if(!item.rowCount){await client.query("ROLLBACK");return res.status(404).json({error:"Item não encontrado."});}
-  if(item.rows[0].reconciliation_status==="balanced"){await client.query("ROLLBACK");return res.status(409).json({error:"Este item já está conciliado."});}
+  if(!item.rowCount){await client.query("ROLLBACK");res.status(404).json({error:"Item não encontrado."}); return;}
+  if(item.rows[0].reconciliation_status==="balanced"){await client.query("ROLLBACK");res.status(409).json({error:"Este item já está conciliado."}); return;}
   await client.query("UPDATE praca_reconciliation_items SET reconciliation_status='balanced',resolved_at=now(),resolved_by=$1,resolution=$2,updated_at=now() WHERE id=$3",[u.id,resolution,itemId]);
   await client.query("INSERT INTO praca_reconciliation_events (tenant_id,batch_id,item_id,event_type,actor_id,note,metadata) VALUES ($1,$2,$3,'item_resolved',$4,$5,$6::jsonb)",[tenantId,batchId,itemId,u.id,resolution,JSON.stringify({previousStatus:item.rows[0].reconciliation_status,differenceCentavos:item.rows[0].difference_centavos})]);
   const counts=await client.query(`SELECT count(*) FILTER (WHERE reconciliation_status='balanced')::int balanced,
@@ -64,12 +64,12 @@ router.patch("/tenants/:tenantId/praca-reconciliations/:batchId/items/:itemId",a
 
 router.patch("/tenants/:tenantId/praca-reconciliations/:batchId/status",async(req,res)=>{
  const tenantId=String(req.params.tenantId),batchId=String(req.params.batchId),u=actor(req);
- if(!canManage(req,tenantId)||!u.id)return res.status(403).json({error:"Forbidden"});
+ if(!canManage(req,tenantId)||!u.id){ res.status(403).json({error:"Forbidden"}); return; }
  const status=String(req.body?.status||""),notes=typeof req.body?.notes==="string"?req.body.notes.trim():"";
- if(!["reviewed","closed","completed"].includes(status))return res.status(422).json({error:"Status inválido."});
+ if(!["reviewed","closed","completed"].includes(status)){ res.status(422).json({error:"Status inválido."}); return; }
  const current=await vendorPool.query("SELECT * FROM praca_reconciliation_batches WHERE id=$1 AND tenant_id=$2",[batchId,tenantId]);
- if(!current.rowCount)return res.status(404).json({error:"Fechamento não encontrado."});
- if(status==="closed"&&(Number(current.rows[0].divergent_count)>0||Number(current.rows[0].pending_count)>0))return res.status(409).json({error:"Resolva divergências e pendências antes de fechar."});
+ if(!current.rowCount){ res.status(404).json({error:"Fechamento não encontrado."}); return; }
+ if(status==="closed"&&(Number(current.rows[0].divergent_count)>0||Number(current.rows[0].pending_count)>0)){ res.status(409).json({error:"Resolva divergências e pendências antes de fechar."}); return; }
  const result=await vendorPool.query(`UPDATE praca_reconciliation_batches SET status=$1,notes=coalesce(nullif($2,''),notes),
   reviewed_by=CASE WHEN $1 IN ('reviewed','closed') THEN $3 ELSE reviewed_by END,
   reviewed_at=CASE WHEN $1 IN ('reviewed','closed') THEN coalesce(reviewed_at,now()) ELSE reviewed_at END,

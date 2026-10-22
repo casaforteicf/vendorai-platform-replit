@@ -660,7 +660,6 @@ router.post("/browser-agent/skills/:id/run", async (req, res) => {
       ));
 
     res.json({
-      ok: true,
       skillId: skill.id,
       skillName: skill.name,
       version: skill.version + (repaired ? 1 : 0),
@@ -827,7 +826,6 @@ router.post("/browser-agent/skills/:id/watch-check", async (req, res) => {
       ));
 
     res.json({
-      ok: true,
       skillId: skill.id,
       skillName: skill.name,
       watchEnabled: skill.watchEnabled,

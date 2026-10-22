@@ -291,11 +291,11 @@ export default function ConceptClientBriefPanel({
     ...DEFAULT_VISION,
     ...(initialProjectBrief?.vision ?? {}),
     household: {
-      ...DEFAULT_VISION.household,
+      ...DEFAULT_VISION.household!,
       ...(initialProjectBrief?.vision?.household ?? {}),
     },
     routine: {
-      ...DEFAULT_VISION.routine,
+      ...DEFAULT_VISION.routine!,
       ...(initialProjectBrief?.vision?.routine ?? {}),
     },
   }));

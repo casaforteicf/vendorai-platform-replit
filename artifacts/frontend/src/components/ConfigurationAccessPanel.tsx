@@ -1,3 +1,4 @@
+import { getListTenantUsersQueryKey } from "@workspace/api-client-react";
 import { useMemo, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useListTenantUsers } from "@workspace/api-client-react";
@@ -25,7 +26,7 @@ export function ConfigurationAccessPanel() {
   const isAdmin = user?.platformRole === "super_admin" || user?.platformRole === "tenant_admin" || user?.userFunction === "administrador";
   const [expanded, setExpanded] = useState(false);
   const { data: users = [], isLoading } = useListTenantUsers(tenantId, {
-    query: { enabled: Boolean(tenantId && isAdmin && expanded), staleTime: 60_000, refetchOnWindowFocus: false },
+    query: { queryKey: getListTenantUsersQueryKey(tenantId), enabled: Boolean(tenantId && isAdmin && expanded), staleTime: 60_000, refetchOnWindowFocus: false },
   });
 
   const allowedUsers = useMemo(() => (Array.isArray(users) ? users.filter(canManageSettings) : []), [users]);

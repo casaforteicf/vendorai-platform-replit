@@ -223,7 +223,7 @@ export default function Estoque() {
   const { data: movements = [], isLoading: loadingMovements } = useListInventoryMovements(tenantId, undefined, {
     query: { queryKey: getListInventoryMovementsQueryKey(tenantId), enabled: !!tenantId },
   });
-  const { data: leads = [] } = useListTenantLeads(tenantId, {
+  const { data: leads = [] } = useListTenantLeads(tenantId, undefined, {
     query: { queryKey: getListTenantLeadsQueryKey(tenantId), enabled: !!tenantId },
   });
 

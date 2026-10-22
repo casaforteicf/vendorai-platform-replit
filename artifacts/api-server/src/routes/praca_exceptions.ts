@@ -14,7 +14,7 @@ function canAccess(req:Express.Request,tenantId:string){
 
 router.get("/tenants/:tenantId/praca-exceptions/config",async(req,res)=>{
   const tenantId=String(req.params.tenantId),user=actor(req);
-  if(!canAccess(req,tenantId)||user.userFunction==="entrega")return res.status(403).json({error:"Forbidden"});
+  if(!canAccess(req,tenantId)||user.userFunction==="entrega"){ res.status(403).json({error:"Forbidden"}); return; }
   const result=await vendorPool.query(
     "INSERT INTO praca_exception_config (tenant_id) VALUES ($1) ON CONFLICT (tenant_id) DO UPDATE SET tenant_id=excluded.tenant_id RETURNING *",
     [tenantId],
@@ -24,10 +24,10 @@ router.get("/tenants/:tenantId/praca-exceptions/config",async(req,res)=>{
 
 router.put("/tenants/:tenantId/praca-exceptions/config",async(req,res)=>{
   const tenantId=String(req.params.tenantId),user=actor(req);
-  if(!canAccess(req,tenantId)||user.userFunction==="entrega")return res.status(403).json({error:"Forbidden"});
+  if(!canAccess(req,tenantId)||user.userFunction==="entrega"){ res.status(403).json({error:"Forbidden"}); return; }
   const fields=["pedidoParadoMinutos","rotaParadaMinutos","estornoPendenteMinutos","devolucaoAtrasadaHoras","notificacaoFalhaMinutos","escalonamentoMinutos"] as const;
   const values=fields.map(k=>Number(req.body?.[k]));
-  if(values.some(v=>!Number.isInteger(v)||v<1))return res.status(422).json({error:"Todos os limites de SLA devem ser números inteiros positivos."});
+  if(values.some(v=>!Number.isInteger(v)||v<1)){ res.status(422).json({error:"Todos os limites de SLA devem ser números inteiros positivos."}); return; }
   const result=await vendorPool.query(
     `INSERT INTO praca_exception_config
       (tenant_id,pedido_parado_minutos,rota_parada_minutos,estorno_pendente_minutos,devolucao_atrasada_horas,notificacao_falha_minutos,escalonamento_minutos,ativo)
@@ -43,7 +43,7 @@ router.put("/tenants/:tenantId/praca-exceptions/config",async(req,res)=>{
 
 router.post("/tenants/:tenantId/praca-exceptions/scan",async(req,res)=>{
   const tenantId=String(req.params.tenantId),user=actor(req);
-  if(!canAccess(req,tenantId)||user.userFunction==="entrega")return res.status(403).json({error:"Forbidden"});
+  if(!canAccess(req,tenantId)||user.userFunction==="entrega"){ res.status(403).json({error:"Forbidden"}); return; }
   const config=await vendorPool.query("SELECT 1 FROM praca_exception_config WHERE tenant_id=$1",[tenantId]);
   if(!config.rowCount)await vendorPool.query("INSERT INTO praca_exception_config (tenant_id) VALUES ($1)",[tenantId]);
   res.json(await runPracaExceptionScan(undefined,tenantId));
@@ -51,7 +51,7 @@ router.post("/tenants/:tenantId/praca-exceptions/scan",async(req,res)=>{
 
 router.get("/tenants/:tenantId/praca-exceptions",async(req,res)=>{
   const tenantId=String(req.params.tenantId),user=actor(req);
-  if(!canAccess(req,tenantId)||user.userFunction==="entrega")return res.status(403).json({error:"Forbidden"});
+  if(!canAccess(req,tenantId)||user.userFunction==="entrega"){ res.status(403).json({error:"Forbidden"}); return; }
   const config=await vendorPool.query("SELECT 1 FROM praca_exception_config WHERE tenant_id=$1",[tenantId]);
   if(!config.rowCount)await vendorPool.query("INSERT INTO praca_exception_config (tenant_id) VALUES ($1)",[tenantId]);
   await runPracaExceptionScan(undefined,tenantId);
@@ -88,30 +88,30 @@ router.get("/tenants/:tenantId/praca-exceptions",async(req,res)=>{
 
 router.get("/tenants/:tenantId/praca-exceptions/:incidentId",async(req,res)=>{
   const tenantId=String(req.params.tenantId);
-  if(!canAccess(req,tenantId)||actor(req).userFunction==="entrega")return res.status(403).json({error:"Forbidden"});
+  if(!canAccess(req,tenantId)||actor(req).userFunction==="entrega"){ res.status(403).json({error:"Forbidden"}); return; }
   const item=await vendorPool.query("SELECT * FROM praca_exception_incidents WHERE id=$1 AND tenant_id=$2",[String(req.params.incidentId),tenantId]);
-  if(!item.rowCount)return res.status(404).json({error:"Incidente não encontrado."});
+  if(!item.rowCount){ res.status(404).json({error:"Incidente não encontrado."}); return; }
   const events=await vendorPool.query("SELECT * FROM praca_exception_events WHERE incident_id=$1 ORDER BY created_at,id",[item.rows[0].id]);
   res.json({incident:item.rows[0],events:events.rows});
 });
 
 router.patch("/tenants/:tenantId/praca-exceptions/:incidentId",async(req,res)=>{
   const tenantId=String(req.params.tenantId),incidentId=String(req.params.incidentId),user=actor(req);
-  if(!canAccess(req,tenantId)||!user.id||user.userFunction==="entrega")return res.status(403).json({error:"Forbidden"});
+  if(!canAccess(req,tenantId)||!user.id||user.userFunction==="entrega"){ res.status(403).json({error:"Forbidden"}); return; }
   const requestedStatus=typeof req.body?.status==="string"?req.body.status:null;
   const assignedTo=typeof req.body?.assignedTo==="string"?req.body.assignedTo.trim()||null:undefined;
   const effectiveAssignedTo=assignedTo===undefined&&requestedStatus==="reconhecido"?user.id:assignedTo;
   const note=typeof req.body?.note==="string"?req.body.note.trim():"";
-  if(requestedStatus&&!["aberto","reconhecido","resolvido","ignorado"].includes(requestedStatus))return res.status(422).json({error:"Status inválido."});
-  if((requestedStatus==="resolvido"||requestedStatus==="ignorado")&&note.length<5)return res.status(422).json({error:"Explique a resolução ou o motivo para ignorar."});
+  if(requestedStatus&&!["aberto","reconhecido","resolvido","ignorado"].includes(requestedStatus)){ res.status(422).json({error:"Status inválido."}); return; }
+  if((requestedStatus==="resolvido"||requestedStatus==="ignorado")&&note.length<5){ res.status(422).json({error:"Explique a resolução ou o motivo para ignorar."}); return; }
   const client=await vendorPool.connect();
   try{
     await client.query("BEGIN");
     const current=await client.query("SELECT * FROM praca_exception_incidents WHERE id=$1 AND tenant_id=$2 FOR UPDATE",[incidentId,tenantId]);
-    if(!current.rowCount){await client.query("ROLLBACK");return res.status(404).json({error:"Incidente não encontrado."});}
+    if(!current.rowCount){await client.query("ROLLBACK");res.status(404).json({error:"Incidente não encontrado."}); return;}
     if(effectiveAssignedTo){
       const valid=await client.query("SELECT 1 FROM users WHERE id=$1 AND tenant_id=$2 AND active=true",[effectiveAssignedTo,tenantId]);
-      if(!valid.rowCount){await client.query("ROLLBACK");return res.status(422).json({error:"Responsável inválido ou inativo."});}
+      if(!valid.rowCount){await client.query("ROLLBACK");res.status(422).json({error:"Responsável inválido ou inativo."}); return;}
     }
     const previous=current.rows[0],next=requestedStatus??previous.status;
     const updated=await client.query(

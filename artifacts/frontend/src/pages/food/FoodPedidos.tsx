@@ -12,7 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useToast } from "@/hooks/use-toast";
 import { Plus, Loader2, ClipboardList, Minus, Trash2 } from "lucide-react";
 
-function authHeaders() {
+function authHeaders(): Record<string, string> {
   const token = localStorage.getItem("vendorai_token");
   return { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
 }
@@ -213,6 +213,7 @@ function NovoPedidoDialog({ tenantId, open, onOpenChange }: { tenantId: string; 
 }
 
 export default function FoodPedidos() {
+  const { toast } = useToast();
   const { user } = useAuth();
   const tenantId = user?.tenantId ?? "";
   const qc = useQueryClient();

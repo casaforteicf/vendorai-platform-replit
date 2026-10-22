@@ -42,7 +42,7 @@ async function canReleaseMarketingBatch(req: import("express").Request, tenantId
   const [row] = await db
     .select({ permissions: usersTable.permissions })
     .from(usersTable)
-    .where(and(eq(usersTable.id, user.id), eq(usersTable.tenantId, tenantId)))
+    .where(and(eq(usersTable.id, user.sub), eq(usersTable.tenantId, tenantId)))
     .limit(1);
 
   return Array.isArray(row?.permissions) && row.permissions.includes("content");

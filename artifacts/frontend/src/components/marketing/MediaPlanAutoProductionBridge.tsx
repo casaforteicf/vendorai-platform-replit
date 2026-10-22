@@ -737,10 +737,10 @@ export function MediaPlanAutoProductionBridge() {
           executorUrl: `/content?tab=campanhas&view=lp&source=media-plan&mediaPlanId=${encodeURIComponent(plan!.id)}&campaignId=${encodeURIComponent(campaign.id)}${siteId ? `&siteId=${encodeURIComponent(siteId)}` : ""}`,
           executorDetail: "Landing page/site gerado e salvo como rascunho",
         });
-        return { itemId: item.id, status: "ready", kind: "site", label: item.temaSugerido, executorUrl: String(updated.context?.executorUrl ?? ""), detail: "Página gerada" } satisfies ProductionResult;
+        return { itemId: item.id, status: "ready", kind: "site", label: item.temaSugerido, executorUrl: String(updated.context && "executorUrl" in updated.context ? updated.context.executorUrl ?? "" : ""), detail: "Página gerada" } satisfies ProductionResult;
       }
     }
-    return { itemId: item.id, status: "processing", kind: "site", label: item.temaSugerido, executorUrl: String(updated.context?.executorUrl ?? ""), detail: "Página continua em geração" } satisfies ProductionResult;
+    return { itemId: item.id, status: "processing", kind: "site", label: item.temaSugerido, executorUrl: String(updated.context && "executorUrl" in updated.context ? updated.context.executorUrl ?? "" : ""), detail: "Página continua em geração" } satisfies ProductionResult;
   }, [assets, generateContent, patchCalendar, plan, recordVersion, tenantId, updateProject]);
 
   const materializeOne = useCallback(async (item: CalendarItem): Promise<ProductionResult> => {

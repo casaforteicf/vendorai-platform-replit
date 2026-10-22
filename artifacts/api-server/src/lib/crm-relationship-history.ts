@@ -3,7 +3,7 @@ export function appendRelationshipEvent(
   metadata: Record<string, unknown> | null | undefined,
   action: "linked" | "updated" | "unlinked",
   actorId?: string | null,
-) {
+): Record<string, unknown> & { inactive: boolean; relationshipHistory: Array<{ action: string; at: string | null; actorId: string | null }> } {
   const previous = metadata ?? {};
   const history = Array.isArray(previous.relationshipHistory) ? previous.relationshipHistory : [];
   // Never fabricate when a relationship was originally created.

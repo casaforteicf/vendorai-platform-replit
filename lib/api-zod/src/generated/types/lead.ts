@@ -36,6 +36,8 @@ export interface Lead {
   naoLeadClassificadoEm?: Date | null;
   /** Instagram Scoped User ID (IGSID) — set automatically when the lead sends an Instagram DM. */
   instagramScopedId?: string | null;
+  /** Profissão do lead para campanhas de datas profissionais. */
+  profissao?: string | null;
   /** Data de nascimento do lead (YYYY-MM-DD). */
   dataNascimento?: string | null;
   /** Estado civil: solteiro, casado, divorciado, viuvo, uniao_estavel. */

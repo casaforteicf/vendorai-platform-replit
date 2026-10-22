@@ -784,7 +784,7 @@ function buildProposalScheduleRows<T extends PresentableProposalItem>(
   groups: Array<{ id: string; ordem: number; nome: string; hasStageHeader: boolean; itens: T[] }>,
   presentation: Required<ProposalPresentationConfig>,
   total: number,
-) {
+): Array<ProposalScheduleRow & { financialPercent: number; marcoPagamento: string; observacao: string }> {
   const globalStart = proposalDate(presentation.previsaoInicio);
   const dateByStage = new Map<string, { start: Date | null; end: Date | null }>();
   const rawRows: Array<any> = [];

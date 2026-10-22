@@ -1,3 +1,4 @@
+import { getGetBusinessProfileByTenantQueryKey } from "@workspace/api-client-react";
 import { useEffect, useState } from "react";
 import { useGetBusinessProfileByTenant } from "@workspace/api-client-react";
 import { useAuth } from "@/contexts/AuthContext";
@@ -19,7 +20,7 @@ export function TenantBrand({
   const { user } = useAuth();
   const tenantId = user?.tenantId ?? "";
   const { data: businessProfile } = useGetBusinessProfileByTenant(tenantId, {
-    query: {
+    query: { queryKey: getGetBusinessProfileByTenantQueryKey(tenantId),
       enabled: !!tenantId,
       retry: false,
     },

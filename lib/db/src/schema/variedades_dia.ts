@@ -38,7 +38,7 @@ export const variedadesDiaTable = pgTable(
   ],
 );
 
-export const insertVariedadeDiaSchema = createInsertSchema(variedadesDiaTable)
+export const insertVariedadeDiaSchema = createInsertSchema(variedadesDiaTable, { promocaoTipo: () => z.enum(["produto", "texto_livre"]) })
   .omit({ id: true, ativo: true, createdAt: true, expiresAt: true, dataReferencia: true })
   .extend({
     categoria: z.string().min(1).max(40),

@@ -393,7 +393,7 @@ export async function executeBrowserAction(
     const filePath = join(dir, `upload${ext}`);
     try {
       await writeFile(filePath, bytes);
-      await element.uploadFile(filePath);
+      await (await element.toElement("input")).uploadFile(filePath);
     } finally {
       await rm(dir, { recursive: true, force: true }).catch(() => undefined);
     }
@@ -402,6 +402,7 @@ export async function executeBrowserAction(
   if (action.action === "select") await page.select(action.selector, action.value);
 
   await page.waitForNetworkIdle({ idleTime: 400, timeout: 4000 }).catch(() => undefined);
+  return undefined;
 }
 
 export async function runBrowserAgent(input: BrowserAgentInput) {
@@ -421,14 +422,16 @@ export async function runBrowserAgent(input: BrowserAgentInput) {
     const lease = await acquireBrowserLease();
     browser = lease.browser;
     releaseBrowser = lease.release;
-    page = await (await browser.createBrowserContext()).newPage();
+    const activePage = await (await browser.createBrowserContext()).newPage();
+    page = activePage;
+    const activeAuthToken = input.firstPartyAuthToken;
 
     if (input.sessionCookies?.length) {
       await page.setCookie(...input.sessionCookies).catch(() => undefined);
     }
-    await restoreBrowserProfileBeforeNavigation(page, input.sessionProfile);
+    await restoreBrowserProfileBeforeNavigation(activePage, input.sessionProfile);
 
-    if (input.firstPartyAuthToken) {
+    if (activeAuthToken) {
       const start = new URL(input.startUrl);
       const host = start.hostname.toLowerCase();
       const configuredHosts = (process.env["VENDI_FIRST_PARTY_HOSTS"] ?? "")
@@ -439,7 +442,7 @@ export async function runBrowserAgent(input: BrowserAgentInput) {
         host.endsWith(".vendorai.pages.dev") ||
         configuredHosts.includes(host);
       if (!trustedFirstParty) throw new Error("VENDI_AUTH_ORIGIN_MISMATCH");
-      
+
       // A identidade técnica deve acompanhar TODAS as chamadas à API feitas pelo
       // navegador; caches, perfis restaurados e interceptors do SPA podem manter
       // cabeçalhos de uma sessão anterior. Nunca envie o token a outros domínios.
@@ -472,7 +475,7 @@ export async function runBrowserAgent(input: BrowserAgentInput) {
           localStorage.setItem("vendorai_user_cache", JSON.stringify(payload.userCache));
         }
         sessionStorage.removeItem("vendorai_demo_session");
-      }, { token: input.firstPartyAuthToken, userCache: input.firstPartyAuthUserCache ?? null });
+      }, { token: activeAuthToken, userCache: input.firstPartyAuthUserCache ?? null });
     }
 
     await navigateBrowserPage(
@@ -480,36 +483,36 @@ export async function runBrowserAgent(input: BrowserAgentInput) {
       validateBrowserUrl(input.startUrl, input.allowedHosts),
       fastReadOnlySnapshot ? 5_000 : 12_000,
     );
-    const profileNeedsReload = await restoreBrowserProfileAfterNavigation(page, input.sessionProfile);
+    const profileNeedsReload = await restoreBrowserProfileAfterNavigation(activePage, input.sessionProfile);
     if (profileNeedsReload && !fastReadOnlySnapshot) {
-      await reloadBrowserPage(page);
+      await reloadBrowserPage(activePage);
     }
 
-    if (input.firstPartyAuthToken) {
+    if (activeAuthToken) {
       // Garante compatibilidade com páginas já criadas/perfis restaurados.
-      await withBrowserRetry(() => page.evaluate((payload) => {
+      await withBrowserRetry(() => activePage.evaluate((payload) => {
         localStorage.setItem("vendorai_token", payload.token);
         if (payload.userCache) {
           localStorage.setItem("vendorai_user_cache", JSON.stringify(payload.userCache));
         }
         sessionStorage.removeItem("vendorai_demo_session");
-      }, { token: input.firstPartyAuthToken, userCache: input.firstPartyAuthUserCache ?? null }));
+      }, { token: activeAuthToken, userCache: input.firstPartyAuthUserCache ?? null }));
       const target = validateBrowserUrl(input.startUrl, input.allowedHosts);
       if (page.url() !== target) {
-        await navigateBrowserPage(page, target, fastReadOnlySnapshot ? 5_000 : 12_000);
+        await navigateBrowserPage(activePage, target, fastReadOnlySnapshot ? 5_000 : 12_000);
       }
       if (!fastReadOnlySnapshot) {
         await page.waitForNetworkIdle({ idleTime: 400, timeout: 5000 }).catch(() => undefined);
       }
 
-      const authProbe = await withBrowserRetry(() => page.evaluate(async (token) => {
+      const authProbe = await withBrowserRetry(() => activePage.evaluate(async (token) => {
         try {
           const response = await fetch("/api/auth/me", {
             headers: { Authorization: `Bearer ${token}` },
             credentials: "same-origin",
           });
-          const body = await response.json().catch(() => ({}));
-          const reason = typeof body?.error === "string" ? body.error : "unknown";
+          const body: unknown = await response.json().catch(() => ({}));
+          const reason = body && typeof body === "object" && "error" in body && typeof body.error === "string" ? body.error : "unknown";
           return { ok: response.ok, status: response.status, reason: reason.slice(0, 100), responseOrigin: new URL(response.url).origin };
         } catch (error) {
           return { ok: false, status: 0, error: String(error) };
@@ -529,7 +532,7 @@ export async function runBrowserAgent(input: BrowserAgentInput) {
     // Avoid an unnecessary LLM planning round-trip after navigation: return the
     // current DOM deterministically so connector calls stay within their request budget.
     if (!input.allowWrite && maxSteps <= 3) {
-      const state = await withBrowserRetry(() => snapshotBrowserPage(page), 2);
+      const state = await withBrowserRetry(() => snapshotBrowserPage(activePage), 2);
       assertBrowserPageAccessible(state);
       const visibleText = state.text.slice(0, 6000);
       return {
@@ -553,7 +556,7 @@ export async function runBrowserAgent(input: BrowserAgentInput) {
     let selectorRecoveryNote = "";
     let noChangeStreak = 0;
     for (let index = 1; index <= maxSteps; index++) {
-      const state = await withBrowserRetry(() => snapshotBrowserPage(page));
+      const state = await withBrowserRetry(() => snapshotBrowserPage(activePage));
       assertBrowserPageAccessible(state);
       const planningGoal = selectorRecoveryNote
         ? input.goal + "\nRECUPERAÇÃO DE NAVEGAÇÃO: " + selectorRecoveryNote
@@ -571,15 +574,15 @@ export async function runBrowserAgent(input: BrowserAgentInput) {
       if (action.action === "finish") {
         if (action.outcome !== "completed") throw new Error(`BROWSER_${action.outcome.toUpperCase()}: ${action.answer}`);
         if (input.onSessionPersist) await input.onSessionPersist(await page.cookies());
-        if (input.onProfilePersist) await input.onProfilePersist(await captureBrowserProfile(page));
+        if (input.onProfilePersist) await input.onProfilePersist(await captureBrowserProfile(activePage));
         return { ok: true, finalUrl: state.url, answer: action.answer, steps };
       }
 
       let extracted: string | undefined;
       try {
-        extracted = await executeBrowserAction(page, action, input);
+        extracted = await executeBrowserAction(activePage, action, input);
         if (actionShouldChangePage(action.action)) {
-          const afterState = await withBrowserRetry(() => snapshotBrowserPage(page));
+          const afterState = await withBrowserRetry(() => snapshotBrowserPage(activePage));
           const verification = verifyCheckpointTransition(checkpointFromState(state), checkpointFromState(afterState));
           if (!verification.changed) {
             noChangeStreak += 1;
@@ -594,7 +597,7 @@ export async function runBrowserAgent(input: BrowserAgentInput) {
                 try {
                   const target = validateBrowserUrl(goalUrl, input.allowedHosts);
                   if (page.url() !== target) {
-                    await navigateBrowserPage(page, target);
+                    await navigateBrowserPage(activePage, target);
                     await page.waitForNetworkIdle({ idleTime: 400, timeout: 5000 }).catch(() => undefined);
                     steps[steps.length - 1]!.detail = [steps[steps.length - 1]!.detail, "verified_no_change_direct_navigation"]
                       .filter(Boolean).join(" | ");
@@ -628,7 +631,7 @@ export async function runBrowserAgent(input: BrowserAgentInput) {
         throw error;
       }
       if (action.action === "extract" && extracted) {
-        const state2 = await withBrowserRetry(() => snapshotBrowserPage(page));
+        const state2 = await withBrowserRetry(() => snapshotBrowserPage(activePage));
         assertBrowserPageAccessible(state2);
         const next = await planBrowserAction(
           input.tenantId,
@@ -640,14 +643,14 @@ export async function runBrowserAgent(input: BrowserAgentInput) {
         if (next.action === "finish") {
           if (next.outcome !== "completed") throw new Error(`BROWSER_${next.outcome.toUpperCase()}: ${next.answer}`);
           if (input.onSessionPersist) await input.onSessionPersist(await page.cookies());
-          if (input.onProfilePersist) await input.onProfilePersist(await captureBrowserProfile(page));
+          if (input.onProfilePersist) await input.onProfilePersist(await captureBrowserProfile(activePage));
           return { ok: true, finalUrl: page.url(), answer: next.answer, steps };
         }
       }
     }
 
     if (input.onSessionPersist) await input.onSessionPersist(await page.cookies());
-    if (input.onProfilePersist) await input.onProfilePersist(await captureBrowserProfile(page));
+    if (input.onProfilePersist) await input.onProfilePersist(await captureBrowserProfile(activePage));
     return { ok: false, finalUrl: page.url(), answer: "Limite de passos atingido.", steps };
   } catch (error: any) {
     if (String(error?.message).startsWith("BROWSER_BLOCKED:") && input.onHumanVerification && browser && page) {

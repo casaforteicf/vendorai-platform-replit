@@ -30,13 +30,16 @@ export const RegisterBody = zod.object({
  * @summary Get current user
  */
 export const GetMeResponse = zod.object({
+  "leadAssignmentCities": zod.array(zod.string()).nullish(),
+  "leadAssignmentRegions": zod.array(zod.string()).nullish(),
+  "leadAssignmentSegments": zod.array(zod.string()).nullish(),
   "id": zod.string(),
   "tenantId": zod.string(),
   "name": zod.string(),
   "email": zod.string(),
   "role": zod.enum(['admin', 'member']),
   "platformRole": zod.enum(['super_admin', 'tenant_admin', 'tenant_seller', 'partner', 'member']),
-  "userFunction": zod.enum(['vendedor', 'financeiro', 'suporte', 'entrega', 'administrador', 'outro']).optional().describe('Função\/tipo do usuário dentro do tenant'),
+  "userFunction": zod.enum(['vendedor', 'representante_comercial', 'financeiro', 'suporte', 'entrega', 'administrador', 'outro']).optional().describe('Função\/tipo do usuário dentro do tenant'),
   "permissions": zod.array(zod.string()).nullish().describe('Explicit module allowlist; null uses function defaults.'),
   "telefone": zod.string().nullish(),
   "active": zod.boolean(),
@@ -56,13 +59,16 @@ export const GetMeResponse = zod.object({
 export const RefreshTokenResponse = zod.object({
   "token": zod.string(),
   "user": zod.object({
+  "leadAssignmentCities": zod.array(zod.string()).nullish(),
+  "leadAssignmentRegions": zod.array(zod.string()).nullish(),
+  "leadAssignmentSegments": zod.array(zod.string()).nullish(),
   "id": zod.string(),
   "tenantId": zod.string(),
   "name": zod.string(),
   "email": zod.string(),
   "role": zod.enum(['admin', 'member']),
   "platformRole": zod.enum(['super_admin', 'tenant_admin', 'tenant_seller', 'partner', 'member']),
-  "userFunction": zod.enum(['vendedor', 'financeiro', 'suporte', 'entrega', 'administrador', 'outro']).optional().describe('Função\/tipo do usuário dentro do tenant'),
+  "userFunction": zod.enum(['vendedor', 'representante_comercial', 'financeiro', 'suporte', 'entrega', 'administrador', 'outro']).optional().describe('Função\/tipo do usuário dentro do tenant'),
   "permissions": zod.array(zod.string()).nullish().describe('Explicit module allowlist; null uses function defaults.'),
   "telefone": zod.string().nullish(),
   "active": zod.boolean(),
@@ -87,13 +93,16 @@ export const LoginBody = zod.object({
 export const LoginResponse = zod.object({
   "token": zod.string(),
   "user": zod.object({
+  "leadAssignmentCities": zod.array(zod.string()).nullish(),
+  "leadAssignmentRegions": zod.array(zod.string()).nullish(),
+  "leadAssignmentSegments": zod.array(zod.string()).nullish(),
   "id": zod.string(),
   "tenantId": zod.string(),
   "name": zod.string(),
   "email": zod.string(),
   "role": zod.enum(['admin', 'member']),
   "platformRole": zod.enum(['super_admin', 'tenant_admin', 'tenant_seller', 'partner', 'member']),
-  "userFunction": zod.enum(['vendedor', 'financeiro', 'suporte', 'entrega', 'administrador', 'outro']).optional().describe('Função\/tipo do usuário dentro do tenant'),
+  "userFunction": zod.enum(['vendedor', 'representante_comercial', 'financeiro', 'suporte', 'entrega', 'administrador', 'outro']).optional().describe('Função\/tipo do usuário dentro do tenant'),
   "permissions": zod.array(zod.string()).nullish().describe('Explicit module allowlist; null uses function defaults.'),
   "telefone": zod.string().nullish(),
   "active": zod.boolean(),
@@ -119,13 +128,16 @@ export const DemoLoginBody = zod.object({
 export const DemoLoginResponse = zod.object({
   "token": zod.string(),
   "user": zod.object({
+  "leadAssignmentCities": zod.array(zod.string()).nullish(),
+  "leadAssignmentRegions": zod.array(zod.string()).nullish(),
+  "leadAssignmentSegments": zod.array(zod.string()).nullish(),
   "id": zod.string(),
   "tenantId": zod.string(),
   "name": zod.string(),
   "email": zod.string(),
   "role": zod.enum(['admin', 'member']),
   "platformRole": zod.enum(['super_admin', 'tenant_admin', 'tenant_seller', 'partner', 'member']),
-  "userFunction": zod.enum(['vendedor', 'financeiro', 'suporte', 'entrega', 'administrador', 'outro']).optional().describe('Função\/tipo do usuário dentro do tenant'),
+  "userFunction": zod.enum(['vendedor', 'representante_comercial', 'financeiro', 'suporte', 'entrega', 'administrador', 'outro']).optional().describe('Função\/tipo do usuário dentro do tenant'),
   "permissions": zod.array(zod.string()).nullish().describe('Explicit module allowlist; null uses function defaults.'),
   "telefone": zod.string().nullish(),
   "active": zod.boolean(),
@@ -322,13 +334,16 @@ export const HealthCheckResponse = zod.object({
  * @summary List users
  */
 export const ListUsersResponseItem = zod.object({
+  "leadAssignmentCities": zod.array(zod.string()).nullish(),
+  "leadAssignmentRegions": zod.array(zod.string()).nullish(),
+  "leadAssignmentSegments": zod.array(zod.string()).nullish(),
   "id": zod.string(),
   "tenantId": zod.string(),
   "name": zod.string(),
   "email": zod.string(),
   "role": zod.enum(['admin', 'member']),
   "platformRole": zod.enum(['super_admin', 'tenant_admin', 'tenant_seller', 'partner', 'member']),
-  "userFunction": zod.enum(['vendedor', 'financeiro', 'suporte', 'entrega', 'administrador', 'outro']).optional().describe('Função\/tipo do usuário dentro do tenant'),
+  "userFunction": zod.enum(['vendedor', 'representante_comercial', 'financeiro', 'suporte', 'entrega', 'administrador', 'outro']).optional().describe('Função\/tipo do usuário dentro do tenant'),
   "permissions": zod.array(zod.string()).nullish().describe('Explicit module allowlist; null uses function defaults.'),
   "telefone": zod.string().nullish(),
   "active": zod.boolean(),
@@ -352,7 +367,7 @@ export const CreateUserBody = zod.object({
   "password": zod.string(),
   "role": zod.enum(['admin', 'member']).optional(),
   "platformRole": zod.enum(['super_admin', 'tenant_admin', 'tenant_seller', 'partner', 'member']).optional(),
-  "userFunction": zod.enum(['vendedor', 'financeiro', 'suporte', 'entrega', 'administrador', 'outro']).optional().describe('Função\/tipo do usuário dentro do tenant'),
+  "userFunction": zod.enum(['vendedor', 'representante_comercial', 'financeiro', 'suporte', 'entrega', 'administrador', 'outro']).optional().describe('Função\/tipo do usuário dentro do tenant'),
   "permissions": zod.array(zod.string()).nullish(),
   "telefone": zod.string().optional(),
   "active": zod.boolean().optional(),
@@ -378,13 +393,16 @@ export const ChangePasswordBody = zod.object({
 })
 
 export const ChangePasswordResponse = zod.object({
+  "leadAssignmentCities": zod.array(zod.string()).nullish(),
+  "leadAssignmentRegions": zod.array(zod.string()).nullish(),
+  "leadAssignmentSegments": zod.array(zod.string()).nullish(),
   "id": zod.string(),
   "tenantId": zod.string(),
   "name": zod.string(),
   "email": zod.string(),
   "role": zod.enum(['admin', 'member']),
   "platformRole": zod.enum(['super_admin', 'tenant_admin', 'tenant_seller', 'partner', 'member']),
-  "userFunction": zod.enum(['vendedor', 'financeiro', 'suporte', 'entrega', 'administrador', 'outro']).optional().describe('Função\/tipo do usuário dentro do tenant'),
+  "userFunction": zod.enum(['vendedor', 'representante_comercial', 'financeiro', 'suporte', 'entrega', 'administrador', 'outro']).optional().describe('Função\/tipo do usuário dentro do tenant'),
   "permissions": zod.array(zod.string()).nullish().describe('Explicit module allowlist; null uses function defaults.'),
   "telefone": zod.string().nullish(),
   "active": zod.boolean(),
@@ -405,13 +423,16 @@ export const GetUserParams = zod.object({
 })
 
 export const GetUserResponse = zod.object({
+  "leadAssignmentCities": zod.array(zod.string()).nullish(),
+  "leadAssignmentRegions": zod.array(zod.string()).nullish(),
+  "leadAssignmentSegments": zod.array(zod.string()).nullish(),
   "id": zod.string(),
   "tenantId": zod.string(),
   "name": zod.string(),
   "email": zod.string(),
   "role": zod.enum(['admin', 'member']),
   "platformRole": zod.enum(['super_admin', 'tenant_admin', 'tenant_seller', 'partner', 'member']),
-  "userFunction": zod.enum(['vendedor', 'financeiro', 'suporte', 'entrega', 'administrador', 'outro']).optional().describe('Função\/tipo do usuário dentro do tenant'),
+  "userFunction": zod.enum(['vendedor', 'representante_comercial', 'financeiro', 'suporte', 'entrega', 'administrador', 'outro']).optional().describe('Função\/tipo do usuário dentro do tenant'),
   "permissions": zod.array(zod.string()).nullish().describe('Explicit module allowlist; null uses function defaults.'),
   "telefone": zod.string().nullish(),
   "active": zod.boolean(),
@@ -437,7 +458,7 @@ export const UpdateUserBody = zod.object({
   "password": zod.string().optional(),
   "role": zod.enum(['admin', 'member']).optional(),
   "platformRole": zod.enum(['super_admin', 'tenant_admin', 'tenant_seller', 'partner', 'member']).optional(),
-  "userFunction": zod.enum(['vendedor', 'financeiro', 'suporte', 'entrega', 'administrador', 'outro']).optional().describe('Função\/tipo do usuário dentro do tenant'),
+  "userFunction": zod.enum(['vendedor', 'representante_comercial', 'financeiro', 'suporte', 'entrega', 'administrador', 'outro']).optional().describe('Função\/tipo do usuário dentro do tenant'),
   "permissions": zod.array(zod.string()).nullish(),
   "telefone": zod.string().optional(),
   "active": zod.boolean().optional(),
@@ -445,13 +466,16 @@ export const UpdateUserBody = zod.object({
 })
 
 export const UpdateUserResponse = zod.object({
+  "leadAssignmentCities": zod.array(zod.string()).nullish(),
+  "leadAssignmentRegions": zod.array(zod.string()).nullish(),
+  "leadAssignmentSegments": zod.array(zod.string()).nullish(),
   "id": zod.string(),
   "tenantId": zod.string(),
   "name": zod.string(),
   "email": zod.string(),
   "role": zod.enum(['admin', 'member']),
   "platformRole": zod.enum(['super_admin', 'tenant_admin', 'tenant_seller', 'partner', 'member']),
-  "userFunction": zod.enum(['vendedor', 'financeiro', 'suporte', 'entrega', 'administrador', 'outro']).optional().describe('Função\/tipo do usuário dentro do tenant'),
+  "userFunction": zod.enum(['vendedor', 'representante_comercial', 'financeiro', 'suporte', 'entrega', 'administrador', 'outro']).optional().describe('Função\/tipo do usuário dentro do tenant'),
   "permissions": zod.array(zod.string()).nullish().describe('Explicit module allowlist; null uses function defaults.'),
   "telefone": zod.string().nullish(),
   "active": zod.boolean(),
@@ -1302,6 +1326,7 @@ export const ListPipelineStagesParams = zod.object({
 })
 
 export const ListPipelineStagesResponseItem = zod.object({
+  "responsaveisFuncoes": zod.array(zod.string()).nullish(),
   "id": zod.string(),
   "tenantId": zod.string(),
   "key": zod.string(),
@@ -1311,6 +1336,11 @@ export const ListPipelineStagesResponseItem = zod.object({
   "ordem": zod.number(),
   "isSystem": zod.boolean(),
   "slaMinutos": zod.number().nullish(),
+  "elegiveisUserIds": zod.array(zod.string()).nullish(),
+  "perguntas": zod.array(zod.object({
+  "id": zod.string(),
+  "texto": zod.string()
+})).optional(),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -1345,10 +1375,16 @@ export const UpdatePipelineStageBody = zod.object({
   "color": zod.string().optional(),
   "bg": zod.string().optional(),
   "ordem": zod.number().optional(),
-  "slaMinutos": zod.number().nullish()
+  "slaMinutos": zod.number().nullish(),
+  "elegiveisUserIds": zod.array(zod.string()).nullish(),
+  "perguntas": zod.array(zod.object({
+  "id": zod.string(),
+  "texto": zod.string()
+})).optional()
 })
 
 export const UpdatePipelineStageResponse = zod.object({
+  "responsaveisFuncoes": zod.array(zod.string()).nullish(),
   "id": zod.string(),
   "tenantId": zod.string(),
   "key": zod.string(),
@@ -1358,6 +1394,11 @@ export const UpdatePipelineStageResponse = zod.object({
   "ordem": zod.number(),
   "isSystem": zod.boolean(),
   "slaMinutos": zod.number().nullish(),
+  "elegiveisUserIds": zod.array(zod.string()).nullish(),
+  "perguntas": zod.array(zod.object({
+  "id": zod.string(),
+  "texto": zod.string()
+})).optional(),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -1437,6 +1478,7 @@ export const createDealBodyProbChurnMax = 100;
 
 
 export const CreateDealBody = zod.object({
+  "assignedTo": zod.string().nullish(),
   "tenantId": zod.string(),
   "leadId": zod.string().optional(),
   "titulo": zod.string(),
@@ -1482,6 +1524,7 @@ export const listDealsResponseProbChurnMax = 100;
 
 
 export const ListDealsResponseItem = zod.object({
+  "relationshipStage": zod.string().nullish(),
   "id": zod.string(),
   "tenantId": zod.string(),
   "leadId": zod.string().nullish(),
@@ -1519,6 +1562,7 @@ export const ListDealsResponseItem = zod.object({
   "aquecimentoTipo": zod.string().nullish().describe('Subtipo de aquecimento — \'cliente\' (ex-cliente) ou \'nao_cliente\' (lead novo). Só relevante quando etapa=em_aquecimento.'),
   "assignedTo": zod.string().nullish().describe('UUID do usuário responsável pelo deal'),
   "etapaAlteradaEm": zod.coerce.date().describe('Quando a etapa mudou pela última vez (trigger no banco) — usado pro SLA de tempo por etapa.'),
+  "respostasEtapas": zod.record(zod.string(), zod.record(zod.string(), zod.string())).optional().describe('Respostas às perguntas-chave de cada etapa, por chave de etapa: { etapaKey: { perguntaId: resposta } }'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -1558,6 +1602,7 @@ export const getDealResponseProbChurnMax = 100;
 
 
 export const GetDealResponse = zod.object({
+  "relationshipStage": zod.string().nullish(),
   "id": zod.string(),
   "tenantId": zod.string(),
   "leadId": zod.string().nullish(),
@@ -1595,6 +1640,7 @@ export const GetDealResponse = zod.object({
   "aquecimentoTipo": zod.string().nullish().describe('Subtipo de aquecimento — \'cliente\' (ex-cliente) ou \'nao_cliente\' (lead novo). Só relevante quando etapa=em_aquecimento.'),
   "assignedTo": zod.string().nullish().describe('UUID do usuário responsável pelo deal'),
   "etapaAlteradaEm": zod.coerce.date().describe('Quando a etapa mudou pela última vez (trigger no banco) — usado pro SLA de tempo por etapa.'),
+  "respostasEtapas": zod.record(zod.string(), zod.record(zod.string(), zod.string())).optional().describe('Respostas às perguntas-chave de cada etapa, por chave de etapa: { etapaKey: { perguntaId: resposta } }'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -1640,7 +1686,8 @@ export const UpdateDealBody = zod.object({
   "quoteFileUrl": zod.string().nullish(),
   "contractStatus": zod.enum(['pending', 'sent', 'signed', 'failed', 'skipped', 'na']).nullish().describe('Override contract status (e.g. retry after failure)'),
   "skipAsaasBilling": zod.boolean().nullish().describe('When true, skip Asaas billing and treat as manually paid.'),
-  "aquecimentoTipo": zod.string().nullish().describe('Subtipo de aquecimento (\'cliente\' ou \'nao_cliente\')')
+  "aquecimentoTipo": zod.string().nullish().describe('Subtipo de aquecimento (\'cliente\' ou \'nao_cliente\')'),
+  "respostasEtapas": zod.record(zod.string(), zod.record(zod.string(), zod.string())).optional()
 })
 
 export const updateDealResponseOneProbabilidadeMin = 0;
@@ -1652,6 +1699,7 @@ export const updateDealResponseOneProbChurnMax = 100;
 
 
 export const UpdateDealResponse = zod.object({
+  "relationshipStage": zod.string().nullish(),
   "id": zod.string(),
   "tenantId": zod.string(),
   "leadId": zod.string().nullish(),
@@ -1689,6 +1737,7 @@ export const UpdateDealResponse = zod.object({
   "aquecimentoTipo": zod.string().nullish().describe('Subtipo de aquecimento — \'cliente\' (ex-cliente) ou \'nao_cliente\' (lead novo). Só relevante quando etapa=em_aquecimento.'),
   "assignedTo": zod.string().nullish().describe('UUID do usuário responsável pelo deal'),
   "etapaAlteradaEm": zod.coerce.date().describe('Quando a etapa mudou pela última vez (trigger no banco) — usado pro SLA de tempo por etapa.'),
+  "respostasEtapas": zod.record(zod.string(), zod.record(zod.string(), zod.string())).optional().describe('Respostas às perguntas-chave de cada etapa, por chave de etapa: { etapaKey: { perguntaId: resposta } }'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 }).and(zod.object({
@@ -1719,6 +1768,12 @@ export const DeleteDealParams = zod.object({
  * @summary Create activity
  */
 export const CreateActivityBody = zod.object({
+  "estadoExecucao": zod.string().optional(),
+  "prioridade": zod.string().optional(),
+  "objetivo": zod.string().optional(),
+  "resultadoEsperado": zod.string().optional(),
+  "categoriaExecucao": zod.string().optional(),
+  "origem": zod.string().optional(),
   "tenantId": zod.string(),
   "leadId": zod.string(),
   "dealId": zod.string().optional(),
@@ -1937,7 +1992,10 @@ export const CreatePropostaBody = zod.object({
   "itens": zod.array(zod.object({
   "nome": zod.string(),
   "quantidade": zod.number(),
-  "valorUnitario": zod.number()
+  "valorUnitario": zod.number(),
+  "sku": zod.string().optional(),
+  "descricao": zod.string().optional(),
+  "produtoId": zod.string().optional()
 })).optional(),
   "valorTotal": zod.number().optional(),
   "status": zod.enum(['rascunho', 'enviada', 'pendente', 'aceita', 'rejeitada', 'expirada']).optional(),
@@ -1980,7 +2038,10 @@ export const ListPropostasResponseItem = zod.object({
   "itens": zod.array(zod.object({
   "nome": zod.string(),
   "quantidade": zod.number(),
-  "valorUnitario": zod.number()
+  "valorUnitario": zod.number(),
+  "sku": zod.string().optional(),
+  "descricao": zod.string().optional(),
+  "produtoId": zod.string().optional()
 })),
   "valorTotal": zod.string().nullish().describe('Decimal stored as string (Postgres numeric)'),
   "status": zod.enum(['rascunho', 'enviada', 'pendente', 'aceita', 'rejeitada', 'expirada']),
@@ -2031,7 +2092,10 @@ export const UpdatePropostaStatusResponse = zod.object({
   "itens": zod.array(zod.object({
   "nome": zod.string(),
   "quantidade": zod.number(),
-  "valorUnitario": zod.number()
+  "valorUnitario": zod.number(),
+  "sku": zod.string().optional(),
+  "descricao": zod.string().optional(),
+  "produtoId": zod.string().optional()
 })),
   "valorTotal": zod.string().nullish().describe('Decimal stored as string (Postgres numeric)'),
   "status": zod.enum(['rascunho', 'enviada', 'pendente', 'aceita', 'rejeitada', 'expirada']),
@@ -2071,7 +2135,10 @@ export const GetPropostaResponse = zod.object({
   "itens": zod.array(zod.object({
   "nome": zod.string(),
   "quantidade": zod.number(),
-  "valorUnitario": zod.number()
+  "valorUnitario": zod.number(),
+  "sku": zod.string().optional(),
+  "descricao": zod.string().optional(),
+  "produtoId": zod.string().optional()
 })),
   "valorTotal": zod.string().nullish().describe('Decimal stored as string (Postgres numeric)'),
   "status": zod.enum(['rascunho', 'enviada', 'pendente', 'aceita', 'rejeitada', 'expirada']),
@@ -2108,7 +2175,10 @@ export const UpdatePropostaBody = zod.object({
   "itens": zod.array(zod.object({
   "nome": zod.string(),
   "quantidade": zod.number(),
-  "valorUnitario": zod.number()
+  "valorUnitario": zod.number(),
+  "sku": zod.string().optional(),
+  "descricao": zod.string().optional(),
+  "produtoId": zod.string().optional()
 })).optional(),
   "valorTotal": zod.number().optional(),
   "status": zod.enum(['rascunho', 'enviada', 'pendente', 'aceita', 'rejeitada', 'expirada']).optional(),
@@ -2138,7 +2208,10 @@ export const UpdatePropostaResponse = zod.object({
   "itens": zod.array(zod.object({
   "nome": zod.string(),
   "quantidade": zod.number(),
-  "valorUnitario": zod.number()
+  "valorUnitario": zod.number(),
+  "sku": zod.string().optional(),
+  "descricao": zod.string().optional(),
+  "produtoId": zod.string().optional()
 })),
   "valorTotal": zod.string().nullish().describe('Decimal stored as string (Postgres numeric)'),
   "status": zod.enum(['rascunho', 'enviada', 'pendente', 'aceita', 'rejeitada', 'expirada']),
@@ -3620,6 +3693,8 @@ export const listProdutosCatalogoResponseProductTypeDefault = `physical`;
 export const listProdutosCatalogoResponseExigeAgendamentoDefault = false;
 
 export const ListProdutosCatalogoResponseItem = zod.object({
+  "fornecedor": zod.string().nullish(),
+  "prazoEntregaDias": zod.number().nullish(),
   "id": zod.string(),
   "tenantId": zod.string(),
   "nome": zod.string(),
@@ -3735,6 +3810,8 @@ export const getProdutoCatalogoResponseProductTypeDefault = `physical`;
 export const getProdutoCatalogoResponseExigeAgendamentoDefault = false;
 
 export const GetProdutoCatalogoResponse = zod.object({
+  "fornecedor": zod.string().nullish(),
+  "prazoEntregaDias": zod.number().nullish(),
   "id": zod.string(),
   "tenantId": zod.string(),
   "nome": zod.string(),
@@ -3787,6 +3864,8 @@ export const updateProdutoCatalogoResponseProductTypeDefault = `physical`;
 export const updateProdutoCatalogoResponseExigeAgendamentoDefault = false;
 
 export const UpdateProdutoCatalogoResponse = zod.object({
+  "fornecedor": zod.string().nullish(),
+  "prazoEntregaDias": zod.number().nullish(),
   "id": zod.string(),
   "tenantId": zod.string(),
   "nome": zod.string(),
@@ -4643,6 +4722,7 @@ export const GetBusinessProfileByTenantParams = zod.object({
 })
 
 export const GetBusinessProfileByTenantResponse = zod.object({
+  "logoAccessUrl": zod.string().nullish(),
   "id": zod.string(),
   "tenantId": zod.string(),
   "razaoSocial": zod.string(),
@@ -4683,6 +4763,7 @@ export const GetBusinessProfileParams = zod.object({
 })
 
 export const GetBusinessProfileResponse = zod.object({
+  "logoAccessUrl": zod.string().nullish(),
   "id": zod.string(),
   "tenantId": zod.string(),
   "razaoSocial": zod.string(),
@@ -4751,6 +4832,7 @@ export const UpdateBusinessProfileBody = zod.object({
 })
 
 export const UpdateBusinessProfileResponse = zod.object({
+  "logoAccessUrl": zod.string().nullish(),
   "id": zod.string(),
   "tenantId": zod.string(),
   "razaoSocial": zod.string(),
@@ -4800,6 +4882,9 @@ export const listTenantsResponseIntegracoesConcluidoDefault = false;
 export const listTenantsResponseConfirmarEstoqueAntesFinanceiroDefault = false;
 
 export const ListTenantsResponseItem = zod.object({
+  "corPrimaria": zod.string().nullish(),
+  "parceiroRedeAtivo": zod.boolean().optional(),
+  "parceiroCategorias": zod.array(zod.string()).nullish(),
   "id": zod.string(),
   "name": zod.string(),
   "slug": zod.string(),
@@ -4827,6 +4912,10 @@ export const ListTenantsResponseItem = zod.object({
   "onboardingConcluido": zod.boolean().default(listTenantsResponseOnboardingConcluidoDefault).describe('Whether the main onboarding wizard (steps 1-4) has been completed.'),
   "integracoesConcluido": zod.boolean().default(listTenantsResponseIntegracoesConcluidoDefault).describe('Whether the integrations onboarding has been completed.'),
   "googleReviewLink": zod.string().nullish().describe('Link para avaliação do Google configurado pelo tenant. Usado pelo agente Pós-Venda para solicitar avaliações apenas quando o cliente relata uma experiência positiva na pesquisa de satisfação pós-entrega. Vazio por padrão.\n'),
+  "googleAdsConversionId": zod.string().nullish().describe('ID de conversão do Google Ads da conta do próprio tenant, usado nos sites gerados pelo Vendor.ai para esse tenant. Independente da tag do site institucional appvendorai.com.\n'),
+  "metaPixelId": zod.string().nullish().describe('ID do Meta Pixel da conta do próprio tenant, usado nos sites gerados pelo Vendor.ai para esse tenant.\n'),
+  "linkedinInsightTagId": zod.string().nullish().describe('Partner ID do LinkedIn Insight Tag da conta do tenant.'),
+  "tiktokPixelId": zod.string().nullish().describe('ID do TikTok Pixel da conta do tenant.'),
   "confirmarEstoqueAntesFinanceiro": zod.boolean().default(listTenantsResponseConfirmarEstoqueAntesFinanceiroDefault).describe('Quando true, o fechamento de negócios pausa em uma etapa de conferência de estoque antes de gerar contrato\/cobrança, aguardando aprovação do usuário responsável.\n'),
   "usuarioConferenciaEstoqueId": zod.string().nullish().describe('ID do usuário responsável por confirmar a disponibilidade em estoque antes do fechamento financeiro (sem FK formal para evitar import circular).\n'),
   "createdAt": zod.coerce.date(),
@@ -4866,6 +4955,9 @@ export const getTenantResponseIntegracoesConcluidoDefault = false;
 export const getTenantResponseConfirmarEstoqueAntesFinanceiroDefault = false;
 
 export const GetTenantResponse = zod.object({
+  "corPrimaria": zod.string().nullish(),
+  "parceiroRedeAtivo": zod.boolean().optional(),
+  "parceiroCategorias": zod.array(zod.string()).nullish(),
   "id": zod.string(),
   "name": zod.string(),
   "slug": zod.string(),
@@ -4893,6 +4985,10 @@ export const GetTenantResponse = zod.object({
   "onboardingConcluido": zod.boolean().default(getTenantResponseOnboardingConcluidoDefault).describe('Whether the main onboarding wizard (steps 1-4) has been completed.'),
   "integracoesConcluido": zod.boolean().default(getTenantResponseIntegracoesConcluidoDefault).describe('Whether the integrations onboarding has been completed.'),
   "googleReviewLink": zod.string().nullish().describe('Link para avaliação do Google configurado pelo tenant. Usado pelo agente Pós-Venda para solicitar avaliações apenas quando o cliente relata uma experiência positiva na pesquisa de satisfação pós-entrega. Vazio por padrão.\n'),
+  "googleAdsConversionId": zod.string().nullish().describe('ID de conversão do Google Ads da conta do próprio tenant, usado nos sites gerados pelo Vendor.ai para esse tenant. Independente da tag do site institucional appvendorai.com.\n'),
+  "metaPixelId": zod.string().nullish().describe('ID do Meta Pixel da conta do próprio tenant, usado nos sites gerados pelo Vendor.ai para esse tenant.\n'),
+  "linkedinInsightTagId": zod.string().nullish().describe('Partner ID do LinkedIn Insight Tag da conta do tenant.'),
+  "tiktokPixelId": zod.string().nullish().describe('ID do TikTok Pixel da conta do tenant.'),
   "confirmarEstoqueAntesFinanceiro": zod.boolean().default(getTenantResponseConfirmarEstoqueAntesFinanceiroDefault).describe('Quando true, o fechamento de negócios pausa em uma etapa de conferência de estoque antes de gerar contrato\/cobrança, aguardando aprovação do usuário responsável.\n'),
   "usuarioConferenciaEstoqueId": zod.string().nullish().describe('ID do usuário responsável por confirmar a disponibilidade em estoque antes do fechamento financeiro (sem FK formal para evitar import circular).\n'),
   "createdAt": zod.coerce.date(),
@@ -4908,6 +5004,9 @@ export const UpdateTenantParams = zod.object({
 })
 
 export const UpdateTenantBody = zod.object({
+  "corPrimaria": zod.string().nullish(),
+  "parceiroRedeAtivo": zod.boolean().optional(),
+  "parceiroCategorias": zod.array(zod.string()).nullish(),
   "name": zod.string().optional(),
   "slug": zod.string().optional(),
   "status": zod.enum(['active', 'suspended', 'cancelled']).optional(),
@@ -4926,6 +5025,10 @@ export const UpdateTenantBody = zod.object({
   "mensalidadeValor": zod.number().nullish().describe('Valor da mensalidade recorrente.'),
   "logoUrl": zod.string().nullish().describe('Logo URL for co-branding in the dashboard header.'),
   "googleReviewLink": zod.string().nullish().describe('Link para avaliação do Google configurado pelo tenant. Editável a qualquer momento; vazio por padrão.\n'),
+  "googleAdsConversionId": zod.string().nullish().describe('ID de conversão do Google Ads da conta do próprio tenant, usado nos sites gerados pelo Vendor.ai para esse tenant. Independente da tag do site institucional appvendorai.com.\n'),
+  "metaPixelId": zod.string().nullish().describe('ID do Meta Pixel da conta do próprio tenant, usado nos sites gerados pelo Vendor.ai para esse tenant.\n'),
+  "linkedinInsightTagId": zod.string().nullish().describe('Partner ID do LinkedIn Insight Tag da conta do tenant.'),
+  "tiktokPixelId": zod.string().nullish().describe('ID do TikTok Pixel da conta do tenant.'),
   "confirmarEstoqueAntesFinanceiro": zod.boolean().optional().describe('Quando true, o fechamento de negócios pausa em uma etapa de conferência de estoque antes de gerar contrato\/cobrança, aguardando aprovação do usuário responsável.\n'),
   "usuarioConferenciaEstoqueId": zod.string().nullish().describe('ID do usuário responsável por confirmar a disponibilidade em estoque antes do fechamento financeiro.\n')
 })
@@ -4935,6 +5038,9 @@ export const updateTenantResponseIntegracoesConcluidoDefault = false;
 export const updateTenantResponseConfirmarEstoqueAntesFinanceiroDefault = false;
 
 export const UpdateTenantResponse = zod.object({
+  "corPrimaria": zod.string().nullish(),
+  "parceiroRedeAtivo": zod.boolean().optional(),
+  "parceiroCategorias": zod.array(zod.string()).nullish(),
   "id": zod.string(),
   "name": zod.string(),
   "slug": zod.string(),
@@ -4962,6 +5068,10 @@ export const UpdateTenantResponse = zod.object({
   "onboardingConcluido": zod.boolean().default(updateTenantResponseOnboardingConcluidoDefault).describe('Whether the main onboarding wizard (steps 1-4) has been completed.'),
   "integracoesConcluido": zod.boolean().default(updateTenantResponseIntegracoesConcluidoDefault).describe('Whether the integrations onboarding has been completed.'),
   "googleReviewLink": zod.string().nullish().describe('Link para avaliação do Google configurado pelo tenant. Usado pelo agente Pós-Venda para solicitar avaliações apenas quando o cliente relata uma experiência positiva na pesquisa de satisfação pós-entrega. Vazio por padrão.\n'),
+  "googleAdsConversionId": zod.string().nullish().describe('ID de conversão do Google Ads da conta do próprio tenant, usado nos sites gerados pelo Vendor.ai para esse tenant. Independente da tag do site institucional appvendorai.com.\n'),
+  "metaPixelId": zod.string().nullish().describe('ID do Meta Pixel da conta do próprio tenant, usado nos sites gerados pelo Vendor.ai para esse tenant.\n'),
+  "linkedinInsightTagId": zod.string().nullish().describe('Partner ID do LinkedIn Insight Tag da conta do tenant.'),
+  "tiktokPixelId": zod.string().nullish().describe('ID do TikTok Pixel da conta do tenant.'),
   "confirmarEstoqueAntesFinanceiro": zod.boolean().default(updateTenantResponseConfirmarEstoqueAntesFinanceiroDefault).describe('Quando true, o fechamento de negócios pausa em uma etapa de conferência de estoque antes de gerar contrato\/cobrança, aguardando aprovação do usuário responsável.\n'),
   "usuarioConferenciaEstoqueId": zod.string().nullish().describe('ID do usuário responsável por confirmar a disponibilidade em estoque antes do fechamento financeiro (sem FK formal para evitar import circular).\n'),
   "createdAt": zod.coerce.date(),
@@ -5527,13 +5637,16 @@ export const ListTenantUsersParams = zod.object({
 })
 
 export const ListTenantUsersResponseItem = zod.object({
+  "leadAssignmentCities": zod.array(zod.string()).nullish(),
+  "leadAssignmentRegions": zod.array(zod.string()).nullish(),
+  "leadAssignmentSegments": zod.array(zod.string()).nullish(),
   "id": zod.string(),
   "tenantId": zod.string(),
   "name": zod.string(),
   "email": zod.string(),
   "role": zod.enum(['admin', 'member']),
   "platformRole": zod.enum(['super_admin', 'tenant_admin', 'tenant_seller', 'partner', 'member']),
-  "userFunction": zod.enum(['vendedor', 'financeiro', 'suporte', 'entrega', 'administrador', 'outro']).optional().describe('Função\/tipo do usuário dentro do tenant'),
+  "userFunction": zod.enum(['vendedor', 'representante_comercial', 'financeiro', 'suporte', 'entrega', 'administrador', 'outro']).optional().describe('Função\/tipo do usuário dentro do tenant'),
   "permissions": zod.array(zod.string()).nullish().describe('Explicit module allowlist; null uses function defaults.'),
   "telefone": zod.string().nullish(),
   "active": zod.boolean(),
@@ -5590,6 +5703,7 @@ export const ListLeadsResponseItem = zod.object({
   "naoLeadNotas": zod.string().nullish(),
   "naoLeadClassificadoEm": zod.coerce.date().nullish(),
   "instagramScopedId": zod.string().nullish().describe('Instagram Scoped User ID (IGSID) — set automatically when the lead sends an Instagram DM.'),
+  "profissao": zod.string().nullish().describe('Profissão do lead para campanhas de datas profissionais.'),
   "dataNascimento": zod.string().nullish().describe('Data de nascimento do lead (YYYY-MM-DD).'),
   "estadoCivil": zod.string().nullish().describe('Estado civil: solteiro, casado, divorciado, viuvo, uniao_estavel.'),
   "conjugeNome": zod.string().nullish(),
@@ -5654,6 +5768,13 @@ export const ListLeadsResponse = zod.array(ListLeadsResponseItem)
  * @summary Create lead
  */
 export const CreateLeadBody = zod.object({
+  "instagramHandle": zod.string().nullish(),
+  "tipoPessoa": zod.string().nullish(),
+  "mercadoSegmento": zod.string().nullish(),
+  "representativeFunctionId": zod.string().nullish(),
+  "metadata": zod.record(zod.string(), zod.unknown()).optional(),
+  "assignedTo": zod.string().nullish(),
+  "source": zod.string().nullish(),
   "tenantId": zod.string(),
   "nome": zod.string(),
   "telefone": zod.string().nullish(),
@@ -5675,6 +5796,7 @@ export const CreateLeadBody = zod.object({
   "naoLeadTipo": zod.enum(['colaborador', 'fornecedor', 'parceiro', 'familiar', 'amigo', 'outro']).nullish(),
   "naoLeadNotas": zod.string().nullish(),
   "naoLeadClassificadoEm": zod.coerce.date().nullish(),
+  "profissao": zod.string().nullish().describe('Profissão do lead para campanhas de datas profissionais.'),
   "dataNascimento": zod.string().nullish(),
   "estadoCivil": zod.string().nullish(),
   "conjugeNome": zod.string().nullish(),
@@ -5746,6 +5868,7 @@ export const ListTenantLeadsResponseItem = zod.object({
   "naoLeadNotas": zod.string().nullish(),
   "naoLeadClassificadoEm": zod.coerce.date().nullish(),
   "instagramScopedId": zod.string().nullish().describe('Instagram Scoped User ID (IGSID) — set automatically when the lead sends an Instagram DM.'),
+  "profissao": zod.string().nullish().describe('Profissão do lead para campanhas de datas profissionais.'),
   "dataNascimento": zod.string().nullish().describe('Data de nascimento do lead (YYYY-MM-DD).'),
   "estadoCivil": zod.string().nullish().describe('Estado civil: solteiro, casado, divorciado, viuvo, uniao_estavel.'),
   "conjugeNome": zod.string().nullish(),
@@ -5839,6 +5962,7 @@ export const GetLeadResponse = zod.object({
   "naoLeadNotas": zod.string().nullish(),
   "naoLeadClassificadoEm": zod.coerce.date().nullish(),
   "instagramScopedId": zod.string().nullish().describe('Instagram Scoped User ID (IGSID) — set automatically when the lead sends an Instagram DM.'),
+  "profissao": zod.string().nullish().describe('Profissão do lead para campanhas de datas profissionais.'),
   "dataNascimento": zod.string().nullish().describe('Data de nascimento do lead (YYYY-MM-DD).'),
   "estadoCivil": zod.string().nullish().describe('Estado civil: solteiro, casado, divorciado, viuvo, uniao_estavel.'),
   "conjugeNome": zod.string().nullish(),
@@ -5927,6 +6051,7 @@ export const UpdateLeadBody = zod.object({
   "naoLeadTipo": zod.enum(['colaborador', 'fornecedor', 'parceiro', 'familiar', 'amigo', 'outro']).nullish(),
   "naoLeadNotas": zod.string().nullish(),
   "naoLeadClassificadoEm": zod.coerce.date().nullish(),
+  "profissao": zod.string().nullish().describe('Profissão do lead para campanhas de datas profissionais.'),
   "dataNascimento": zod.string().nullish(),
   "estadoCivil": zod.string().nullish(),
   "conjugeNome": zod.string().nullish(),
@@ -5993,6 +6118,7 @@ export const UpdateLeadResponse = zod.object({
   "naoLeadNotas": zod.string().nullish(),
   "naoLeadClassificadoEm": zod.coerce.date().nullish(),
   "instagramScopedId": zod.string().nullish().describe('Instagram Scoped User ID (IGSID) — set automatically when the lead sends an Instagram DM.'),
+  "profissao": zod.string().nullish().describe('Profissão do lead para campanhas de datas profissionais.'),
   "dataNascimento": zod.string().nullish().describe('Data de nascimento do lead (YYYY-MM-DD).'),
   "estadoCivil": zod.string().nullish().describe('Estado civil: solteiro, casado, divorciado, viuvo, uniao_estavel.'),
   "conjugeNome": zod.string().nullish(),
@@ -6089,6 +6215,7 @@ export const DeleteLeadResponse = zod.object({
   "naoLeadNotas": zod.string().nullish(),
   "naoLeadClassificadoEm": zod.coerce.date().nullish(),
   "instagramScopedId": zod.string().nullish().describe('Instagram Scoped User ID (IGSID) — set automatically when the lead sends an Instagram DM.'),
+  "profissao": zod.string().nullish().describe('Profissão do lead para campanhas de datas profissionais.'),
   "dataNascimento": zod.string().nullish().describe('Data de nascimento do lead (YYYY-MM-DD).'),
   "estadoCivil": zod.string().nullish().describe('Estado civil: solteiro, casado, divorciado, viuvo, uniao_estavel.'),
   "conjugeNome": zod.string().nullish(),
@@ -6183,6 +6310,7 @@ export const ListTenantDuplicateLeadsResponseItem = zod.object({
   "naoLeadNotas": zod.string().nullish(),
   "naoLeadClassificadoEm": zod.coerce.date().nullish(),
   "instagramScopedId": zod.string().nullish().describe('Instagram Scoped User ID (IGSID) — set automatically when the lead sends an Instagram DM.'),
+  "profissao": zod.string().nullish().describe('Profissão do lead para campanhas de datas profissionais.'),
   "dataNascimento": zod.string().nullish().describe('Data de nascimento do lead (YYYY-MM-DD).'),
   "estadoCivil": zod.string().nullish().describe('Estado civil: solteiro, casado, divorciado, viuvo, uniao_estavel.'),
   "conjugeNome": zod.string().nullish(),
@@ -6264,6 +6392,7 @@ export const ListTenantDuplicateLeadsResponseItem = zod.object({
   "naoLeadNotas": zod.string().nullish(),
   "naoLeadClassificadoEm": zod.coerce.date().nullish(),
   "instagramScopedId": zod.string().nullish().describe('Instagram Scoped User ID (IGSID) — set automatically when the lead sends an Instagram DM.'),
+  "profissao": zod.string().nullish().describe('Profissão do lead para campanhas de datas profissionais.'),
   "dataNascimento": zod.string().nullish().describe('Data de nascimento do lead (YYYY-MM-DD).'),
   "estadoCivil": zod.string().nullish().describe('Estado civil: solteiro, casado, divorciado, viuvo, uniao_estavel.'),
   "conjugeNome": zod.string().nullish(),
@@ -6364,6 +6493,7 @@ export const MergeLeadResponse = zod.object({
   "naoLeadNotas": zod.string().nullish(),
   "naoLeadClassificadoEm": zod.coerce.date().nullish(),
   "instagramScopedId": zod.string().nullish().describe('Instagram Scoped User ID (IGSID) — set automatically when the lead sends an Instagram DM.'),
+  "profissao": zod.string().nullish().describe('Profissão do lead para campanhas de datas profissionais.'),
   "dataNascimento": zod.string().nullish().describe('Data de nascimento do lead (YYYY-MM-DD).'),
   "estadoCivil": zod.string().nullish().describe('Estado civil: solteiro, casado, divorciado, viuvo, uniao_estavel.'),
   "conjugeNome": zod.string().nullish(),
@@ -6461,6 +6591,7 @@ export const DismissDuplicateLeadResponse = zod.object({
   "naoLeadNotas": zod.string().nullish(),
   "naoLeadClassificadoEm": zod.coerce.date().nullish(),
   "instagramScopedId": zod.string().nullish().describe('Instagram Scoped User ID (IGSID) — set automatically when the lead sends an Instagram DM.'),
+  "profissao": zod.string().nullish().describe('Profissão do lead para campanhas de datas profissionais.'),
   "dataNascimento": zod.string().nullish().describe('Data de nascimento do lead (YYYY-MM-DD).'),
   "estadoCivil": zod.string().nullish().describe('Estado civil: solteiro, casado, divorciado, viuvo, uniao_estavel.'),
   "conjugeNome": zod.string().nullish(),
@@ -7053,6 +7184,7 @@ export const GetPublicSiteResponse = zod.object({
   "vertical": zod.string().nullish()
 }).nullish(),
   "produtos": zod.array(zod.object({
+  "sku": zod.string().nullish(),
   "id": zod.string(),
   "nome": zod.string(),
   "descricao": zod.string().nullish(),
@@ -7720,6 +7852,9 @@ export const linkTenantPartnerResponseIntegracoesConcluidoDefault = false;
 export const linkTenantPartnerResponseConfirmarEstoqueAntesFinanceiroDefault = false;
 
 export const LinkTenantPartnerResponse = zod.object({
+  "corPrimaria": zod.string().nullish(),
+  "parceiroRedeAtivo": zod.boolean().optional(),
+  "parceiroCategorias": zod.array(zod.string()).nullish(),
   "id": zod.string(),
   "name": zod.string(),
   "slug": zod.string(),
@@ -7747,6 +7882,10 @@ export const LinkTenantPartnerResponse = zod.object({
   "onboardingConcluido": zod.boolean().default(linkTenantPartnerResponseOnboardingConcluidoDefault).describe('Whether the main onboarding wizard (steps 1-4) has been completed.'),
   "integracoesConcluido": zod.boolean().default(linkTenantPartnerResponseIntegracoesConcluidoDefault).describe('Whether the integrations onboarding has been completed.'),
   "googleReviewLink": zod.string().nullish().describe('Link para avaliação do Google configurado pelo tenant. Usado pelo agente Pós-Venda para solicitar avaliações apenas quando o cliente relata uma experiência positiva na pesquisa de satisfação pós-entrega. Vazio por padrão.\n'),
+  "googleAdsConversionId": zod.string().nullish().describe('ID de conversão do Google Ads da conta do próprio tenant, usado nos sites gerados pelo Vendor.ai para esse tenant. Independente da tag do site institucional appvendorai.com.\n'),
+  "metaPixelId": zod.string().nullish().describe('ID do Meta Pixel da conta do próprio tenant, usado nos sites gerados pelo Vendor.ai para esse tenant.\n'),
+  "linkedinInsightTagId": zod.string().nullish().describe('Partner ID do LinkedIn Insight Tag da conta do tenant.'),
+  "tiktokPixelId": zod.string().nullish().describe('ID do TikTok Pixel da conta do tenant.'),
   "confirmarEstoqueAntesFinanceiro": zod.boolean().default(linkTenantPartnerResponseConfirmarEstoqueAntesFinanceiroDefault).describe('Quando true, o fechamento de negócios pausa em uma etapa de conferência de estoque antes de gerar contrato\/cobrança, aguardando aprovação do usuário responsável.\n'),
   "usuarioConferenciaEstoqueId": zod.string().nullish().describe('ID do usuário responsável por confirmar a disponibilidade em estoque antes do fechamento financeiro (sem FK formal para evitar import circular).\n'),
   "createdAt": zod.coerce.date(),
@@ -10816,6 +10955,13 @@ export const GetTenantCalendarSettingsResponse = zod.object({
   "month": zod.number().optional(),
   "day": zod.number().optional()
 })).optional(),
+  "professionalDates": zod.array(zod.object({
+  "name": zod.string(),
+  "active": zod.boolean(),
+  "month": zod.number(),
+  "day": zod.number(),
+  "professions": zod.array(zod.string())
+})).optional(),
   "customDates": zod.array(zod.object({
   "name": zod.string(),
   "date": zod.string(),
@@ -10851,6 +10997,13 @@ export const CreateTenantCalendarSettingsBody = zod.object({
   "month": zod.number().optional(),
   "day": zod.number().optional()
 })).optional(),
+  "professionalDates": zod.array(zod.object({
+  "name": zod.string(),
+  "active": zod.boolean(),
+  "month": zod.number(),
+  "day": zod.number(),
+  "professions": zod.array(zod.string())
+})).optional(),
   "customDates": zod.array(zod.object({
   "name": zod.string(),
   "date": zod.string(),
@@ -10884,6 +11037,13 @@ export const UpdateTenantCalendarSettingsBody = zod.object({
   "month": zod.number().optional(),
   "day": zod.number().optional()
 })).optional(),
+  "professionalDates": zod.array(zod.object({
+  "name": zod.string(),
+  "active": zod.boolean(),
+  "month": zod.number(),
+  "day": zod.number(),
+  "professions": zod.array(zod.string())
+})).optional(),
   "customDates": zod.array(zod.object({
   "name": zod.string(),
   "date": zod.string(),
@@ -10910,6 +11070,13 @@ export const UpdateTenantCalendarSettingsResponse = zod.object({
   "movableDate": zod.boolean().optional(),
   "month": zod.number().optional(),
   "day": zod.number().optional()
+})).optional(),
+  "professionalDates": zod.array(zod.object({
+  "name": zod.string(),
+  "active": zod.boolean(),
+  "month": zod.number(),
+  "day": zod.number(),
+  "professions": zod.array(zod.string())
 })).optional(),
   "customDates": zod.array(zod.object({
   "name": zod.string(),

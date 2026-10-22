@@ -109,6 +109,9 @@ export const activitiesTable = pgTable("activities", {
 });
 
 export const insertActivitySchema = createInsertSchema(activitiesTable, {
+  handoffStatus: () => z.enum(["none", "requested", "accepted", "rejected"]),
+  handoffMode: () => z.enum(["none", "responsibility", "stage"]),
+  formularioSnapshot: () => z.record(z.string(), z.unknown()), formularioRespostas: () => z.record(z.string(), z.unknown()),
   dataVencimento: z.coerce.date().optional(),
   concluidaEm: z.coerce.date().optional(),
   dataHoraInicio: z.coerce.date().optional(),
@@ -116,6 +119,9 @@ export const insertActivitySchema = createInsertSchema(activitiesTable, {
 }).omit({ id: true, createdAt: true, updatedAt: true, googleEventId: true, meetLink: true });
 
 export const updateActivitySchema = createSelectSchema(activitiesTable, {
+  handoffStatus: () => z.enum(["none", "requested", "accepted", "rejected"]),
+  handoffMode: () => z.enum(["none", "responsibility", "stage"]),
+  formularioSnapshot: () => z.record(z.string(), z.unknown()), formularioRespostas: () => z.record(z.string(), z.unknown()),
   dataVencimento: z.coerce.date().optional(),
   concluidaEm: z.coerce.date().optional(),
   dataHoraInicio: z.coerce.date().optional(),

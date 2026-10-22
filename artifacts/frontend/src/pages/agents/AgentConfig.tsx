@@ -32,7 +32,7 @@ const FLOW_ORDER = [
   "farmacia",
 ];
 
-function authHeaders() {
+function authHeaders(): Record<string, string> {
   const token = localStorage.getItem("vendorai_token");
   return token ? { Authorization: `Bearer ${token}` } : {};
 }

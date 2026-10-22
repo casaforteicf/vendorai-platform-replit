@@ -300,7 +300,7 @@ export default function LeadWorkspace() {
     [partnerships, tenantId],
   );
 
-  const stages = useMemo(() => [...(configuredStages.length ? configuredStages : fallbackStages)].sort((a, b) => (a.ordem ?? 0) - (b.ordem ?? 0)), [configuredStages]);
+  const stages = useMemo(() => [...(configuredStages.length ? configuredStages : fallbackStages.map(stage => ({ ...stage, id: stage.key })))].sort((a, b) => (a.ordem ?? 0) - (b.ordem ?? 0)), [configuredStages]);
   const currentIndex = stages.findIndex((s) => s.key === deal?.etapa);
   const currentStage = stages[currentIndex];
   const visualStages = useMemo(() => {
@@ -584,7 +584,6 @@ export default function LeadWorkspace() {
       setDescription("");
       setNote("");
       setDue(tomorrow());
-      setEditEligible(false);
       setAdvancedHandoffOpen(false);
     } catch (error) {
       toast({

@@ -132,6 +132,7 @@ export const insertObraEletricaPontoSchema = createInsertSchema(obraEletricaPont
 }).omit({ id: true, createdAt: true, updatedAt: true });
 
 export const insertObraEletricaCircuitoSchema = createInsertSchema(obraEletricaCircuitosTable, {
+  metadata: () => z.record(z.string(), z.unknown()),
   tipo: z.enum(ELETRICA_REDE_TIPOS),
   tensaoV: decimalOptional,
   potenciaInstaladaW: decimalOptional,
@@ -144,11 +145,13 @@ export const insertObraEletricaCircuitoSchema = createInsertSchema(obraEletricaC
 }).omit({ id: true, createdAt: true, updatedAt: true });
 
 export const insertObraEletricaQuadroSchema = createInsertSchema(obraEletricaQuadrosTable, {
+  metadata: () => z.record(z.string(), z.unknown()),
   tensaoV: decimalOptional,
   correnteNominalA: decimalOptional,
 }).omit({ id: true, createdAt: true, updatedAt: true });
 
 export const insertObraEletricaRedeEspecialSchema = createInsertSchema(obraEletricaRedesEspeciaisTable, {
+  metadata: () => z.record(z.string(), z.unknown()),
   tipo: z.enum(ELETRICA_REDE_TIPOS),
   comprimentoM: decimalOptional,
   quantidadePontos: decimalOptional,
@@ -230,6 +233,7 @@ export const obraEnergiaComponentesTable = pgTable("obra_energia_componentes", {
 }));
 
 export const insertObraEnergiaSistemaSchema = createInsertSchema(obraEnergiaSistemasTable, {
+  parametros: () => z.record(z.string(), z.unknown()),
   tipo: z.enum(ENERGIA_SISTEMA_TIPOS),
   potenciaKw: decimalOptional,
   energiaKwh: decimalOptional,
@@ -239,6 +243,7 @@ export const insertObraEnergiaSistemaSchema = createInsertSchema(obraEnergiaSist
 }).omit({ id: true, createdAt: true, updatedAt: true });
 
 export const insertObraEnergiaComponenteSchema = createInsertSchema(obraEnergiaComponentesTable, {
+  parametros: () => z.record(z.string(), z.unknown()),
   tipo: z.enum(ENERGIA_COMPONENTE_TIPOS),
   quantidade: decimalOptional,
 }).omit({ id: true, createdAt: true, updatedAt: true });

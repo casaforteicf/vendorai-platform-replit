@@ -140,7 +140,7 @@ export default function RelatoriosVisaoGeral() {
   const { user } = useAuth();
   const tenantId = user?.tenantId ?? "";
 
-  const { data: rawLeads = [], isLoading: loadingLeads } = useListTenantLeads(tenantId, {
+  const { data: rawLeads = [], isLoading: loadingLeads } = useListTenantLeads(tenantId, undefined, {
     query: { enabled: !!tenantId, queryKey: getListTenantLeadsQueryKey(tenantId) },
   });
   const { data: rawDeals = [], isLoading: loadingDeals } = useListDeals(tenantId, undefined, {

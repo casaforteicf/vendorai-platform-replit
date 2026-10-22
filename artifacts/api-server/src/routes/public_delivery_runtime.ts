@@ -80,13 +80,13 @@ const chatSchema = z.object({
 router.post("/public/delivery-runtime/:token/chat", limiter, async (req, res) => {
   try {
     const parsed = chatSchema.safeParse(req.body ?? {});
-    if (!parsed.success) return res.status(422).json({ error: "Histórico inválido" });
+    if (!parsed.success) { res.status(422).json({ error: "Histórico inválido" }); return; }
 
     const { payload, lead, tenant, profile } = await validateDelivery(String(req.params.token));
     const resolved = resolveKind(payload.toolRef);
     const agentKey = "agentKey" in resolved ? resolved.agentKey : null;
     if (!agentKey || !PUBLIC_AGENT_KEYS.has(agentKey)) {
-      return res.status(422).json({ error: "Esta entrega não é um agente público." });
+      res.status(422).json({ error: "Esta entrega não é um agente público." }); return;
     }
 
     const [activeCfg] = await db.select({ ativo: tenantAgentConfigsTable.ativo })
@@ -97,7 +97,7 @@ router.post("/public/delivery-runtime/:token/chat", limiter, async (req, res) =>
       ))
       .limit(1);
     if (activeCfg && activeCfg.ativo === false) {
-      return res.status(404).json({ error: "Agente indisponível." });
+      res.status(404).json({ error: "Agente indisponível." }); return;
     }
 
     const cfg = await getAgentConfig(payload.tenantId, agentKey).catch(() => null);
@@ -160,12 +160,12 @@ const preProjectSchema = z.object({
 router.post("/public/delivery-runtime/:token/arqdor-pre-project", limiter, async (req, res) => {
   try {
     const parsed = preProjectSchema.safeParse(req.body ?? {});
-    if (!parsed.success) return res.status(422).json({ error: "Dados do pré-projeto inválidos" });
+    if (!parsed.success) { res.status(422).json({ error: "Dados do pré-projeto inválidos" }); return; }
 
     const { payload, lead, tenant, profile } = await validateDelivery(String(req.params.token));
     const resolved = resolveKind(payload.toolRef);
     if (resolved.kind !== "arqdor_pre_project") {
-      return res.status(422).json({ error: "Esta entrega não é um pré-projeto ARQDOR." });
+      res.status(422).json({ error: "Esta entrega não é um pré-projeto ARQDOR." }); return;
     }
 
     const input = parsed.data;

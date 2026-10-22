@@ -134,6 +134,7 @@ export const obraPedidoDevolucoesTable = pgTable("obra_pedido_devolucoes", {
 });
 
 export const insertObraPedidoCompraSchema = createInsertSchema(obraPedidosCompraTable, {
+  metadata: () => z.record(z.string(), z.unknown()),
   status: z.enum(COMPRA_PEDIDO_STATUS).optional(),
   freteValor: decimalOptional,
   impostosValor: decimalOptional,
@@ -143,13 +144,13 @@ export const insertObraPedidoCompraSchema = createInsertSchema(obraPedidosCompra
 }).omit({ id: true, createdAt: true, updatedAt: true });
 
 export const insertObraPedidoCompraItemSchema = createInsertSchema(obraPedidoCompraItensTable, {
-  quantidadePedida: decimalOptional,
-  precoUnitario: decimalOptional,
-  valorTotal: decimalOptional,
+  quantidadePedida: () => decimalOptional.unwrap(),
+  precoUnitario: () => decimalOptional.unwrap(),
+  valorTotal: () => decimalOptional.unwrap(),
   quantidadeRecebida: decimalOptional,
   quantidadeAprovada: decimalOptional,
   quantidadeRejeitada: decimalOptional,
-  saldoReceber: decimalOptional,
+  saldoReceber: () => decimalOptional.unwrap(),
 }).omit({ id: true, createdAt: true, updatedAt: true });
 
 export const insertObraPedidoRecebimentoSchema = createInsertSchema(obraPedidoRecebimentosTable, {
@@ -157,11 +158,11 @@ export const insertObraPedidoRecebimentoSchema = createInsertSchema(obraPedidoRe
 }).omit({ id: true, createdAt: true });
 
 export const insertObraPedidoRecebimentoItemSchema = createInsertSchema(obraPedidoRecebimentoItensTable, {
-  quantidadeRecebida: decimalOptional,
+  quantidadeRecebida: () => decimalOptional.unwrap(),
   quantidadeAprovada: decimalOptional,
   quantidadeRejeitada: decimalOptional,
 }).omit({ id: true, createdAt: true });
 
 export const insertObraPedidoDevolucaoSchema = createInsertSchema(obraPedidoDevolucoesTable, {
-  quantidade: decimalOptional,
+  quantidade: () => decimalOptional.unwrap(),
 }).omit({ id: true, createdAt: true });

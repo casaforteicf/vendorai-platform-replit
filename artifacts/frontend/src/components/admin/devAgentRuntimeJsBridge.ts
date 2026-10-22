@@ -146,7 +146,7 @@ function installRuntimeJsBridge() {
   if (installed || !originalFetch || typeof window === "undefined") return;
   installed = true;
 
-  window.addEventListener("error", (event) => {
+  window.addEventListener("error", (event: Event) => {
     if (event instanceof ErrorEvent) {
       if (isBenignResizeObserverError(event)) return;
       recordSignal({

@@ -118,7 +118,7 @@ export default function VideoAvatarVideoScriptGuide() {
     if (typeof window === "undefined" || window.innerWidth > MOBILE_BREAKPOINT) return;
 
     let originalCard: HTMLElement | null = null;
-    let cleanupCue = () => undefined;
+    let cleanupCue: () => void = () => {};
     let inserted: HTMLElement | null = null;
 
     const sync = () => {

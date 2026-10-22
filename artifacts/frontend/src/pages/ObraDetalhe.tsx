@@ -1,3 +1,5 @@
+import { getListComposicoesQueryKey } from "@workspace/api-client-react";
+import { getListInsumosQueryKey } from "@workspace/api-client-react";
 import { useState, useEffect, useRef } from "react";
 import * as XLSX from "xlsx";
 import { useRoute, Link } from "wouter";
@@ -1179,7 +1181,7 @@ function Medicoes({ tenantId, obraId, etapas }: { tenantId: string; obraId: stri
     saldoEntradaApos: number;
   }>(null);
 
-  const authHeaders = () => {
+  const authHeaders = (): Record<string, string> => {
     const token = localStorage.getItem("vendorai_token");
     return token ? { Authorization: `Bearer ${token}` } : {};
   };
@@ -2039,10 +2041,10 @@ function TabOrcamento({ tenantId, obraId, portalToken }: { tenantId: string; obr
   }
 
   const { data: insumosBase = [] } = useListInsumos(tenantId, {}, {
-    query: { enabled: !!tenantId },
+    query: { queryKey: getListInsumosQueryKey(tenantId, {}), enabled: !!tenantId },
   });
   const { data: composicoesBase = [] } = useListComposicoes(tenantId, {}, {
-    query: { enabled: !!tenantId },
+    query: { queryKey: getListComposicoesQueryKey(tenantId, {}), enabled: !!tenantId },
   });
 
   const { data: orcamentos = [] } = useListObraOrcamentos(tenantId, obraId, {

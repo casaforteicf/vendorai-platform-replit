@@ -1043,7 +1043,7 @@ router.patch("/representation-work/:participationId/stage", async (req, res) => 
           titulo: targetStage.atividadePadraoTitulo.trim(),
           descricao: targetStage.atividadePadraoDescricao ?? null,
           prazoMinutos: targetStage.atividadePadraoPrazoMinutos ?? targetStage.slaMinutos ?? 24 * 60,
-          tipo: "tarefa",
+          tipo: "tarefa" as const,
           categoria: "sugerida",
           responsavel: "deal_owner",
           prioridade: "normal",
@@ -1371,7 +1371,7 @@ router.post("/intercompany-commissions/:commissionId/payments", async (req, res)
     return { commission: updatedCommission, payment, payerTitleId, beneficiaryTitleId };
   });
 
-  if ("error" in result) return res.status(result.status).json({ error: result.error });
+  if ("error" in result && typeof result.status === "number") return res.status(result.status).json({ error: result.error });
   return res.status("replay" in result ? 200 : 201).json(result);
 });
 

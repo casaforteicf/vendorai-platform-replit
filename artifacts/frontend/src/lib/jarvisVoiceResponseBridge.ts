@@ -247,7 +247,7 @@ async function speakSupportResponse(response: Response) {
     let fullContent = "";
     let spokenPrefix = "";
     let earlyStarted = false;
-    let streamDoneResolve: (() => void) | null = null;
+    let streamDoneResolve!: () => void;
     const streamDone = new Promise<void>((resolve) => { streamDoneResolve = resolve; });
 
     const maybeStartEarlyVoice = () => {
@@ -293,7 +293,7 @@ async function speakSupportResponse(response: Response) {
       if (done) break;
     }
     if (pending) consumeLine(pending);
-    streamDoneResolve?.();
+    streamDoneResolve();
 
     if (!earlyStarted && fullContent.trim()) {
       announceVoiceReady(fullContent);

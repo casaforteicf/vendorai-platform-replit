@@ -104,7 +104,7 @@ async function getDealContext(dealId: string) {
       : Promise.resolve(null),
     db.select({ id: tenantsTable.id, name: tenantsTable.name }).from(tenantsTable).where(eq(tenantsTable.id, deal.tenantId)).limit(1).then((rows) => rows[0] ?? null),
     deal.assignedTo
-      ? db.select({ id: usersTable.id, nome: usersTable.nome, email: usersTable.email }).from(usersTable).where(eq(usersTable.id, deal.assignedTo)).limit(1).then((rows) => rows[0] ?? null)
+      ? db.select({ id: usersTable.id, nome: usersTable.name, email: usersTable.email }).from(usersTable).where(eq(usersTable.id, deal.assignedTo)).limit(1).then((rows) => rows[0] ?? null)
       : Promise.resolve(null),
   ]);
   const [proposal] = await db.select().from(propostasTable)
@@ -733,7 +733,7 @@ router.post("/operational-checklists/runs/:runId/remote-invite", async (req, res
   if (!canAccessTenant(req, run.tenantId)) return void res.status(403).json({error:"Acesso negado"});
   if (run.status !== "concluido") return void res.status(409).json({error:"Conclua a conferencia primeiro"});
   const prior = run.headerSnapshot.remoteAcceptanceInvitation;
-  if (prior && typeof prior === "object" && prior.status === "pending" && typeof prior.expiresAt === "string" && Date.parse(prior.expiresAt) > Date.now())
+  if (prior && typeof prior === "object" && "status" in prior && "expiresAt" in prior && prior.status === "pending" && typeof prior.expiresAt === "string" && Date.parse(prior.expiresAt) > Date.now())
     return void res.status(409).json({error:"Revogue o convite anterior antes de emitir outro"});
   const token = randomBytes(32).toString("base64url");
   const invitation = {
@@ -762,7 +762,7 @@ router.post("/operational-checklists/runs/:runId/remote-invite/revoke", async (r
   if (!canAccessTenant(req,run.tenantId)) return void res.status(403).json({error:"Acesso negado"});
   const existing = run.headerSnapshot.remoteAcceptanceInvitation;
   if (!existing || typeof existing !== "object") return void res.status(404).json({error:"Convite nao encontrado"});
-  if (existing.status !== "pending") return void res.status(409).json({error:"Convite ja revogado ou indisponivel"});
+  if (!("status" in existing) || existing.status !== "pending") return void res.status(409).json({error:"Convite ja revogado ou indisponivel"});
   const [updated] = await db.update(operationalChecklistRunsTable)
     .set({headerSnapshot:{...run.headerSnapshot,remoteAcceptanceInvitation:{...existing, status:"revoked",revokedAt:new Date().toISOString(),revokedBy:req.user.sub}},updatedAt:new Date()})
     .where(and(eq(operationalChecklistRunsTable.id,run.id),eq(operationalChecklistRunsTable.updatedAt,run.updatedAt)))

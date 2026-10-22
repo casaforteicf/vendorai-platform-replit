@@ -139,8 +139,10 @@ export const obraAcabamentoPadroesTable = pgTable("obra_acabamento_padroes", {
 });
 
 export const insertObraPavimentoSchema = createInsertSchema(obraPavimentosTable, { nivel: decimalOptional }).omit({ id: true, createdAt: true, updatedAt: true });
-export const insertObraAmbienteSchema = createInsertSchema(obraAmbientesTable, { areaBruta: decimalOptional, areaLiquida: decimalOptional, perimetro: decimalOptional, altura: decimalOptional }).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertObraAmbienteSchema = createInsertSchema(obraAmbientesTable, {
+  metadata: () => z.record(z.string(), z.unknown()),  areaBruta: decimalOptional, areaLiquida: decimalOptional, perimetro: decimalOptional, altura: decimalOptional }).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertObraElementoSchema = createInsertSchema(obraElementosTable, {
+  metadata: () => z.record(z.string(), z.unknown()),
   tipo: z.enum(ELEMENTO_TIPOS),
   comprimento: decimalOptional, altura: decimalOptional, espessura: decimalOptional,
   areaBruta: decimalOptional, areaAberturas: decimalOptional, areaLiquida: decimalOptional,
@@ -152,11 +154,12 @@ export const insertObraSuperficieSchema = createInsertSchema(obraSuperficiesTabl
   origemConfiguracao: z.enum(ORIGEM_CONFIGURACAO).optional(),
 }).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertObraSuperficieZonaSchema = createInsertSchema(obraSuperficieZonasTable, {
+  geometria: () => z.record(z.string(), z.unknown()),
   geometriaTipo: z.enum(ZONA_GEOMETRIA_TIPOS),
   area: decimalOptional, perimetro: decimalOptional,
   origemConfiguracao: z.enum(ORIGEM_CONFIGURACAO),
 }).omit({ id: true, createdAt: true, updatedAt: true });
-export const insertObraAcabamentoPadraoSchema = createInsertSchema(obraAcabamentoPadroesTable).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertObraAcabamentoPadraoSchema = createInsertSchema(obraAcabamentoPadroesTable, { parametros: () => z.record(z.string(), z.unknown()) }).omit({ id: true, createdAt: true, updatedAt: true });
 
 export type ObraPavimento = typeof obraPavimentosTable.$inferSelect;
 export type ObraAmbiente = typeof obraAmbientesTable.$inferSelect;

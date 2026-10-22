@@ -1,3 +1,5 @@
+export {};
+
 type SemanticPageSnapshot = {
   route: string;
   title: string;

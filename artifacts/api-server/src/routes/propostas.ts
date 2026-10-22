@@ -1413,7 +1413,7 @@ router.get(["/propostas/:id/pdf", "/propostas/:id/print-document"], async (req, 
     const safe = (proposta.numero ?? proposta.id.slice(-8)).replace(/[^a-zA-Z0-9\-_]/g, "_");
     res.setHeader("Content-Type", "application/pdf");
     res.setHeader("Content-Disposition", `attachment; filename="Orcamento_${safe}.pdf"`);
-    return res.send(pdfBuffer);
+    res.send(pdfBuffer); return;
   } catch (error) {
     logger.error({ err: error, propostaId }, "propostas: failed to generate PDF");
     res.status(500).json({ error: "Não foi possível gerar o PDF do orçamento." });

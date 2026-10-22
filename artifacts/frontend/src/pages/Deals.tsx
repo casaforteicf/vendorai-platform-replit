@@ -1,3 +1,4 @@
+import { cn } from "@/lib/utils";
 import React, { lazy, Suspense, useState, useCallback, useEffect, useMemo, useRef } from "react";
 import { useLocation } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
@@ -1751,8 +1752,6 @@ function EditDealSheet({
     try {
       const data = await extractQuoteWithRetry(tenantId, file);
       if (!data.importId) throw new Error("A extração não retornou um registro de auditoria.");
-      setCreateBudgetImportId(data.importId);
-      setCreateBudgetReviewStatus("pending_review");
       if (data.valorTotal != null) form.setValue("valor", data.valorTotal);
       if (data.titulo) {
         const current = form.getValues("titulo");
@@ -1768,7 +1767,6 @@ function EditDealSheet({
       const confianca = data.confianca ?? 0;
       toast({ title: confianca >= 0.5 ? "Orçamento lido com sucesso!" : "Orçamento importado (leitura parcial)" });
     } catch (error) {
-      setCreateQuoteStatus("error");
       toast({
         title: "Erro ao ler o orçamento",
         description: error instanceof Error ? error.message : "Não foi possível processar o arquivo.",
@@ -1779,43 +1777,6 @@ function EditDealSheet({
     }
   }
 
-  async function reviewImportedBudget(action: "approve" | "reject") {
-    if (!createBudgetImportId || !createExtractedInfo) return;
-    const items = createExtractedInfo.itens ?? [];
-    if (action === "approve" && (!items.length || items.some(item =>
-      !item.descricao?.trim() || !(Number(item.quantidade) > 0) ||
-      !Number.isFinite(Number(item.valorUnitario)) || Number(item.valorUnitario) < 0
-    ))) {
-      toast({ title: "Revise descrição, quantidade e valor unitário de todos os itens.", variant: "destructive" });
-      return;
-    }
-    setSavingBudgetReview(true);
-    try {
-      const response = await fetch(`/api/tenants/${encodeURIComponent(tenantId)}/deals/budget-imports/${encodeURIComponent(createBudgetImportId)}/review`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-        body: JSON.stringify(action === "approve"
-          ? { action, reviewedData: { ...createExtractedInfo, valorTotal: items.reduce((sum, item) => sum + Number(item.quantidade) * Number(item.valorUnitario), 0), itens: items.map(item => ({
-            ...item, valorTotal: Number(item.quantidade) * Number(item.valorUnitario),
-          })) } }
-          : { action, note: "Importação rejeitada pelo usuário." }),
-      });
-      if (!response.ok) {
-        const result = await response.json().catch(() => ({}));
-        throw new Error(result.error || "Não foi possível registrar a revisão.");
-      }
-      setCreateBudgetReviewStatus(action === "approve" ? "approved" : "rejected");
-      if (action === "approve") {
-        createForm.setValue("valor", items.reduce((sum, item) =>
-          sum + Number(item.quantidade) * Number(item.valorUnitario), 0), { shouldDirty: true });
-      }
-      toast({ title: action === "approve" ? "Importação revisada e aprovada." : "Importação rejeitada." });
-    } catch (error) {
-      toast({ title: "Falha na revisão", description: error instanceof Error ? error.message : String(error), variant: "destructive" });
-    } finally {
-      setSavingBudgetReview(false);
-    }
-  }
 
   type DealFormValues = z.infer<typeof createSchema>;
   const form = useForm<DealFormValues, any, DealFormValues>({
@@ -2644,7 +2605,7 @@ export default function Deals() {
     }
   }, [firstMobileColumnKey, mobileColumnKeys, mobileCol]);
 
-  const { data: leads = [] } = useListTenantLeads(tenantId, {
+  const { data: leads = [] } = useListTenantLeads(tenantId, undefined, {
     query: {
       enabled: !!tenantId,
       queryKey: getListTenantLeadsQueryKey(tenantId),
@@ -2855,6 +2816,44 @@ export default function Deals() {
       });
     } finally {
       setCreateExtracting(false);
+    }
+  }
+
+  async function reviewImportedBudget(action: "approve" | "reject") {
+    if (!createBudgetImportId || !createExtractedInfo) return;
+    const items = createExtractedInfo.itens ?? [];
+    if (action === "approve" && (!items.length || items.some(item =>
+      !item.descricao?.trim() || !(Number(item.quantidade) > 0) ||
+      !Number.isFinite(Number(item.valorUnitario)) || Number(item.valorUnitario) < 0
+    ))) {
+      toast({ title: "Revise descrição, quantidade e valor unitário de todos os itens.", variant: "destructive" });
+      return;
+    }
+    setSavingBudgetReview(true);
+    try {
+      const response = await fetch(`/api/tenants/${encodeURIComponent(tenantId)}/deals/budget-imports/${encodeURIComponent(createBudgetImportId)}/review`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        body: JSON.stringify(action === "approve"
+          ? { action, reviewedData: { ...createExtractedInfo, valorTotal: items.reduce((sum, item) => sum + Number(item.quantidade) * Number(item.valorUnitario), 0), itens: items.map(item => ({
+            ...item, valorTotal: Number(item.quantidade) * Number(item.valorUnitario),
+          })) } }
+          : { action, note: "Importação rejeitada pelo usuário." }),
+      });
+      if (!response.ok) {
+        const result = await response.json().catch(() => ({}));
+        throw new Error(result.error || "Não foi possível registrar a revisão.");
+      }
+      setCreateBudgetReviewStatus(action === "approve" ? "approved" : "rejected");
+      if (action === "approve") {
+        createForm.setValue("valor", items.reduce((sum, item) =>
+          sum + Number(item.quantidade) * Number(item.valorUnitario), 0), { shouldDirty: true });
+      }
+      toast({ title: action === "approve" ? "Importação revisada e aprovada." : "Importação rejeitada." });
+    } catch (error) {
+      toast({ title: "Falha na revisão", description: error instanceof Error ? error.message : String(error), variant: "destructive" });
+    } finally {
+      setSavingBudgetReview(false);
     }
   }
 

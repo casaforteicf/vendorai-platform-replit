@@ -39,13 +39,13 @@ function safeEqual(a: string, b: string): boolean {
 
 function requireRemoteControlKey(req: Request, res: Response, next: NextFunction) {
   const configured = process.env["VENDORAI_REMOTE_CONTROL_KEY"]?.trim();
-  if (!configured) return res.status(503).json({ error: "remote_control_not_configured" });
+  if (!configured) { res.status(503).json({ error: "remote_control_not_configured" }); return; }
 
   const header = req.header("x-vendorai-remote-key")?.trim() || "";
   const bearer = req.header("authorization")?.replace(/^Bearer\s+/i, "").trim() || "";
   const provided = header || bearer;
   if (!provided || !safeEqual(provided, configured)) {
-    return res.status(401).json({ error: "invalid_remote_control_key" });
+    res.status(401).json({ error: "invalid_remote_control_key" }); return;
   }
   next();
 }

@@ -348,7 +348,7 @@ async function validateReleaseAutonomously(release: any) {
     email: String(principal.email ?? ""),
     platformRole: "super_admin",
     tenantId: String(principal.tenantId ?? ""),
-    role: String(principal.role ?? "admin"),
+    role: principal.role === "member" ? "member" : "admin",
     userFunction: principal.userFunction ? String(principal.userFunction) : undefined,
     actorType: "ai",
   });
@@ -413,7 +413,7 @@ async function advanceAutonomousImprovement() {
       request: String(item.title) + "\n\n" + String(item.description ?? ""),
       diagnosis: "Módulo: " + String(item.module ?? "Plataforma") + "\nPrioridade: " + String(item.priority ?? "media") + "\nOrigem: " + String(item.sourceType ?? "central"),
       route: "/admin/melhorias/" + String(item.id),
-      source: "release_center_autonomous",
+      source: "release_center",
     });
     const pr = result.pullRequest ?? extractAction(result, "create_pr");
     const branch = extractAction(result, "create_branch")?.branch ?? null;
@@ -495,7 +495,7 @@ async function repairAutonomousBlockedImprovement() {
       ].join("\n"),
       diagnosis: "Auto-reparo da Central. Módulo: " + String(item.module ?? "Plataforma") + ". Prioridade: " + String(item.priority ?? "media"),
       route: "/admin/melhorias/" + String(item.id),
-      source: "release_center_auto_repair",
+      source: "release_center",
     });
     const pr = result.pullRequest ?? extractAction(result, "create_pr");
     const branch = extractAction(result, "create_branch")?.branch ?? null;
@@ -993,7 +993,7 @@ router.post("/admin/releases/:id/vendi-test", async (req, res) => {
     email: String(user.email ?? ""),
     platformRole: "super_admin",
     tenantId: String(user.tenantId ?? ""),
-    role: String(user.role ?? "admin"),
+    role: user.role === "member" ? "member" : "admin",
     userFunction: user.userFunction ? String(user.userFunction) : undefined,
     actorType: "ai",
   });

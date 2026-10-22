@@ -373,7 +373,7 @@ export function normalizeProposalBuilderTemplate(
   const rawModules = Array.isArray(source.modules) ? source.modules : [];
 
   const modules = rawModules
-    .map((item, index) => {
+    .map((item, index): ProposalBuilderModule | null => {
       const module = item && typeof item === "object" ? (item as Record<string, unknown>) : {};
       const key = String(module.key ?? "") as ProposalBuilderModuleKey;
       if (!ALLOWED_PROPOSAL_MODULES.includes(key)) return null;
@@ -427,7 +427,7 @@ export function normalizeProposalBuilderTemplate(
         },
       };
     })
-    .filter((item): item is ProposalBuilderModule => Boolean(item))
+    .filter((item) => item !== null)
     .sort((a, b) => a.order - b.order);
 
   const visualRaw =

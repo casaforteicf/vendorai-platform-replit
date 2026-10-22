@@ -42,7 +42,7 @@ const STATUS_STYLE: Record<ValidationStatus, string> = {
   manual: "border-muted bg-muted/20 text-muted-foreground",
 };
 
-function tokenHeaders() {
+function tokenHeaders(): Record<string, string> {
   const token = localStorage.getItem("vendorai_token");
   return token ? { Authorization: `Bearer ${token}` } : {};
 }

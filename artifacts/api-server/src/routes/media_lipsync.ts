@@ -1,4 +1,4 @@
-import { Router, type IRouter, type NextFunction, type Response } from "express";
+import { Router, type IRouter, type Request, type NextFunction, type Response } from "express";
 import { pool } from "@workspace/db";
 import { requireSameTenanOrSuperAdmin } from "../middlewares/auth";
 import { generateVendorAiLipSyncWithQualityGate as generateVendorAiLipSync } from "../services/vendorai-lipsync-quality.js";
@@ -99,7 +99,7 @@ function sendDubleStyleError(res: Response, error: unknown): boolean {
   return false;
 }
 
-async function enforcePaidMetaMediaRights(req: Express.Request, res: Response, next: NextFunction) {
+async function enforcePaidMetaMediaRights(req: Request, res: Response, next: NextFunction) {
   const tenantId = String(req.params["tenantId"]);
   const campaignId = String(req.params["id"]);
 

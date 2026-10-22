@@ -35,7 +35,7 @@ function integrationsRedirect(appUrl: string, params: string): string {
 
 function actorFromRequest(req: Request, userId?: string | null) {
   return {
-    userId: userId ?? req.user?.id ?? req.user?.sub ?? null,
+    userId: userId ?? req.user?.sub ?? req.user?.sub ?? null,
     ip: req.ip ?? null,
   };
 }

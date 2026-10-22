@@ -94,7 +94,7 @@ const OBJECTIVES = [
 ] as const;
 const STEPS = ["Contexto", "Público & Oferta", "Estratégia IA", "Conteúdo & Ativos", "Design & Geração", "Revisão & Otimização", "Publicação & Ativação"];
 
-function headers(token?: string | null) { return token ? { Authorization: `Bearer ${token}`, "Content-Type": "application/json" } : { "Content-Type": "application/json" }; }
+function headers(token?: string | null): Record<string, string> { return token ? { Authorization: `Bearer ${token}`, "Content-Type": "application/json" } : { "Content-Type": "application/json" }; }
 function price(v: string | number | null | undefined) { const n = Number(v ?? 0); return Number.isFinite(n) && n > 0 ? `R$ ${n.toFixed(2).replace(".", ",")}` : ""; }
 function inferMediaKind(url: string): AssetKind { return /(?:youtube\.com|youtu\.be|vimeo\.com|\.(?:mp4|webm|mov|m4v)(?:$|\?))/i.test(url) ? "video" : "image"; }
 function pendingJobKey(tenantId: string) { return `vendorai_site_generation_job:${tenantId}`; }
@@ -459,24 +459,24 @@ function GeneratorWorkspace() {
   function choose(next: Mode) { setMode(next); setChoosing(false); setEditor(false); setError(null); if (next !== "campaign") setCampaignBriefing(null); sessionStorage.setItem("vendorai_site_creation_mode", next); }
   function toggleProduct(id: string) { if (mode === "product") { setSelected((v) => v.includes(id) ? [] : [id]); const p = catalog.find((x) => x.id === id); if (p) setOffer(p.nome); } else setSelected((v) => v.includes(id) ? v.filter((x) => x !== id) : [...v, id]); }
   function toggleGroup(items: CatalogItem[]) { const ids = items.map((x) => x.id); const all = ids.every((id) => selected.includes(id)); setSelected((v) => all ? v.filter((id) => !ids.includes(id)) : [...new Set([...v, ...ids])]); }
-  async function openSites() {
+  async function openSites(): Promise<void> {
     try {
       const r = await resilientFetch(`/api/tenants/${tenantId}/site-generator?includeHtml=0`, { headers: headers(token), cache: "no-store" });
       if (!r.ok) throw new Error(r.status === 429 ? "Servidor temporariamente ocupado. Aguarde alguns segundos." : `Erro ${r.status}`);
       const rows = await r.json();
-      if (!Array.isArray(rows) || !rows.length) return toast({ title: "Nenhum site criado ainda" });
+      if (!Array.isArray(rows) || !rows.length) { toast({ title: "Nenhum site criado ainda" }); return; }
       setEditor(true);
     } catch (e) {
       toast({ title: "Não foi possível abrir seus sites", description: e instanceof Error ? e.message : undefined, variant: "destructive" });
     }
   }
 
-  async function previewLatest() {
+  async function previewLatest(): Promise<void> {
     try {
       const listRes = await resilientFetch(`/api/tenants/${tenantId}/site-generator?includeHtml=0`, { headers: headers(token), cache: "no-store" });
       if (!listRes.ok) throw new Error(listRes.status === 429 ? "Servidor temporariamente ocupado. Aguarde alguns segundos." : `Erro ${listRes.status}`);
       const rows = await listRes.json();
-      if (!Array.isArray(rows) || !rows.length) return toast({ title: "Nenhum site criado ainda" });
+      if (!Array.isArray(rows) || !rows.length) { toast({ title: "Nenhum site criado ainda" }); return; }
       const latest = [...rows].sort((a: any, b: any) => new Date(b.updatedAt ?? b.createdAt ?? 0).getTime() - new Date(a.updatedAt ?? a.createdAt ?? 0).getTime())[0];
       const siteRes = await resilientFetch(`/api/tenants/${tenantId}/site-generator/${latest.id}/preview?format=html`, { headers: { ...headers(token), Accept: "text/html" }, cache: "no-store" });
       const siteHtml = await siteRes.text();
@@ -666,11 +666,11 @@ function GeneratorWorkspace() {
     }
   }
 
-  async function generate() {
+  async function generate(): Promise<void> {
     const resolvedName = name.trim() || profileName; const resolvedSector = sector.trim() || profileSector; const resolvedDesc = desc.trim() || profileDesc;
-    if (!resolvedName) return setEditContext(true), toast({ title: "Informe o nome do negócio", variant: "destructive" });
-    if (!audience.trim()) return setEditContext(true), toast({ title: "Confirme o público do site", variant: "destructive" });
-    if (mode === "product" && selected.length !== 1) return setAssetsOpen(true), toast({ title: "Selecione um produto do catálogo", variant: "destructive" });
+    if (!resolvedName) { setEditContext(true); toast({ title: "Informe o nome do negócio", variant: "destructive" }); return; }
+    if (!audience.trim()) { setEditContext(true); toast({ title: "Confirme o público do site", variant: "destructive" }); return; }
+    if (mode === "product" && selected.length !== 1) { setAssetsOpen(true); toast({ title: "Selecione um produto do catálogo", variant: "destructive" }); return; }
     setGenerating(true); setError(null);
     try {
       let st = structure; if (mode === "remodel" && !st) st = await analyzeSite();

@@ -81,6 +81,7 @@ export const equipamentosCoberturasTable = pgTable("equipamentos_coberturas", {
 }));
 
 export const insertEquipamentoRecursoSchema = createInsertSchema(equipamentosRecursosTable, {
+  especificacaoTecnica: () => z.record(z.string(), z.unknown()),
   origem: z.enum(EQUIPAMENTO_ORIGENS),
   unidadeCobranca: z.enum(EQUIPAMENTO_UNIDADES_COBRANCA),
   valorUnitario: decimalOptional,
@@ -94,6 +95,7 @@ export const insertEquipamentoRecursoSchema = createInsertSchema(equipamentosRec
 }).omit({ id: true, createdAt: true, updatedAt: true });
 
 export const updateEquipamentoRecursoSchema = createSelectSchema(equipamentosRecursosTable, {
+  especificacaoTecnica: () => z.record(z.string(), z.unknown()),
   origem: z.enum(EQUIPAMENTO_ORIGENS).optional(),
   unidadeCobranca: z.enum(EQUIPAMENTO_UNIDADES_COBRANCA).optional(),
   valorUnitario: decimalOptional,
@@ -107,6 +109,7 @@ export const updateEquipamentoRecursoSchema = createSelectSchema(equipamentosRec
 }).omit({ id: true, tenantId: true, createdAt: true, updatedAt: true }).partial();
 
 export const insertEquipamentoCoberturaSchema = createInsertSchema(equipamentosCoberturasTable, {
+  slotKey: z.string().default("principal"),
   escopoTipo: z.enum(EQUIPAMENTO_ESCOPO_TIPOS),
   unidadeCobranca: z.enum(EQUIPAMENTO_UNIDADES_COBRANCA),
   quantidade: decimalOptional,
@@ -272,6 +275,7 @@ export const updateServicoContratoSchema = createSelectSchema(servicosContratosT
 }).omit({ id: true, tenantId: true, createdAt: true, updatedAt: true }).partial();
 
 export const insertServicoCoberturaSchema = createInsertSchema(servicosCoberturasTable, {
+  slotKey: z.string().default("principal"),
   escopoTipo: z.enum(SERVICO_ESCOPO_TIPOS),
   quantidade: decimalOptional,
   custoUnitario: decimalOptional,
@@ -279,7 +283,7 @@ export const insertServicoCoberturaSchema = createInsertSchema(servicosCobertura
 }).omit({ id: true, createdAt: true, updatedAt: true });
 
 export const insertServicoMedicaoSchema = createInsertSchema(servicosMedicoesTable, {
-  numeroMedicao: decimalOptional,
+  numeroMedicao: () => decimalOptional.unwrap(),
   quantidadeMedida: decimalOptional,
   percentualMedido: decimalOptional,
   valorBruto: decimalOptional,

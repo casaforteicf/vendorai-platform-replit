@@ -61,8 +61,8 @@ describe("ConceptPlan2D mobile/touch stability", () => {
     );
 
     const canvas = screen.getByRole("img", { name: "Planta conceitual arquitetônica" });
-    expect(canvas.className.baseVal).toContain("min-h-[420px]");
-    expect(canvas.className.baseVal).toContain("sm:min-h-[620px]");
-    expect(canvas.className.baseVal).toContain("touch-none");
+    expect(canvas.getAttribute("class")).toContain("min-h-[420px]");
+    expect(canvas.getAttribute("class")).toContain("sm:min-h-[620px]");
+    expect(canvas.getAttribute("class")).toContain("touch-none");
   });
 });
