@@ -47,3 +47,8 @@ Validação desta revisão: 11 testes locais de integridade/resumo passaram; tra
 - Frontend extraído da mesma imagem e servido somente em homologação; configuração anterior do Nginx preservada.
 - Validação visual encontrou “Site não encontrado”: main.tsx tratava homolog.appvendorai.com como slug de site público de cliente. Adicionadas exceções exatas para homolog e homolog2, preservando os demais subdomínios.
 - Novo build e validação visual deste ajuste pendentes; produção permanece sem promoção deste lote.
+
+## Verificação completa 3593
+- Build Contabo 3593 concluído: imagem sha256:146c6d491daaa3cd8bfa20fad42a16fca5ed5214dbfa88dfa295c469b33ebe02. Sem deploy.
+- Typecheck completo falhou: cloudflare-mcp/src/index.ts:261 TS2322, sessão AsyncLocalStorage pode ser undefined. API/frontend sem resultado final confirmado devido à interrupção recursiva.
+- Correção: normalizar sessão ausente para null, preservando a rejeição OPERATOR_IDENTITY_REQUIRED. Nova validação Contabo pendente.
