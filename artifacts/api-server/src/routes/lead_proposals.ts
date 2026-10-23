@@ -271,7 +271,7 @@ function absolutifyStorageUrlsForDownload(html: string, req: any): string {
  * Avoid server-side requests to arbitrary URLs (SSRF) and avoid exposing
  * authenticated/private object paths in portable HTML.
  */
-async function embedProposalStorageImages(html: string, tenantId: string): Promise<string> {
+async function embedProposalStorageImages(html: string, tenantId: string, requestHost?: string): Promise<string> {
   const references = new Set<string>();
   const imageAttribute = /\b(?:src|poster)\s*=\s*(["'])(.*?)\1/gi;
   const cssImage = /url\(\s*(["']?)(.*?)\1\s*\)/gi;
@@ -286,7 +286,7 @@ async function embedProposalStorageImages(html: string, tenantId: string): Promi
           process.env.PUBLIC_API_URL, process.env.API_PUBLIC_URL,
           process.env.APP_URL, process.env.FRONTEND_URL,
         ].filter(Boolean).map(v => { try { return new URL(String(v)).host; } catch { return ""; } });
-        if (!allowed.includes(url.host)) return null;
+        if (!allowed.includes(url.host) && url.host !== requestHost) return null;
         path = url.pathname;
       } catch { return null; }
     }
@@ -398,7 +398,7 @@ router.get("/leads/:leadId/proposals/:version/download", async (req, res) => {
   const filename = `Proposta_${clientName.replace(/\s+/g, "_")}_v${version}.html`;
   res.setHeader("Content-Type", "text/html; charset=utf-8");
   res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
-  res.send(absolutifyStorageUrlsForDownload(await embedProposalStorageImages(row.htmlContent, lead.tenantId), req));
+  res.send(absolutifyStorageUrlsForDownload(await embedProposalStorageImages(row.htmlContent, lead.tenantId, req.get("host")), req));
 });
 
 // ── GET /leads/:leadId/proposals/:version/pdf
@@ -424,7 +424,7 @@ router.get("/leads/:leadId/proposals/:version/pdf", async (req, res) => {
   }
   const clientName = lead.empresa || lead.nome || "Cliente";
   const filename = `Proposta_${clientName.replace(/\s+/g, "_")}_v${version}.pdf`;
-  const pdfBuffer = await generateProposalPDF(absolutifyStorageUrls(await embedProposalStorageImages(row.htmlContent, lead.tenantId)));
+  const pdfBuffer = await generateProposalPDF(absolutifyStorageUrls(await embedProposalStorageImages(row.htmlContent, lead.tenantId, req.get("host"))));
   const isPdf = pdfBuffer.length > 0 && pdfBuffer[0] === 0x25 && pdfBuffer[1] === 0x50 && pdfBuffer[2] === 0x44 && pdfBuffer[3] === 0x46; // %PDF
   if (isPdf) {
     res.setHeader("Content-Type", "application/pdf");
