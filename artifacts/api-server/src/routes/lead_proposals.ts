@@ -273,12 +273,12 @@ function absolutifyStorageUrlsForDownload(html: string, req: any): string {
  */
 async function embedProposalStorageImages(html: string, tenantId: string): Promise<string> {
   const references = new Set<string>();
-  const imageAttribute = /\\b(?:src|poster)\\s*=\\s*(["'])(.*?)\\1/gi;
-  const cssImage = /url\\(\\s*(["']?)(.*?)\\1\\s*\\)/gi;
+  const imageAttribute = /\b(?:src|poster)\s*=\s*(["'])(.*?)\1/gi;
+  const cssImage = /url\(\s*(["']?)(.*?)\1\s*\)/gi;
   const identify = (raw: string): string | null => {
     const value = raw.replace(/&amp;/g, "&").trim();
     let path = value;
-    if (/^https?:\\/\\//i.test(value)) {
+    if (/^https?:\/\//i.test(value)) {
       // Only process URLs belonging to this API. Never fetch arbitrary hosts.
       try {
         const url = new URL(value);
@@ -295,10 +295,10 @@ async function embedProposalStorageImages(html: string, tenantId: string): Promi
     else if (path.startsWith("/api/storage/public-objects/")) path = path.replace("/api/storage/public-objects/", "/objects/");
     if (!path.startsWith("/objects/")) return null;
     try { path = decodeURI(path.split("?")[0]); } catch { return null; }
-    if (path.includes("..") || path.includes("\\\\")) return null;
+    if (path.includes("..") || path.includes("\\")) return null;
     // Uploaded objects are normally stored under tenants/<tenantId>/.
     // Reject references that explicitly name another tenant.
-    const owned = path.match(/\\/tenants\\/([^/]+)\\//);
+    const owned = path.match(/\/tenants\/([^/]+)\//);
     if (owned && owned[1] !== tenantId) return null;
     return path;
   };
