@@ -11,11 +11,22 @@
 
 BEGIN;
 
-REVOKE ALL ON TABLE
-  public.tenants,
+REVOKE ALL ON TABLE public.tenants,
   public.segment_templates,
-  public.password_reset_tokens
-FROM PUBLIC, anon, authenticated;
+  public.password_reset_tokens FROM PUBLIC;
+DO $$
+BEGIN
+  IF to_regrole('anon') IS NOT NULL THEN
+    EXECUTE 'REVOKE ALL ON TABLE public.tenants,
+  public.segment_templates,
+  public.password_reset_tokens FROM anon';
+  END IF;
+  IF to_regrole('authenticated') IS NOT NULL THEN
+    EXECUTE 'REVOKE ALL ON TABLE public.tenants,
+  public.segment_templates,
+  public.password_reset_tokens FROM authenticated';
+  END IF;
+END $$;
 
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE
   public.tenants,
