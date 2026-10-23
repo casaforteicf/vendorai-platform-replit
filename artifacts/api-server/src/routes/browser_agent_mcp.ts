@@ -510,6 +510,24 @@ router.post("/internal/browser-mcp/run", async (req, res) => {
         actorType: "ai",
       });
 
+      // Never assume tenant identifiers are shared between production and homologation.
+      // Mapping is provisioned by an administrator after verifying tenant ownership.
+      // Keys are source tenant IDs (not user-supplied slugs); values are target tenant IDs.
+      let homologTenantId: string;
+      try {
+        const raw = process.env["VENDI_HOMOLOG_TENANT_MAP_JSON"];
+        if (!raw) throw new Error("missing");
+        const mapping: unknown = JSON.parse(raw);
+        if (!mapping || typeof mapping !== "object" || Array.isArray(mapping)) throw new Error("invalid");
+        const target = (mapping as Record<string, unknown>)[tenantId];
+        if (typeof target !== "string" || !/^[a-zA-Z0-9_-]{2,128}$/.test(target)) {
+          throw new Error("unmapped");
+        }
+        homologTenantId = target;
+      } catch {
+        throw new Error("VENDI_HOMOLOG_TENANT_MAPPING_REQUIRED");
+      }
+
       const exchangeUrl = new URL("/api/internal/browser-mcp/homolog-bootstrap", firstPartyUrl.origin);
       const exchangeResponse = await fetch(exchangeUrl, {
         method: "POST",
@@ -517,7 +535,7 @@ router.post("/internal/browser-mcp/run", async (req, res) => {
           authorization: `Bearer ${upstreamToken}`,
           "content-type": "application/json",
         },
-        body: JSON.stringify({ tenantKey: parsed.data.tenantKey }),
+        body: JSON.stringify({ tenantKey: homologTenantId }),
       });
 
       if (!exchangeResponse.ok) {
