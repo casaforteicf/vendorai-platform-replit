@@ -682,7 +682,7 @@ ALTER TABLE "tenants" ADD COLUMN "openai_api_key_encrypted" text;--> statement-b
 ALTER TABLE "tenants" ADD COLUMN "openai_key_configured_at" timestamp;--> statement-breakpoint
 ALTER TABLE "tenants" ADD COLUMN "openai_key_status" text DEFAULT 'nao_configurada';--> statement-breakpoint
 ALTER TABLE "tenants" ADD COLUMN "suspended_reason" text;--> statement-breakpoint
-ALTER TABLE "leads" ADD COLUMN "documento" text;--> statement-breakpoint
+-- leads.documento already added in 0005_deal_closure_notifications.sql
 ALTER TABLE "leads" ADD COLUMN "assigned_to" text;--> statement-breakpoint
 ALTER TABLE "leads" ADD COLUMN "instagram_scoped_id" text;--> statement-breakpoint
 ALTER TABLE "leads" ADD COLUMN "instagram_handle" text;--> statement-breakpoint
