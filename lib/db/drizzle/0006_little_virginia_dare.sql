@@ -722,20 +722,20 @@ ALTER TABLE "agent_configs" ADD COLUMN "meta_waba_id" text;--> statement-breakpo
 ALTER TABLE "agent_configs" ADD COLUMN "meta_access_token" text;--> statement-breakpoint
 ALTER TABLE "agent_configs" ADD COLUMN "meta_verify_token" text;--> statement-breakpoint
 ALTER TABLE "deals" ADD COLUMN "categoria_perda" text;--> statement-breakpoint
-ALTER TABLE "deals" ADD COLUMN "closure_triggered_at" timestamp;--> statement-breakpoint
-ALTER TABLE "deals" ADD COLUMN "contract_status" text;--> statement-breakpoint
-ALTER TABLE "deals" ADD COLUMN "contract_error" text;--> statement-breakpoint
-ALTER TABLE "deals" ADD COLUMN "onboarding_status" text;--> statement-breakpoint
-ALTER TABLE "deals" ADD COLUMN "onboarding_error" text;--> statement-breakpoint
-ALTER TABLE "deals" ADD COLUMN "zapsign_doc_id" text;--> statement-breakpoint
-ALTER TABLE "deals" ADD COLUMN "lost_at" timestamp;--> statement-breakpoint
-ALTER TABLE "deals" ADD COLUMN "lost_reason" text;--> statement-breakpoint
-ALTER TABLE "deals" ADD COLUMN "lost_reason_detail" text;--> statement-breakpoint
+-- deals.closure_triggered_at already added by Drizzle 0005
+-- deals.contract_status already added by Drizzle 0005
+-- deals.contract_error already added by Drizzle 0005
+-- deals.onboarding_status already added by Drizzle 0005
+-- deals.onboarding_error already added by Drizzle 0005
+-- deals.zapsign_doc_id already added by Drizzle 0005
+-- deals.lost_at already added by Drizzle 0005
+-- deals.lost_reason already added by Drizzle 0005
+-- deals.lost_reason_detail already added by Drizzle 0005
 ALTER TABLE "deals" ADD COLUMN "assigned_to" text;--> statement-breakpoint
 ALTER TABLE "deals" ADD COLUMN "tipo_fechamento" "deal_tipo_fechamento";--> statement-breakpoint
-ALTER TABLE "deals" ADD COLUMN "asaas_charge_id" text;--> statement-breakpoint
-ALTER TABLE "deals" ADD COLUMN "charge_link" text;--> statement-breakpoint
-ALTER TABLE "deals" ADD COLUMN "charge_status" text;--> statement-breakpoint
+-- deals.asaas_charge_id already added by Drizzle 0005
+-- deals.charge_link already added by Drizzle 0005
+-- deals.charge_status already added by Drizzle 0005
 ALTER TABLE "deals" ADD COLUMN "etapa_saas" text;--> statement-breakpoint
 ALTER TABLE "deals" ADD COLUMN "mrr" numeric(12, 2);--> statement-breakpoint
 ALTER TABLE "deals" ADD COLUMN "arr" numeric(12, 2);--> statement-breakpoint
