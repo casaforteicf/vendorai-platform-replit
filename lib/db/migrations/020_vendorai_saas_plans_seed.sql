@@ -1,4 +1,9 @@
 -- VendorAI SaaS plans seed for tenant 1d4ea673-58d0-413a-a554-c9aca72a3121
+-- The Drizzle schema defines this boolean, but older databases may not yet have it.
+-- Ensure the schema dependency exists before the SaaS catalog seed uses it.
+ALTER TABLE produtos_catalogo
+  ADD COLUMN IF NOT EXISTS exige_agendamento boolean NOT NULL DEFAULT false;
+
 -- Deactivate all non-standard products (legacy names or wrong types)
 UPDATE produtos_catalogo
 SET ativo = false, updated_at = now()
