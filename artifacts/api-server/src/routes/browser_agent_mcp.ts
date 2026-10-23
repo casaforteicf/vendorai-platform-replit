@@ -94,11 +94,21 @@ router.post("/internal/browser-mcp/homolog-bootstrap", async (req, res) => {
     .from(usersTable)
     .where(and(eq(usersTable.platformRole, "super_admin"), eq(usersTable.active, true)))
     .limit(1);
-  const [tenantPrincipal] = await db.select(principalSelect)
+  // Require an explicitly provisioned principal for automated homologation.
+  // Never impersonate an arbitrary active tenant user.
+  const configuredPrincipalId = process.env["VENDI_HOMOLOG_SERVICE_PRINCIPAL_ID"]?.trim();
+  if (!configuredPrincipalId) {
+    res.status(409).json({ error: "vendi_homolog_service_principal_not_configured" });
+    return;
+  }
+  const [servicePrincipal] = await db.select(principalSelect)
     .from(usersTable)
-    .where(and(eq(usersTable.tenantId, tenantId), eq(usersTable.active, true)))
+    .where(and(
+      eq(usersTable.id, configuredPrincipalId),
+      eq(usersTable.tenantId, tenantId),
+      eq(usersTable.active, true),
+    ))
     .limit(1);
-  const servicePrincipal = tenantPrincipal;
 
   if (!servicePrincipal) {
     res.status(409).json({ error: "vendi_auth_principal_not_found" });
