@@ -79,7 +79,7 @@ CREATE TABLE IF NOT EXISTS public.obra_compra_recebimentos (
 ALTER TABLE public.obra_compra_recebimentos ENABLE ROW LEVEL SECURITY;
 -- PUBLIC is always available; revoke optional legacy Supabase roles only if present.
 REVOKE ALL ON TABLE public.obra_compra_recebimentos FROM PUBLIC;
-DO $
+DO $$
 BEGIN
   IF to_regrole('anon') IS NOT NULL THEN
     EXECUTE 'REVOKE ALL ON TABLE public.obra_compra_recebimentos FROM anon';
@@ -87,7 +87,7 @@ BEGIN
   IF to_regrole('authenticated') IS NOT NULL THEN
     EXECUTE 'REVOKE ALL ON TABLE public.obra_compra_recebimentos FROM authenticated';
   END IF;
-END $;
+END $$;
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.obra_compra_recebimentos TO vendorai_app;
 
 DROP POLICY IF EXISTS vendorai_tenant_access ON public.obra_compra_recebimentos;
