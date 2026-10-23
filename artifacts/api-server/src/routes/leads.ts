@@ -759,8 +759,7 @@ router.get("/tenants/:tenantId/leads", async (req, res) => {
 
   const conditions = [
     eq(leadsTable.tenantId, tenantId),
-    eq(leadsTable.possivelDuplicata, false),
-  ];
+    ];
   if (representativeAccess) {
     conditions.push(eq(leadsTable.representativeFunctionId, representativeAccess.id));
   }
@@ -781,19 +780,23 @@ router.get("/tenants/:tenantId/leads", async (req, res) => {
   }
   if (incluirExcluidos === "apenas") {
     conditions.push(isNotNull(leadsTable.excluidoEm));
+    // A lixeira administrativa inclui duplicatas e contatos classificados como Não Lead.
   } else if (incluirExcluidos !== "incluir") {
     conditions.push(isNull(leadsTable.excluidoEm));
   }
+  if (incluirExcluidos !== "apenas") conditions.push(eq(leadsTable.possivelDuplicata, false));
   // Mesmo padrão pra contato classificado como não-lead (D-003) -- sai
   // da pipeline/dashboard/campanhas por padrão, sem precisar filtrar em
   // cada tela que consome esse endpoint.
   const incluirNaoLeads = req.query["incluirNaoLeads"];
-  if (incluirNaoLeads === "apenas") {
+  if (incluirExcluidos === "apenas") {
+    // Excluídos não são filtrados por classificação comercial.
+  } else if (incluirNaoLeads === "apenas") {
     conditions.push(isNotNull(leadsTable.naoLeadTipo));
   } else if (incluirNaoLeads !== "incluir") {
     conditions.push(isNull(leadsTable.naoLeadTipo));
   }
-  if (!representativeAccess) {
+  if (!representativeAccess && incluirExcluidos !== "apenas") {
     conditions.push(...buildUserFunctionFilter(req, leadsTable));
   }
 
@@ -836,9 +839,8 @@ router.get("/tenants/:tenantId/leads", async (req, res) => {
       .where(and(
         eq(dealTenantParticipationsTable.partnerTenantId, tenantId),
         eq(dealTenantParticipationsTable.status, "active"),
-        eq(leadsTable.possivelDuplicata, false),
         incluirExcluidos === "apenas" ? isNotNull(leadsTable.excluidoEm) : incluirExcluidos === "incluir" ? sql`true` : isNull(leadsTable.excluidoEm),
-        incluirNaoLeads === "apenas" ? isNotNull(leadsTable.naoLeadTipo) : incluirNaoLeads === "incluir" ? sql`true` : isNull(leadsTable.naoLeadTipo),
+        incluirExcluidos === "apenas" ? sql`true` : incluirNaoLeads === "apenas" ? isNotNull(leadsTable.naoLeadTipo) : incluirNaoLeads === "incluir" ? sql`true` : isNull(leadsTable.naoLeadTipo),
       ));
 
     const isAdmin = req.user?.platformRole === "super_admin" || req.user?.platformRole === "tenant_admin";
