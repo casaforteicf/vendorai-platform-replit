@@ -1,5 +1,7 @@
 -- Render provenance: bind every new render to the originating project revision and 3D scene/camera.
+-- Required by the indexes below; later concept-render migrations also use IF NOT EXISTS.
 ALTER TABLE arch_ai_renders
+  ADD COLUMN IF NOT EXISTS concept_project_id TEXT,
   ADD COLUMN IF NOT EXISTS project_revision TEXT NULL,
   ADD COLUMN IF NOT EXISTS scene_id TEXT NULL,
   ADD COLUMN IF NOT EXISTS scene_name TEXT NULL,
