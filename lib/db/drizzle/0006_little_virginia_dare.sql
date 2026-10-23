@@ -857,6 +857,6 @@ ALTER TABLE "agendamentos" ADD CONSTRAINT "agendamentos_agenda_id_agendas_id_fk"
 CREATE INDEX "leads_tenant_phone_idx" ON "leads" USING btree ("tenant_id","telefone");--> statement-breakpoint
 CREATE INDEX "leads_tenant_doc_idx" ON "leads" USING btree ("tenant_id","documento");--> statement-breakpoint
 ALTER TABLE "tenants" ADD CONSTRAINT "tenants_subdomain_slug_unique" UNIQUE("subdomain_slug");--> statement-breakpoint
-ALTER TABLE "tenants" ADD CONSTRAINT "analysis_staleness_hours_positive" CHECK ("tenants"."analysis_staleness_hours" IS NULL OR "tenants"."analysis_staleness_hours" >= 1);--> statement-breakpoint
-ALTER TABLE "tenants" ADD CONSTRAINT "analysis_message_threshold_positive" CHECK ("tenants"."analysis_message_threshold" IS NULL OR "tenants"."analysis_message_threshold" >= 1);--> statement-breakpoint
+-- analysis_staleness_hours_positive already created by Drizzle 0004
+-- analysis_message_threshold_positive already created by Drizzle 0004
 ALTER TABLE "tenants" ADD CONSTRAINT "max_analyses_per_hour_positive" CHECK ("tenants"."max_analyses_per_hour" IS NULL OR "tenants"."max_analyses_per_hour" >= 1);
