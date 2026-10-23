@@ -66,7 +66,7 @@ BEGIN
     BEGIN
       EXECUTE statement;
     EXCEPTION
-      WHEN undefined_function THEN NULL;
+      WHEN undefined_function OR invalid_schema_name THEN NULL;
     END;
   END LOOP;
 END
