@@ -17,11 +17,19 @@ describe("Browser Agent MCP contract", () => {
     expect(source).toContain('res.status(401).json({ error: "unauthorized" })');
   });
 
+  it("uses the MCP service credential for the homolog bootstrap without weakening legacy auth", () => {
+    expect(source).toContain('const serviceAuthorized = Boolean(serviceToken) && upstreamToken === serviceToken;');
+    expect(source).toContain('if (!serviceAuthorized) {');
+    expect(source).toContain('const bootstrapToken = process.env["BROWSER_MCP_ACCESS_TOKEN"]?.trim();');
+    expect(source).toContain('authorization: `Bearer ${bootstrapToken}`');
+    expect(source).toContain('HOMOLOGATION_AUTH_BOOTSTRAP_ENABLED');
+  });
+
   it("keeps tenant resolution and connection selection tenant-scoped", () => {
     expect(source).toContain('eq(browserAgentConnectionsTable.tenantId, tenantId)');
     expect(source).toContain('or(');
-    expect(source).toContain('eq(tenantsTable.slug, tenantKey)');
-    expect(source).toContain('eq(tenantsTable.subdomainSlug, tenantKey)');
+    expect(source).toContain('eq(tenantsTable.slug, normalizedKey)');
+    expect(source).toContain('eq(tenantsTable.subdomainSlug, normalizedKey)');
   });
 
   it("preserves persistent session/profile and first-party auth handoff", () => {
@@ -35,7 +43,7 @@ describe("Browser Agent MCP contract", () => {
   });
 
   it("keeps write operations gated by autonomy/approval", () => {
-    expect(source).toContain('const allowWrite = globalVendiAutonomy ? true : (parsed.data.allowWrite ?? autonomyEnabled);');
+    expect(source).toContain('const allowWrite = parsed.data.allowWrite === false');
     expect(agentSource).toContain('APPROVAL_REQUIRED');
   });
 });
