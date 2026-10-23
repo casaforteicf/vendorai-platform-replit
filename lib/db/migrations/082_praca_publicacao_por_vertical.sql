@@ -1,3 +1,26 @@
+DO $$ BEGIN
+  CREATE TYPE restaurante_categoria_cardapio AS ENUM ('entrada', 'prato_principal', 'sobremesa', 'bebida', 'combo', 'outros');
+EXCEPTION
+  WHEN duplicate_object THEN NULL;
+END $$;
+
+CREATE TABLE IF NOT EXISTS restaurante_cardapio (
+  id text PRIMARY KEY,
+  tenant_id text NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  nome text NOT NULL,
+  descricao text,
+  categoria restaurante_categoria_cardapio,
+  preco numeric(10,2) NOT NULL,
+  tempo_preparo_minutos integer DEFAULT 20,
+  disponivel_almoco boolean NOT NULL DEFAULT true,
+  disponivel_jantar boolean NOT NULL DEFAULT true,
+  imagem_url text,
+  ativo boolean NOT NULL DEFAULT true,
+  vende_no_praca_ai boolean NOT NULL DEFAULT false,
+  destaque_whatsapp boolean NOT NULL DEFAULT false,
+  created_at timestamp NOT NULL DEFAULT now(),
+  updated_at timestamp NOT NULL DEFAULT now()
+);
 -- O Vendor.ai e a fonte unica dos anuncios publicados no Praca.ai.
 -- Cada registro especializado precisa de opt-in proprio, alem da permissao
 -- geral do tenant, para evitar publicar estoque/cardapio/cadastro interno.
