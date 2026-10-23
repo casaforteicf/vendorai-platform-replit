@@ -158,3 +158,28 @@ WHERE d.etapa IN ('ganho', 'em_execucao', 'entregue')
       AND wc.deal_id = d.id
       AND wc.tipo = 'pedido'
   );
+
+
+-- Restrict browser execution when these trigger functions are first created.
+DO $vendi_hardening$
+DECLARE
+  signature text;
+  target regprocedure;
+  browser_role text;
+BEGIN
+  FOREACH signature IN ARRAY ARRAY['public.vendorai_create_order_work_card_on_won()']
+  LOOP
+    target := to_regprocedure(signature);
+    IF target IS NULL THEN
+      RAISE EXCEPTION 'Required trigger function missing: %', signature;
+    END IF;
+    EXECUTE format('REVOKE EXECUTE ON FUNCTION %s FROM PUBLIC', target);
+    FOREACH browser_role IN ARRAY ARRAY['anon', 'authenticated'] LOOP
+      IF to_regrole(browser_role) IS NOT NULL THEN
+        EXECUTE format('REVOKE EXECUTE ON FUNCTION %s FROM %I', target, browser_role);
+      END IF;
+    END LOOP;
+    EXECUTE format('GRANT EXECUTE ON FUNCTION %s TO vendorai_app', target);
+  END LOOP;
+END
+$vendi_hardening$;

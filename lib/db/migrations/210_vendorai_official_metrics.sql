@@ -300,3 +300,27 @@ CROSS JOIN (VALUES
   ('suporte','fechamento_assistencia','Fechamento assistência',5,1440,true)
 ) AS v(pipeline, stage_key, label, position, sla_minutes, terminal)
 ON CONFLICT (tenant_id, pipeline, stage_key) DO NOTHING;
+
+-- Restrict browser execution when these trigger functions are first created.
+DO $vendi_hardening$
+DECLARE
+  signature text;
+  target regprocedure;
+  browser_role text;
+BEGIN
+  FOREACH signature IN ARRAY ARRAY['public.vendorai_log_deal_stage_event()', 'public.vendorai_log_work_card_stage_event()']
+  LOOP
+    target := to_regprocedure(signature);
+    IF target IS NULL THEN
+      RAISE EXCEPTION 'Required trigger function missing: %', signature;
+    END IF;
+    EXECUTE format('REVOKE EXECUTE ON FUNCTION %s FROM PUBLIC', target);
+    FOREACH browser_role IN ARRAY ARRAY['anon', 'authenticated'] LOOP
+      IF to_regrole(browser_role) IS NOT NULL THEN
+        EXECUTE format('REVOKE EXECUTE ON FUNCTION %s FROM %I', target, browser_role);
+      END IF;
+    END LOOP;
+    EXECUTE format('GRANT EXECUTE ON FUNCTION %s TO vendorai_app', target);
+  END LOOP;
+END
+$vendi_hardening$;
