@@ -9,6 +9,7 @@ import {
 import { listVendiToolDomains, listVendiTools } from "../services/vendi-tool-registry.js";
 import { executeVendiMission } from "../services/vendi-mission-supervisor.js";
 import { getVendiPostgresErrorCode } from "../lib/vendi-db-error.js";
+import { requireRole } from "../middlewares/auth.js";
 
 const router: IRouter = Router();
 
@@ -40,6 +41,43 @@ router.get("/vendi/tools", (req, res) => {
     tools: listVendiTools(),
     domains: listVendiToolDomains(),
   });
+});
+
+const customizationRequestSchema = z.object({
+  objective: z.string().trim().min(3).max(3800),
+}).strict();
+
+// Intake-only: the server fixes tenant, context, risk and execution policy.
+// Never accept permissions or tenant identifiers supplied by the browser.
+router.post("/vendi/customization-requests", requireRole("tenant_admin", "super_admin"), async (req, res) => {
+  const tenantId = resolveTenant(req);
+  if (!tenantId) {
+    res.status(401).json({ error: "Tenant não resolvido" });
+    return;
+  }
+  const parsed = customizationRequestSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(422).json({ error: parsed.error.flatten() });
+    return;
+  }
+  try {
+    const [mission] = await db.insert(vendiMissionsTable).values({
+      tenantId,
+      source: "module",
+      objective: `Solicitação de personalização do meu sistema (não executar automaticamente): ${parsed.data.objective}`,
+      priority: 50,
+      riskPolicy: "strict",
+      context: { requestType: "tenant_customization", stage: "intake_only", executionAuthorized: false },
+      createdByUserId: req.user?.id ?? null,
+      status: "planning",
+    }).returning();
+    if (!mission) throw new Error("MISSION_INSERT_RETURNED_EMPTY");
+    res.status(201).json({ mission });
+  } catch (error: unknown) {
+    const code = getVendiPostgresErrorCode(error);
+    console.error("[vendi] customization_request_create_failed", { tenantId, code: code ?? "UNKNOWN" });
+    res.status(503).json({ error: "Não foi possível registrar a solicitação.", code: "VENDI_CUSTOMIZATION_REQUEST_FAILED" });
+  }
 });
 
 router.post("/vendi/missions", async (req, res) => {
