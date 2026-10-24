@@ -1,0 +1,302 @@
+{
+  "schema_version": "1.0",
+  "created_on": "2026-10-24",
+  "purpose": "review_only_not_runtime_pricing",
+  "currency": "BRL",
+  "users_policy": "unlimited_no_seat_fees",
+  "sources": [
+    "lib/db/migrations/529_vendor_current_products_catalog.sql",
+    "lib/db/migrations/528_unlimited_users_vendor_credits_model.sql"
+  ],
+  "existing_catalog_from_code": [
+    {
+      "sku": "vendor-prepaid",
+      "name": "Vendor Pré-Pago",
+      "monthly_brl": 0,
+      "vendor_credits_per_month": 0,
+      "source": "migration-529",
+      "approval": "existing_catalog_code",
+      "live_verified": false
+    },
+    {
+      "sku": "vendor-start-monthly",
+      "name": "Vendor Start",
+      "monthly_brl": 49,
+      "vendor_credits_per_month": 500,
+      "source": "migration-529",
+      "approval": "existing_catalog_code",
+      "live_verified": false
+    },
+    {
+      "sku": "vendor-sales-monthly",
+      "name": "Vendor Sales",
+      "monthly_brl": 149,
+      "vendor_credits_per_month": 1500,
+      "source": "migration-529",
+      "approval": "existing_catalog_code",
+      "live_verified": false
+    },
+    {
+      "sku": "vendor-prospector-v2-monthly",
+      "name": "Vendor Prospector",
+      "monthly_brl": 197,
+      "vendor_credits_per_month": 2500,
+      "source": "migration-529",
+      "approval": "existing_catalog_code",
+      "live_verified": false
+    },
+    {
+      "sku": "vendor-marketing-monthly",
+      "name": "Vendor Marketing",
+      "monthly_brl": 197,
+      "vendor_credits_per_month": 2500,
+      "source": "migration-529",
+      "approval": "existing_catalog_code",
+      "live_verified": false
+    },
+    {
+      "sku": "vendor-service-monthly",
+      "name": "Vendor Service",
+      "monthly_brl": 197,
+      "vendor_credits_per_month": 2000,
+      "source": "migration-529",
+      "approval": "existing_catalog_code",
+      "live_verified": false
+    },
+    {
+      "sku": "vendor-agents-monthly",
+      "name": "Vendor Agents",
+      "monthly_brl": 197,
+      "vendor_credits_per_month": 2500,
+      "source": "migration-529",
+      "approval": "existing_catalog_code",
+      "live_verified": false
+    },
+    {
+      "sku": "vendor-intelligence-monthly",
+      "name": "Vendor Intelligence",
+      "monthly_brl": 197,
+      "vendor_credits_per_month": 1500,
+      "source": "migration-529",
+      "approval": "existing_catalog_code",
+      "live_verified": false
+    },
+    {
+      "sku": "vendor-finance-monthly",
+      "name": "Vendor Finance",
+      "monthly_brl": 149,
+      "vendor_credits_per_month": 1000,
+      "source": "migration-529",
+      "approval": "existing_catalog_code",
+      "live_verified": false
+    },
+    {
+      "sku": "vendor-build-monthly",
+      "name": "Vendor Build",
+      "monthly_brl": 297,
+      "vendor_credits_per_month": 2000,
+      "source": "migration-529",
+      "approval": "existing_catalog_code",
+      "live_verified": false
+    },
+    {
+      "sku": "arqdor-monthly",
+      "name": "Arqdor",
+      "monthly_brl": 197,
+      "vendor_credits_per_month": 2500,
+      "source": "migration-529",
+      "approval": "existing_catalog_code",
+      "live_verified": false
+    },
+    {
+      "sku": "vendor-commerce-monthly",
+      "name": "Vendor Commerce",
+      "monthly_brl": 149,
+      "vendor_credits_per_month": 1000,
+      "source": "migration-529",
+      "approval": "existing_catalog_code",
+      "live_verified": false
+    },
+    {
+      "sku": "vendor-complete-monthly",
+      "name": "Vendor.ai Complete",
+      "monthly_brl": 697,
+      "vendor_credits_per_month": 7500,
+      "source": "migration-529",
+      "approval": "existing_catalog_code",
+      "live_verified": false
+    }
+  ],
+  "pricing_proposals": [
+    {
+      "key": "vendor.complete.founders",
+      "name": "Complete Fundadores",
+      "monthly_brl": 487.9,
+      "reference_price_brl": 697,
+      "discount_percent": 30,
+      "discount_months": 12,
+      "limit_clients": 100,
+      "monthly_vendor_credits": 7500,
+      "implementation_reference_brl": 5000,
+      "representative_commission_default_percent": 15,
+      "approval": "historically_discussed_not_active_verified",
+      "depends_on": "vendor-complete-monthly"
+    },
+    {
+      "key": "arqdor.proposal.arqdor.free",
+      "name": "Arqdor Free",
+      "monthly_brl": 0,
+      "approval": "proposal",
+      "conflicts_with": "arqdor-monthly"
+    },
+    {
+      "key": "arqdor.proposal.arqdor.creator",
+      "name": "Arqdor Creator",
+      "monthly_brl": 79,
+      "approval": "proposal",
+      "conflicts_with": "arqdor-monthly"
+    },
+    {
+      "key": "arqdor.proposal.arqdor.studio.pro",
+      "name": "Arqdor Studio Pro",
+      "monthly_brl": 199,
+      "approval": "proposal",
+      "conflicts_with": "arqdor-monthly"
+    },
+    {
+      "key": "arqdor.proposal.arqdor.studio.engenharia",
+      "name": "Arqdor Studio + Engenharia",
+      "monthly_brl": 349,
+      "approval": "proposal",
+      "conflicts_with": "arqdor-monthly"
+    },
+    {
+      "key": "arqdor.proposal.arqdor.business",
+      "name": "Arqdor Business",
+      "monthly_brl": 699,
+      "approval": "proposal",
+      "conflicts_with": "arqdor-monthly"
+    },
+    {
+      "key": "praca.proposal.pra.a.ai.free",
+      "name": "Praça.ai Free",
+      "monthly_brl": 0,
+      "approval": "proposal"
+    },
+    {
+      "key": "praca.proposal.pra.a.ai.loja.pro",
+      "name": "Praça.ai Loja Pro",
+      "monthly_brl": 99,
+      "approval": "proposal"
+    },
+    {
+      "key": "praca.proposal.pra.a.ai.fornecedor.business",
+      "name": "Praça.ai Fornecedor Business",
+      "monthly_brl": 299,
+      "approval": "proposal"
+    },
+    {
+      "key": "praca.proposal.pra.a.ai.enterprise",
+      "name": "Praça.ai Enterprise",
+      "monthly_brl": 799,
+      "approval": "proposal"
+    },
+    {
+      "key": "vendi.proposal.vendi.assistente",
+      "name": "Vendi Assistente",
+      "monthly_brl": 49,
+      "approval": "proposal",
+      "check_existing_inclusion": "vendor-agents-monthly"
+    },
+    {
+      "key": "vendi.proposal.vendi.sdr",
+      "name": "Vendi SDR",
+      "monthly_brl": 199,
+      "approval": "proposal",
+      "check_existing_inclusion": "vendor-agents-monthly"
+    },
+    {
+      "key": "vendi.proposal.vendi.closer",
+      "name": "Vendi Closer",
+      "monthly_brl": 299,
+      "approval": "proposal",
+      "check_existing_inclusion": "vendor-agents-monthly"
+    },
+    {
+      "key": "vendi.proposal.vendi.marketing.ia",
+      "name": "Vendi Marketing IA",
+      "monthly_brl": 249,
+      "approval": "proposal",
+      "check_existing_inclusion": "vendor-agents-monthly"
+    },
+    {
+      "key": "vendi.proposal.vendi.financeiro",
+      "name": "Vendi Financeiro",
+      "monthly_brl": 199,
+      "approval": "proposal",
+      "check_existing_inclusion": "vendor-agents-monthly"
+    },
+    {
+      "key": "vendi.proposal.vendi.cobran.a",
+      "name": "Vendi Cobrança",
+      "monthly_brl": 199,
+      "approval": "proposal",
+      "check_existing_inclusion": "vendor-agents-monthly"
+    },
+    {
+      "key": "vendi.proposal.vendi.suporte",
+      "name": "Vendi Suporte",
+      "monthly_brl": 149,
+      "approval": "proposal",
+      "check_existing_inclusion": "vendor-agents-monthly"
+    },
+    {
+      "key": "vendi.proposal.vendi.comprador",
+      "name": "Vendi Comprador",
+      "monthly_brl": 149,
+      "approval": "proposal",
+      "check_existing_inclusion": "vendor-agents-monthly"
+    },
+    {
+      "key": "vendi.proposal.vendi.desenvolvedor",
+      "name": "Vendi Desenvolvedor",
+      "monthly_brl": 499,
+      "approval": "proposal",
+      "check_existing_inclusion": "vendor-agents-monthly"
+    }
+  ],
+  "marketplace_commission_proposals": [
+    {
+      "category": "construction_industry",
+      "percent": 3,
+      "approval": "proposal",
+      "charge_on": "settled_transaction_contractual_basis"
+    },
+    {
+      "category": "general_products",
+      "percent": 6,
+      "approval": "proposal",
+      "charge_on": "settled_transaction_contractual_basis"
+    },
+    {
+      "category": "decor_furniture",
+      "percent": 8,
+      "approval": "proposal",
+      "charge_on": "settled_transaction_contractual_basis"
+    },
+    {
+      "category": "professional_services",
+      "percent": 10,
+      "approval": "proposal",
+      "charge_on": "settled_transaction_contractual_basis"
+    }
+  ],
+  "business_rules": [
+    "No double billing of included modules or child NSU transactions",
+    "Credits are not BRL or raw provider tokens",
+    "No automatic change to production SKU prices",
+    "Separate subscription, credits, services, transaction fees and representatives commissions",
+    "Explicit approval required before publishing any price"
+  ],
+  "reconciliation_required": true
+}
