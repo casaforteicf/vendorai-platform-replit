@@ -65,3 +65,65 @@ describe("TAD module launcher access", () => {
       .toEqual({ type: "selector" });
   });
 });
+
+
+describe("Operações: alteração segura apenas de apresentação", () => {
+  it("mantém rota, permissões e identidade técnica do módulo existente", () => {
+    const modules = authorizedLauncherModules({
+      audience: "business", enabledModules: ["obras"], permittedModules: ["obras"],
+    });
+    expect(modules).toEqual([{key: "obras", title: "Operações", route: "/obras", audiences: ["professional", "business"]}]);
+    expect(resolveLauncherStart({modules, preference: "direct", principalModule: "obras"}))
+      .toEqual({type: "navigate", route: "/obras"});
+  });
+});
+
+describe("Central de Ambientes: regressões de acesso e preferência", () => {
+  it("ignora módulo salvo se o acesso foi revogado", () => {
+    const modules = authorizedLauncherModules({
+      audience: "business",
+      enabledModules: ["crm", "marketing"],
+      permittedModules: ["crm"],
+    });
+    expect(resolveLauncherStart({ modules, preference: "last", lastModule: "marketing" }))
+      .toEqual({ type: "selector" });
+  });
+
+  it("não mistura o portal de consumidor com os ambientes empresariais", () => {
+    const modules = authorizedLauncherModules({
+      audience: "consumer",
+      enabledModules: ["crm", "marketplace_casa", "portal_cliente"],
+      permittedModules: ["crm", "marketplace_casa", "portal_cliente"],
+    });
+    expect(modules.map(module => module.key)).toEqual(["marketplace_casa", "portal_cliente"]);
+    expect(resolveLauncherStart({ modules, preference: "direct", principalModule: "portal_cliente" }))
+      .toEqual({ type: "selector" });
+  });
+
+  it("mantém o ambiente Arqdor separado e acessível apenas se autorizado", () => {
+    const modules = authorizedLauncherModules({
+      audience: "professional",
+      enabledModules: ["arqdor", "obras"],
+      permittedModules: ["arqdor"],
+    });
+    expect(modules.map(module => ({key: module.key, route: module.route})))
+      .toEqual([{key: "arqdor", route: "/arch"}]);
+  });
+
+  it("não navega automaticamente quando nenhum ambiente está autorizado", () => {
+    expect(resolveLauncherStart({ modules: [], preference: "last", lastModule: "crm" }))
+      .toEqual({ type: "selector" });
+  });
+});
+
+describe("Central de Ambientes: cartões apresentados", () => {
+  it("não oferece ambiente habilitado no tenant sem permissão efetiva do usuário", () => {
+    const shown = authorizedLauncherModules({
+      audience: "business",
+      enabledModules: ["crm", "marketing", "marketplace_casa", "obras"],
+      permittedModules: ["crm", "obras"],
+    });
+    expect(shown.map(module => module.key)).toEqual(["crm", "obras"]);
+    expect(shown.every(module => module.route !== null)).toBe(true);
+  });
+});

@@ -116,6 +116,8 @@ export function OrganicCalendarPublisher({ pathname }: { pathname: string }) {
   const [facebook, setFacebook] = useState<FacebookCapability | null>(null);
   const [publications, setPublications] = useState<SocialPublication[]>([]);
   const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState(false);
+  const [refreshAttempt, setRefreshAttempt] = useState(0);
   const [busy, setBusy] = useState<string | null>(null);
 
   const [path, query = ""] = pathname.split("?");
@@ -126,7 +128,7 @@ export function OrganicCalendarPublisher({ pathname }: { pathname: string }) {
 
   async function fetchPublications(headers: { Authorization: string }) {
     const response = await fetch(`/api/tenants/${tenantId}/social-publications`, { headers });
-    if (!response.ok) return [];
+    if (!response.ok) throw new Error("social_publications_unavailable");
     const body = await response.json() as { publications?: SocialPublication[] };
     return Array.isArray(body.publications) ? body.publications : [];
   }
@@ -142,25 +144,28 @@ export function OrganicCalendarPublisher({ pathname }: { pathname: string }) {
       fetch(`/api/tenants/${tenantId}/facebook-organic-capability`, { headers }),
       fetchPublications(headers),
     ]).then(async ([calendarResponse, contentResponse, facebookResponse, nextPublications]) => {
-      const nextCalendar = calendarResponse.ok ? await calendarResponse.json() as CalendarItem[] : [];
-      const nextHistory = contentResponse.ok ? await contentResponse.json() as ContentHistory : { items: [] };
-      const nextFacebook = facebookResponse.ok ? await facebookResponse.json() as FacebookCapability : { ready: false };
+      if (!calendarResponse.ok || !contentResponse.ok || !facebookResponse.ok) throw new Error("marketing_calendar_unavailable");
+      const nextCalendar = await calendarResponse.json() as CalendarItem[];
+      const nextHistory = await contentResponse.json() as ContentHistory;
+      const nextFacebook = await facebookResponse.json() as FacebookCapability;
       if (!cancelled) {
         setCalendar(Array.isArray(nextCalendar) ? nextCalendar : []);
         setHistory(nextHistory ?? { items: [] });
         setFacebook(nextFacebook);
         setPublications(nextPublications);
+        setLoadError(false);
       }
-    }).finally(() => { if (!cancelled) setLoading(false); });
+    }).catch(() => { if (!cancelled) setLoadError(true); })
+      .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, [tenantId, token, visible]);
+  }, [tenantId, token, visible, refreshAttempt]);
 
   const hasActivePublication = publications.some((publication) => publication.status === "queued" || publication.status === "publishing");
   useEffect(() => {
     if (!visible || !tenantId || !token || !hasActivePublication) return;
     const headers = { Authorization: `Bearer ${token}` };
     const timer = window.setInterval(() => {
-      void fetchPublications(headers).then(setPublications);
+      void fetchPublications(headers).then(setPublications).catch(() => { setLoadError(true); });
     }, 3000);
     return () => window.clearInterval(timer);
   }, [hasActivePublication, tenantId, token, visible]);
@@ -188,7 +193,7 @@ export function OrganicCalendarPublisher({ pathname }: { pathname: string }) {
     return ["feed", "stories", "carrossel"].includes(item.tipo) && channel.includes("instagram");
   }).slice(0, 12), [briefing?.campaignName, calendar]);
 
-  if (!visible || (items.length === 0 && !loading && !hasFacebookPlanned)) return null;
+  if (!visible || (items.length === 0 && !loading && !loadError && !hasFacebookPlanned)) return null;
 
   async function reconnectMeta() {
     if (!token) return;
@@ -206,11 +211,19 @@ export function OrganicCalendarPublisher({ pathname }: { pathname: string }) {
 
   async function refreshPublications() {
     if (!token || !tenantId) return;
-    setPublications(await fetchPublications({ Authorization: `Bearer ${token}` }));
+    try {
+      const updated = await fetchPublications({ Authorization: `Bearer ${token}` });
+      setPublications(updated);
+    } catch {
+      // Do not overwrite a known publication state with an empty list.
+      // Publishing and retry actions remain locked until the data is verified.
+      setLoadError(true);
+      throw new Error("Não foi possível confirmar o estado das publicações. Verifique novamente antes de tentar outra ação.");
+    }
   }
 
   async function retry(publication: SocialPublication, item: CalendarItem) {
-    if (!tenantId || !token) return;
+    if (!tenantId || !token || loading || loadError || busy) return;
     setBusy(item.id);
     try {
       const response = await fetch(`/api/tenants/${tenantId}/social-publications/${publication.id}/retry`, {
@@ -222,15 +235,25 @@ export function OrganicCalendarPublisher({ pathname }: { pathname: string }) {
       await refreshPublications();
       toast({ title: body.publication?.status === "published" ? "Publicação concluída" : "Nova tentativa iniciada" });
     } catch (error) {
-      await refreshPublications();
-      toast({ title: "A nova tentativa falhou", description: error instanceof Error ? error.message : undefined, variant: "destructive" });
+      try {
+        await refreshPublications();
+      } catch {
+        // The verification error is shown in the publisher panel.
+      }
+      toast({ title: "Não foi possível confirmar a nova tentativa", description: error instanceof Error ? error.message : undefined, variant: "destructive" });
     } finally {
       setBusy(null);
     }
   }
 
   async function publish(item: CalendarItem) {
-    if (!tenantId || !token || !item.contentGenerationId) return;
+    // Client-side protection only; true cross-session idempotency must be enforced by the API.
+    if (!tenantId || !token || !item.contentGenerationId || loading || loadError || busy) return;
+    const existing = publicationByCalendarId.get(item.id);
+    if (item.status === "publicado" || (existing && ["queued", "publishing", "published", "scheduled"].includes(existing.status))) {
+      toast({ title: "Publicação já registrada", description: "Consulte a fila antes de enviar novamente.", variant: "destructive" });
+      return;
+    }
     const preview = previewData(generationById.get(item.contentGenerationId), item.variationIdx ?? 0);
     const channel = normalize(item.canal);
     const isLinkedIn = item.tipo === "linkedin_post" || channel.includes("linkedin");
@@ -349,6 +372,7 @@ export function OrganicCalendarPublisher({ pathname }: { pathname: string }) {
             </div>
           )}
 
+          {loadError && <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900"><span>Não foi possível conferir todos os dados de publicação. As ações ficam bloqueadas até uma nova verificação.</span><Button type="button" size="sm" variant="outline" disabled={loading} onClick={() => setRefreshAttempt((attempt) => attempt + 1)}><RefreshCw className="mr-1.5 h-3.5 w-3.5" />{loading ? "Verificando..." : "Verificar novamente"}</Button></div>}
           {loading ? (
             <div className="flex items-center gap-2 py-3 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />Carregando peças aprovadas…</div>
           ) : (
@@ -361,9 +385,10 @@ export function OrganicCalendarPublisher({ pathname }: { pathname: string }) {
                 const publication = publicationByCalendarId.get(item.id);
                 const isPublished = publication?.status === "published" || item.status === "publicado";
                 const isQueued = publication?.status === "queued";
+                const isScheduled = publication?.status === "scheduled";
                 const isPublishing = publication?.status === "publishing";
                 const isFailed = publication?.status === "failed";
-                const disabled = busy === item.id || isPublished || isQueued || isPublishing || (isFacebook && !facebook?.ready);
+                const disabled = loading || loadError || busy !== null || isPublished || isQueued || isPublishing || publication?.status === "scheduled" || (isFacebook && !facebook?.ready);
 
                 return (
                   <div key={item.id} className="rounded-lg border bg-background/80 p-3 flex items-center justify-between gap-3">
@@ -375,18 +400,19 @@ export function OrganicCalendarPublisher({ pathname }: { pathname: string }) {
                       <p className="mt-1 text-sm font-medium truncate">{item.temaSugerido}</p>
                       {isPublished && <p className="mt-1 text-xs text-emerald-700 flex items-center gap-1"><CheckCircle2 className="h-3.5 w-3.5" />Publicado e confirmado pelo canal</p>}
                       {isQueued && <p className="mt-1 text-xs text-amber-700 flex items-center gap-1"><Clock3 className="h-3.5 w-3.5" />Aguardando processamento</p>}
+                      {isScheduled && <p className="mt-1 text-xs text-blue-700 flex items-center gap-1"><Clock3 className="h-3.5 w-3.5" />Publicação agendada</p>}
                       {isPublishing && <p className="mt-1 text-xs text-blue-700 flex items-center gap-1"><Loader2 className="h-3.5 w-3.5 animate-spin" />Publicando no canal</p>}
                       {isFailed && <p className="mt-1 text-xs text-destructive flex items-center gap-1"><AlertCircle className="h-3.5 w-3.5" />A tentativa falhou; a peça continua aprovada</p>}
                     </div>
                     {isFailed && publication ? (
-                      <Button size="sm" variant="outline" disabled={busy === item.id} onClick={() => void retry(publication, item)}>
+                      <Button size="sm" variant="outline" disabled={loading || loadError || busy !== null} onClick={() => void retry(publication, item)}>
                         {busy === item.id ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="mr-1.5 h-3.5 w-3.5" />}
                         Tentar novamente
                       </Button>
                     ) : (
                       <Button size="sm" variant={isPublished ? "outline" : "default"} disabled={disabled} onClick={() => void publish(item)}>
-                        {busy === item.id || isPublishing ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : isPublished ? <CheckCircle2 className="mr-1.5 h-3.5 w-3.5" /> : isQueued ? <Clock3 className="mr-1.5 h-3.5 w-3.5" /> : <Send className="mr-1.5 h-3.5 w-3.5" />}
-                        {isPublished ? "Publicado" : isPublishing ? "Publicando" : isQueued ? "Na fila" : isFacebook && !facebook?.ready ? "Meta pendente" : "Publicar"}
+                        {busy === item.id || isPublishing ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : isPublished ? <CheckCircle2 className="mr-1.5 h-3.5 w-3.5" /> : isQueued || isScheduled ? <Clock3 className="mr-1.5 h-3.5 w-3.5" /> : <Send className="mr-1.5 h-3.5 w-3.5" />}
+                        {isPublished ? "Publicado" : isPublishing ? "Publicando" : isQueued ? "Na fila" : isScheduled ? "Agendada" : isFacebook && !facebook?.ready ? "Meta pendente" : "Publicar"}
                       </Button>
                     )}
                   </div>
