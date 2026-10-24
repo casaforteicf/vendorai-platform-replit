@@ -25,7 +25,11 @@ if [[ "$ACTION" == "registerLot" ]]; then
   [[ -d "$REPO/.git" ]] || { echo REPOSITORY_MISSING; exit 65; }
   git -c safe.directory="$REPO" -C "$REPO" cat-file -e "$SHA^{commit}" || { echo COMMIT_NOT_FETCHED; exit 65; }
   git -c safe.directory="$REPO" -C "$REPO" cat-file -e "$SHA:$DOCKERFILE" || { echo DOCKERFILE_NOT_IN_COMMIT; exit 65; }
-  [[ "$(git -c safe.directory="$REPO" -C "$REPO" cat-file -t "$SHA:$CONTEXT" 2>/dev/null || true)" == tree ]] || { echo CONTEXT_NOT_DIRECTORY; exit 65; }
+  if [[ "$CONTEXT" == "." ]]; then
+    [[ "$(git -c safe.directory="$REPO" -C "$REPO" cat-file -t "$SHA^{tree}" 2>/dev/null || true)" == tree ]] || { echo CONTEXT_NOT_DIRECTORY; exit 65; }
+  else
+    [[ "$(git -c safe.directory="$REPO" -C "$REPO" cat-file -t "$SHA:$CONTEXT" 2>/dev/null || true)" == tree ]] || { echo CONTEXT_NOT_DIRECTORY; exit 65; }
+  fi
   DIR=/var/lib/vendi-release/manifests
   install -d -o root -g root -m 0700 "$DIR"
   FILE="$DIR/$LOT.env"
