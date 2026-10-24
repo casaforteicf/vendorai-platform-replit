@@ -3,8 +3,8 @@
 set -Eeuo pipefail
 ACTION="${1:-}"
 LOT="${2:-}"
-[[ "$#" -eq 2 && "$LOT" =~ ^[A-Z][A-Z0-9]{1,15}-[0-9]{1,6}$ ]] || { echo "INVALID_ARGUMENTS"; exit 64; }
-case "$ACTION" in build|homologate|rollback|releaseStatus|preflight|publish) ;; *) echo "UNSUPPORTED_ACTION"; exit 64;; esac
+[[ ( "$#" -eq 2 || ( "$#" -eq 5 && "$ACTION" == "registerLot" ) ) && "$LOT" =~ ^[A-Z][A-Z0-9]{1,15}-[0-9]{1,6}$ ]] || { echo "INVALID_ARGUMENTS"; exit 64; }
+case "$ACTION" in build|homologate|rollback|releaseStatus|preflight|publish|registerLot) ;; *) echo "UNSUPPORTED_ACTION"; exit 64;; esac
 LOCK=/run/lock/vendi-operator.lock
 exec 9>"$LOCK"
 flock -n 9 || { echo "OPERATION_BUSY"; exit 75; }
@@ -12,6 +12,37 @@ AUDIT=/var/log/vendi-contabo-operator.log
 touch "$AUDIT"; chmod 600 "$AUDIT"
 audit(){ printf '%s lot=%s action=%s result=%s\n' "$(date -u +%FT%TZ)" "$LOT" "$ACTION" "$1" >> "$AUDIT"; }
 trap 'audit "FAIL_rc$?"' ERR
+# Registration is immutable and serialized under the existing operator lock.
+# Arguments: registerLot LOT SHA DOCKERFILE CONTEXT
+if [[ "$ACTION" == "registerLot" ]]; then
+  [[ "$LOT" != "VENDI-02" ]] || { echo LEGACY_LOT_PROTECTED; exit 65; }
+  SHA="${3:-}"; DOCKERFILE="${4:-}"; CONTEXT="${5:-}"
+  [[ "$SHA" =~ ^[a-f0-9]{40}$ ]] || { echo INVALID_SHA; exit 64; }
+  for value in "$DOCKERFILE" "$CONTEXT"; do
+    [[ "$value" =~ ^[A-Za-z0-9_./-]+$ && "$value" != /* && "$value" != *..* ]] || { echo INVALID_SOURCE_PATH; exit 64; }
+  done
+  REPO=/home/vendorai/vendorai-api-auth-test
+  [[ -d "$REPO/.git" ]] || { echo REPOSITORY_MISSING; exit 65; }
+  git -c safe.directory="$REPO" -C "$REPO" cat-file -e "$SHA^{commit}" || { echo COMMIT_NOT_FETCHED; exit 65; }
+  git -c safe.directory="$REPO" -C "$REPO" cat-file -e "$SHA:$DOCKERFILE" || { echo DOCKERFILE_NOT_IN_COMMIT; exit 65; }
+  [[ "$(git -c safe.directory="$REPO" -C "$REPO" cat-file -t "$SHA:$CONTEXT" 2>/dev/null || true)" == tree ]] || { echo CONTEXT_NOT_DIRECTORY; exit 65; }
+  DIR=/var/lib/vendi-release/manifests
+  install -d -o root -g root -m 0700 "$DIR"
+  FILE="$DIR/$LOT.env"
+  [[ ! -e "$FILE" && ! -L "$FILE" ]] || { echo LOT_ALREADY_REGISTERED; exit 65; }
+  umask 077
+  TEMP=$(mktemp "$DIR/.register.XXXXXXXX")
+  trap 'rm -f "$TEMP"' EXIT
+  printf 'SHA=%s\nDOCKERFILE=%s\nCONTEXT=%s\n' "$SHA" "$DOCKERFILE" "$CONTEXT" > "$TEMP"
+  chmod 0600 "$TEMP"
+  # Hard link avoids overwriting another concurrently-created manifest.
+  ln "$TEMP" "$FILE" || { echo LOT_ALREADY_REGISTERED; exit 65; }
+  rm -f "$TEMP"
+  trap - EXIT
+  audit "REGISTERED_SHA_$SHA"
+  echo "LOT_REGISTERED=$LOT SHA=$SHA"
+  exit 0
+fi
 # Stage definitions are fixed, immutable in operator source.
 case "$LOT" in
   VENDI-02) ;;
