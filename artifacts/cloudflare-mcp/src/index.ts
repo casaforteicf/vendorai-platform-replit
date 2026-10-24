@@ -522,6 +522,36 @@ function createCloudflareMcpServer() {
   );
 
   server.registerTool(
+    "vendi_register_lot",
+    {
+      description: "Registra um lote imutável de build do Vendi após validar SHA e caminhos no repositório autorizado. Requer grant OAuth por operador/lote.",
+      inputSchema: z.object({
+        lot: z.string().regex(/^[A-Z][A-Z0-9]{1,15}-[0-9]{1,6}$/),
+        sha: z.string().regex(/^[a-f0-9]{40}$/),
+        dockerfile: z.string().regex(/^[A-Za-z0-9_./-]+$/).refine(v => !v.startsWith("/") && !v.includes("..")),
+        context: z.string().regex(/^[A-Za-z0-9_./-]+$/).refine(v => !v.startsWith("/") && !v.includes("..")),
+      }),
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+    },
+    async ({ lot, sha, dockerfile, context }) => {
+      releaseOperatorGrant("registerLot", lot);
+      const host = process.env["VENDI_CONTABO_SSH_HOST"] || (existsSync("/app/.vendi-ssh/host") ? readFileSync("/app/.vendi-ssh/host", "utf8").trim() : undefined);
+      const key = process.env["VENDI_CONTABO_SSH_KEY_PATH"] || "/app/.vendi-ssh/id_ed25519";
+      const knownHosts = process.env["VENDI_CONTABO_KNOWN_HOSTS"] || "/app/.vendi-ssh/known_hosts";
+      const user = process.env["VENDI_CONTABO_SSH_USER"] || "vendorai";
+      if (!host || !existsSync(key) || !existsSync(knownHosts)) throw new Error("Contabo SSH is not provisioned");
+      if (!/^[a-zA-Z0-9.-]+$/.test(host) || !/^[a-z_][a-z0-9_-]*$/.test(user)) throw new Error("Invalid SSH endpoint");
+      const { stdout, stderr } = await execFileAsync("ssh", [
+        "-i", key, "-o", "BatchMode=yes", "-o", "IdentitiesOnly=yes",
+        "-o", "StrictHostKeyChecking=yes", "-o", `UserKnownHostsFile=${knownHosts}`,
+        "-o", "ConnectTimeout=8", `${user}@${host}`,
+        `sudo -n /usr/local/sbin/vendi-contabo-operator registerLot ${lot} ${sha} ${dockerfile} ${context}`,
+      ], { timeout: 30000, maxBuffer: 256 * 1024 });
+      return toolText({ lot, sha, output: stdout.slice(0, 16000), warnings: stderr.slice(0, 600) });
+    },
+  );
+
+  server.registerTool(
     "request_test",
     {
       description: "Central authenticated operator: request isolated tests of an exact PR SHA.",
