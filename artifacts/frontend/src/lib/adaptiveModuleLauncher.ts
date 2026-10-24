@@ -5,7 +5,7 @@
  */
 export type LauncherModule = "crm" | "prospector" | "marketing" | "omnichannel" | "agenda" |
   "arqdor" | "obras" | "pdv" | "erp" | "marketplace_casa" |
-  "parceiros" | "portal_cliente" | "inteligencia" | "agentes_ia" | "configuracoes" | "suporte";
+  "parceiros" | "portal_cliente" | "vendi_studio" | "inteligencia" | "agentes_ia" | "configuracoes" | "suporte";
 
 export type LauncherAudience = "consumer" | "professional" | "business";
 export interface LauncherModuleInfo {
@@ -29,6 +29,7 @@ export const LAUNCHER_MODULES: readonly LauncherModuleInfo[] = [
   { key: "parceiros", title: "Parceiros", route: null, audiences: ["professional", "business"] },
   { key: "portal_cliente", title: "Portal do Cliente", route: null, audiences: ["consumer"] },
   { key: "inteligencia", title: "Inteligência", route: "/analytics", audiences: ["professional", "business"] },
+  { key: "vendi_studio", title: "Vendi Studio", route: "/vendi-studio", audiences: ["professional", "business"] },
   { key: "agentes_ia", title: "Vendi IA", route: "/vendi/operacoes", audiences: ["professional", "business"] },
   { key: "configuracoes", title: "Configurações", route: "/configuracoes", audiences: ["business"] },
   { key: "suporte", title: "Suporte", route: "/faq", audiences: ["professional", "business"] },

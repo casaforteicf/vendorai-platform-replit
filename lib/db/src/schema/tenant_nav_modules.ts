@@ -33,6 +33,7 @@ export const NAV_MODULE_KEYS = [
   // Ecossistema Praça.AI — fica oculto por padrão e só o Super Admin libera
   // por tenant. Inclui Stories, Variedades e módulos operacionais/logísticos.
   "praca_ai",
+  "vendi_studio",
 ] as const;
 
 export type NavModuleKey = (typeof NAV_MODULE_KEYS)[number];
@@ -67,6 +68,7 @@ export const NAV_MODULE_CATALOG: NavModuleCatalogEntry[] = [
   { moduleKey: "knowledge_graph", moduleName: "Knowledge Graph", icon: "Network",     description: "Mapa de conhecimento e relações do negócio",   isDefault: true },
   { moduleKey: "vendor_brain",    moduleName: "Vendor Brain",    icon: "BrainCircuit", description: "Central de inteligência de IA sobre o negócio", isDefault: true },
   { moduleKey: "content_autopilot", moduleName: "Content Autopilot", icon: "Sparkles", description: "Pesquisa, gera e publica conteúdo SEO automaticamente", isDefault: false },
+  { moduleKey: "vendi_studio", moduleName: "Vendi Studio", icon: "Code2", description: "Criação de aplicativos e produtos digitais com IA", isDefault: false },
   { moduleKey: "praca_ai", moduleName: "Praça.AI", icon: "Store", description: "Stories, Variedades e módulos operacionais, logísticos e executivos do Praça.AI", isDefault: false },
 ];
 
