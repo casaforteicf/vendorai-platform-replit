@@ -6,7 +6,7 @@ BASE=/opt/vendorai
 echo "=== Vendor.ai deploy audit (read-only) ==="
 date -u '+UTC=%Y-%m-%dT%H:%M:%SZ'
 echo "--- scheduled deploy jobs (current user; command paths only) ---"
-if crontab -l 2>/dev/null | grep -E 'deploy-(backend|frontend-auto)\.sh' | sed -E 's#(^[^#]*)(/opt/vendorai/deploy-(backend|frontend-auto)\.sh).*#\2#' | sort -u; then :; else echo "No matching user crontab entries"; fi
+if crontab -l 2>/dev/null | awk '/deploy-(backend|frontend-auto)\\.sh/ && $0 !~ /^[[:space:]]*#/ { script = ($0 ~ /frontend-auto/ ? "/opt/vendorai/deploy-frontend-auto.sh" : "/opt/vendorai/deploy-backend.sh"); print $1, $2, $3, $4, $5, script; found = 1 } END { if (!found) print "No matching user crontab entries" }'; then :; else echo "Crontab unavailable"; fi
 echo "--- deployed state ---"
 for path in "$BASE/deploy-state/last-status" "$BASE/deploy-state/last-frontend-status" "$BASE/deploy-state/last-deployed-sha"; do
   if [[ -f "$path" ]]; then
