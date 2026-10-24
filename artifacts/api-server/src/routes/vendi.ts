@@ -153,7 +153,30 @@ router.post("/vendi/missions", async (req, res) => {
   }
 });
 
+async function rejectIntakeExecution(req: any, res: any): Promise<boolean> {
+  const tenantId = resolveTenant(req);
+  if (!tenantId) {
+    res.status(401).json({ error: "Tenant não resolvido" });
+    return true;
+  }
+  const [mission] = await db.select({ context: vendiMissionsTable.context })
+    .from(vendiMissionsTable)
+    .where(and(eq(vendiMissionsTable.id, String(req.params.id)), eq(vendiMissionsTable.tenantId, tenantId)))
+    .limit(1);
+  if (!mission) {
+    res.status(404).json({ error: "Missão não encontrada" });
+    return true;
+  }
+  const context = mission.context as Record<string, unknown> | null;
+  if (context?.requestType === "tenant_customization") {
+    res.status(403).json({ error: "Solicitações de personalização exigem revisão e não podem ser executadas diretamente." });
+    return true;
+  }
+  return false;
+}
+
 router.post("/vendi/missions/:id/run", async (req, res) => {
+  if (await rejectIntakeExecution(req, res)) return;
   const tenantId = resolveTenant(req);
   if (!tenantId) {
     res.status(401).json({ error: "Tenant não resolvido" });
@@ -171,6 +194,7 @@ router.post("/vendi/missions/:id/run", async (req, res) => {
 });
 
 router.post("/vendi/missions/:id/approve", async (req, res) => {
+  if (await rejectIntakeExecution(req, res)) return;
   const parsed = approveSchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(422).json({ error: parsed.error.flatten() });
