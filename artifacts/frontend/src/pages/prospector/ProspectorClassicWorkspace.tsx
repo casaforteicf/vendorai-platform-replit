@@ -17,6 +17,7 @@ type Props = {
 
 type VendiMissionResponse = {
   missionId: string;
+  status?: string;
   execution?: {
     status?: string;
     pending?: { toolId?: string; reason?: string };
@@ -89,6 +90,11 @@ export default function ProspectorClassicWorkspace({ section }: Props) {
         toast({
           title: "Vendi iniciou a prospecção",
           description: "A missão avançou até uma ação que precisa da sua aprovação.",
+        });
+      } else if (data.status === "queued") {
+        toast({
+          title: "Vendi recebeu a solicitação",
+          description: "A missão foi salva e entrou na fila de execução.",
         });
       } else {
         toast({
