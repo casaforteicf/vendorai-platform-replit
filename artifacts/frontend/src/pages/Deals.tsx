@@ -1,4 +1,5 @@
 import React, { lazy, Suspense, useState, useCallback, useEffect, useMemo, useRef } from "react";
+import { CrmPipelineTabs } from "@/components/crm/CrmPipelineTabs";
 import { useLocation } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
 import {
@@ -3361,6 +3362,7 @@ export default function Deals() {
 
   return (
     <div className="vendor-product-page vendor-page-canvas vendor-deals-page flex h-full flex-col space-y-5">
+      <CrmPipelineTabs className="shrink-0" />
       {/* Header */}
       <div className="vendor-product-hero flex justify-between items-end shrink-0 gap-3">
         <div>

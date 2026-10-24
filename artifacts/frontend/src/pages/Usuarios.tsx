@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { ResponsavelColorField } from "@/components/crm/ResponsavelColorField";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import { useI18n } from "@/i18n";
@@ -1779,6 +1780,8 @@ export default function Usuarios() {
                     <span className="block text-xs text-muted-foreground mt-0.5">{copy.leadAssignmentEnabledHelp}</span>
                   </span>
                 </label>
+
+                {editingUser?.id && <ResponsavelColorField tenantId={tenantId} userId={editingUser.id} />}
 
                 {formData.leadAssignmentEnabled && (
                   <>

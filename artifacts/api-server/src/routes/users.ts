@@ -10,6 +10,7 @@ import {
   tenantUserFunctionsTable,
   tenantsTable,
   createTenantUserFunctionSchema,
+  tenantUserColorsTable,
 } from "@workspace/db";
 import { requireRole } from "../middlewares/auth.js";
 import { geocodeAddressWithTimeout } from "../lib/geocoding.js";
@@ -537,6 +538,68 @@ router.delete(
     res.status(204).send();
   },
 );
+
+const HEX_COLOR = /^#[0-9a-fA-F]{6}$/;
+
+function canManageTenantUsers(req: { user?: { platformRole?: string; tenantId?: string } }, tenantId: string) {
+  return req.user?.platformRole === "super_admin" || req.user?.tenantId === tenantId;
+}
+
+router.get("/tenants/:tenantId/user-colors", requireRole("super_admin", "tenant_admin"), async (req, res) => {
+  const tenantId = String(req.params.tenantId);
+  if (!canManageTenantUsers(req, tenantId)) {
+    res.status(403).json({ error: "Access denied to this tenant" });
+    return;
+  }
+  try {
+    const rows = await db
+      .select({ userId: tenantUserColorsTable.userId, cor: tenantUserColorsTable.cor })
+      .from(tenantUserColorsTable)
+      .where(eq(tenantUserColorsTable.tenantId, tenantId));
+    res.json({ available: true, colorsById: Object.fromEntries(rows.map((row) => [row.userId, row.cor])) });
+  } catch {
+    res.json({ available: false, colorsById: {} });
+  }
+});
+
+router.put("/tenants/:tenantId/user-colors/:userId", requireRole("super_admin", "tenant_admin"), async (req, res) => {
+  const tenantId = String(req.params.tenantId);
+  const userId = String(req.params.userId);
+  if (!canManageTenantUsers(req, tenantId)) {
+    res.status(403).json({ error: "Access denied to this tenant" });
+    return;
+  }
+  const cor = req.body?.cor;
+  if (cor !== null && (typeof cor !== "string" || !HEX_COLOR.test(cor))) {
+    res.status(422).json({ error: "Cor inválida. Use o formato #RRGGBB." });
+    return;
+  }
+  const [target] = await db
+    .select({ id: usersTable.id })
+    .from(usersTable)
+    .where(and(eq(usersTable.id, userId), eq(usersTable.tenantId, tenantId)))
+    .limit(1);
+  if (!target) {
+    res.status(404).json({ error: "User not found" });
+    return;
+  }
+  try {
+    if (cor === null) {
+      await db.delete(tenantUserColorsTable)
+        .where(and(eq(tenantUserColorsTable.userId, userId), eq(tenantUserColorsTable.tenantId, tenantId)));
+    } else {
+      await db.insert(tenantUserColorsTable)
+        .values({ userId, tenantId, cor, updatedBy: req.user?.sub ?? null, updatedAt: new Date() })
+        .onConflictDoUpdate({
+          target: tenantUserColorsTable.userId,
+          set: { cor, updatedBy: req.user?.sub ?? null, updatedAt: new Date() },
+        });
+    }
+    res.json({ userId, cor });
+  } catch {
+    res.status(503).json({ error: "Cores de responsável ainda não disponíveis neste ambiente." });
+  }
+});
 
 router.get("/tenants/:tenantId/users", requireRole("super_admin", "tenant_admin"), async (req, res) => {
   const tenantId = String(req.params["tenantId"]);
