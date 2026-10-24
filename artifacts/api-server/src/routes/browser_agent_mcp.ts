@@ -94,11 +94,21 @@ router.post("/internal/browser-mcp/homolog-bootstrap", async (req, res) => {
     .from(usersTable)
     .where(and(eq(usersTable.platformRole, "super_admin"), eq(usersTable.active, true)))
     .limit(1);
-  const [tenantPrincipal] = await db.select(principalSelect)
+  // Require an explicitly provisioned principal for automated homologation.
+  // Never impersonate an arbitrary active tenant user.
+  const configuredPrincipalId = process.env["VENDI_HOMOLOG_SERVICE_PRINCIPAL_ID"]?.trim();
+  if (!configuredPrincipalId) {
+    res.status(409).json({ error: "vendi_homolog_service_principal_not_configured" });
+    return;
+  }
+  const [servicePrincipal] = await db.select(principalSelect)
     .from(usersTable)
-    .where(and(eq(usersTable.tenantId, tenantId), eq(usersTable.active, true)))
+    .where(and(
+      eq(usersTable.id, configuredPrincipalId),
+      eq(usersTable.tenantId, tenantId),
+      eq(usersTable.active, true),
+    ))
     .limit(1);
-  const servicePrincipal = tenantPrincipal;
 
   if (!servicePrincipal) {
     res.status(409).json({ error: "vendi_auth_principal_not_found" });
@@ -510,6 +520,24 @@ router.post("/internal/browser-mcp/run", async (req, res) => {
         actorType: "ai",
       });
 
+      // Never assume tenant identifiers are shared between production and homologation.
+      // Mapping is provisioned by an administrator after verifying tenant ownership.
+      // Keys are source tenant IDs (not user-supplied slugs); values are target tenant IDs.
+      let homologTenantId: string;
+      try {
+        const raw = process.env["VENDI_HOMOLOG_TENANT_MAP_JSON"];
+        if (!raw) throw new Error("missing");
+        const mapping: unknown = JSON.parse(raw);
+        if (!mapping || typeof mapping !== "object" || Array.isArray(mapping)) throw new Error("invalid");
+        const target = (mapping as Record<string, unknown>)[tenantId];
+        if (typeof target !== "string" || !/^[a-zA-Z0-9_-]{2,128}$/.test(target)) {
+          throw new Error("unmapped");
+        }
+        homologTenantId = target;
+      } catch {
+        throw new Error("VENDI_HOMOLOG_TENANT_MAPPING_REQUIRED");
+      }
+
       const exchangeUrl = new URL("/api/internal/browser-mcp/homolog-bootstrap", firstPartyUrl.origin);
       const exchangeResponse = await fetch(exchangeUrl, {
         method: "POST",
@@ -517,7 +545,7 @@ router.post("/internal/browser-mcp/run", async (req, res) => {
           authorization: `Bearer ${upstreamToken}`,
           "content-type": "application/json",
         },
-        body: JSON.stringify({ tenantKey: parsed.data.tenantKey }),
+        body: JSON.stringify({ tenantKey: homologTenantId }),
       });
 
       if (!exchangeResponse.ok) {
