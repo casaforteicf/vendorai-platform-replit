@@ -1,4 +1,4 @@
-export type ReleaseOperation = "build" | "homologate" | "rollback" | "preflight" | "publish";
+export type ReleaseOperation = "build" | "homologate" | "rollback" | "preflight" | "publish" | "registerLot";
 
 type ReleaseGrant = {
   lots?: string[];
