@@ -14,7 +14,7 @@ type ValidationState =
   | "github_unavailable"
   | "frontend_unreachable";
 
-type Runtime = "railway" | "cloudflare";
+type Runtime = "railway" | "contabo" | "cloudflare";
 
 export type ProductionValidationResult = {
   success: boolean;
@@ -74,8 +74,7 @@ async function getCommitEvidence(revision: string) {
   const changedFiles = Array.isArray(commit?.files)
     ? commit.files.map((file: any) => String(file?.filename ?? "")).filter(Boolean)
     : [];
-  const backendTouched = changedFiles.some((file: string) => BACKEND_PATH_PATTERNS.some((pattern) => pattern.test(file)));
-  return { changedFiles, backendTouched };
+  return { changedFiles };
 }
 
 function normalizeRevision(value: string | undefined | null) {
@@ -86,6 +85,19 @@ function normalizeRevision(value: string | undefined | null) {
 function revisionsMatch(a: string, b: string) {
   if (a === "unknown" || b === "unknown") return false;
   return a === b || a.startsWith(b) || b.startsWith(a);
+}
+
+export function resolveProductionRuntime(input: {
+  changedFiles: string[];
+  backendRuntime?: string | null;
+}): Runtime {
+  const backendTouched = input.changedFiles.some((file) =>
+    BACKEND_PATH_PATTERNS.some((pattern) => pattern.test(file)),
+  );
+  if (!backendTouched) return "cloudflare";
+  return String(input.backendRuntime ?? "").trim().toLowerCase() === "contabo"
+    ? "contabo"
+    : "railway";
 }
 
 async function revisionIsIncluded(baseRevision: string, headRevision: string) {
@@ -139,6 +151,67 @@ async function checkCloudflareFrontend(expectedRevision: string) {
   }
 }
 
+async function checkContaboBackend(expectedRevision: string) {
+  const configuredUrl = process.env["VENDORAI_PRODUCTION_API_URL"]?.trim();
+  if (!configuredUrl) {
+    return {
+      url: null,
+      reachable: false,
+      status: null,
+      observedRevision: "unknown",
+      matchesExpected: false,
+      provider: "contabo",
+      error: "VENDORAI_PRODUCTION_API_URL_MISSING",
+    };
+  }
+
+  let healthUrl: URL;
+  try {
+    healthUrl = new URL("/api/auth/healthz", configuredUrl);
+    if (healthUrl.protocol !== "https:") throw new Error("https_required");
+  } catch {
+    return {
+      url: null,
+      reachable: false,
+      status: null,
+      observedRevision: "unknown",
+      matchesExpected: false,
+      provider: "contabo",
+      error: "VENDORAI_PRODUCTION_API_URL_INVALID",
+    };
+  }
+
+  try {
+    const response = await fetch(healthUrl, {
+      method: "GET",
+      redirect: "error",
+      signal: AbortSignal.timeout(10000),
+      headers: { "Cache-Control": "no-cache", "User-Agent": "VendorAI-Dev-Validation/3.0" },
+    });
+    const payload = await response.json().catch(() => null) as { status?: unknown } | null;
+    const observedRevision = normalizeRevision(response.headers.get("x-vendorai-revision"));
+    const expectedPrefix = normalizeRevision(expectedRevision);
+    return {
+      url: healthUrl.toString(),
+      reachable: response.ok && payload?.status === "ok",
+      status: response.status,
+      observedRevision,
+      matchesExpected: revisionsMatch(expectedPrefix, observedRevision),
+      provider: "contabo",
+    };
+  } catch (error) {
+    return {
+      url: healthUrl.toString(),
+      reachable: false,
+      status: null,
+      observedRevision: "unknown",
+      matchesExpected: false,
+      provider: "contabo",
+      error: error instanceof Error ? error.message.slice(0, 240) : "backend_unavailable",
+    };
+  }
+}
+
 export async function validateProductionRevision(expectedRevisionInput?: string | null): Promise<ProductionValidationResult> {
   const expectedRevision = normalizeRevision(expectedRevisionInput);
   let mainRevision = "unknown";
@@ -152,9 +225,48 @@ export async function validateProductionRevision(expectedRevisionInput?: string 
     githubAvailable = false;
   }
 
-  const runtime: Runtime = expectedRevision !== "unknown" && commitEvidence && !commitEvidence.backendTouched
-    ? "cloudflare"
+  const runtime = expectedRevision !== "unknown" && commitEvidence
+    ? resolveProductionRuntime({
+        changedFiles: commitEvidence.changedFiles,
+        backendRuntime: process.env["VENDORAI_BACKEND_RUNTIME"],
+      })
     : "railway";
+
+  if (runtime === "contabo") {
+    const backend = await checkContaboBackend(expectedRevision);
+    const expectedIncludedInMain = mainRevision !== "unknown"
+      ? await revisionIsIncluded(expectedRevision, mainRevision)
+      : false;
+    const expectedIncludedInObserved = backend.observedRevision !== "unknown"
+      ? await revisionIsIncluded(expectedRevision, backend.observedRevision)
+      : false;
+
+    let state: ValidationState = "stale";
+    if (!githubAvailable) state = "github_unavailable";
+    else if (!backend.reachable || backend.observedRevision === "unknown") state = "unknown_revision";
+    else if (!expectedIncludedInMain || !expectedIncludedInObserved) state = "stale";
+    else if (backend.matchesExpected) state = "validated";
+
+    return {
+      success: state === "validated",
+      state,
+      runtime,
+      observedRevision: backend.observedRevision,
+      expectedRevision,
+      mainRevision: mainRevision === "unknown" ? null : mainRevision,
+      githubAvailable,
+      checkedAt: new Date().toISOString(),
+      expectedIncludedInMain,
+      expectedIncludedInObserved,
+      expectedMatchesObserved: backend.matchesExpected,
+      evidence: {
+        source: "contabo_api_health_revision",
+        deployment: "Contabo",
+        changedFiles: commitEvidence?.changedFiles ?? [],
+        backend,
+      },
+    };
+  }
 
   if (runtime === "cloudflare") {
     const frontend = await checkCloudflareFrontend(expectedRevision);
