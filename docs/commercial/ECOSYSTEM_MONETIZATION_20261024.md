@@ -54,10 +54,14 @@ Esses preços são **identificados no código**, não auditados contra estado vi
 - Arqdor opera render, Measure, Studio, especificação, orçamento, memorial e documentação; ofertas técnicas enviadas para Praça.ai quando solicitado.
 
 ### Praça.ai
-- Comissão por categoria **hipotética**: indústria/materiais 3%; produtos gerais 6%; decoração 8%; serviços 10%; imóveis exigem contrato próprio.
+- **Regra aprovada para clientes originados no Praça.ai:** comissão mínima de **10%** sobre a base contratual definida para a transação, independentemente da categoria. Este mínimo substitui as propostas anteriores de 3%, 6% e 8% para negócios dessa origem.
+- **Exceção — Rodada de Negócios:** comissão percentual negociável conforme acordo específico entre as partes, podendo ser inferior a 10% se expressamente acordada e registrada. A exceção deve estar vinculada ao identificador da rodada, versão do acordo, responsável pela aprovação, data, base de cálculo e NSUs correspondentes.
+- Quando a origem não for Praça.ai, comissão de marketplace não decorre automaticamente da venda; verificar canal, contrato e atribuição.
+- Imóveis e outras transações reguladas seguem ainda requisitos jurídicos próprios; não aplicar taxa sem contrato e enquadramento.
 - Planos de vendedor (hipótese): Free 0; Loja Pro 99; Business 299; Enterprise 799 por mês.
 - O `vendor-commerce-monthly` **já existe a R$ 149**, mas NÃO corresponde automaticamente a um plano de vendedor Praça.ai; preservar distinção entre software de gestão e serviços do marketplace.
-- Comissão transacional: apenas em negócio liquidado/segundo base contratual; frete declarado pelo vendedor, tributos, cancelamento, repasse, retenção, disputas e devoluções são configuráveis.
+- Comissão transacional: registrar origem `praca_ai`, `round_id` quando aplicável, base de incidência contratual, percentual efetivo, versão do acordo, aprovadores e liquidação; frete declarado pelo vendedor, tributos, cancelamento, repasse, retenção, disputas e devoluções são configuráveis.
+- **Validação obrigatória:** para `origem = praca_ai` e `tipo != rodada_de_negocios`, rejeitar comissão inferior a 10%. Em rodada de negócios, permitir a taxa específica aprovada para aquela rodada, sem substituir a taxa padrão em negócios alheios à rodada.
 - Leilões reversos, rodadas e compras coletivas: NSU mestre e NSUs filhos; sem comissão duplicada.
 - Identidade de comprador/fornecedor deve ser protegida em fase cega; revelar apenas segundo regras de fechamento e lei aplicável.
 
@@ -89,7 +93,7 @@ Esses preços são **identificados no código**, não auditados contra estado vi
 
 Superadmin → Comercial e Monetização:
 - Catálogo oficial: nome, SKU, tipo, mercado, módulos cobertos, estado, preço, créditos, custo e margem.
-- Tarifas Praça.ai por categoria/segmento; comparador de preço final.
+- Tarifas Praça.ai: mínimo de 10% para negócio originado no Praça.ai; rodadas usam percentuais negociados por acordo registrado; comparador de preço final.
 - Campanhas comerciais: Fundadores, elegibilidade, vigência, desconto, implantação e representantes.
 - Vendi: direitos por produto/agente, métricas, créditos e custo real.
 - Simulador com GMV, assinaturas, conversão, churn, impostos, custos, comissões e margem de contribuição.
@@ -102,7 +106,8 @@ Portal do cliente:
 ## 7. Critérios de aceite antes de ativar preços
 
 - Reconciliar produtos existentes no banco real com SKUs da migration 529 e assinaturas em vigor.
-- Definir juridicamente incidência de taxas e retenção de fundos do marketplace.
+- Definir juridicamente a base de incidência da comissão mínima de 10% e a competência de cobrança, além de retenção de fundos do marketplace.
+- Validar exceções das rodadas de negócios com acordo versionado, taxa explícita, aprovador e rastreabilidade por NSU.
 - Calcular custo unitário e margem para IA/render/prospecção por operação usando telemetria.
 - Validar política de não cobrança dupla e usuários ilimitados.
 - Testar migrações, API, permissões, casos de cancelamento/reembolso e idempotência.
