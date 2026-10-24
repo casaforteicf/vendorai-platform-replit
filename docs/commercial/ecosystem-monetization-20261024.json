@@ -267,28 +267,31 @@
   ],
   "marketplace_commission_proposals": [
     {
-      "category": "construction_industry",
-      "percent": 3,
-      "approval": "proposal",
-      "charge_on": "settled_transaction_contractual_basis"
+      "category": "praca_ai_originated_transactions",
+      "minimum_percent": 10,
+      "rule": "minimum",
+      "approval": "user_directed_business_rule",
+      "effective_scope": "all Praça.ai sourced deals except negotiated business rounds",
+      "charge_on": "settled_transaction_contractual_basis",
+      "pending": "specify contractual commission base and effective date"
     },
     {
-      "category": "general_products",
-      "percent": 6,
-      "approval": "proposal",
-      "charge_on": "settled_transaction_contractual_basis"
-    },
-    {
-      "category": "decor_furniture",
-      "percent": 8,
-      "approval": "proposal",
-      "charge_on": "settled_transaction_contractual_basis"
-    },
-    {
-      "category": "professional_services",
-      "percent": 10,
-      "approval": "proposal",
-      "charge_on": "settled_transaction_contractual_basis"
+      "category": "business_rounds",
+      "minimum_percent": null,
+      "rule": "negotiated_per_round",
+      "approval": "user_directed_business_rule",
+      "requirements": [
+        "round_id",
+        "signed_or_approved_agreement_version",
+        "negotiated_percent",
+        "commission_base",
+        "approver",
+        "date",
+        "nsu_master_and_children",
+        "audit_log"
+      ],
+      "charge_on": "settled_transaction_contractual_basis",
+      "note": "negotiated rate may differ from the 10% default only with a registered agreement"
     }
   ],
   "business_rules": [
@@ -296,7 +299,9 @@
     "Credits are not BRL or raw provider tokens",
     "No automatic change to production SKU prices",
     "Separate subscription, credits, services, transaction fees and representatives commissions",
-    "Explicit approval required before publishing any price"
+    "Explicit approval required before publishing any price",
+    "Praça.ai-sourced transactions have a minimum 10% commission unless they belong to a registered, approved Business Round with a negotiated rate",
+    "Validate origin, commission basis, round identifier, agreement version, approvals and NSUs to avoid double charging"
   ],
   "reconciliation_required": true
 }
