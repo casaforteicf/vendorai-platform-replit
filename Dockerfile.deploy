@@ -1,0 +1,23 @@
+# Imagem do backend para o auto-deploy na Contabo.
+# Build reproduz o gate de TypeScript e o bundle da API usados no host.
+FROM public.ecr.aws/docker/library/node:22-bookworm-slim
+
+WORKDIR /app
+
+RUN corepack enable \
+  && corepack prepare pnpm@10.26.1 --activate \
+  && apt-get update \
+  && apt-get install -y --no-install-recommends ffmpeg fontconfig fonts-liberation chromium \
+  && rm -rf /var/lib/apt/lists/*
+
+COPY . .
+
+RUN pnpm install --no-frozen-lockfile \
+  && pnpm --filter @workspace/api-server exec tsc -p tsconfig.launch-ci.json --noEmit \
+  && pnpm --filter @workspace/api-server run build
+
+ENV NODE_ENV=production
+
+EXPOSE 5000
+
+CMD ["pnpm", "--filter", "@workspace/api-server", "run", "start"]

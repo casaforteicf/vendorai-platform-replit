@@ -2,13 +2,13 @@ import { Router, type IRouter } from "express";
 import { z } from "zod";
 import { and, asc, desc, eq } from "drizzle-orm";
 import {
-  db,
   vendiMissionsTable,
   vendiMissionEventsTable,
 } from "@workspace/db";
 import { listVendiToolDomains, listVendiTools } from "../services/vendi-tool-registry.js";
 import { executeVendiMission } from "../services/vendi-mission-supervisor.js";
 import { getVendiPostgresErrorCode } from "../lib/vendi-db-error.js";
+import { withVendiTenantContext } from "../lib/vendi-tenant-context.js";
 
 const router: IRouter = Router();
 
@@ -56,7 +56,7 @@ router.post("/vendi/missions", async (req, res) => {
 
   let mission: typeof vendiMissionsTable.$inferSelect;
   try {
-    const [created] = await db.insert(vendiMissionsTable).values({
+    const [created] = await withVendiTenantContext(tenantId, (tx) => tx.insert(vendiMissionsTable).values({
       tenantId,
       source: parsed.data.source,
       sourceRefId: parsed.data.sourceRefId ?? null,
@@ -66,7 +66,7 @@ router.post("/vendi/missions", async (req, res) => {
       context: parsed.data.context ?? null,
       createdByUserId: req.user?.id ?? null,
       status: "planning",
-    }).returning();
+    }).returning());
     if (!created) throw new Error("MISSION_INSERT_RETURNED_EMPTY");
     mission = created;
   } catch (error: unknown) {
@@ -101,7 +101,7 @@ router.post("/vendi/missions", async (req, res) => {
       execution,
     });
   } catch (error: any) {
-    await db.update(vendiMissionsTable)
+    await withVendiTenantContext(tenantId, (tx) => tx.update(vendiMissionsTable)
       .set({
         status: "failed",
         lastError: error?.message ?? "VENDI_MISSION_FAILED",
@@ -110,7 +110,7 @@ router.post("/vendi/missions", async (req, res) => {
       .where(and(
         eq(vendiMissionsTable.id, mission.id),
         eq(vendiMissionsTable.tenantId, tenantId),
-      ));
+      )));
     res.status(500).json({ missionId: mission.id, error: error?.message ?? "VENDI_MISSION_FAILED" });
   }
 });
@@ -162,12 +162,11 @@ router.get("/vendi/missions", async (req, res) => {
     res.status(401).json({ error: "Tenant não resolvido" });
     return;
   }
-  const rows = await db
-    .select()
+  const rows = await withVendiTenantContext(tenantId, (tx) => tx.select()
     .from(vendiMissionsTable)
     .where(eq(vendiMissionsTable.tenantId, tenantId))
     .orderBy(desc(vendiMissionsTable.createdAt))
-    .limit(100);
+    .limit(100));
   res.json(rows);
 });
 
@@ -177,26 +176,24 @@ router.get("/vendi/missions/:id", async (req, res) => {
     res.status(401).json({ error: "Tenant não resolvido" });
     return;
   }
-  const [mission] = await db
-    .select()
+  const [mission] = await withVendiTenantContext(tenantId, (tx) => tx.select()
     .from(vendiMissionsTable)
     .where(and(
       eq(vendiMissionsTable.id, String(req.params.id)),
       eq(vendiMissionsTable.tenantId, tenantId),
     ))
-    .limit(1);
+    .limit(1));
   if (!mission) {
     res.status(404).json({ error: "Missão não encontrada" });
     return;
   }
-  const events = await db
-    .select()
+  const events = await withVendiTenantContext(tenantId, (tx) => tx.select()
     .from(vendiMissionEventsTable)
     .where(and(
       eq(vendiMissionEventsTable.missionId, mission.id),
       eq(vendiMissionEventsTable.tenantId, tenantId),
     ))
-    .orderBy(asc(vendiMissionEventsTable.sequence));
+    .orderBy(asc(vendiMissionEventsTable.sequence)));
   res.json({ mission, events });
 });
 
