@@ -159,15 +159,9 @@ export default function VendiOperations() {
 
   const [customizationRequest, setCustomizationRequest] = useState("");
   const submitCustomization = useMutation({
-    mutationFn: () => api<{ mission: Mission }>("/api/vendi/missions", {
+    mutationFn: () => api<{ mission: Mission }>("/api/vendi/customization-requests", {
       method: "POST",
-      body: JSON.stringify({
-        objective: `Solicitação de personalização do meu sistema (não executar automaticamente): ${customizationRequest.trim()}`,
-        source: "module",
-        riskPolicy: "strict",
-        autoExecute: false,
-        context: { requestType: "tenant_customization", stage: "intake_only", executionAuthorized: false },
-      }),
+      body: JSON.stringify({ objective: customizationRequest.trim() }),
     }),
     onSuccess: ({ mission }) => {
       setCustomizationRequest("");
