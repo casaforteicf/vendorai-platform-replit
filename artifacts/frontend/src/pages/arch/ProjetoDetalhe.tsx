@@ -1351,6 +1351,18 @@ export default function ProjetoDetalhe() {
         </section>
       )}
 
+      <div className="flex flex-wrap items-center gap-2">
+        <input ref={dossierFileInputRef} type="file" multiple className="hidden"
+          aria-label="Importar arquivos para o projeto"
+          accept=".skp,.dxf,.dwg,.ifc,.pdf,.jpg,.jpeg,.png,.webp,.doc,.docx,.xls,.xlsx,.txt"
+          onChange={(event) => { void handleDossierUpload(event.target.files); event.currentTarget.value = ""; }} />
+        <Button type="button" variant="outline" disabled={uploadingDossier}
+          onClick={() => dossierFileInputRef.current?.click()}>
+          {uploadingDossier ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Upload className="mr-2 h-4 w-4" />}
+          Importar arquivos
+        </Button>
+      </div>
+
       {/* Atalhos principais do projeto — mantém o usuário dentro do mesmo contexto */}
       <div className="flex flex-wrap items-center gap-2 rounded-xl border bg-muted/20 p-3">
         <span className="mr-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Continuar projeto</span>
@@ -2445,14 +2457,14 @@ export default function ProjetoDetalhe() {
                         </div>
                         <div>
                           <input
-                            ref={dossierFileInputRef}
+                            id="arqdor-ambiente-upload"
                             type="file"
                             multiple
                             className="hidden"
                             accept=".skp,.dxf,.dwg,.ifc,.pdf,.jpg,.jpeg,.png,.webp,.doc,.docx,.xls,.xlsx,.txt"
-                            onChange={(event) => void handleDossierUpload(event.target.files, viewingAmbiente.id)}
+                            onChange={(event) => { void handleDossierUpload(event.target.files, viewingAmbiente.id); event.currentTarget.value = ""; }}
                           />
-                          <Button size="sm" variant="outline" disabled={uploadingDossier} onClick={() => dossierFileInputRef.current?.click()}>
+                          <Button size="sm" variant="outline" disabled={uploadingDossier} onClick={() => document.getElementById("arqdor-ambiente-upload")?.click()}>
                             {uploadingDossier ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Upload className="mr-2 h-4 w-4" />}
                             Adicionar arquivos
                           </Button>
