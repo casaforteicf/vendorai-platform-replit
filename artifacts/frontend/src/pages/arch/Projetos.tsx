@@ -434,9 +434,9 @@ export default function Projetos() {
   }
 
   return (
-    <div className="arqdor-reference-ui max-w-6xl mx-auto space-y-5">
+    <div className="arqdor-reference-ui mx-auto max-w-[1480px] space-y-5">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Projetos</h1>
           <p className="text-sm text-muted-foreground mt-0.5">{projetos.length} projeto{projetos.length !== 1 ? "s" : ""} encontrado{projetos.length !== 1 ? "s" : ""}</p>
@@ -707,7 +707,7 @@ export default function Projetos() {
 
       {/* Visão visual de projetos — ARQ-PROJ */}
       {loading ? (
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
           {Array.from({ length: 6 }).map((_, i) => (
             <div key={i} className="overflow-hidden rounded-2xl border bg-background">
               <Skeleton className="h-40 w-full rounded-none" />
@@ -730,8 +730,6 @@ export default function Projetos() {
       ) : (
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           {projetos.map((p) => {
-            const progressIndex = ["briefing", "orcamento", "aprovado", "em_execucao", "entregue"].indexOf(p.status);
-            const progress = p.status === "cancelado" ? 0 : Math.max(12, Math.min(100, ((progressIndex + 1) / 5) * 100));
             const nextAction =
               p.status === "briefing" ? "Continuar briefing"
                 : p.status === "orcamento" ? "Revisar orçamento"
@@ -768,30 +766,9 @@ export default function Projetos() {
                       {p.tipoObra && <span className="shrink-0 rounded-full bg-muted px-2 py-1 text-[10px] font-semibold">{p.tipoObra}</span>}
                     </div>
 
-                    <div className="mt-4 grid grid-cols-3 gap-2 text-center">
-                      <div className="rounded-xl bg-muted/50 p-2">
-                        <div className="text-[10px] text-muted-foreground">Área</div>
-                        <div className="mt-0.5 text-xs font-bold">{p.areaM2 ? `${Number(p.areaM2).toFixed(0)} m²` : "—"}</div>
-                      </div>
-                      <div className="rounded-xl bg-muted/50 p-2">
-                        <div className="text-[10px] text-muted-foreground">Ambientes</div>
-                        <div className="mt-0.5 text-xs font-bold">{p.totalAmbientes ?? 0}</div>
-                      </div>
-                      <div className="rounded-xl bg-muted/50 p-2">
-                        <div className="text-[10px] text-muted-foreground">Orçamento</div>
-                        <div className="mt-0.5 truncate text-xs font-bold text-emerald-700">{p.orcamentoTotal ? fmt(Number(p.orcamentoTotal)) : "—"}</div>
-                      </div>
-                    </div>
-
-                    <div className="mt-4">
-                      <div className="mb-1 flex items-center justify-between text-[10px] font-semibold text-muted-foreground">
-                        <span>Progresso</span>
-                        <span>{Math.round(progress)}%</span>
-                      </div>
-                      <div className="h-1.5 overflow-hidden rounded-full bg-muted">
-                        <div className="h-full rounded-full bg-primary transition-all" style={{ width: `${progress}%` }} />
-                      </div>
-                    </div>
+                    <p className="mt-3 text-xs text-muted-foreground">
+                      {p.tipoObra ? `${p.tipoObra} · ` : ""}{p.totalAmbientes ? `${p.totalAmbientes} ambiente(s) · ` : ""}{p.areaM2 ? `${Number(p.areaM2).toLocaleString("pt-BR")} m²` : "Área não informada"}
+                    </p>
 
                     <div className="mt-4 flex items-center justify-between gap-3">
                       <span className="text-xs font-semibold text-primary">{nextAction}</span>
