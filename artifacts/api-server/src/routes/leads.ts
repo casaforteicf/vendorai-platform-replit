@@ -14,6 +14,8 @@ import {
   messagesTable,
   dealsTable,
   paymentCompositionsTable,
+  obrasTable,
+  obraDiarioTable,
   pipelineStagesTable,
   propostasTable,
   activitiesTable,
@@ -1343,6 +1345,47 @@ router.post("/leads/:id/attachment-folder-lock/lock-now", async (req, res) => {
 // A verificação de acesso ao lead antecede a consulta e preserva isolamento por tenant.
 // Comprovantes associados a negociações deste cliente; consulta read-only.
 // Não expõe títulos ou dados financeiros sem vínculo ao lead e ao tenant.
+// Mídias dos diários de obra, vinculadas por ID do lead ou do negócio.
+// Sem associação por nome: clientes homônimos não podem compartilhar arquivos.
+router.get("/leads/:id/obra-diary-attachments", async (req, res) => {
+  const access = await getLeadForAttachmentFolder(req, res);
+  if (!access) return;
+  try {
+    const works = await db.select({ id: obrasTable.id })
+      .from(obrasTable)
+      .leftJoin(dealsTable, and(eq(obrasTable.dealOrigemId, dealsTable.id),
+        eq(dealsTable.tenantId, access.tenantId)))
+      .where(and(eq(obrasTable.tenantId, access.tenantId),
+        or(eq(obrasTable.leadOrigemId, access.id), eq(dealsTable.leadId, access.id))))
+      .limit(200);
+    if (!works.length) { res.setHeader("Cache-Control", "private, no-store"); res.json([]); return; }
+    const diaryRows = await db.select({
+      id: obraDiarioTable.id, obraId: obraDiarioTable.obraId,
+      fotos: obraDiarioTable.fotos, videos: obraDiarioTable.videos,
+      anexos: obraDiarioTable.anexos, createdAt: obraDiarioTable.createdAt,
+    }).from(obraDiarioTable)
+      .where(inArray(obraDiarioTable.obraId, works.map((w) => w.id)))
+      .orderBy(desc(obraDiarioTable.createdAt)).limit(500);
+    const output: Array<{id:string;obraId:string;url:string;name:string;mimeType:string|null;createdAt:string;kind:string}> = [];
+    for (const row of diaryRows) {
+      for (const [kind, files] of [["foto", row.fotos], ["video", row.videos], ["anexo", row.anexos]] as const) {
+        for (const [index, file] of (files ?? []).entries()) {
+          if (!file || typeof file.url !== "string") continue;
+          if (!file.url.startsWith("/objects/") && !file.url.startsWith("/api/storage/objects/")) continue;
+          output.push({id:`${row.id}:${kind}:${index}`,obraId:row.obraId,
+            url:file.url,name:file.name || file.caption || `Arquivo de obra ${kind}`,
+            mimeType:file.mimeType ?? null,createdAt:file.uploadedAt || row.createdAt.toISOString(),kind});
+        }
+      }
+    }
+    res.setHeader("Cache-Control", "private, no-store");
+    res.json(output);
+  } catch (error) {
+    req.log?.error({err:error,leadId:access.id}, "client-archive: obra diary attachments failed");
+    res.status(500).json({error:"Não foi possível consultar anexos de obra."});
+  }
+});
+
 router.get("/leads/:id/payment-attachments", async (req, res) => {
   const access = await getLeadForAttachmentFolder(req, res);
   if (!access) return;
