@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   checkpointFromState,
+  isVendorAppShellLoading,
   classifyBrowserError,
   isRetryableBrowserError,
   validateBrowserUrl,
@@ -33,6 +34,19 @@ describe("validateBrowserUrl", () => {
     expect(() =>
       validateBrowserUrl("https://evil.example.net", ["example.com"]),
     ).toThrow("Host não permitido");
+  });
+});
+
+describe("first-party bootstrap loading detection", () => {
+  it("flags the exact Vendor.ai Suspense fallback as not ready", () => {
+    expect(isVendorAppShellLoading("Carregando o sistema…")).toBe(true);
+    expect(isVendorAppShellLoading(" Carregando o sistema... ")).toBe(true);
+  });
+
+  it("does not flag loaded CRM pages, other loading states, or blank pages", () => {
+    expect(isVendorAppShellLoading("Negócios Pipeline")).toBe(false);
+    expect(isVendorAppShellLoading("Carregando leads…")).toBe(false);
+    expect(isVendorAppShellLoading("")).toBe(false);
   });
 });
 
