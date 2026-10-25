@@ -156,6 +156,26 @@ export function checkpointFromState(state: { url: string; title: string; text: s
   };
 }
 
+// A visible React.lazy() fallback is not proof that a first-party Vendor.ai
+// page has finished loading. In particular the fast read-only path must not
+// return ok=true when the only DOM content is this loading shell.
+export function isVendorAppShellLoading(text: string): boolean {
+  return /^Carregando o sistema(?:…|\\.\\.\\.)/i.test(text.trim());
+}
+
+async function waitForVendorAppShell(page: Page, timeoutMs = 12_000) {
+  let state = await withBrowserRetry(() => snapshotBrowserPage(page), 2);
+  if (!isVendorAppShellLoading(state.text)) return { state, stalled: false, waited: false };
+
+  const deadline = Date.now() + timeoutMs;
+  do {
+    await new Promise((resolve) => setTimeout(resolve, 750));
+    state = await withBrowserRetry(() => snapshotBrowserPage(page), 2);
+  } while (isVendorAppShellLoading(state.text) && Date.now() < deadline);
+
+  return { state, stalled: isVendorAppShellLoading(state.text), waited: true };
+}
+
 export interface BrowserAgentInput {
   tenantId: string;
   goal: string;
@@ -522,6 +542,27 @@ export async function runBrowserAgent(input: BrowserAgentInput) {
             ? `VENDI_AUTH_REJECTED:${authProbe.status}:${authProbe.reason ?? 'unknown'}:${authProbe.responseOrigin ?? 'unknown'}`
             : `VENDI_AUTH_PROBE_FAILED:${authProbe.status}`,
         );
+      }
+    }
+
+    // The first-party app is lazy-loaded. Wait only when its own bootstrap
+    // shell is visible; a fast snapshot must never report that shell as success.
+    // Keep the wait bounded so the browser lease cannot hang indefinitely.
+    if (input.firstPartyAuthToken) {
+      const startup = await waitForVendorAppShell(page);
+      if (startup.stalled) {
+        return {
+          ok: false,
+          finalUrl: startup.state.url,
+          answer: "VENDI_FRONTEND_BOOTSTRAP_STALLED: página permaneceu em Carregando o sistema após aguardar a inicialização.",
+          steps: [{
+            index: 1,
+            action: "snapshot",
+            url: startup.state.url,
+            detail: "first_party_bootstrap_stalled",
+            checkpoint: checkpointFromState(startup.state),
+          }],
+        };
       }
     }
 
