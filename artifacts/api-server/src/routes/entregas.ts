@@ -2441,6 +2441,25 @@ router.patch("/work-cards/:id", async (req, res) => {
       responsavelId: card.responsavelId,
     });
     await ensureWorkStageTask(card);
+    // Handoff interno idempotente: o responsável que recebe a nova etapa
+    // encontra a mensagem na central de notificações.
+    if (card.responsavelId && (card.responsavelId !== existing.responsavelId || card.etapa !== existing.etapa)) {
+      const category = `work_card_handoff:${card.id}:${card.etapa}:${card.responsavelId}`;
+      try {
+        const [prior] = await db.select({ id: notificationsTable.id }).from(notificationsTable)
+          .where(and(eq(notificationsTable.tenantId, card.tenantId), eq(notificationsTable.category, category))).limit(1);
+        if (!prior) {
+          await db.insert(notificationsTable).values({
+            tenantId: card.tenantId, recipientUserId: card.responsavelId, leadId: card.leadId,
+            title: "Nova etapa sob sua responsabilidade",
+            message: `${card.codigo} — ${card.titulo}: etapa ${currentLabel}. Acesse Execução / Pedidos para atender.`,
+            category, type: "info",
+          });
+        }
+      } catch (error) {
+        (req.log ?? console).error({ err: error, cardId: card.id }, "Falha ao registrar notificação de transição");
+      }
+    }
     if (card.pipeline === "suporte") {
       await notifySupportStageChange(card, existing.etapa, req.log);
     }
