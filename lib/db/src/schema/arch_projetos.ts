@@ -51,6 +51,8 @@ export const archProjetosTable = pgTable("arch_projetos", {
       situacaoImovel: "novo" | "existente" | "em_obra";
       abrangencia: "completo" | "ambientes" | "area";
       disciplinasExtras: Array<"Arquitetura" | "Interiores" | "Área Externa">;
+      ambientesSelecionados?: string[];
+      areaEspecifica?: string;
     };
     briefing?: string;
     medidas?: Array<{
