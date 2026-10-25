@@ -36,6 +36,13 @@ export function assertBrowserPageAccessible(state: { title: string; text: string
   }
 }
 
+// A planned "blocked" result can mean missing tenant services, permissions or
+// unavailable UI, not necessarily a CAPTCHA. Reserve BROWSER_BLOCKED for
+// assertBrowserPageAccessible's observed human-verification challenge.
+export function browserFinishFailure(outcome: "blocked" | "failed", answer: string): Error {
+  return new Error(`${outcome === "blocked" ? "BROWSER_TASK_BLOCKED" : "BROWSER_FAILED"}: ${answer}`);
+}
+
 export type PlannedAction =
   | { action: "navigate"; url: string; reason?: string }
   | { action: "click"; selector: string; reason?: string }
@@ -610,7 +617,7 @@ export async function runBrowserAgent(input: BrowserAgentInput) {
       });
 
       if (action.action === "finish") {
-        if (action.outcome !== "completed") throw new Error(`BROWSER_${action.outcome.toUpperCase()}: ${action.answer}`);
+        if (action.outcome !== "completed") throw browserFinishFailure(action.outcome, action.answer);
         if (input.onSessionPersist) await input.onSessionPersist(await page.cookies());
         if (input.onProfilePersist) await input.onProfilePersist(await captureBrowserProfile(page));
         return { ok: true, finalUrl: state.url, answer: action.answer, steps };
@@ -679,7 +686,7 @@ export async function runBrowserAgent(input: BrowserAgentInput) {
           secretsAvailable,
         );
         if (next.action === "finish") {
-          if (next.outcome !== "completed") throw new Error(`BROWSER_${next.outcome.toUpperCase()}: ${next.answer}`);
+          if (next.outcome !== "completed") throw browserFinishFailure(next.outcome, next.answer);
           if (input.onSessionPersist) await input.onSessionPersist(await page.cookies());
           if (input.onProfilePersist) await input.onProfilePersist(await captureBrowserProfile(page));
           return { ok: true, finalUrl: page.url(), answer: next.answer, steps };
