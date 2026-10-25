@@ -122,6 +122,8 @@ export default function Projetos() {
   const [situacaoImovel, setSituacaoImovel] = useState<"novo" | "existente" | "em_obra">("novo");
   const [abrangencia, setAbrangencia] = useState<"completo" | "ambientes" | "area">("completo");
   const [disciplinasExtras, setDisciplinasExtras] = useState<string[]>([]);
+  const [ambientesSelecionados, setAmbientesSelecionados] = useState<string[]>([]);
+  const [areaEspecifica, setAreaEspecifica] = useState("");
 
 
   // Cliente / lead existente
@@ -360,6 +362,8 @@ export default function Projetos() {
     setSituacaoImovel("novo");
     setAbrangencia("completo");
     setDisciplinasExtras([]);
+    setAmbientesSelecionados([]);
+    setAreaEspecifica("");
     setSelectedLead(null);
     setLeadSearch("");
     setLeadResults([]);
@@ -373,6 +377,14 @@ export default function Projetos() {
       return;
     }
 
+    if (abrangencia === "ambientes" && ambientesSelecionados.length === 0) {
+      toast({ title: "Selecione pelo menos um ambiente", variant: "destructive" });
+      return;
+    }
+    if (abrangencia === "area" && !areaEspecifica.trim()) {
+      toast({ title: "Informe a área específica", variant: "destructive" });
+      return;
+    }
     setSaving(true);
     try {
       let projectLead = selectedLead;
@@ -406,7 +418,7 @@ export default function Projetos() {
         leadId:    projectLead.id,
         titulo:    form.titulo,
         tipoObra:  form.tipoObra,
-        dossieProjeto: { projectSetup: { disciplina, situacaoImovel, abrangencia, disciplinasExtras } },
+        dossieProjeto: { projectSetup: { disciplina, situacaoImovel, abrangencia, disciplinasExtras, ambientesSelecionados: abrangencia === "ambientes" ? ambientesSelecionados : [], areaEspecifica: abrangencia === "area" ? areaEspecifica.trim() : "" } },
       };
       if (form.clienteNome)     body.clienteNome     = form.clienteNome;
       if (form.clienteEmail)    body.clienteEmail    = form.clienteEmail;
@@ -508,6 +520,29 @@ export default function Projetos() {
                     onClick={()=>setAbrangencia(key)}>{label}</Button>
                 ))}
               </div>
+              {abrangencia === "ambientes" && (
+                <div className="space-y-2">
+                  <Label>Ambientes do projeto</Label>
+                  <div className="flex flex-wrap gap-2">
+                    {["Sala", "Cozinha", "Quarto", "Banheiro", "Área gourmet", "Escritório", "Lavanderia", "Garagem", "Jardim"].map((nome) => (
+                      <Button key={nome} type="button" size="sm"
+                        variant={ambientesSelecionados.includes(nome) ? "default" : "outline"}
+                        onClick={() => setAmbientesSelecionados((xs) => xs.includes(nome) ? xs.filter((x) => x !== nome) : [...xs, nome])}>
+                        {nome}
+                      </Button>
+                    ))}
+                  </div>
+                  <Input aria-label="Outro ambiente" placeholder="Outro ambiente (digite o nome e pressione Enter)"
+                    onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); const nome = e.currentTarget.value.trim(); if (nome) { setAmbientesSelecionados((xs) => xs.includes(nome) ? xs : [...xs, nome]); e.currentTarget.value = ""; } } }} />
+                </div>
+              )}
+              {abrangencia === "area" && (
+                <div className="space-y-1">
+                  <Label htmlFor="arq-area-especifica">Qual área?</Label>
+                  <Input id="arq-area-especifica" value={areaEspecifica} onChange={(e) => setAreaEspecifica(e.target.value)}
+                    placeholder="Ex.: Fachada principal, terraço ou jardim frontal" />
+                </div>
+              )}
               <Label>Disciplinas complementares (opcionais)</Label>
               <div className="flex flex-wrap gap-2">
                 {(["Arquitetura", "Interiores", "Área Externa"] as const).filter((x)=>x!==disciplina).map((item)=>(
