@@ -536,8 +536,12 @@ export default function PipelineOperacional() {
   const cards = cardsQuery.data ?? [];
   const isAdmin = (user as any)?.platformRole === "super_admin" || (user as any)?.platformRole === "tenant_admin" || (user as any)?.userFunction === "administrador";
   const stageIndex = (stage: string) => stages.findIndex(([key]) => key === stage);
-  const canMoveForward = (card: WorkCard, target: string) =>
-    target === card.etapa || stageIndex(target) >= stageIndex(card.etapa) || (card.pipeline === "execucao" && isAdmin);
+  const canMoveForward = (card: WorkCard, target: string) => {
+    const currentIndex = stageIndex(card.etapa);
+    const targetIndex = stageIndex(target);
+    if (currentIndex < 0 || targetIndex < 0) return false;
+    return targetIndex >= currentIndex || (card.pipeline === "execucao" && isAdmin);
+  };
   const nextExecutionStage = (stage: string) => {
     const index = EXECUTION_STAGES.findIndex(([key]) => key === stage);
     return index >= 0 && index < EXECUTION_STAGES.length - 1 ? EXECUTION_STAGES[index + 1] : null;
@@ -633,9 +637,9 @@ export default function PipelineOperacional() {
               onDrop={() => {
                 const dragged = cards.find((card) => card.id === draggedId);
                 if (dragged && !canMoveForward(dragged, key)) {
-                  toast({ title: "Movimento não permitido", description: "O card só pode avançar. Etapas já concluídas ficam no histórico.", variant: "destructive" });
-                } else if (draggedId && !patchCard.isPending) {
-                  patchCard.mutate({ id: draggedId, data: { etapa: key } });
+                  toast({ title: "Movimento não permitido", description: "Confira a configuração das etapas. O card não pode retroceder.", variant: "destructive" });
+                } else if (dragged && dragged.etapa !== key && !patchCard.isPending) {
+                  patchCard.mutate({ id: dragged.id, data: { etapa: key } });
                 }
                 setDraggedId(null);
               }}
