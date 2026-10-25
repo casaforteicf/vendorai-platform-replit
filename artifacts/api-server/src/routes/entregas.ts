@@ -1,6 +1,6 @@
 import { Router, type IRouter, type Request } from "express";
 import { requestCanAccessLockedObject, syncProtectedObjectsForLead } from "../lib/attachment-folder-access.js";
-import { and, asc, desc, eq, gt, inArray, lt } from "drizzle-orm";
+import { and, asc, desc, eq, gt, inArray, lt, sql } from "drizzle-orm";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { z } from "zod/v4";
 import {
@@ -23,6 +23,7 @@ import {
   tenantsTable,
   tenantCalendarSettingsTable,
   pipelineStagesTable,
+  notificationsTable,
   dealTenantParticipationsTable,
   installationChecklistTemplatesTable,
   installationVisitsTable,
@@ -1738,7 +1739,68 @@ router.post("/tenants/:tenantId/work-cards", async (req, res) => {
     return;
   }
 
-  const [card] = await db.insert(workCardsTable).values(parsed.data).returning();
+  let card: typeof workCardsTable.$inferSelect;
+  // Serializa somente a entrada direta do mesmo pedido/contrato.
+  // Diferentes obras do mesmo cliente continuam permitidas.
+  if (parsed.data.pipeline === "execucao" && parsed.data.tipo === "pedido_direto") {
+    if (!parsed.data.responsavelId || (!parsed.data.leadId && !parsed.data.dealId)) {
+      return res.status(422).json({ error: "A entrada direta exige cliente ou negócio e responsável inicial." });
+    }
+    const [responsavel] = await db.select({ id: usersTable.id }).from(usersTable)
+      .where(and(eq(usersTable.tenantId, tenantId), eq(usersTable.id, parsed.data.responsavelId))).limit(1);
+    if (!responsavel) return res.status(422).json({ error: "O responsável não pertence a esta empresa." });
+    if (parsed.data.dealId) {
+      const [linkedDeal] = await db.select({ id: dealsTable.id, leadId: dealsTable.leadId }).from(dealsTable)
+        .where(and(eq(dealsTable.tenantId, tenantId), eq(dealsTable.id, parsed.data.dealId))).limit(1);
+      if (!linkedDeal || (parsed.data.leadId && linkedDeal.leadId !== parsed.data.leadId)) {
+        return res.status(422).json({ error: "Negócio e cliente não correspondem à empresa atual." });
+      }
+    }
+    if (parsed.data.leadId) {
+      const [linkedLead] = await db.select({ id: leadsTable.id }).from(leadsTable)
+        .where(and(eq(leadsTable.tenantId, tenantId), eq(leadsTable.id, parsed.data.leadId))).limit(1);
+      if (!linkedLead) return res.status(422).json({ error: "Cliente não pertence à empresa atual." });
+    }
+    const metadata = (parsed.data.metadata ?? {}) as Record<string, unknown>;
+    const requestKey = typeof metadata.intakeRequestId === "string" ? metadata.intakeRequestId : "";
+    const identity = parsed.data.dealId
+      ? `deal:${parsed.data.dealId}`
+      : `lead:${parsed.data.leadId}:title:${parsed.data.titulo.trim().toLowerCase()}`;
+    const outcome = await db.transaction(async (tx) => {
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${tenantId}), hashtext(${identity}))`);
+      const existing = await tx.select().from(workCardsTable).where(and(
+        eq(workCardsTable.tenantId, tenantId), eq(workCardsTable.pipeline, "execucao"),
+        eq(workCardsTable.tipo, "pedido_direto"),
+      ));
+      const duplicate = existing.find((item) => {
+        const meta = (item.metadata ?? {}) as Record<string, unknown>;
+        if (requestKey && meta.intakeRequestId === requestKey) return true;
+        if (parsed.data.dealId) return item.dealId === parsed.data.dealId;
+        return !item.dealId && item.leadId === parsed.data.leadId &&
+          item.titulo.trim().toLowerCase() === parsed.data.titulo.trim().toLowerCase();
+      });
+      if (duplicate) return { existing: duplicate } as const;
+      const [inserted] = await tx.insert(workCardsTable).values(parsed.data).returning();
+      return { created: inserted } as const;
+    });
+    if ("existing" in outcome) {
+      return res.status(409).json({ code: "DIRECT_ORDER_ALREADY_EXISTS", error: "Este pedido já está na Execução.", existingCardId: outcome.existing.id });
+    }
+    card = outcome.created;
+    // Notifica o responsável somente após o registro bem-sucedido.
+    try {
+      await db.insert(notificationsTable).values({
+        tenantId, recipientUserId: card.responsavelId, leadId: card.leadId,
+        title: "Novo pedido em Execução",
+        message: `Você foi designado para ${card.codigo} — ${card.titulo}. Acesse Execução / Pedidos para iniciar.`,
+        category: `work_card_assigned:${card.id}`, type: "info",
+      });
+    } catch (error) {
+      (req.log ?? console).error({ err: error, cardId: card.id }, "Falha ao enviar notificação do pedido");
+    }
+  } else {
+    [card] = await db.insert(workCardsTable).values(parsed.data).returning();
+  }
   if (card.leadId) {
     await recordWorkHistory({
       tenantId,
