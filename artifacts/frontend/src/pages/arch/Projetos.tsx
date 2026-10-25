@@ -406,6 +406,7 @@ export default function Projetos() {
         leadId:    projectLead.id,
         titulo:    form.titulo,
         tipoObra:  form.tipoObra,
+        dossieProjeto: { projectSetup: { disciplina, situacaoImovel, abrangencia, disciplinasExtras } },
       };
       if (form.clienteNome)     body.clienteNome     = form.clienteNome;
       if (form.clienteEmail)    body.clienteEmail    = form.clienteEmail;
@@ -520,9 +521,8 @@ export default function Projetos() {
               <p className="text-xs text-muted-foreground">
                 {disciplina} · {situacaoImovel==="novo"?"Imóvel novo":situacaoImovel==="existente"?"Imóvel existente":"Em obra"} · {abrangencia==="completo"?"Escopo completo":abrangencia==="ambientes"?"Alguns ambientes":"Área específica"}
               </p>
-              <p className="text-xs text-amber-600">
-                Nesta primeira entrega, os detalhes de disciplina e escopo ainda não são persistidos na API legada.
-                O tipo de imóvel é salvo normalmente. As demais escolhas não devem ser consideradas definitivas.
+              <p className="text-xs text-muted-foreground">
+                A configuração será salva no dossiê do projeto, sem criar outro cadastro.
               </p>
             </section>
             <form onSubmit={handleCreate} className="space-y-4 mt-2">
