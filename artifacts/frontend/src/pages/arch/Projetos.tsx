@@ -460,6 +460,9 @@ export default function Projetos() {
             <p className="text-sm text-muted-foreground">
               Identifique o cliente e crie seu projeto. Plantas, fotografias, estudos e materiais podem ser adicionados depois, no próprio projeto.
             </p>
+            <button type="button" className="text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground text-left" onClick={() => { setDialogOpen(false); navigate("/arch/concept"); }}>
+              Já tenho um estudo em andamento — abrir meus estudos
+            </button>
             <form onSubmit={handleCreate} className="space-y-4 mt-2">
               <div className="grid grid-cols-2 gap-3">
                 <div className="col-span-2 space-y-1.5">
