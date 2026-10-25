@@ -160,7 +160,7 @@ export function checkpointFromState(state: { url: string; title: string; text: s
 // page has finished loading. In particular the fast read-only path must not
 // return ok=true when the only DOM content is this loading shell.
 export function isVendorAppShellLoading(text: string): boolean {
-  return /^Carregando o sistema(?:…|\\.\\.\\.)/i.test(text.trim());
+  return /^Carregando o sistema(?:…|\.\.\.)/i.test(text.trim());
 }
 
 async function waitForVendorAppShell(page: Page, timeoutMs = 12_000) {
