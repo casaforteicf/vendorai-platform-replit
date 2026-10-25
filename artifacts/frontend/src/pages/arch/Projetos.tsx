@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 // Deploy marker: refresh Projetos lead picker build.
 import "./planner5d-reference.css";
 import { useLocation } from "wouter";
@@ -14,7 +14,7 @@ import {
 } from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, ExternalLink, FolderOpen, Search, UserRound, UserPlus, Pencil, X, Loader2, Image } from "lucide-react";
+import { Plus, ExternalLink, FolderOpen, Search, UserRound, UserPlus, Pencil, X, Loader2, Image, Upload } from "lucide-react";
 
 function getToken() { return localStorage.getItem("vendorai_token"); }
 
@@ -105,6 +105,66 @@ export default function Projetos() {
   const [projetos, setProjetos] = useState<Projeto[]>([]);
   const [loading, setLoading]   = useState(true);
   const [error, setError]       = useState<string | null>(null);
+
+  const importInputRef = useRef<HTMLInputElement | null>(null);
+  const importProjectRef = useRef<string | null>(null);
+  const [importingProjectId, setImportingProjectId] = useState<string | null>(null);
+
+  function selectProjectFiles(id: string) {
+    if (importingProjectId) return;
+    importProjectRef.current = id;
+    importInputRef.current?.click();
+  }
+
+  async function importProjectFiles(files: FileList | null) {
+    const id = importProjectRef.current;
+    const selected = Array.from(files ?? []);
+    if (!id || !selected.length) return;
+    setImportingProjectId(id);
+    try {
+      const detail = await fetch(`/api/arch/projetos/${encodeURIComponent(id)}`, {
+        headers: { Authorization: `Bearer ${getToken()}` },
+      });
+      if (!detail.ok) throw new Error("Não foi possível consultar o projeto.");
+      const { projeto } = await detail.json() as { projeto: { dossieProjeto?: Record<string, unknown> | null } };
+      const current = projeto.dossieProjeto ?? {};
+      const arquivos = Array.isArray(current.arquivos) ? current.arquivos : [];
+      const novos = [];
+      for (const file of selected) {
+        const request = await fetch("/api/storage/uploads/request-url", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name: file.name, size: file.size, contentType: file.type || "application/octet-stream" }),
+        });
+        if (!request.ok) throw new Error(`Falha ao preparar ${file.name}`);
+        const { uploadURL, objectPath } = await request.json() as { uploadURL: string; objectPath: string };
+        const uploaded = await fetch(uploadURL, {
+          method: "PUT",
+          body: file,
+          headers: { "Content-Type": file.type || "application/octet-stream" },
+        });
+        if (!uploaded.ok) throw new Error(`Falha no envio de ${file.name}`);
+        const ext = file.name.split(".").pop()?.toLowerCase() ?? "";
+        const tipo = ext === "skp" ? "skp" : ["dxf", "dwg"].includes(ext) ? "dxf"
+          : ext === "ifc" ? "ifc" : ext === "pdf" ? "pdf" : file.type.startsWith("image/") ? "foto"
+          : ["doc", "docx", "xls", "xlsx", "txt"].includes(ext) ? "documento" : "outro";
+        novos.push({ id: crypto.randomUUID(), nome: file.name, url: `${window.location.origin}/api/storage${objectPath}`,
+          tipo, mimeType: file.type || undefined, size: file.size, ambienteId: null, createdAt: new Date().toISOString() });
+      }
+      const saved = await fetch(`/api/arch/projetos/${encodeURIComponent(id)}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${getToken()}` },
+        body: JSON.stringify({ dossieProjeto: { ...current, arquivos: [...arquivos, ...novos] } }),
+      });
+      if (!saved.ok) throw new Error("Arquivos enviados, mas não foi possível vinculá-los ao projeto.");
+      toast({ title: "Arquivos importados", description: `${novos.length} arquivo(s) vinculados ao projeto.` });
+    } catch (err) {
+      toast({ title: "Falha ao importar", description: err instanceof Error ? err.message : "Tente novamente.", variant: "destructive" });
+    } finally {
+      setImportingProjectId(null);
+      importProjectRef.current = null;
+    }
+  }
 
   // Filters
   const [filterStatus, setFilterStatus] = useState<string>("all");
@@ -458,6 +518,11 @@ export default function Projetos() {
 
   return (
     <div className="arqdor-reference-ui mx-auto max-w-[1480px] space-y-5">
+      <input ref={importInputRef} type="file" multiple className="hidden"
+        aria-label="Selecionar arquivos para importar"
+        accept=".skp,.dxf,.dwg,.ifc,.pdf,.jpg,.jpeg,.png,.webp,.doc,.docx,.xls,.xlsx,.txt"
+        onChange={(e) => { void importProjectFiles(e.target.files); e.currentTarget.value = ""; }} />
+
       {/* Header */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
@@ -886,7 +951,9 @@ export default function Projetos() {
                       <Pencil className="mr-1 h-3 w-3" /> Lead
                     </Button>
                   )}
-                  <Button size="sm" variant="ghost" className="h-8 text-xs" onClick={() => navigate(`/arch/projetos/${p.id}`)}>
+                  <Button size="sm" variant="ghost" className="h-8 text-xs" disabled={Boolean(importingProjectId)}
+                    onClick={() => selectProjectFiles(p.id)}>
+                    {importingProjectId === p.id ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : <Upload className="mr-1 h-3.5 w-3.5" />}
                     Importar
                   </Button>
                   <Button size="sm" variant="ghost" className="ml-auto h-8 text-xs" onClick={() => navigate(`/arch/projetos/${p.id}`)}>
