@@ -174,10 +174,10 @@ function automaticFolder(input: {
   if (matches(/proposta|orçamento|orcamento|cotação|cotacao|memorial comercial/)) return "Documentos / Propostas e Orçamentos";
   if (matches(/ordem de serviço|ordem de servico|ordem de pedido|ordem de compra|pedido formal|service order/)) return "Documentos / Ordens de Serviço";
   if (matches(/boleto|linha digitável|linha digitavel|cobrança bancária|cobranca bancaria/)) return "Financeiro / Boletos";
-  if (matches(/\\bpix\\b|qr code|qrcode|chave pix/)) return "Financeiro / PIX";
-  if (matches(/nota fiscal|\\bnf-e?\\b|\\bnfe\\b|danfe|cupom fiscal/)) return "Financeiro / Notas Fiscais";
+  if (matches(/\bpix\b|qr code|qrcode|chave pix/)) return "Financeiro / PIX";
+  if (matches(/nota fiscal|\bnf-e?\b|\bnfe\b|danfe|cupom fiscal/)) return "Financeiro / Notas Fiscais";
   if (matches(/comprovante|recibo|pagamento|baixa financeira|transferência bancária|transferencia bancaria/)) return "Financeiro / Comprovantes e Recibos";
-  if (matches(/projeto|planta|render|fachada|memorial descritivo|especificaç|especificac|\\bifc\\b|\\bdwg\\b/)) return "Projetos";
+  if (matches(/projeto|planta|render|fachada|memorial descritivo|especificaç|especificac|\bifc\b|\bdwg\b/)) return "Projetos";
   if (matches(/assistência|assistencia|suporte|garantia|manutenção|manutencao|chamado/)) return "Assistência / Suporte";
   if (matches(/execução|execucao|obra|instalação|instalacao|entrega|diário de obra|diario de obra/)) return "Execução / Obra";
   if (/assistência|assistencia|suporte/.test(context)) return "Assistência / Suporte";
