@@ -13,6 +13,7 @@ import {
   conversationsTable,
   messagesTable,
   dealsTable,
+  paymentCompositionsTable,
   pipelineStagesTable,
   propostasTable,
   activitiesTable,
@@ -1340,6 +1341,34 @@ router.post("/leads/:id/attachment-folder-lock/lock-now", async (req, res) => {
 
 // Arquivo unificado: anexos de mensagens, sem duplicar o objeto armazenado.
 // A verificação de acesso ao lead antecede a consulta e preserva isolamento por tenant.
+// Comprovantes associados a negociações deste cliente; consulta read-only.
+// Não expõe títulos ou dados financeiros sem vínculo ao lead e ao tenant.
+router.get("/leads/:id/payment-attachments", async (req, res) => {
+  const access = await getLeadForAttachmentFolder(req, res);
+  if (!access) return;
+  try {
+    const receipts = await db.select({
+      id: paymentCompositionsTable.id,
+      dealId: paymentCompositionsTable.dealId,
+      forma: paymentCompositionsTable.forma,
+      comprovanteUrl: paymentCompositionsTable.comprovanteUrl,
+      createdAt: paymentCompositionsTable.createdAt,
+    }).from(paymentCompositionsTable)
+      .innerJoin(dealsTable, eq(paymentCompositionsTable.dealId, dealsTable.id))
+      .where(and(eq(dealsTable.tenantId, access.tenantId),
+        eq(dealsTable.leadId, access.id), isNotNull(paymentCompositionsTable.comprovanteUrl)))
+      .orderBy(desc(paymentCompositionsTable.createdAt))
+      .limit(500);
+    res.setHeader("Cache-Control", "private, no-store");
+    res.json(receipts.filter((row) => row.comprovanteUrl &&
+      (row.comprovanteUrl.startsWith("/objects/") ||
+       row.comprovanteUrl.startsWith("/api/storage/objects/"))));
+  } catch (error) {
+    req.log?.error({ err: error, leadId: access.id }, "client-archive: payment attachments failed");
+    res.status(500).json({ error: "Não foi possível consultar comprovantes." });
+  }
+});
+
 router.get("/leads/:id/message-attachments", async (req, res) => {
   const access = await getLeadForAttachmentFolder(req, res);
   if (!access) return;
