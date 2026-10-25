@@ -164,29 +164,28 @@ function automaticFolder(input: {
   activityType?: string | null;
   pipeline?: string | null;
 }): string {
-  const text = [
-    input.name,
-    input.category,
-    input.origin,
-    input.activityType,
-    input.pipeline,
-  ].filter(Boolean).join(" ").toLowerCase();
-
-  if (/contrato|contract|termo assinado|assinad/.test(text)) return "Documentos / Contratos";
-  if (/proposta|orçamento|orcamento|cotação|cotacao/.test(text)) return "Documentos / Propostas e Orçamentos";
-  if (/ordem de serviço|ordem de servico|\bos\b|service order/.test(text)) return "Documentos / Ordens de Serviço";
-  if (/boleto|linha digitável|linha digitavel/.test(text)) return "Financeiro / Boletos";
-  if (/\bpix\b|qr code|qrcode/.test(text)) return "Financeiro / PIX";
-  if (/nota fiscal|\bnf-e?\b|\bnfe\b|danfe/.test(text)) return "Financeiro / Notas Fiscais";
-  if (/comprovante|recibo|pagamento|baixa financeira/.test(text)) return "Financeiro / Comprovantes e Recibos";
-  if (/projeto|planta|render|fachada|memorial|especificaç|especificac/.test(text)) return "Projetos";
-  if (/assistência|assistencia|suporte|garantia|manutenção|manutencao/.test(text)) return "Assistência / Suporte";
-  if (/execução|execucao|obra|instalação|instalacao|entrega/.test(text)) return "Execução / Obra";
-  if (/whatsapp|e-mail|email|conversa|mensagem|omnichannel/.test(text)) return "Conversas / Arquivos recebidos";
+  // A natureza do documento prevalece sobre o canal de entrada.
+  // Exemplo: uma nota fiscal recebida por WhatsApp pertence a Financeiro,
+  // nunca à pasta genérica de conversas.
+  const identity = [input.name, input.category].filter(Boolean).join(" ").toLowerCase();
+  const context = [input.origin, input.activityType, input.pipeline].filter(Boolean).join(" ").toLowerCase();
+  const matches = (pattern: RegExp) => pattern.test(identity);
+  if (matches(/contrato|contract|termo assinado|assinad|distrato/)) return "Documentos / Contratos";
+  if (matches(/proposta|orçamento|orcamento|cotação|cotacao|memorial comercial/)) return "Documentos / Propostas e Orçamentos";
+  if (matches(/ordem de serviço|ordem de servico|ordem de pedido|ordem de compra|pedido formal|service order/)) return "Documentos / Ordens de Serviço";
+  if (matches(/boleto|linha digitável|linha digitavel|cobrança bancária|cobranca bancaria/)) return "Financeiro / Boletos";
+  if (matches(/\\bpix\\b|qr code|qrcode|chave pix/)) return "Financeiro / PIX";
+  if (matches(/nota fiscal|\\bnf-e?\\b|\\bnfe\\b|danfe|cupom fiscal/)) return "Financeiro / Notas Fiscais";
+  if (matches(/comprovante|recibo|pagamento|baixa financeira|transferência bancária|transferencia bancaria/)) return "Financeiro / Comprovantes e Recibos";
+  if (matches(/projeto|planta|render|fachada|memorial descritivo|especificaç|especificac|\\bifc\\b|\\bdwg\\b/)) return "Projetos";
+  if (matches(/assistência|assistencia|suporte|garantia|manutenção|manutencao|chamado/)) return "Assistência / Suporte";
+  if (matches(/execução|execucao|obra|instalação|instalacao|entrega|diário de obra|diario de obra/)) return "Execução / Obra";
+  if (/assistência|assistencia|suporte/.test(context)) return "Assistência / Suporte";
+  if (/execução|execucao|obra|instalação|instalacao/.test(context)) return "Execução / Obra";
   if (input.type === "image") return "Imagens e Fotos";
   if (input.type === "video") return "Vídeos";
   if (input.type === "audio") return "Áudios";
-  if (input.type === "document") return "Outros";
+  if (/whatsapp|e-mail|email|conversa|mensagem|omnichannel/.test(context)) return "Conversas / Arquivos recebidos";
   return "Outros";
 }
 
@@ -632,7 +631,7 @@ export default function LeadAttachmentsTab() {
     const seen = new Set<string>();
     return rows
       .filter((row) => {
-        const fingerprint = `${canonicalStorageUrl(row.url)}|${row.name}`;
+        const fingerprint = canonicalStorageUrl(row.url);
         if (seen.has(fingerprint)) return false;
         seen.add(fingerprint);
         return true;
