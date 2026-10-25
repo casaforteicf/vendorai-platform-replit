@@ -1338,6 +1338,34 @@ router.post("/leads/:id/attachment-folder-lock/lock-now", async (req, res) => {
   res.status(204).send();
 });
 
+// Arquivo unificado: anexos de mensagens, sem duplicar o objeto armazenado.
+// A verificação de acesso ao lead antecede a consulta e preserva isolamento por tenant.
+router.get("/leads/:id/message-attachments", async (req, res) => {
+  const access = await getLeadForAttachmentFolder(req, res);
+  if (!access) return;
+  try {
+    const messages = await db.select({
+      id: messagesTable.id,
+      midiaUrl: messagesTable.midiaUrl,
+      canal: messagesTable.canal,
+      tipoConteudo: messagesTable.tipoConteudo,
+      createdAt: messagesTable.createdAt,
+      conversationId: messagesTable.conversationId,
+    }).from(messagesTable).where(and(
+      eq(messagesTable.tenantId, access.tenantId),
+      eq(messagesTable.leadId, access.id),
+      isNotNull(messagesTable.midiaUrl),
+    )).orderBy(desc(messagesTable.createdAt)).limit(1000);
+    res.setHeader("Cache-Control", "private, no-store");
+    res.json(messages.filter((row) => row.midiaUrl && (
+      row.midiaUrl.startsWith("/api/storage/") || row.midiaUrl.startsWith("/objects/")
+    )));
+  } catch (error) {
+    req.log?.error({ err: error, leadId: access.id }, "client-archive: message attachments failed");
+    res.status(500).json({ error: "Não foi possível carregar anexos das conversas." });
+  }
+});
+
 router.get("/leads/:id", async (req, res) => {
   const [lead] = await db
     .select()
