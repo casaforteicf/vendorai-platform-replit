@@ -33,7 +33,8 @@ import {
 type AttachmentType = "image" | "video" | "audio" | "document";
 type FilterType = "all" | AttachmentType | "project";
 type MarketingStatus = "only_attachment" | "candidate" | "approved" | "blocked";
-type SourceKind = "lead" | "activity" | "work_card" | "media";
+type SourceKind = "lead" | "activity" | "work_card" | "media" | "message";
+type MessageAttachment = { id: string; midiaUrl: string; canal: string; tipoConteudo: string; createdAt: string; conversationId: string };
 
 type FolderLockInfo = {
   folderPath: string;
@@ -338,6 +339,7 @@ export default function LeadAttachmentsTab() {
   const [workCards, setWorkCards] = useState<WorkCard[]>([]);
   const [workAttachments, setWorkAttachments] = useState<Array<WorkAttachment & { workCardId: string; pipeline?: string | null }>>([]);
   const [mediaAssets, setMediaAssets] = useState<MediaAsset[]>([]);
+  const [messageAttachments, setMessageAttachments] = useState<MessageAttachment[]>([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<{ name: string; loaded: number; total: number } | null>(null);
@@ -383,12 +385,13 @@ export default function LeadAttachmentsTab() {
     if (!tenantId || !leadId) return;
     setLoading(true);
     try {
-      const [leadResult, activitiesResult, cardsResult, mediaResult, locksResult] = await Promise.allSettled([
+      const [leadResult, activitiesResult, cardsResult, mediaResult, locksResult, messagesResult] = await Promise.allSettled([
         requestJson<LeadRecord>(`/api/leads/${leadId}`),
         requestJson<Activity[]>(`/api/tenants/${tenantId}/activities?leadId=${encodeURIComponent(leadId)}`),
         requestJson<WorkCard[]>(`/api/tenants/${tenantId}/work-cards?leadId=${encodeURIComponent(leadId)}&includeClosed=1`),
         requestJson<{ assets: MediaAsset[] }>(`/api/tenants/${tenantId}/media/assets?limit=150`),
         requestJson<{ locks: FolderLockInfo[]; canManage: boolean }>(`/api/leads/${leadId}/attachment-folder-locks`),
+        requestJson<MessageAttachment[]>(`/api/leads/${leadId}/message-attachments`),
       ]);
 
       const failures: string[] = [];
@@ -436,6 +439,13 @@ export default function LeadAttachmentsTab() {
         setFolderLocks([]);
         setCanManageFolderLocks(false);
         failures.push(`Pastas protegidas: ${String(locksResult.reason)}`);
+      }
+
+      if (messagesResult.status === "fulfilled") {
+        setMessageAttachments(messagesResult.value);
+      } else {
+        setMessageAttachments([]);
+        failures.push(`Anexos das conversas: ${String(messagesResult.reason)}`);
       }
 
       const attachmentResults = await Promise.allSettled(
@@ -595,6 +605,27 @@ export default function LeadAttachmentsTab() {
       });
     }
 
+    for (const message of messageAttachments) {
+      if (!message.midiaUrl) continue;
+      const key = `message:${message.id}`;
+      const override = overrideFor(key);
+      const type: AttachmentType = message.tipoConteudo === "imagem" ? "image"
+        : message.tipoConteudo === "video" ? "video"
+        : message.tipoConteudo === "audio" ? "audio" : "document";
+      const channel = message.canal === "whatsapp" ? "WhatsApp"
+        : message.canal === "email" ? "E-mail" : message.canal || "Conversa";
+      const name = `${type === "image" ? "Imagem" : type === "video" ? "Vídeo" : type === "audio" ? "Áudio" : "Documento"} recebido por ${channel}`;
+      rows.push({
+        key, sourceKind: "message", sourceId: message.id, name: override.name || name,
+        url: message.midiaUrl, type, createdAt: message.createdAt,
+        origin: channel,
+        folderPath: normalizeFolder(override.folderPath ?? automaticFolder({
+          name: override.name || "", origin: channel, type,
+        })),
+        marketingStatus: override.marketingStatus ?? "only_attachment",
+      });
+    }
+
     for (const asset of mediaAssets) {
       const metadata = asRecord(asset.metadata);
       if (metadataString(metadata, "leadId") !== leadId) continue;
@@ -638,7 +669,7 @@ export default function LeadAttachmentsTab() {
       })
       .sort((a, b) => new Date(b.createdAt ?? 0).getTime() - new Date(a.createdAt ?? 0).getTime());
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [attachmentState, activities, workAttachments, mediaAssets, leadId]);
+  }, [attachmentState, activities, workAttachments, mediaAssets, messageAttachments, leadId]);
 
   const folders = useMemo(() => {
     const occupied = new Set(unified.map((item) => item.folderPath).filter(Boolean));
