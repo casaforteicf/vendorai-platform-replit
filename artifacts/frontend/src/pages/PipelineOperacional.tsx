@@ -2036,7 +2036,35 @@ function DirectExecutionDialog({ open, onOpenChange, tenantId, token, leads, dea
   const [responsavelId, setResponsavelId] = useState("");
   const [notes, setNotes] = useState("");
   const [file, setFile] = useState<File | null>(null);
+  const [extracting, setExtracting] = useState(false);
+  const [extracted, setExtracted] = useState<{ cliente?: string; valorTotal?: number; confianca?: number; observacoes?: string; itens?: unknown[] } | null>(null);
   const [saving, setSaving] = useState(false);
+
+  async function extractDocument() {
+    if (!file || !fileValid || extracting) return;
+    setExtracting(true);
+    try {
+      // Reutiliza o extrator de orçamento já disponível no CRM.
+      // Outros contratos ou pedidos podem exigir revisão manual.
+      const formData = new FormData();
+      formData.append("file", file, file.name);
+      const response = await fetch(`/api/tenants/${tenantId}/deals/extract-quote`, {
+        method: "POST", headers: { Authorization: `Bearer ${token}` }, body: formData,
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.error || "Não foi possível extrair os dados.");
+      setExtracted(result);
+      if (!titulo.trim() && result.titulo) setTitulo(String(result.titulo));
+      if (!notes.trim() && result.observacoes) setNotes(String(result.observacoes));
+      const norm = (value: unknown) => String(value || "").trim().toLowerCase();
+      const customer = norm(result.cliente);
+      const matched = leads.find((lead) => customer && (norm(lead.nome) === customer || norm(lead.empresa) === customer));
+      if (matched && !dealId) setLeadId(matched.id);
+      toast({ title: "Leitura concluída", description: "Confira os dados extraídos antes de criar a execução." });
+    } catch (error) {
+      toast({ title: "Leitura automática indisponível", description: error instanceof Error ? error.message : String(error), variant: "destructive" });
+    } finally { setExtracting(false); }
+  }
   const selectedDeal = deals.find((item) => item.id === dealId);
   const resolvedLeadId = selectedDeal?.leadId || leadId || null;
   const selectedLead = leads.find((item) => item.id === resolvedLeadId);
@@ -2141,8 +2169,19 @@ function DirectExecutionDialog({ open, onOpenChange, tenantId, token, leads, dea
             </Select>
           </div>
           <div><label className="text-sm font-medium">Contrato ou pedido (PDF, DOCX, imagem; até 15 MB)</label>
-            <Input type="file" accept=".pdf,.docx,.png,.jpg,.jpeg,.webp" onChange={(event) => setFile(event.target.files?.[0] || null)}/>
+            <Input type="file" accept=".pdf,.docx,.png,.jpg,.jpeg,.webp" onChange={(event) => { setFile(event.target.files?.[0] || null); setExtracted(null); }}/>
             {!fileValid && <p className="text-xs text-destructive">Formato ou tamanho do arquivo inválido.</p>}
+            {file && fileValid && <Button type="button" variant="outline" size="sm" disabled={extracting || saving} onClick={() => void extractDocument()}>
+              {extracting ? "Extraindo informações..." : "Ler dados com IA"}
+            </Button>}
+            {extracted && <div className="mt-2 rounded-md border p-3 text-sm space-y-1">
+              <p className="font-semibold">Prévia extraída — confira antes de salvar</p>
+              <p>Cliente: {extracted.cliente || "Não identificado"}</p>
+              <p>Valor: {extracted.valorTotal == null ? "Não identificado" : Number(extracted.valorTotal).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</p>
+              <p>Itens identificados: {extracted.itens?.length ?? 0}</p>
+              <p>Confiança informada: {extracted.confianca == null ? "Não informada" : Math.round(extracted.confianca * 100) + "%"}</p>
+              <p className="text-muted-foreground">O extrator atual foi desenvolvido para orçamentos. Contratos e pedidos devem ser conferidos manualmente.</p>
+            </div>}
           </div>
           <div><label className="text-sm font-medium">Observações / dados conferidos</label>
             <Textarea value={notes} onChange={(event) => setNotes(event.target.value)} rows={3} placeholder="Número do contrato, prazos e informações verificadas" />
