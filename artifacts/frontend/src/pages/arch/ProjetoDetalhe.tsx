@@ -1365,8 +1365,11 @@ export default function ProjetoDetalhe() {
 
       {/* Atalhos principais do projeto — mantém o usuário dentro do mesmo contexto */}
       <div className="flex flex-wrap items-center gap-2 rounded-xl border bg-muted/20 p-3">
-        <span className="mr-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Continuar projeto</span>
-        <Button type="button" size="sm" onClick={() => abrirRenderStudio(null)}>
+        <Button type="button" size="sm"
+          onClick={() => navigate(`/arch/studio?project_id=${encodeURIComponent(projetoId)}`)}>
+          <FolderOpen className="mr-1.5 h-4 w-4" /> Continuar no Studio
+        </Button>
+        <Button type="button" size="sm" variant="outline" onClick={() => abrirRenderStudio(null)}>
           <Sparkles className="mr-1.5 h-4 w-4" /> Render
         </Button>
         <Button
