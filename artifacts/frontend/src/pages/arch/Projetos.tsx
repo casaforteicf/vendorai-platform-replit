@@ -886,6 +886,9 @@ export default function Projetos() {
                       <Pencil className="mr-1 h-3 w-3" /> Lead
                     </Button>
                   )}
+                  <Button size="sm" variant="ghost" className="h-8 text-xs" onClick={() => navigate(`/arch/projetos/${p.id}`)}>
+                    Importar
+                  </Button>
                   <Button size="sm" variant="ghost" className="ml-auto h-8 text-xs" onClick={() => navigate(`/arch/projetos/${p.id}`)}>
                     Abrir
                   </Button>
