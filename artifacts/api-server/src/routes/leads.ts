@@ -1346,6 +1346,8 @@ router.post("/leads/:id/attachment-folder-lock/lock-now", async (req, res) => {
 router.get("/leads/:id/payment-attachments", async (req, res) => {
   const access = await getLeadForAttachmentFolder(req, res);
   if (!access) return;
+  // Comprovantes financeiros são confidenciais: fail closed até existir ACL específica.
+  if (!access.isAdmin) { res.status(403).json({ error: "Acesso financeiro restrito" }); return; }
   try {
     const receipts = await db.select({
       id: paymentCompositionsTable.id,
