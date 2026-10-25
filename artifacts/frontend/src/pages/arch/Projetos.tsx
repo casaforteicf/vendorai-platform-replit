@@ -117,6 +117,12 @@ export default function Projetos() {
   const [dialogOpen, setDialogOpen] = useState(autoOpen);
   const [form, setForm]             = useState<FormData>(() => ({ ...EMPTY_FORM, titulo: requestedTitle }));
   const [saving, setSaving]         = useState(false);
+  // Seleções condicionais do assistente. O backend legado segue recebendo tipoObra.
+  const [disciplina, setDisciplina] = useState<"Arquitetura" | "Interiores" | "Área Externa">("Arquitetura");
+  const [situacaoImovel, setSituacaoImovel] = useState<"novo" | "existente" | "em_obra">("novo");
+  const [abrangencia, setAbrangencia] = useState<"completo" | "ambientes" | "area">("completo");
+  const [disciplinasExtras, setDisciplinasExtras] = useState<string[]>([]);
+
 
   // Cliente / lead existente
   const [leadSearch, setLeadSearch] = useState("");
@@ -350,6 +356,10 @@ export default function Projetos() {
 
   function resetDialog() {
     setForm(EMPTY_FORM);
+    setDisciplina("Arquitetura");
+    setSituacaoImovel("novo");
+    setAbrangencia("completo");
+    setDisciplinasExtras([]);
     setSelectedLead(null);
     setLeadSearch("");
     setLeadResults([]);
@@ -463,6 +473,58 @@ export default function Projetos() {
             <button type="button" className="text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground text-left" onClick={() => { setDialogOpen(false); navigate("/arch/concept"); }}>
               Já tenho um estudo em andamento — abrir meus estudos
             </button>
+            <section className="space-y-3 rounded-xl border p-3" aria-label="Definir o projeto">
+              <p className="text-sm font-semibold">1. Definir o projeto</p>
+              <Label>Disciplina principal</Label>
+              <div className="grid grid-cols-3 gap-2">
+                {(["Arquitetura", "Interiores", "Área Externa"] as const).map((item) => (
+                  <Button type="button" key={item} size="sm" variant={disciplina === item ? "default" : "outline"}
+                    className="h-auto min-h-10 whitespace-normal" onClick={() => {
+                      setDisciplina(item);
+                      setDisciplinasExtras((current) => current.filter((x) => x !== item));
+                    }}>{item}</Button>
+                ))}
+              </div>
+              <Label>Tipo de imóvel</Label>
+              <Select value={form.tipoObra} onValueChange={(v) => setF("tipoObra", v)}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {TIPOS_OBRA.filter((x) => x !== "Reforma").map((x) => <SelectItem key={x} value={x}>{x}</SelectItem>)}
+                </SelectContent>
+              </Select>
+              <Label>Situação do imóvel</Label>
+              <div className="grid grid-cols-3 gap-2">
+                {([{key:"novo",label:"Novo"},{key:"existente",label:"Existente"},{key:"em_obra",label:"Em obra"}] as const).map(({key,label}) => (
+                  <Button key={key} type="button" variant={situacaoImovel===key?"default":"outline"} size="sm"
+                    onClick={()=>setSituacaoImovel(key)}>{label}</Button>
+                ))}
+              </div>
+              <Label>Abrangência</Label>
+              <div className="grid grid-cols-3 gap-2">
+                {([{key:"completo",label:"Completo"},{key:"ambientes",label:"Ambientes"},{key:"area",label:"Área específica"}] as const).map(({key,label}) => (
+                  <Button key={key} type="button" variant={abrangencia===key?"default":"outline"}
+                    className="h-auto min-h-10 whitespace-normal" size="sm"
+                    onClick={()=>setAbrangencia(key)}>{label}</Button>
+                ))}
+              </div>
+              <Label>Disciplinas complementares (opcionais)</Label>
+              <div className="flex flex-wrap gap-2">
+                {(["Arquitetura", "Interiores", "Área Externa"] as const).filter((x)=>x!==disciplina).map((item)=>(
+                  <Button key={item} size="sm" type="button"
+                    variant={disciplinasExtras.includes(item)?"default":"outline"}
+                    onClick={()=>setDisciplinasExtras((xs)=>xs.includes(item)?xs.filter((x)=>x!==item):[...xs,item])}>
+                    {item}
+                  </Button>
+                ))}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                {disciplina} · {situacaoImovel==="novo"?"Imóvel novo":situacaoImovel==="existente"?"Imóvel existente":"Em obra"} · {abrangencia==="completo"?"Escopo completo":abrangencia==="ambientes"?"Alguns ambientes":"Área específica"}
+              </p>
+              <p className="text-xs text-amber-600">
+                Nesta primeira entrega, os detalhes de disciplina e escopo ainda não são persistidos na API legada.
+                O tipo de imóvel é salvo normalmente. As demais escolhas não devem ser consideradas definitivas.
+              </p>
+            </section>
             <form onSubmit={handleCreate} className="space-y-4 mt-2">
               <div className="grid grid-cols-2 gap-3">
                 <div className="col-span-2 space-y-1.5">
@@ -598,15 +660,7 @@ export default function Projetos() {
                   />
                 </div>
 
-                <div className="space-y-1">
-                  <Label>Tipo de obra *</Label>
-                  <Select value={form.tipoObra} onValueChange={(v) => setF("tipoObra", v)}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      {TIPOS_OBRA.map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
-                </div>
+
                 <div className="space-y-1">
                   <Label>Área (m²)</Label>
                   <Input type="number" min="0" step="0.01" value={form.areaM2} onChange={(e) => setF("areaM2", e.target.value)} placeholder="120" />
