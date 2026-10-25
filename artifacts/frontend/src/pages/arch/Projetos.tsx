@@ -443,9 +443,6 @@ export default function Projetos() {
         </div>
 
         <div className="flex items-center gap-2">
-        <Button variant="outline" onClick={() => navigate("/arch/concept?novo=1")}>
-          <Plus className="h-4 w-4 mr-2" /> Novo pré-projeto
-        </Button>
         <Dialog
           open={dialogOpen}
           onOpenChange={(open) => {
@@ -454,15 +451,15 @@ export default function Projetos() {
           }}
         >
           <DialogTrigger asChild>
-            <Button><Plus className="h-4 w-4 mr-2" /> Projeto direto</Button>
+            <Button><Plus className="h-4 w-4 mr-2" /> Novo Projeto</Button>
           </DialogTrigger>
-          <DialogContent className="max-w-lg">
+          <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
-              <DialogTitle>Novo projeto profissional</DialogTitle>
+              <DialogTitle>Novo Projeto</DialogTitle>
             </DialogHeader>
-            <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-900">
-              Use esta opção quando o projeto já nasce profissional. Se houver estudo inicial, croqui, terreno ou briefing em evolução, comece por <button type="button" onClick={() => { setDialogOpen(false); navigate("/arch/concept?novo=1"); }} className="font-bold underline">Novo pré-projeto</button> e envie para Projeto quando estiver aprovado. Isso evita projetos duplicados.
-            </div>
+            <p className="text-sm text-muted-foreground">
+              Identifique o cliente e crie seu projeto. Plantas, fotografias, estudos e materiais podem ser adicionados depois, no próprio projeto.
+            </p>
             <form onSubmit={handleCreate} className="space-y-4 mt-2">
               <div className="grid grid-cols-2 gap-3">
                 <div className="col-span-2 space-y-1.5">
@@ -687,7 +684,7 @@ export default function Projetos() {
       {/* Filtros */}
       <div className="flex gap-3 flex-wrap">
         <Input
-          placeholder="Buscar por cliente..."
+          placeholder="Buscar projeto ou cliente..."
           value={filterBusca}
           onChange={(e) => setFilterBusca(e.target.value)}
           className="max-w-xs"
