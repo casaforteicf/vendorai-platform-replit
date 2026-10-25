@@ -305,7 +305,7 @@ export default function ProjetoDetalhe() {
   const [ambientes, setAmbientes] = useState<Ambiente[]>([]);
   const [renders, setRenders]     = useState<ProjetoRender[]>([]);
   const [loading, setLoading]     = useState(true);
-  const [projectTab, setProjectTab] = useState("orcamento");
+  const [projectTab, setProjectTab] = useState("ambientes");
 
   // ── Orçamento data
   const [grupos, setGrupos]         = useState<OrcamentoGrupo[]>([]);
@@ -1507,9 +1507,9 @@ export default function ProjetoDetalhe() {
 
       {/* ── Tabs ─────────────────────────────────────────────────────── */}
       <Tabs value={projectTab} onValueChange={setProjectTab}>
-        <TabsList>
+        <TabsList className="flex h-auto flex-wrap justify-start gap-1">
+          <TabsTrigger value="ambientes">Projeto / Ambientes</TabsTrigger>
           <TabsTrigger value="orcamento">Orçamento</TabsTrigger>
-          <TabsTrigger value="ambientes">Ambientes</TabsTrigger>
           <TabsTrigger value="renders">Renders ({renders.filter((render) => render.status === "concluido").length})</TabsTrigger>
           <TabsTrigger value="cenas">Cenas 3D</TabsTrigger>
           <TabsTrigger value="portal">Portal</TabsTrigger>
