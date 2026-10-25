@@ -33,7 +33,8 @@ import {
 type AttachmentType = "image" | "video" | "audio" | "document";
 type FilterType = "all" | AttachmentType | "project";
 type MarketingStatus = "only_attachment" | "candidate" | "approved" | "blocked";
-type SourceKind = "lead" | "activity" | "work_card" | "media" | "message" | "payment";
+type SourceKind = "lead" | "activity" | "work_card" | "media" | "message" | "payment" | "obra_diary";
+type ObraDiaryAttachment = { id:string; obraId:string; url:string; name:string; mimeType:string|null; createdAt:string; kind:string };
 type PaymentAttachment = { id: string; dealId: string; forma: string; comprovanteUrl: string; createdAt: string };
 type MessageAttachment = { id: string; midiaUrl: string; canal: string; tipoConteudo: string; createdAt: string; conversationId: string };
 
@@ -342,6 +343,7 @@ export default function LeadAttachmentsTab() {
   const [mediaAssets, setMediaAssets] = useState<MediaAsset[]>([]);
   const [messageAttachments, setMessageAttachments] = useState<MessageAttachment[]>([]);
   const [paymentAttachments, setPaymentAttachments] = useState<PaymentAttachment[]>([]);
+  const [obraDiaryAttachments, setObraDiaryAttachments] = useState<ObraDiaryAttachment[]>([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<{ name: string; loaded: number; total: number } | null>(null);
@@ -387,7 +389,7 @@ export default function LeadAttachmentsTab() {
     if (!tenantId || !leadId) return;
     setLoading(true);
     try {
-      const [leadResult, activitiesResult, cardsResult, mediaResult, locksResult, messagesResult, paymentsResult] = await Promise.allSettled([
+      const [leadResult, activitiesResult, cardsResult, mediaResult, locksResult, messagesResult, paymentsResult, diaryResult] = await Promise.allSettled([
         requestJson<LeadRecord>(`/api/leads/${leadId}`),
         requestJson<Activity[]>(`/api/tenants/${tenantId}/activities?leadId=${encodeURIComponent(leadId)}`),
         requestJson<WorkCard[]>(`/api/tenants/${tenantId}/work-cards?leadId=${encodeURIComponent(leadId)}&includeClosed=1`),
@@ -395,6 +397,7 @@ export default function LeadAttachmentsTab() {
         requestJson<{ locks: FolderLockInfo[]; canManage: boolean }>(`/api/leads/${leadId}/attachment-folder-locks`),
         requestJson<MessageAttachment[]>(`/api/leads/${leadId}/message-attachments`),
         requestJson<PaymentAttachment[]>(`/api/leads/${leadId}/payment-attachments`),
+        requestJson<ObraDiaryAttachment[]>(`/api/leads/${leadId}/obra-diary-attachments`),
       ]);
 
       const failures: string[] = [];
@@ -456,6 +459,13 @@ export default function LeadAttachmentsTab() {
       } else {
         setPaymentAttachments([]);
         failures.push(`Comprovantes financeiros: ${String(paymentsResult.reason)}`);
+      }
+
+      if (diaryResult.status === "fulfilled") {
+        setObraDiaryAttachments(diaryResult.value);
+      } else {
+        setObraDiaryAttachments([]);
+        failures.push(`Documentos de obra: ${String(diaryResult.reason)}`);
       }
 
       const attachmentResults = await Promise.allSettled(
@@ -615,6 +625,18 @@ export default function LeadAttachmentsTab() {
       });
     }
 
+    for (const diary of obraDiaryAttachments) {
+      const key = `obra-diary:${diary.id}`;
+      const override = overrideFor(key);
+      const type = inferType(diary.mimeType, diary.name);
+      rows.push({
+        key, sourceKind: "obra_diary", sourceId: diary.id, name: override.name || diary.name,
+        url: diary.url, type, createdAt: diary.createdAt, origin: "Diário de obra",
+        folderPath: normalizeFolder(override.folderPath ?? "Execução / Obra"),
+        marketingStatus: override.marketingStatus ?? "only_attachment",
+      });
+    }
+
     for (const payment of paymentAttachments) {
       if (!payment.comprovanteUrl) continue;
       const key = `payment:${payment.id}`;
@@ -693,7 +715,7 @@ export default function LeadAttachmentsTab() {
       })
       .sort((a, b) => new Date(b.createdAt ?? 0).getTime() - new Date(a.createdAt ?? 0).getTime());
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [attachmentState, activities, workAttachments, mediaAssets, messageAttachments, paymentAttachments, leadId]);
+  }, [attachmentState, activities, workAttachments, mediaAssets, messageAttachments, paymentAttachments, obraDiaryAttachments, leadId]);
 
   const folders = useMemo(() => {
     const occupied = new Set(unified.map((item) => item.folderPath).filter(Boolean));
