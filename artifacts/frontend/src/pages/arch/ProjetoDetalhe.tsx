@@ -47,6 +47,14 @@ type ProjetoArquivo = {
 };
 
 type ProjetoDossie = {
+  projectSetup?: {
+    disciplina: "Arquitetura" | "Interiores" | "Área Externa";
+    situacaoImovel: "novo" | "existente" | "em_obra";
+    abrangencia: "completo" | "ambientes" | "area";
+    disciplinasExtras: string[];
+    ambientesSelecionados?: string[];
+    areaEspecifica?: string;
+  };
   briefing?: string;
   medidas?: Array<{
     id?: string;
@@ -1322,6 +1330,26 @@ export default function ProjetoDetalhe() {
         </div>
         <StatusBadge status={projeto.status} />
       </div>
+
+      {projeto.dossieProjeto?.projectSetup && (
+        <section className="rounded-xl border bg-muted/20 p-3" aria-label="Definição do projeto">
+          <p className="text-sm font-semibold">Definição do projeto</p>
+          <div className="mt-2 flex flex-wrap gap-2 text-xs text-muted-foreground">
+            <span>Disciplina: {projeto.dossieProjeto.projectSetup.disciplina}</span>
+            <span>· Situação: {projeto.dossieProjeto.projectSetup.situacaoImovel === "novo" ? "Novo" : projeto.dossieProjeto.projectSetup.situacaoImovel === "existente" ? "Existente" : "Em obra"}</span>
+            <span>· Abrangência: {projeto.dossieProjeto.projectSetup.abrangencia === "completo" ? "Completo" : projeto.dossieProjeto.projectSetup.abrangencia === "ambientes" ? "Alguns ambientes" : "Área específica"}</span>
+          </div>
+          {Boolean(projeto.dossieProjeto.projectSetup.disciplinasExtras?.length) && (
+            <p className="mt-1 text-xs text-muted-foreground">Complementares: {projeto.dossieProjeto.projectSetup.disciplinasExtras.join(", ")}</p>
+          )}
+          {Boolean(projeto.dossieProjeto.projectSetup.ambientesSelecionados?.length) && (
+            <p className="mt-1 text-xs text-muted-foreground">Ambientes previstos: {projeto.dossieProjeto.projectSetup.ambientesSelecionados?.join(", ")}</p>
+          )}
+          {projeto.dossieProjeto.projectSetup.areaEspecifica && (
+            <p className="mt-1 text-xs text-muted-foreground">Área: {projeto.dossieProjeto.projectSetup.areaEspecifica}</p>
+          )}
+        </section>
+      )}
 
       {/* Atalhos principais do projeto — mantém o usuário dentro do mesmo contexto */}
       <div className="flex flex-wrap items-center gap-2 rounded-xl border bg-muted/20 p-3">
