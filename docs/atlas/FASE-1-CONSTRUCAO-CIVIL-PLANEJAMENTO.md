@@ -238,3 +238,54 @@ Resultado é **score exploratório**, com notas, fonte e responsável; dados aus
 - Estudos de cadeia da construção: material, comércio, serviços técnicos, equipamentos e obras — sem reduzir o universo de casa/imóveis apenas à seção F da CNAE.
 
 **Condição de conclusão deste aprofundamento:** taxonomia e plano documentados; pesquisas de campo, scoring real, execução de campanha, integração operacional e publicação permanecem pendentes.
+
+
+## J. Catálogo mestre de produtos e serviços — escopo planejado
+
+O catálogo é uma **taxonomia de oportunidades**, não um estoque, lista de preços ou comprovação de vendedores ativos. Cada item deve se relacionar a vários nichos, etapas da jornada e tipos de fornecedores, preservando SKU/serviço canônico, unidade (un, m², m³, metro linear, hora, diária, pacote), especificações técnicas, variantes, orçamento, instalação e manutenção. Preço, frete, disponibilidade, garantia e elegibilidade só virão de fontes verificadas.
+
+| Segmento | Produtos e insumos | Serviços e entregas | Perfis fornecedores |
+|---|---|---|---|
+| 01 Terrenos e urbanização | Lotes, brita, tubos de drenagem, postes, pavimentos, contenções, redes | Avaliação, topografia, sondagem, georreferenciamento, desmembramento, loteamento, terraplenagem, infraestrutura | Loteadoras, topógrafos, empresas de infraestrutura, geotécnicas |
+| 02 Imobiliário e incorporação | Imóveis novos/usados, unidades na planta, salas, galpões, terrenos | Corretagem, incorporação, lançamento, avaliação, vistoria, administração, locação, regularização | Incorporadoras, imobiliárias, corretores, administradoras |
+| 03 Arquitetura e engenharia | Plantas, memoriais, modelos BIM, renderizações, quantitativos, especificações | Estudo de viabilidade, projetos arquitetônico/estrutural/instalações, interiores, compatibilização, aprovação, fiscalização | Escritórios, arquitetos, engenheiros, projetistas |
+| 04 Construção e estruturas | Concreto, ICF, steel frame, wood frame, blocos, lajes, perfis, pré-moldados | Fundação, estrutura, vedação, montagem, alvenaria, gestão e execução integral | Construtoras, empreiteiras, montadoras |
+| 05 Materiais e indústria | Cimento, areia, brita, aço, tijolos, madeira, argamassas, aditivos, impermeabilizantes, isolantes | Fabricação, distribuição, entrega programada, corte, beneficiamento e assistência | Indústrias, depósitos, distribuidores, home centers |
+| 06 Elétrica, hidráulica e energia | Cabos, disjuntores, quadros, tubos, conexões, louças técnicas, bombas, placas solares, baterias | Projeto e instalação elétrica/hidráulica, gás, saneamento, fotovoltaica, aquecimento e manutenção | Instaladores, eletricistas, encanadores, integradores |
+| 07 Climatização, automação e segurança | Ar-condicionado, exaustores, sensores, fechaduras, câmeras, alarmes, controladores, roteadores | Instalação, integração, configuração, monitoramento, revisão e manutenção | Integradores, técnicos, distribuidores |
+| 08 Esquadrias, fachadas e coberturas | Janelas PVC/alumínio/madeira, portas, vidros, persianas, fachadas, ACM, brises, telhas, calhas | Medição, fabricação, instalação, vedação, envidraçamento, manutenção | Fabricantes, serralherias, vidraçarias, instaladores |
+| 09 Acabamentos | Porcelanatos, pedras, tinta, gesso, drywall, piso vinílico, revestimentos, louças e metais | Paginação, assentamento, pintura, forros, bancadas, impermeabilização, restauração | Lojas, marmorarias, pintores, gesseiros, assentadores |
+| 10 Cozinhas e banheiros | Cubas, bancadas, torneiras, boxes, armários, eletrodomésticos, acessórios | Planejamento funcional, instalação de móveis/equipamentos, adequação e reforma | Planejados, instaladores, lojas, marmorarias |
+| 11 Móveis e decoração | Móveis soltos/sob medida, estofados, tecidos, tapetes, cortinas, luminárias, objetos | Projeto de interiores, marcenaria, fabricação, montagem, tapeçaria, ambientação | Marcenarias, fabricantes, lojas, designers |
+| 12 Jardim e lazer externo | Plantas, gramas, vasos, substratos, irrigação, decks, piscinas, spas, pergolados, mobiliário outdoor | Paisagismo, plantio, irrigação, instalação de piscina, drenagem, podas, limpeza e manutenção | Viveiros, paisagistas, piscineiros, lojas especializadas |
+| 13 Equipamentos e apoio | Máquinas, andaimes, EPIs, ferramentas, escoras, caçambas, consumíveis | Locação, transporte, içamento, gestão de resíduos, segurança e logística | Locadoras, transportadoras, revendas e técnicos |
+| 14 Mão de obra | Pacotes de execução, equipes, horas técnicas, medições | Pedreiro, armador, carpinteiro, eletricista, encanador, instalador, pintor, fiscal, orçamentista | Autônomos, equipes, empresas prestadoras |
+| 15 Reforma e manutenção | Peças de reposição, materiais para reparo, kits de manutenção, produtos de limpeza técnica | Retrofit, reforma, assistência pós-obra, reparos, manutenção predial, jardins e piscinas | Reformistas, técnicos, mantenedoras |
+| 16 Finanças e serviços complementares | Financiamentos, consórcios, seguros, ferramentas digitais, licenças e certificados | Crédito, consultoria, laudos, certificação, regularização, gestão SaaS e marketing | Bancos, seguradoras, consultorias, provedores tecnológicos |
+
+### J.1 Regras de modelagem do catálogo
+- **Categoria ≠ produto ≠ SKU ≠ serviço ≠ orçamento:** manter entidades distintas vinculadas por identificadores canônicos.
+- Produtos sob medida (ex.: esquadria e móveis planejados) exigem atributos e composição configuráveis; serviços requerem escopo, região, medição e condições.
+- Materiais podem compor serviços e pacotes, e uma oferta pode combinar produto + instalação + frete + manutenção.
+- Um item pode aparecer em múltiplas jornadas e nichos sem duplicação do cadastro mestre.
+- Diferenciar fornecedor fabricante, distribuidor, lojista, prestador, intermediador e comprador; autorizações e responsabilidades comerciais separadas.
+- Distinguir disponibilidade da funcionalidade no software de disponibilidade comercial de um produto ou serviço.
+- Quantitativos e especificações Arqdor são insumos candidatos para orçamento Vendor.ai e cotação Praça.ai; nenhuma integração é presumida ativa.
+- Comissão, retenção, prazo, impostos, frete, garantia e responsabilidades seguem regras contratuais verificadas; não inferir.
+- Identificar origem, versão, data de revisão, evidências e responsável de cada cadastro; não importar dados sensíveis para catálogos públicos.
+
+### J.2 Campos planejados das fichas
+**Produto:** ID, categoria/subcategoria, nomes alternativos, marca/modelo, unidade, dimensões/variantes, materiais, uso/aplicação, requisitos de instalação, normas aplicáveis a verificar, compatibilidades, garantia, fotos/documentos autorizados, fabricantes/fornecedores, cobertura geográfica e status da oferta.
+
+**Serviço:** ID, especialidade, descrição e entregáveis, requisitos técnicos, escopo incluído/excluído, unidade de medição, dependências, recursos necessários, região, capacidade e disponibilidade confirmada, evidências, responsáveis e pós-venda.
+
+**Pacote/solução:** combinação versionada de produtos, serviços e etapas de projeto/obra, com orçamento, responsável pela entrega e regras específicas aprovadas.
+
+### J.3 Próximas verificações antes de implementar
+1. Confrontar este catálogo com as tabelas reais de produtos, serviços, composições e propostas do Vendor.ai; evitar criar estrutura paralela.
+2. Reaproveitar as bibliotecas existentes do Arqdor para especificações e quantitativos, quando homologadas.
+3. Mapear categorias e regras comerciais vigentes do Praça.ai sem pressupor disponibilidade de ofertas.
+4. Validar especificações com profissionais setoriais, materiais regionais e exigências técnicas aplicáveis.
+5. Priorizar pilotos de catálogo nos nichos P1 e registrar cobertura, lacunas e critérios de aceite.
+
+**Estado:** catálogo aprofundado somente no planejamento; nenhuma tabela, produto comercial ou campanha foi criada por esta atualização.
