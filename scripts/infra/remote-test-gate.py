@@ -5,6 +5,7 @@ import json
 import os
 import re
 import signal
+import stat
 import shutil
 import subprocess
 import sys
@@ -77,6 +78,31 @@ def evidence_bytes(root):
             total += file.stat().st_size
     return total
 
+def open_executor_lock():
+    """Lock the existing inode without truncation or requiring write access.
+
+    The host may have a root-owned lock at /tmp/vendorai-test-executor.lock.
+    Linux flock supports an exclusive lock on a readable descriptor, whereas
+    open('w') can be denied in sticky /tmp by protected_regular or permissions.
+    Preserve the same lock path so concurrent callers cannot bypass flock.
+    """
+    flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_CLOEXEC", 0)
+    try:
+        fd = os.open(LOCK, flags)
+    except FileNotFoundError:
+        try:
+            fd = os.open(LOCK, flags | os.O_CREAT | os.O_EXCL, 0o644)
+        except FileExistsError:
+            fd = os.open(LOCK, flags)
+    try:
+        info = os.fstat(fd)
+        if not stat.S_ISREG(info.st_mode) or info.st_uid not in (0, os.geteuid()):
+            raise ValueError("TEST_LOCK_OWNER_OR_TYPE_INVALID")
+        return os.fdopen(fd, "rb")
+    except BaseException:
+        os.close(fd)
+        raise
+
 def run(pr, branch, sha, suite, lot):
     args = validated(pr, branch, sha, suite)
     if not re.fullmatch(r"LOT-(0[1-9]|1[0-4])", lot):
@@ -86,7 +112,7 @@ def run(pr, branch, sha, suite, lot):
     if not EXE.is_file():
         raise ValueError("EXECUTOR_NOT_INSTALLED")
     EVIDENCE.mkdir(parents=True, exist_ok=True)
-    with LOCK.open("w") as f:
+    with open_executor_lock() as f:
         try:
             fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError:
