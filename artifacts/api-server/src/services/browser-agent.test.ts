@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   checkpointFromState,
+  isDuplicateExtraction,
   browserTaskOutcome,
   isVendorAppShellLoading,
   classifyBrowserError,
@@ -66,6 +67,17 @@ describe("browser task block and human challenge classification", () => {
   it("preserves explicit failure and confirmed browser-challenge signaling", () => {
     expect(browserTaskOutcome("failed", "Central não carregada", "https://example.com/tad", []).status).toBe("failed");
     expect(classifyBrowserError(new Error("BROWSER_BLOCKED: verificação real exigida"))).toBe("blocked");
+  });
+});
+
+describe("planner continuation after extraction", () => {
+  it("detects repeated identical extraction to avoid wasting all mission steps", () => {
+    expect(isDuplicateExtraction({ action: "extract" }, { action: "extract" })).toBe(true);
+    expect(isDuplicateExtraction({ action: "extract", selector: "#panel" }, { action: "extract", selector: "#panel" })).toBe(true);
+  });
+  it("permits a different selector or a follow-up navigation/action", () => {
+    expect(isDuplicateExtraction({ action: "extract" }, { action: "navigate", url: "https://example.com" })).toBe(false);
+    expect(isDuplicateExtraction({ action: "extract", selector: "#a" }, { action: "extract", selector: "#b" })).toBe(false);
   });
 });
 
