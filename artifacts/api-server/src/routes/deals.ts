@@ -1467,6 +1467,9 @@ router.post("/deals/:id/return-to-qualified", async (req, res) => {
 });
 
 router.patch("/deals/:id", async (req, res) => {
+  if (!req.body || typeof req.body !== "object" || Array.isArray(req.body)) {
+    return res.status(400).json({ error: "Informe os dados do negócio em um objeto JSON válido.", code: "INVALID_DEAL_PAYLOAD" });
+  }
   const body = req.body as Record<string, unknown>;
   const { handoff: rawHandoff, ...dealBody } = body;
   const parsed = updateDealSchema.safeParse(dealBody);
