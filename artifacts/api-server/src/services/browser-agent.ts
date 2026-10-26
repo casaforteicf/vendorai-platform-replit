@@ -59,6 +59,11 @@ export type PlannedAction =
   | { action: "extract"; selector?: string; reason?: string }
   | { action: "finish"; answer: string; outcome: "completed" | "blocked" | "failed"; reason?: string };
 
+export function isDuplicateExtraction(previous: PlannedAction, next: PlannedAction): boolean {
+  return previous.action === "extract" && next.action === "extract"
+    && previous.selector === next.selector;
+}
+
 export interface BrowserAgentCheckpoint {
   url: string;
   title: string;
@@ -702,7 +707,7 @@ export async function runBrowserAgent(input: BrowserAgentInput) {
           if (input.onProfilePersist) await input.onProfilePersist(await captureBrowserProfile(page));
           return { ok: true, finalUrl: page.url(), answer: next.answer, steps };
         }
-        if (next.action === "extract" && next.selector === action.selector) {
+        if (isDuplicateExtraction(action, next)) {
           return browserTaskOutcome("failed", "VENDI_BROWSER_REPEAT_EXTRACTION: mesma extração solicitada após receber o conteúdo; não houve avanço na missão.", state2.url, steps);
         }
         queuedAction = next;
