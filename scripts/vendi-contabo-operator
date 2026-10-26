@@ -105,14 +105,41 @@ case "$ACTION" in
       grep -Fxq "IMAGE=$EXPECTED_IMAGE" "$BUILDSTATE" &&
       grep -Fxq "STATUS=BUILT_NOT_DEPLOYED" "$BUILDSTATE" || { echo BUILD_SHA_NOT_VERIFIED; exit 65; }
       ACTUAL_IMAGE=$(docker inspect "$API" --format '{{.Config.Image}}' 2>/dev/null || true)
-      [[ "$ACTUAL_IMAGE" == "$EXPECTED_IMAGE" ]] || {
-        echo "HOMOLOG_IMAGE_SHA_MISMATCH"
-        echo "EXPECTED_SHA=$EXPECTED_SHA"
-        echo "HOMOLOG_IMAGE=$ACTUAL_IMAGE"
-        exit 65
-      }
+      # VENDI-3597 has its own validated test container. Never overwrite
+      # the official homologation with its divergent branch image.
+      if [[ "$ACTUAL_IMAGE" != "$EXPECTED_IMAGE" ]]; then
+        [[ "$LOT" == "VENDI-3597" ]] || {
+          echo "HOMOLOG_IMAGE_SHA_MISMATCH"
+          echo "EXPECTED_SHA=$EXPECTED_SHA"
+          echo "HOMOLOG_IMAGE=$ACTUAL_IMAGE"
+          exit 65
+        }
+        CANDIDATE="vendorai-homolog-api-vendi3610"
+        CANDIDATE_IMAGE=$(docker inspect "$CANDIDATE" --format '{{.Config.Image}}' 2>/dev/null || true)
+        CANDIDATE_STATE=$(docker inspect "$CANDIDATE" --format '{{.State.Status}}' 2>/dev/null || true)
+        CANDIDATE_NETWORK=$(docker inspect "$CANDIDATE" --format '{{.HostConfig.NetworkMode}}' 2>/dev/null || true)
+        [[ "$CANDIDATE_IMAGE" == "$EXPECTED_IMAGE" && "$CANDIDATE_STATE" == running ]] || {
+          echo "ISOLATED_HOMOLOG_IMAGE_OR_STATE_MISMATCH"; exit 65;
+        }
+        [[ -n "$CANDIDATE_NETWORK" && "$CANDIDATE_NETWORK" != host &&
+           "$CANDIDATE_NETWORK" != none && "$CANDIDATE_NETWORK" != vendorai-prod ]] || {
+          echo "ISOLATED_HOMOLOG_UNSAFE_NETWORK"; exit 65;
+        }
+        API="$CANDIDATE"
+        HOMOLOG_MODE=ISOLATED
+      fi
     fi
-    check_health
+    if [[ "${HOMOLOG_MODE:-OFFICIAL}" == ISOLATED ]]; then
+      docker exec "$API" node -e '
+        fetch("http://127.0.0.1:5000/api/auth/healthz", {signal:AbortSignal.timeout(10000)})
+          .then(async r => { const data=await r.json().catch(() => ({}));
+            console.log("ISOLATED_HEALTH_HTTP="+r.status);
+            if(r.status!==200 || data.status!=="ok") process.exitCode=1;
+          }).catch(e => { console.error("ISOLATED_HEALTH_FAILED="+e.message); process.exitCode=1; });
+      '
+    else
+      check_health
+    fi
     TOKEN=$(docker exec vendorai-mcp-contabo-fixed printenv BROWSER_MCP_ACCESS_TOKEN)
     [[ -n "$TOKEN" ]] || { echo "MCP_TOKEN_MISSING"; exit 70; }
     # Read-only API smoke; never print token.
@@ -130,7 +157,7 @@ case "$ACTION" in
  if(unauthorized.status!==401||missing.status!==404||valid.status!==200||!Number.isInteger(valid.body.crm?.activeLeads)) process.exitCode=1;
 })().catch(e=>{console.error("SMOKE_FAILED:"+e.message);process.exitCode=1});
 JS
-    echo "HOMOLOG_SMOKE_PASSED_LOT=$LOT"
+    echo "HOMOLOG_SMOKE_PASSED_LOT=$LOT MODE=${HOMOLOG_MODE:-OFFICIAL}"
     audit "OK"
     ;;
   rollback)
