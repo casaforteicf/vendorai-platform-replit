@@ -125,4 +125,39 @@ router.get("/admin/atlas/tenant-detail/:tenantId", requireRole("super_admin"), a
  res.setHeader("Cache-Control","no-store");res.json({tenantId,generatedAt:new Date().toISOString(),sources});
 });
 
+
+const STRATEGY_FIELDS=["icp","pain","offer","channels","funnel","kpis","positioning","campaign","budgetNotes","goals"] as const;
+router.get("/admin/atlas/marketing-strategies",requireRole("super_admin"),async (_req,res)=>{
+ try {
+  const result=await db.execute(sql`SELECT content,revision,updated_at FROM vendor_atlas_documents WHERE document_key='marketing-phase1-v1'`);
+  const row=result.rows[0] as {content:unknown;revision:number;updated_at:string}|undefined;
+  res.setHeader("Cache-Control","no-store");
+  res.json(row?{strategies:row.content,revision:row.revision,updatedAt:row.updated_at}:{strategies:{},revision:0,updatedAt:null});
+ }catch {res.status(503).json({error:"ATLAS_MARKETING_STORAGE_UNAVAILABLE"});}
+});
+router.put("/admin/atlas/marketing-strategies",requireRole("super_admin"),async(req,res)=>{
+ const {strategies,revision}=req.body??{};
+ if(!Number.isInteger(revision)||revision<0||revision>1000000||!strategies||Array.isArray(strategies)||typeof strategies!=="object"){
+  res.status(422).json({error:"ATLAS_MARKETING_INVALID_DOCUMENT"});return;
+ }
+ const entries=Object.entries(strategies as Record<string,unknown>);
+ if(entries.length>250||entries.some(([id,value])=>{
+  if(!/^niche-[0-9]{2,4}$/.test(id)||!value||Array.isArray(value)||typeof value!=="object")return true;
+  const fields=Object.entries(value as Record<string,unknown>);
+  return fields.some(([k,v])=>!STRATEGY_FIELDS.includes(k as typeof STRATEGY_FIELDS[number])||typeof v!=="string"||v.length>8000);
+ })){res.status(422).json({error:"ATLAS_MARKETING_INVALID_DOCUMENT"});return;}
+ const author=String(req.user?.email||req.user?.sub||"super_admin");
+ try{
+  const json=JSON.stringify(strategies);
+  const revisionNext=await db.transaction(async tx=>{
+   const changed=revision>0?await tx.execute(sql`UPDATE vendor_atlas_documents SET content=${json}::jsonb,revision=revision+1,updated_by=${author},updated_at=now() WHERE document_key='marketing-phase1-v1' AND revision=${revision} RETURNING revision`):await tx.execute(sql`INSERT INTO vendor_atlas_documents(document_key,content,revision,updated_by) VALUES('marketing-phase1-v1',${json}::jsonb,1,${author}) ON CONFLICT DO NOTHING RETURNING revision`);
+   const next=Number((changed.rows[0] as {revision?:number}|undefined)?.revision??0);
+   if(next)await tx.execute(sql`INSERT INTO vendor_atlas_document_history(document_key,revision,content,updated_by) VALUES('marketing-phase1-v1',${next},${json}::jsonb,${author})`);
+   return next;
+  });
+  if(!revisionNext){res.status(409).json({error:"ATLAS_MARKETING_REVISION_CONFLICT"});return;}
+  res.setHeader("Cache-Control","no-store");res.json({ok:true,revision:revisionNext});
+ }catch{res.status(503).json({error:"ATLAS_MARKETING_STORAGE_UNAVAILABLE"});}
+});
+
 export default router;
