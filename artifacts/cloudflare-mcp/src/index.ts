@@ -213,11 +213,31 @@ async function testHostAction(action: "request" | "result", args: string[]) {
   const remote = "/usr/bin/python3 /home/vendorai/vendorai-test-executor/scripts/infra/remote-test-gate.py";
   // Host receives only server-validated safe scalar args (no shell metacharacters).
   const command = [remote, action, ...args].join(" ");
-  const { stdout } = await execFileAsync("ssh", [
-    "-i", key, "-o", "BatchMode=yes", "-o", "IdentitiesOnly=yes", "-o", "StrictHostKeyChecking=yes",
-    "-o", `UserKnownHostsFile=${known}`, "-o", "ConnectTimeout=8", `${user}@${host}`, command,
-  ], { timeout: 1850000, maxBuffer: 512 * 1024 });
-  return JSON.parse(stdout);
+  try {
+    const { stdout } = await execFileAsync("ssh", [
+      "-i", key, "-o", "BatchMode=yes", "-o", "IdentitiesOnly=yes", "-o", "StrictHostKeyChecking=yes",
+      "-o", `UserKnownHostsFile=${known}`, "-o", "ConnectTimeout=8", `${user}@${host}`, command,
+    ], { timeout: 1850000, maxBuffer: 512 * 1024 });
+    return JSON.parse(stdout);
+  } catch (error) {
+    // The host facade emits a bounded JSON error even with nonzero exit status.
+    // execFile rejects on that exit and previously discarded this diagnostic.
+    // Never echo raw stderr, SSH arguments, tokens or arbitrary host output.
+    const output = (error as { stdout?: unknown })?.stdout;
+    if (typeof output === "string" && output.length <= 8192) {
+      try {
+        const payload = JSON.parse(output) as { ok?: unknown; error?: unknown };
+        if (payload.ok === false && typeof payload.error === "string") {
+          const code = payload.error;
+          if (/^[A-Z][A-Z0-9_]{2,100}$/.test(code)) throw new Error(`TEST_GATE_${code}`);
+          if (/Permission denied/i.test(code)) throw new Error("TEST_GATE_PERMISSION_DENIED");
+        }
+      } catch (parsedError) {
+        if (parsedError instanceof Error && parsedError.message.startsWith("TEST_GATE_")) throw parsedError;
+      }
+    }
+    throw new Error("TEST_GATE_SSH_COMMAND_FAILED");
+  }
 }
 
 
