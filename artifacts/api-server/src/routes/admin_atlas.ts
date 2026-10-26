@@ -111,7 +111,7 @@ router.get("/admin/atlas/domain-summary", requireRole("super_admin"), async (_re
 /** Per-tenant operational records. No cross-tenant customer data and no write actions. */
 router.get("/admin/atlas/tenant-detail/:tenantId", requireRole("super_admin"), async (req, res) => {
  const tenantId=String(req.params.tenantId||"");
- if (!/^[0-9a-f-]{36}$/i.test(tenantId)) { res.status(422).json({error:"INVALID_TENANT_ID"}); return; }
+ if (!/^[0-9a-z_-]{1,128}$/i.test(tenantId)) { res.status(422).json({error:"INVALID_TENANT_ID"}); return; }
  const queries=[
   {domain:"crm", query:sql`SELECT id::text AS id, titulo AS label, etapa AS status, lead_id::text AS linked_id FROM deals WHERE tenant_id=${tenantId} ORDER BY id DESC LIMIT 30`},
   {domain:"arqdor", query:sql`SELECT id::text AS id, titulo AS label, status, deal_id::text AS linked_id FROM arch_projetos WHERE tenant_id=${tenantId} ORDER BY created_at DESC LIMIT 30`},
@@ -119,7 +119,7 @@ router.get("/admin/atlas/tenant-detail/:tenantId", requireRole("super_admin"), a
   {domain:"vendi", query:sql`SELECT id::text AS id, left(objective,140) AS label, status, source_ref_id::text AS linked_id FROM vendi_missions WHERE tenant_id=${tenantId} ORDER BY created_at DESC LIMIT 30`}
  ];
  const sources=await Promise.all(queries.map(async ({domain,query})=>{
-  try { const rows=await db.execute(query);return {domain,status:"ok",items:rows.rows.map(row=>({id:String(row.id),label:String(row.label??""),status:String(row.status??""),linkedId:row.linked_id?String(row.linked_id):null}))}; }
+  try { const rows=await db.execute(query);return {domain,status:"ok",items:rows.rows.map(row=>({id:String(row.id),label:String(row.label??""),status:String(row.status??""),linkedId:row.linked_id?String(row.linked_id):null,linkedDomain:domain==="arqdor"?"crm":domain==="praca"?"arqdor":domain==="vendi"?"external":"lead"}))}; }
   catch {return {domain,status:"unavailable",items:[]};}
  }));
  res.setHeader("Cache-Control","no-store");res.json({tenantId,generatedAt:new Date().toISOString(),sources});
