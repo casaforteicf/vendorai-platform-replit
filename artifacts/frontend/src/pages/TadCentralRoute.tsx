@@ -17,8 +17,9 @@ const MAPPING: Record<string, LauncherModule> = {
   dashboard: "suporte",
 };
 /**
- * TAD central: require both tenant entitlement and verified user permission.
- * Failed authorization checks must never expose a clickable module.
+ * TAD central: tenant users require both commercial entitlement and verified
+ * permission. Platform Superadmin sees the entire launcher inventory through
+ * the presentation-only policy in TadCentral; backend guards remain unchanged.
  */
 export default function TadCentralRoute() {
   const { user, token, tenantOverride } = useAuth();
@@ -43,6 +44,14 @@ export default function TadCentralRoute() {
     undefined;
 
   useEffect(() => {
+    // Superadmin inventories every environment, even without a selected tenant.
+    // Authorization to access data remains with the destination API/routes.
+    if (user?.platformRole === "super_admin") {
+      setFailed(false);
+      setEnabled([]);
+      setPermitted([]);
+      return;
+    }
     if (!user?.tenantId || !token) return;
     const controller = new AbortController();
     setFailed(false);
@@ -82,7 +91,7 @@ export default function TadCentralRoute() {
       }
     });
     return () => controller.abort();
-  }, [user?.tenantId, token]);
+  }, [user?.tenantId, user?.platformRole, token]);
   return (
     <>
       {failed && <div role="alert" className="mx-auto max-w-7xl px-4 pt-4 text-sm text-destructive">
