@@ -4,12 +4,13 @@ import { useQuery } from "@tanstack/react-query";
 import { Search, Radar, HelpCircle, ChevronDown, ChevronLeft, ChevronRight, ArrowRight, CalendarDays, Megaphone, BriefcaseBusiness, HardHat, Package, Store, ChartNoAxesCombined, Bot, Settings, Headphones, Layers3, LogOut, Users, MessageSquare, ShoppingBag, UserRound, ShieldCheck, Plug, SlidersHorizontal, BookOpen, CircleHelp, Building2, Check, Loader2 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { NovidadesBell } from "@/components/NovidadesBell";
-import { LAUNCHER_MODULES, authorizedLauncherModules, type LauncherAudience, type LauncherModule } from "@/lib/adaptiveModuleLauncher";
+import { resolveTadLauncherModules, type LauncherAudience, type LauncherModule } from "@/lib/adaptiveModuleLauncher";
 
 /**
  * TAD — selectable ecosystem start screen (neon dark).
- * Pass ONLY server-verified entitlements and effective permissions.
- * This component deliberately does not infer permissions from a user role.
+ * Tenant users receive only verified entitlements and effective permissions.
+ * Platform Superadmin may inspect the full launcher catalog. This is a UI
+ * navigation rule, not a bypass for authorization checks in destination APIs.
  */
 export interface TadCentralProps {
   audience: LauncherAudience;
@@ -239,20 +240,10 @@ export default function TadCentral({ audience, enabledModules, permittedModules,
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
-  const authorized = useMemo(
-    () => authorizedLauncherModules({ audience, enabledModules, permittedModules }),
-    [audience, enabledModules, permittedModules],
-  );
-  // Preview is only informational; authorization determines clickable links.
-  const listed = useMemo(() => {
-    const available = new Set(authorized.map(m => m.key));
-    const preview = new Set(previewModules);
-    const enabled = new Set(enabledModules);
-    return [
-      ...authorized,
-      ...LAUNCHER_MODULES.filter(m => !available.has(m.key) && preview.has(m.key) && enabled.has(m.key) && m.audiences.includes(audience)),
-    ];
-  }, [authorized, previewModules, enabledModules, audience]);
+  const isPlatformSuperAdmin = user?.platformRole === "super_admin";
+  const { authorized, listed } = useMemo(() => resolveTadLauncherModules({
+    audience, enabledModules, permittedModules, previewModules, isPlatformSuperAdmin,
+  }), [audience, enabledModules, permittedModules, previewModules, isPlatformSuperAdmin]);
   const sections = useMemo(() => ["Todos", ...new Set(listed.map(m => TAD_LABELS[m.key]?.section ?? "Outros"))], [listed]);
   const visible = useMemo(() => listed.filter(m => {
     const label = TAD_LABELS[m.key];
@@ -382,7 +373,7 @@ export default function TadCentral({ audience, enabledModules, permittedModules,
             <input id="tad-search-mobile" type="search" value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar no TAD..." aria-label="Buscar serviço" className="w-full rounded-xl border border-white/10 bg-[#0e1b2c] py-2.5 pl-10 pr-3 text-sm text-slate-100 outline-none placeholder:text-slate-500 focus:border-cyan-400/60" />
           </div>
           <div className="flex items-center justify-between gap-3 sm:w-full">
-            <h2 className={DISPLAY + " text-sm font-semibold text-white"}>Seus ambientes</h2>
+            <h2 className={DISPLAY + " text-sm font-semibold text-white"}>{isPlatformSuperAdmin ? "Todos os módulos do ecossistema" : "Seus ambientes"}</h2>
             <select aria-label="Filtrar por área" value={section} onChange={e => setSection(e.target.value)} className="rounded-lg border border-white/10 bg-[#0e1b2c] px-3 py-2 text-xs text-slate-200 outline-none focus:border-cyan-400/60">
               {sections.map(group => <option key={group} value={group}>{group}</option>)}
             </select>
@@ -422,7 +413,7 @@ export default function TadCentral({ audience, enabledModules, permittedModules,
                         Acessar<ArrowRight size={14} aria-hidden="true" />
                       </Link>
                     ) : (
-                      <span className="inline-flex cursor-not-allowed items-center gap-2 rounded-full border border-white/10 px-3 py-2 text-[11px] font-semibold text-slate-400">Acesso em validação</span>
+                      <span className="inline-flex cursor-not-allowed items-center gap-2 rounded-full border border-white/10 px-3 py-2 text-[11px] font-semibold text-slate-400">{isPlatformSuperAdmin && module.route === null ? "Tela em integração" : "Acesso em validação"}</span>
                     )}
                   </div>
                 </div>
