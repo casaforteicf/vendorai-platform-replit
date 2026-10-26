@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   checkpointFromState,
-  browserFinishFailure,
+  browserTaskOutcome,
   isVendorAppShellLoading,
   classifyBrowserError,
   isRetryableBrowserError,
@@ -53,13 +53,18 @@ describe("first-party bootstrap loading detection", () => {
 
 describe("browser task block and human challenge classification", () => {
   it("does not request human verification when tenant services are absent", () => {
-    const error = browserFinishFailure("blocked", "Nenhum serviço habilitado para o perfil.");
-    expect(error.message).toMatch(/^BROWSER_TASK_BLOCKED:/);
-    expect(classifyBrowserError(error)).toBe("unknown");
+    const result = browserTaskOutcome("blocked", "Nenhum serviço habilitado para o perfil.", "https://example.com/tad", []);
+    expect(result).toEqual({
+      ok: false,
+      status: "blocked",
+      finalUrl: "https://example.com/tad",
+      answer: "Nenhum serviço habilitado para o perfil.",
+      steps: [],
+    });
   });
 
   it("preserves explicit failure and confirmed browser-challenge signaling", () => {
-    expect(browserFinishFailure("failed", "Central não carregada").message).toMatch(/^BROWSER_FAILED:/);
+    expect(browserTaskOutcome("failed", "Central não carregada", "https://example.com/tad", []).status).toBe("failed");
     expect(classifyBrowserError(new Error("BROWSER_BLOCKED: verificação real exigida"))).toBe("blocked");
   });
 });
