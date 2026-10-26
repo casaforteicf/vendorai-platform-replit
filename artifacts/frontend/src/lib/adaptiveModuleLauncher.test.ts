@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { authorizedLauncherModules, resolveLauncherStart } from "./adaptiveModuleLauncher";
+import { authorizedLauncherModules, resolveLauncherStart, resolveTadLauncherModules, LAUNCHER_MODULES } from "./adaptiveModuleLauncher";
 
 describe("TAD module launcher access", () => {
   it("only authorizes the intersection of tenant entitlement and user permission", () => {
@@ -37,6 +37,33 @@ describe("TAD module launcher access", () => {
       permittedModules: ["portal_cliente"],
     });
     expect(modules).toEqual([]);
+  });
+
+  it("shows every ecosystem environment for a platform Superadmin, independently of tenant entitlements", () => {
+    const modules = resolveTadLauncherModules({
+      audience: "business",
+      enabledModules: [],
+      permittedModules: [],
+      isPlatformSuperAdmin: true,
+    });
+    expect(modules.listed.map(module => module.key)).toEqual(LAUNCHER_MODULES.map(module => module.key));
+    expect(modules.authorized.map(module => module.key)).toContain("arqdor");
+    expect(modules.authorized.map(module => module.key)).toContain("erp");
+    expect(modules.authorized.every(module => module.route !== null)).toBe(true);
+    expect(modules.authorized.some(module => module.key === "pdv")).toBe(false);
+    expect(modules.listed.map(module => module.key)).toContain("portal_cliente");
+  });
+
+  it("keeps ordinary admins and users limited to confirmed tenant access", () => {
+    const modules = resolveTadLauncherModules({
+      audience: "business",
+      enabledModules: ["crm", "arqdor"],
+      permittedModules: ["crm"],
+      previewModules: ["arqdor"],
+      isPlatformSuperAdmin: false,
+    });
+    expect(modules.authorized.map(module => module.key)).toEqual(["crm"]);
+    expect(modules.listed.map(module => module.key)).toEqual(["crm", "arqdor"]);
   });
 
   it("selects the hub when a preferred route is missing or not authorized", () => {
