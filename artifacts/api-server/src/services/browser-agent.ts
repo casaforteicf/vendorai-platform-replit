@@ -36,11 +36,17 @@ export function assertBrowserPageAccessible(state: { title: string; text: string
   }
 }
 
-// A planned "blocked" result can mean missing tenant services, permissions or
-// unavailable UI, not necessarily a CAPTCHA. Reserve BROWSER_BLOCKED for
-// assertBrowserPageAccessible's observed human-verification challenge.
-export function browserFinishFailure(outcome: "blocked" | "failed", answer: string): Error {
-  return new Error(`${outcome === "blocked" ? "BROWSER_TASK_BLOCKED" : "BROWSER_FAILED"}: ${answer}`);
+// A blocked task (e.g. missing tenant services) is not a CAPTCHA.
+// Return a normal failed mission, preserving the audit trail without handing
+// the browser to a person. Only assertBrowserPageAccessible may initiate the
+// BROWSER_BLOCKED human-verification handoff.
+export function browserTaskOutcome(
+  outcome: "blocked" | "failed",
+  answer: string,
+  finalUrl: string,
+  steps: BrowserAgentStep[],
+) {
+  return { ok: false as const, status: outcome, finalUrl, answer, steps };
 }
 
 export type PlannedAction =
@@ -617,7 +623,7 @@ export async function runBrowserAgent(input: BrowserAgentInput) {
       });
 
       if (action.action === "finish") {
-        if (action.outcome !== "completed") throw browserFinishFailure(action.outcome, action.answer);
+        if (action.outcome !== "completed") return browserTaskOutcome(action.outcome, action.answer, state.url, steps);
         if (input.onSessionPersist) await input.onSessionPersist(await page.cookies());
         if (input.onProfilePersist) await input.onProfilePersist(await captureBrowserProfile(page));
         return { ok: true, finalUrl: state.url, answer: action.answer, steps };
@@ -686,7 +692,7 @@ export async function runBrowserAgent(input: BrowserAgentInput) {
           secretsAvailable,
         );
         if (next.action === "finish") {
-          if (next.outcome !== "completed") throw browserFinishFailure(next.outcome, next.answer);
+          if (next.outcome !== "completed") return browserTaskOutcome(next.outcome, next.answer, state2.url, steps);
           if (input.onSessionPersist) await input.onSessionPersist(await page.cookies());
           if (input.onProfilePersist) await input.onProfilePersist(await captureBrowserProfile(page));
           return { ok: true, finalUrl: page.url(), answer: next.answer, steps };
