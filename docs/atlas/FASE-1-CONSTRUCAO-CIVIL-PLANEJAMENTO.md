@@ -289,3 +289,158 @@ O catálogo é uma **taxonomia de oportunidades**, não um estoque, lista de pre
 5. Priorizar pilotos de catálogo nos nichos P1 e registrar cobertura, lacunas e critérios de aceite.
 
 **Estado:** catálogo aprofundado somente no planejamento; nenhuma tabela, produto comercial ou campanha foi criada por esta atualização.
+
+
+## K. Estratégias individuais por segmento e nicho — matriz planejada
+
+**Estado:** hipóteses iniciais de marketing e comercialização. Nenhuma campanha aprovada ou em execução. A matriz exige validação de ICP, legislação setorial, oferta disponível e números reais.
+
+Cada linha define públicos, dores, proposta inicial, canais, jornada e métricas. Os perfis não devem ser unificados quando houver diferenças entre fabricante, distribuidor, varejo, instalador e consumidor final.
+
+### K.1 — Terrenos, loteamentos e urbanização
+
+| Nicho | Decisor/ICP | Dor a validar | Oferta do ecossistema a testar | Canais sugeridos | Jornada de campanha | Indicadores |
+|---|---|---|---|---|---|---|
+| Loteadoras e urbanizadoras | Diretor de incorporação | Captação e gestão de interessados; controle das oportunidades de infraestrutura | Gestão de funil e parceiros | Busca por terrenos/lotes, portais e parcerias com corretores | Lead qualificado → visita → proposta | Visitas, reservas e contratos |
+| Topógrafos e geotécnicas | Responsável técnico | Orçamentos por levantamento e entrega técnica | CRM, propostas e acompanhamento de laudos | Google local e parcerias com engenheiros | Solicitação → diagnóstico → orçamento | Pedidos de orçamento e taxa de aceite |
+| Empresas de terraplenagem | Proprietário/gestor | Ociosidade de máquinas e cotações complexas | Pipeline B2B e controle de propostas | Parcerias com loteadoras e construtoras | Obra identificada → vistoria → proposta | Taxa de ocupação e margem por contrato |
+
+### K.2 — Imobiliárias, incorporação e negócios imobiliários
+
+| Nicho | Decisor/ICP | Dor a validar | Oferta do ecossistema a testar | Canais sugeridos | Jornada de campanha | Indicadores |
+|---|---|---|---|---|---|---|
+| Imobiliárias residenciais | Gestor e corretor líder | Demora no retorno a contatos e perda de histórico | CRM omnicanal e atendimento assistido | Portais de imóveis, busca local e campanhas por empreendimento | Contato → qualificação → visita → negociação | Tempo de resposta, visitas e fechamentos |
+| Incorporadoras | Diretor comercial | Lançamentos com muitos canais e representantes | Gestão de oportunidades, campanhas e equipe | Parcerias com imobiliárias e mídia geográfica | Interesse → plantão → reserva | Custo por visita, conversão e vendas |
+| Administradoras de locação | Gestor patrimonial | Renovações e solicitações dispersas | Relacionamento, tarefas e automação de rotinas | SEO local, indicação de proprietários e parcerias | Captação de imóvel → contrato → retenção | Imóveis na carteira e retenção |
+
+### K.3 — Arquitetura, engenharia e projetos
+
+| Nicho | Decisor/ICP | Dor a validar | Oferta do ecossistema a testar | Canais sugeridos | Jornada de campanha | Indicadores |
+|---|---|---|---|---|---|---|
+| Arquitetos residenciais | Titular do escritório | Apresentação de projetos, revisões e relacionamento | Arqdor para projeto (validar funções), CRM e propostas | Portfólio, Instagram visual, parcerias com construtoras | Briefing → projeto → especificação | Briefings, propostas e projetos fechados |
+| Engenheiros projetistas | Responsável técnico | Compatibilização, revisão e documentação | Gestão de demandas, documentação e serviços | Conteúdo técnico e parceiros de engenharia | Consulta técnica → escopo → contrato | Aceite de propostas e retrabalho |
+| Designers de interiores | Designer titular | Transformar conceito em compra e execução | Apresentação visual, especificações e cotações planejadas | Pinterest, Instagram, indicações e portfólio | Inspiração → briefing → projeto → compra | Projetos vendidos e ticket por ambiente |
+
+### K.4 — Construção e sistemas construtivos
+
+| Nicho | Decisor/ICP | Dor a validar | Oferta do ecossistema a testar | Canais sugeridos | Jornada de campanha | Indicadores |
+|---|---|---|---|---|---|---|
+| Construtoras residenciais | Sócio/diretor de obras | Leads, orçamento, execução e compras fragmentados | CRM, proposta, execução e integração planejada com Arqdor/Praça | Busca local, estudos de caso e indicações técnicas | Lead → orçamento → contrato → obra | Propostas aceitas e margem por obra |
+| Empreiteiras especializadas | Proprietário | Orçamentos lentos e agenda variável | Funil de obras e acompanhamento de entregas | Parcerias com arquitetos e construtoras | Indicação → vistoria → orçamento | Conversão e prazo de obra |
+| ICF, steel frame e modular | Fabricante e integrador | Mercado exige educação técnica e prova de desempenho | Catálogo técnico, propostas e parceiros | Webinars, comparativos técnicos e rede de especificadores | Conteúdo técnico → diagnóstico → proposta | Leads técnicos e especificações convertidas |
+
+### K.5 — Materiais básicos e indústria
+
+| Nicho | Decisor/ICP | Dor a validar | Oferta do ecossistema a testar | Canais sugeridos | Jornada de campanha | Indicadores |
+|---|---|---|---|---|---|---|
+| Depósitos e home centers | Proprietário/gerente | Recuperar cotações, fidelizar construtores | CRM, catálogo e campanhas de recompra | Busca local, relacionamento com obras, indicação | Cotação → follow-up → pedido | Cotações convertidas e recompra |
+| Distribuidores de materiais | Diretor comercial | Cobertura de carteira e negociação B2B | Gestão de representantes, clientes e oportunidades | Representantes e campanhas para lojistas | Prospecção B2B → proposta → contrato | Clientes ativos e receita por carteira |
+| Fabricantes de insumos | Diretor de canais | Especificação técnica e coordenação de revendas | Inteligência comercial e canais | Conteúdo técnico, especificadores e feiras | Especificação → distribuidor → venda | Projetos especificados e vendas via canal |
+
+### K.6 — Instalações elétricas, hidráulicas e energia
+
+| Nicho | Decisor/ICP | Dor a validar | Oferta do ecossistema a testar | Canais sugeridos | Jornada de campanha | Indicadores |
+|---|---|---|---|---|---|---|
+| Eletricistas e integradores | Responsável técnico | Orçamentos, agendamento e recorrência | CRM, propostas e agenda | Google local e parcerias de reforma | Contato → vistoria → serviço | Agendamentos e retorno |
+| Empresas hidrossanitárias | Gestor | Demandas emergenciais e obras programadas | Gestão de atendimento e contratos | Busca local, síndicos e construtoras | Chamado → visita → execução | Tempo de resposta e contratos |
+| Integradores solares | Diretor comercial | Venda consultiva e propostas longas | Funil por etapa, propostas e follow-up | Pesquisa de intenção, parceiros e conteúdo técnico | Simulação → visita → proposta → instalação | Taxa de fechamento e ciclo de vendas |
+
+### K.7 — Climatização, automação e segurança
+
+| Nicho | Decisor/ICP | Dor a validar | Oferta do ecossistema a testar | Canais sugeridos | Jornada de campanha | Indicadores |
+|---|---|---|---|---|---|---|
+| Instaladores de ar-condicionado | Dono/gestor | Picos sazonais e pós-venda | Agenda, CRM e recorrência de manutenção | Busca local e campanhas sazonais | Orçamento → instalação → revisão | Custo por instalação e planos de manutenção |
+| Automação residencial | Integrador | Demonstração complexa e ticket elevado | Projetos, propostas e gestão de oportunidades | Parcerias com arquitetos e demonstrações | Experiência → diagnóstico → projeto | Demonstrações e fechamentos |
+| Segurança eletrônica | Gestor comercial | Contratos recorrentes e assistência | CRM, contratos e atendimento | Parcerias com condomínios e mídia local | Avaliação de risco → proposta → instalação | Contratos recorrentes e churn |
+
+### K.8 — Esquadrias, fachadas e coberturas
+
+| Nicho | Decisor/ICP | Dor a validar | Oferta do ecossistema a testar | Canais sugeridos | Jornada de campanha | Indicadores |
+|---|---|---|---|---|---|---|
+| Fabricantes de PVC/alumínio | Diretor comercial | Medições, variantes e propostas técnicas | CRM, orçamento parametrizado a validar, pós-venda | Parcerias com arquitetos e construtoras, busca especializada | Projeto → medição → proposta → produção | Conversão por linha e retrabalho |
+| Vidraçarias | Proprietário | Pedidos sob medida e visitas técnicas | Propostas e acompanhamento de instalação | Google local, indicação e portfólio | Contato → medida → orçamento | Visitas convertidas e margem |
+| Coberturas e telhados | Responsável comercial | Sazonalidade e urgência de manutenção | Funil e ordens de serviço | Busca local e parcerias prediais | Inspeção → proposta → execução | Tempo de atendimento e serviços fechados |
+
+### K.9 — Revestimentos, acabamentos e pintura
+
+| Nicho | Decisor/ICP | Dor a validar | Oferta do ecossistema a testar | Canais sugeridos | Jornada de campanha | Indicadores |
+|---|---|---|---|---|---|---|
+| Lojas de revestimentos | Gerente | Especificação influencia venda e margem | CRM, catálogo e relacionamento com arquitetos | Showroom, eventos técnicos e redes sociais | Projeto → amostra → orçamento → compra | Especificações e ticket |
+| Marmorarias | Proprietário | Medição, perdas e orçamento sob medida | CRM, orçamento e acompanhamento | Parcerias com marcenarias e designers | Medição → detalhamento → proposta | Taxa de aceite e desperdício |
+| Pintores e empresas de acabamento | Gestor | Volume de orçamentos e indicação | Agendamento, proposta e carteira de clientes | Google local, antes/depois consentido e indicações | Contato → vistoria → orçamento | Orçamentos e avaliações pós-serviço |
+
+### K.10 — Cozinhas, banheiros e ambientes funcionais
+
+| Nicho | Decisor/ICP | Dor a validar | Oferta do ecossistema a testar | Canais sugeridos | Jornada de campanha | Indicadores |
+|---|---|---|---|---|---|---|
+| Lojas de cozinhas planejadas | Diretor de loja | Projeto e negociação prolongada | CRM e propostas por ambiente | Showroom, conteúdo visual e indicação | Visita → projeto → aprovação | Conversão de projetos e ticket |
+| Lojas de louças e metais | Gerente comercial | Influência de especificadores e recompra | Catálogo e relacionamento B2B | Arquitetos, showroom e pesquisa local | Especificação → cotação → venda | Receita por especificador |
+| Instaladores de banheiro e box | Proprietário | Medição e agenda de instalação | Orçamentos, agendamento e assistência | Busca local e parceiros de reforma | Medição → proposta → instalação | Prazo e instalação sem retrabalho |
+
+### K.11 — Móveis, marcenaria e decoração
+
+| Nicho | Decisor/ICP | Dor a validar | Oferta do ecossistema a testar | Canais sugeridos | Jornada de campanha | Indicadores |
+|---|---|---|---|---|---|---|
+| Marcenarias sob medida | Proprietário | Revisões de escopo e custos de projeto | CRM e propostas com versões | Parcerias com designers, portfólio e busca local | Briefing → projeto → orçamento → montagem | Margem por projeto e retrabalho |
+| Lojas de móveis e decoração | Gerente | Atrair visitas e ampliar ticket por ambiente | CRM, campanhas e recorrência | Instagram, Pinterest, busca e indicação | Inspiração → visita → compra | Visitas, ticket e recompra |
+| Cortinas e iluminação decorativa | Dono de loja/instalador | Medição e venda consultiva | Agenda e proposta por ambiente | Arquitetos e conteúdo de ambiente | Visita técnica → amostra → venda | Agendamentos e taxa de fechamento |
+
+### K.12 — Paisagismo, jardinagem e área externa
+
+| Nicho | Decisor/ICP | Dor a validar | Oferta do ecossistema a testar | Canais sugeridos | Jornada de campanha | Indicadores |
+|---|---|---|---|---|---|---|
+| Paisagistas | Responsável pelo projeto | Venda visual e execução por etapas | Projeto, catálogo e proposta | Instagram, Pinterest, arquitetos | Inspiração → projeto → implantação | Projetos aprovados e ticket |
+| Piscinas e spas | Fabricante/instalador | Vendas sazonais e contratos de manutenção | Funil, propostas e pós-venda recorrente | Pesquisa local, portfólio e parceiros | Projeto → venda → instalação → manutenção | Conversão e receita recorrente |
+| Jardinagem e irrigação | Prestador | Rotas e renovações recorrentes | Agendamento e contratos de manutenção | Busca local, síndicos e imobiliárias | Visita → plano → contrato recorrente | Renovação e receita recorrente |
+
+### K.13 — Máquinas, ferramentas e apoio à obra
+
+| Nicho | Decisor/ICP | Dor a validar | Oferta do ecossistema a testar | Canais sugeridos | Jornada de campanha | Indicadores |
+|---|---|---|---|---|---|---|
+| Locadoras de equipamentos | Gestor | Ociosidade, disponibilidade e renovação | CRM e propostas de locação | Parcerias com obras e pesquisa local | Demanda → reserva → locação | Taxa de utilização e retenção |
+| Transportadoras e caçambas | Operador comercial | Agendamento, urgência e rotas | Atendimento e ordens de serviço | Google local e construtoras | Solicitação → agendamento → entrega | Tempo de entrega e recompra |
+| Revendas de ferramentas/EPI | Comprador/gerente | Reposição e compras B2B | Catálogo e carteira empresarial | Representantes, conteúdo técnico e revendas | Cotações recorrentes → pedidos | Frequência e margem |
+
+### K.14 — Profissionais e mão de obra especializada
+
+| Nicho | Decisor/ICP | Dor a validar | Oferta do ecossistema a testar | Canais sugeridos | Jornada de campanha | Indicadores |
+|---|---|---|---|---|---|---|
+| Equipes de pedreiros/carpinteiros | Encarregado/autônomo | Previsibilidade de contratos e reputação | Agenda, propostas e histórico de serviço | Parcerias com empreiteiras e indicações | Disponibilidade → escopo → contratação | Contratos e avaliação de entrega |
+| Instaladores especializados | Técnico/proprietário | Lead local e organização de visitas | Atendimento, agenda e proposta | Busca local e parceiros fabricantes | Solicitação → vistoria → instalação | Taxa de comparecimento e conversão |
+| Gestores e orçamentistas | Consultor técnico | Captação de serviços recorrentes B2B | CRM de projetos e propostas | Networking setorial e conteúdo técnico | Diagnóstico → escopo → contrato | Contratos recorrentes e rentabilidade |
+
+### K.15 — Reformas, manutenção e pós-obra
+
+| Nicho | Decisor/ICP | Dor a validar | Oferta do ecossistema a testar | Canais sugeridos | Jornada de campanha | Indicadores |
+|---|---|---|---|---|---|---|
+| Empresas de reforma | Proprietário | Orçamento confiável e execução controlada | CRM, propostas, cronograma e acompanhamento | Busca local, indicação e antes/depois autorizado | Vistoria → orçamento → obra | Taxa de fechamento e margem |
+| Manutenção predial | Gestor | Chamados e renovação contratual | Contratos, chamados e atendimento | Administradoras e síndicos | Auditoria → plano → contrato | SLA e retenção |
+| Assistência técnica pós-obra | Responsável técnico | Histórico e prioridade dos chamados | Atendimento e rastreabilidade | Relacionamento com construtoras | Chamado → diagnóstico → correção | Tempo de resolução e reincidência |
+
+### K.16 — Finanças, seguros e serviços complementares
+
+| Nicho | Decisor/ICP | Dor a validar | Oferta do ecossistema a testar | Canais sugeridos | Jornada de campanha | Indicadores |
+|---|---|---|---|---|---|---|
+| Crédito imobiliário e construção | Gerente/parceiro autorizado | Jornada documental e conversão | CRM de oportunidades e tarefas, sujeito a conformidade | Parcerias com imobiliárias/construtoras | Simulação → documentação → decisão | Propostas aprovadas; conformidade |
+| Seguros residenciais/de obra | Corretor habilitado | Renovações e personalização de cobertura | Gestão comercial e lembretes | Parcerias imobiliárias e manutenção | Necessidade → proposta → contratação | Renovação e receita por carteira |
+| Softwares/serviços B2B para construção | Diretor comercial | Baixa integração entre vendas, obras e dados | Vendor.ai, Arqdor, Praça.ai e Vendi conforme maturidade real | ABM, demonstração e casos verificados | Diagnóstico → piloto → implantação | MRR, adoção, retenção e CAC |
+
+## L. Especificação de cada plano de campanha por nicho
+
+1. Identificação única de segmento, nicho, ator e geografia; distinguir marca, produto e serviço.
+2. Objetivo comercial, problema comprovado, hipótese de valor, diferenciação, prova e restrições do produto.
+3. ICP com porte, perfil decisor, sinais de intenção, objeções e exclusões de público.
+4. Oferta e CTA compatíveis com recursos existentes; landing page, canal, conteúdo, criativo e mensagem por etapa do funil.
+5. Orçamento e prazo propostos (não inventar valores), proprietário da campanha e aprovação antes de investir.
+6. Instrumentação de origem, consentimento, UTMs, deduplicação de leads e vínculos com CRM, proposta e venda.
+7. Metas condicionadas a linha de base: CPL, MQL/SQL, propostas, taxa de fechamento, CAC, margem, retenção e LTV quando disponíveis.
+8. Experimento A/B e critérios de continuidade, pausa e expansão definidos antes do piloto.
+9. Registro de evidência: fonte, data de verificação, nível de confiança, versão, hipótese validada/rejeitada.
+10. Relações previstas com Arqdor/Praça.ai/Vendi somente quando funções e permissões forem verificadas.
+
+## M. Critérios de aceite do aprofundamento
+
+- A matriz cobre os 16 segmentos e pelo menos três perfis de nichos em cada um (48 fichas iniciais), sem apresentar hipóteses como resultados.
+- Criar no planejamento fichas adicionais para cada subnicho identificado nos pilotos, inclusive categorias antes não representadas.
+- Desdobrar estratégias distintas para fabricante, distribuidor, lojista, instalador e comprador quando relevante.
+- A próxima entrega operacional depende de pesquisa e validação; este documento por si só não lança campanha, não cria cadastro e não altera o sistema.
