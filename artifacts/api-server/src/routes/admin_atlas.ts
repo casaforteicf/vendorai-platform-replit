@@ -64,4 +64,26 @@ router.put("/admin/atlas", requireRole("super_admin"), async (req, res) => {
     res.status(503).json({error:"ATLAS_STORAGE_UNAVAILABLE"});
   }
 });
-export default router;
+
+/** Superadmin-only cross-tenant aggregate. Returns counts, never lead/deal PII. */
+router.get("/admin/atlas/operations-summary", requireRole("super_admin"), async (_req, res) => {
+  try {
+    const result = await db.execute(sql`
+      SELECT t.id AS tenant_id, t.name AS tenant_name,
+        (SELECT count(*)::int FROM leads l WHERE l.tenant_id = t.id
+          AND l.excluido_em IS NULL AND l.nao_lead_tipo IS NULL) AS leads,
+        (SELECT count(*)::int FROM deals d WHERE d.tenant_id = t.id) AS deals,
+        (SELECT count(*)::int FROM produtos_catalogo p WHERE p.tenant_id = t.id) AS catalog_items
+      FROM tenants t ORDER BY t.name ASC LIMIT 500
+    `);
+    res.setHeader("Cache-Control", "no-store");
+    res.json({ source:"postgresql", generatedAt:new Date().toISOString(),
+      tenantLimit:500, tenants: result.rows.map(row => ({
+        tenantId:String(row.tenant_id), tenantName:String(row.tenant_name),
+        leads:Number(row.leads), deals:Number(row.deals), catalogItems:Number(row.catalog_items)
+      })) });
+  } catch {
+    res.status(503).json({error:"ATLAS_OPERATIONS_UNAVAILABLE"});
+  }
+});
+\nexport default router;
