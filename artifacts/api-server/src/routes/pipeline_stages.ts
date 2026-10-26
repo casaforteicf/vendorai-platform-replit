@@ -552,6 +552,16 @@ router.patch("/tenants/:tenantId/pipeline-stages/:id", async (req, res) => {
   const parsed = updatePipelineStageSchema.safeParse(req.body);
   if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
 
+  // Edits may not erase the visible stage label; a blank label makes the
+  // pipeline appear broken even though its underlying key still exists.
+  if (parsed.data.label !== undefined) {
+    const label = parsed.data.label.trim();
+    if (!label || label.length > 120) {
+      return res.status(422).json({ error: "O nome da etapa deve ter entre 1 e 120 caracteres." });
+    }
+    parsed.data.label = label;
+  }
+
   if (parsed.data.atividadesPadrao !== undefined) {
     const templates = z.array(activityTemplateSchema).max(30).safeParse(parsed.data.atividadesPadrao);
     if (!templates.success) return res.status(422).json({ error: templates.error.message });
