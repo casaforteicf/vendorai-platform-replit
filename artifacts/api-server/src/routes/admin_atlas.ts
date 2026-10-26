@@ -86,4 +86,25 @@ router.get("/admin/atlas/operations-summary", requireRole("super_admin"), async 
     res.status(503).json({error:"ATLAS_OPERATIONS_UNAVAILABLE"});
   }
 });
-\nexport default router;
+\n
+/** Business-domain totals are read-only and scoped to the tenant in each source table. */
+router.get("/admin/atlas/domain-summary", requireRole("super_admin"), async (_req, res) => {
+  const domains = [
+    { key:"arqdor", label:"Projetos Arqdor", statement:sql`SELECT tenant_id, count(*)::int AS amount FROM arch_projetos GROUP BY tenant_id` },
+    { key:"praca", label:"Pedidos marketplace", statement:sql`SELECT comprador_tenant_id AS tenant_id, count(*)::int AS amount FROM arch_marketplace_pedidos GROUP BY comprador_tenant_id` },
+    { key:"vendi", label:"Missões Vendi", statement:sql`SELECT tenant_id, count(*)::int AS amount FROM vendi_missions GROUP BY tenant_id` },
+  ];
+  const result = await Promise.all(domains.map(async domain => {
+    try {
+      const rows = await db.execute(domain.statement);
+      const byTenant = rows.rows.map(row => ({tenantId:String(row.tenant_id), total:Number(row.amount)}));
+      return { key:domain.key, label:domain.label, status:"ok", total:byTenant.reduce((s,r)=>s+r.total,0), byTenant };
+    } catch {
+      return { key:domain.key, label:domain.label, status:"unavailable", total:null, byTenant:[] };
+    }
+  }));
+  res.setHeader("Cache-Control","no-store");
+  res.json({generatedAt:new Date().toISOString(), domains:result});
+});
+
+export default router;
