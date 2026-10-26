@@ -51,12 +51,63 @@ A taxonomia é **comercial**, não reprodução oficial da CNAE. Os futuros vín
 - Estratégias de marketing por nicho: posicionamento, oferta, conteúdo, SEO, busca paga, redes sociais, parcerias, prospecção permitida, funil, orçamento, metas, CAC, LTV e conversão.
 - Estágio de maturidade de cada funcionalidade: ideia, decisão aprovada, código, homologado, produção; evidência e atualização.
 
-## Planejamento de execução futura — não iniciado
+## Sequência macro de execução futura — não iniciada
 1. **Catalogação:** detalhar os 16 segmentos em nichos, subnichos, categorias e perfis.
 2. **Inteligência comercial:** ICP, demanda, necessidades, concorrência, priorização e oportunidades.
 3. **Conexões do ecossistema:** vincular nichos a funções efetivamente disponíveis e às oportunidades de integração.
 4. **Marketing estratégico:** plano e campanhas específicas por nicho; conectar resultados a CRM, financeiro e comercial.
 5. **Radar de mercados:** pesquisa contínua, regiões, tendências, canais, metas e validação das hipóteses.
+
+## Modelo de dados planejado para o Atlas
+
+Manter como dimensões independentes: **mercado → segmento → nicho → subnicho → atividade**, **etapa da jornada do imóvel**, **tipo de ator**, **produto ou serviço**, **território**, **estratégia comercial**, **sistema relacionado**. Um negócio pode atender vários nichos e várias etapas, sem duplicação.
+
+Cada registro deverá prever código estável, nome e sinônimos, descrição, relações, tipo B2B/B2C, municípios/regiões, fontes, data de verificação, responsável e estado (hipótese, validado, arquivado). O vínculo com CNAE só será registrado depois de confrontar a classificação oficial; CNAE não substituirá a taxonomia comercial.
+
+Tipos de atores: proprietário/comprador, investidor, corretor, incorporador, construtora, projetista, arquiteto, engenheiro, profissional autônomo, prestador, fabricante, distribuidor, atacadista, varejista, locador, administradora, gestor de condomínio e seguradora/financiador.
+
+Tipos de ofertas: terreno/imóvel, projeto, material, componente, equipamento, locação, instalação, obra, reforma, serviço técnico, decoração, paisagismo, manutenção recorrente, crédito/seguro e software.
+
+## Estratégias de marketing por segmento e nicho — planejamento obrigatório
+
+A ficha de cada nicho deverá conter:
+1. **Análise de mercado:** tamanho e localização da demanda quando houver evidências, concorrência, sazonalidade, tendências, oportunidades, ameaças e fontes verificáveis.
+2. **ICP e público:** B2B/B2C, porte, região, decisor, necessidades, dores, orçamento típico apenas quando validado e momentos de compra.
+3. **Posicionamento:** promessa demonstrável, proposta de valor, diferenciais, provas disponíveis, objeções e limitações da oferta.
+4. **Mix e canais:** marketing de conteúdo, SEO e SEO local, pesquisa paga, redes sociais, parcerias, eventos, indicação, representantes, portais e prospecção com conformidade e consentimento.
+5. **Funil:** descoberta → atração → lead → qualificação → diagnóstico/projeto → cotação/proposta → negociação → venda → execução → pós-venda → indicação/recorrência.
+6. **Campanhas:** segmento, objetivo, criativos, peças e mensagens por público, orçamento, período, landing page, CTA, atribuição e responsável; não lançar campanha automaticamente.
+7. **Metas e métricas:** alcance útil, contatos, CPL, MQL/SQL, reuniões, propostas, conversão, CAC, receita atribuída, margem, retenção, recompra e LTV quando calculáveis.
+8. **Aprendizado:** experimentos, hipóteses, resultados, revisões e decisões de manter, otimizar ou suspender.
+9. **Integração:** ligação planejada com Marketing e CRM Vendor.ai, projetos Arqdor, oportunidades Praça.ai, análises e tarefas Vendi; discriminar planejado versus disponível.
+10. **Prioridade:** nota de demanda, aderência, ticket/margem potencial, maturidade da oferta, facilidade de aquisição e sinergia. Nunca classificar uma projeção como resultado efetivo.
+
+## Exemplos de encadeamento comercial a representar
+
+- **Terreno adquirido → topografia/sondagem → projeto → licenças → orçamento → materiais → execução → decoração → jardim → manutenção.**
+- **Apartamento usado → vistoria → reforma → móveis sob medida → decoração → gestão patrimonial.**
+- **Piscina → projeto → equipamento → instalação → tratamento de água → manutenção recorrente.**
+- **Esquadrias PVC → fabricante → distribuidor/representante → instalador → construtora/proprietário → assistência.**
+
+Os fluxos representam oportunidades de negócio, não integrações em produção já verificadas.
+
+## Entregas futuras e critérios de aceite
+
+| Etapa | Entrega planejada | Critério para aceitar |
+|---|---|---|
+| 1. Catálogo | 16 segmentos e subnichos, profissões, insumos, ofertas e jornadas | Estrutura navegável, identificadores únicos, vínculos múltiplos, sem duplicação |
+| 2. Inteligência de mercado | ICP, concorrentes, regiões e prioridades | Fonte, confiança, data e justificativa para cada afirmação material |
+| 3. Produtos e integrações | Matriz nicho × Vendor.ai/Arqdor/Praça.ai/Vendi | Estado real de cada função: ideia, especificação, código, homologação ou produção |
+| 4. Marketing | Estratégia por nicho, funis, campanhas propostas e orçamento | Objetivo, responsável, hipótese, custo estimado, métricas e critérios de aprovação |
+| 5. Radar | Acompanhamento das mudanças e oportunidades | Atualização identificada, evidência, análise e aprovação de ações sensíveis |
+
+## Limites da Fase 1
+
+- Foco exclusivo em construção civil, terrenos, casa, interiores, jardins e mercado imobiliário. Outros setores permanecem em fases futuras.
+- Contemplar construção nova e imóvel existente, imóveis residenciais, comerciais, condomínios e infraestrutura relacionada ao imóvel.
+- Não presumir que todos os subnichos possuem produto ativo ou integração técnica existente.
+- Separar fornecedores/profissionais dos compradores e distinguir marketing B2B de B2C.
+- Estratégias são propostas: execução, investimento publicitário, campanhas e alterações comerciais dependem de autorização e disponibilidade técnica.
 
 ## Critérios de governança
 - Não confundir planejamento com execução; projeções não são faturamento.
