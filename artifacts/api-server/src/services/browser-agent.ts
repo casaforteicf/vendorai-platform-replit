@@ -606,6 +606,7 @@ export async function runBrowserAgent(input: BrowserAgentInput) {
 
     let selectorRecoveryNote = "";
     let noChangeStreak = 0;
+    let queuedAction: PlannedAction | null = null;
     for (let index = 1; index <= maxSteps; index++) {
       const state = await withBrowserRetry(() => snapshotBrowserPage(page));
       assertBrowserPageAccessible(state);
@@ -613,7 +614,11 @@ export async function runBrowserAgent(input: BrowserAgentInput) {
         ? input.goal + "\nRECUPERAÇÃO DE NAVEGAÇÃO: " + selectorRecoveryNote
         : input.goal;
       selectorRecoveryNote = "";
-      const action = await planBrowserAction(input.tenantId, planningGoal, state, steps, secretsAvailable);
+      // Reuse the action planned immediately after an extraction. Previously
+      // it was discarded unless it was finish, causing repeated extractions.
+      const action: PlannedAction = queuedAction
+        ?? await planBrowserAction(input.tenantId, planningGoal, state, steps, secretsAvailable);
+      queuedAction = null;
       steps.push({
         index,
         action: action.action,
@@ -697,6 +702,10 @@ export async function runBrowserAgent(input: BrowserAgentInput) {
           if (input.onProfilePersist) await input.onProfilePersist(await captureBrowserProfile(page));
           return { ok: true, finalUrl: page.url(), answer: next.answer, steps };
         }
+        if (next.action === "extract" && next.selector === action.selector) {
+          return browserTaskOutcome("failed", "VENDI_BROWSER_REPEAT_EXTRACTION: mesma extração solicitada após receber o conteúdo; não houve avanço na missão.", state2.url, steps);
+        }
+        queuedAction = next;
       }
     }
 
