@@ -126,7 +126,7 @@ router.get("/admin/atlas/tenant-detail/:tenantId", requireRole("super_admin"), a
 });
 
 
-const STRATEGY_FIELDS=["icp","pain","offer","channels","funnel","kpis","positioning","campaign","budgetNotes","goals"] as const;
+const STRATEGY_FIELDS=["icp","pain","offer","channels","funnel","kpis","positioning","campaign","budgetNotes","goals","owner","planStatus","dueDate","actions","actualResults"] as const;
 router.get("/admin/atlas/marketing-strategies",requireRole("super_admin"),async (_req,res)=>{
  try {
   const result=await db.execute(sql`SELECT content,revision,updated_at FROM vendor_atlas_documents WHERE document_key='marketing-phase1-v1'`);
@@ -144,7 +144,7 @@ router.put("/admin/atlas/marketing-strategies",requireRole("super_admin"),async(
  if(entries.length>250||entries.some(([id,value])=>{
   if(!/^niche-[0-9]{2,4}$/.test(id)||!value||Array.isArray(value)||typeof value!=="object")return true;
   const fields=Object.entries(value as Record<string,unknown>);
-  return fields.some(([k,v])=>!STRATEGY_FIELDS.includes(k as typeof STRATEGY_FIELDS[number])||typeof v!=="string"||v.length>8000);
+  return fields.some(([k,v])=>!STRATEGY_FIELDS.includes(k as typeof STRATEGY_FIELDS[number])||typeof v!=="string"||v.length>8000|| (k==="planStatus" && !["","draft","approved","in_progress","paused","completed"].includes(v)));
  })){res.status(422).json({error:"ATLAS_MARKETING_INVALID_DOCUMENT"});return;}
  const author=String(req.user?.email||req.user?.sub||"super_admin");
  try{
