@@ -89,3 +89,17 @@ Leitura direta de API Cloudflare com o novo token de diagnóstico, resposta `DNS
 Rotas Workers consultadas: `mcp.appvendorai.com/*` sem script atribuído; `app.appvendorai.com/*` sem script atribuído; `*.appvendorai.com/*` atribuído a `vendorai-subdomain-proxy`. A rota wildcard não corresponde ao domínio raiz `appvendorai.com`, mas pode afetar subdomínios proxied. Não remover sem confirmação de dependências.
 
 **Conclusão atualizada:** DNS de produção não encaminha `appvendorai.com` para Railway: aponta para o projeto Cloudflare Pages `vendorai-website`. A resposta pública `x-railway-fallback` deve ser investigada como possível proxy/artefato antigo no deploy Pages de **07/10/2026** ou outra regra de borda; ainda não está provada a origem precisa. O arquivo fonte atual `artifacts/website/public/_worker.js` encaminha `/api/*` a `https://api.appvendorai.com`, apesar do nome legado `RAILWAY_ORIGIN`. Não alterar DNS, Worker wildcard nem eliminar serviço Railway ainda.
+
+## 10. Teste comparativo HTTP do proxy do website — confirmado na VPS
+
+Em 27/10/2026, usando POST de JSON inválido `{}`, headers `Content-Type: application/json`, `Origin: https://appvendorai.com` e `X-Forwarded-Host: appvendorai.com`:
+
+| URL | HTTP | Resposta/headers |
+| --- | --- | --- |
+| `https://appvendorai.com/api/site/behavior-event` | 404 | `x-railway-fallback: true`, `Application not found` |
+| `https://vendorai-website.pages.dev/api/site/behavior-event` | 404 | Mesmo fallback Railway |
+| `https://api.appvendorai.com/api/site/behavior-event` | 400 | `Evento comportamental inválido`, resposta do Nginx/API |
+
+**Diagnóstico:** API de destino recebe o POST e valida; fallback ocorre também no subdomínio Pages, isolando problema no deploy/encaminhamento do próprio site (não no registro DNS do domínio customizado). O projeto `vendorai-website` teve última publicação em 07/10/2026 e o código `main` atualmente usa `https://api.appvendorai.com` como origin. **Hipótese forte: Worker/artefato publicado antigo** — conferir o script Cloudflare Pages ativo antes de promover novo build; não afirmar que a URL Railway está presente no script sem inspecioná-lo.
+
+Para correção: identificar conteúdo do Worker `pages-worker--19232173-production` por API somente leitura (se token permitir), construir o website a partir de SHA reproduzível, verificar `dist/public/_worker.js` e integridade dos assets/SEO, implantar prévia isolada, repetir o POST e navegabilidade, assegurar caminho de rollback para deploy anterior, promover com credencial de publicação autorizada, repetir testes no domínio de produção. **Não chamar redeploy sem garantir artefatos atualizados.**
