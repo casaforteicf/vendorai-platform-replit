@@ -8,6 +8,7 @@
  * This is a provenance/geometry preflight, not a substitute for authentication,
  * tenant-scoped database queries, visual fidelity QA or engineering sign-off.
  */
+import type { ConceptStructuralState } from '@workspace/vendor-brain/arqdor-geometry-revision';
 import {
   gateDerivedArtifact,
   type DerivedArtifactKind,
@@ -19,6 +20,7 @@ export type ConceptRenderGateRequest = {
   conceptProjectId: string;
   updatedAt: Date | string | null;
   configuration: unknown;
+  structuralState?: ConceptStructuralState;
   requestedRevision: string | null | undefined;
   renderView: 'interior' | 'exterior' | undefined;
 };
@@ -52,6 +54,7 @@ export function evaluateConceptRenderGate(
     tenantId: input.tenantId,
     projectId: input.conceptProjectId,
     configuration: input.configuration,
+    structuralState: input.structuralState,
     updatedAt: input.updatedAt,
     kind,
     target: {
