@@ -62,6 +62,16 @@ async function renderFileAvailable(value: string | null | undefined): Promise<bo
   }
 }
 
+function fidelityApprovalPolicyForRender(render: { conceptProjectId: string | null | undefined }) {
+  const gated = Boolean(render.conceptProjectId) &&
+    process.env.ARQDOR_RENDER_APPROVAL_FIDELITY_GATE_ENABLED === "true";
+  return {
+    ...ARQDOR_FIDELITY_APPROVAL_POLICY,
+    automaticBlocking: gated,
+    ...(gated ? { minimumOverallScore: 80, minimumStructuralScore: 80, minimumConfidence: 0.7 } : {}),
+  };
+}
+
 function tenantId(req: Request): string | null {
   return (req as any).user?.tenantId ?? null;
 }
@@ -420,7 +430,7 @@ archAiRenderRouter.get("/arch/ai-render/:id/reviews", authenticate, async (req: 
   return res.json({
     success: true,
     render_id: renderId,
-    policy: ARQDOR_FIDELITY_APPROVAL_POLICY,
+    policy: fidelityApprovalPolicyForRender(render),
     reviews: reviews.map((row) => ({
       id: row.id,
       render_id: row.renderId,
@@ -484,7 +494,7 @@ archAiRenderRouter.post("/arch/ai-render/:id/review", authenticate, async (req: 
       success: true,
       review_id: saved?.id,
       render_id: render.id,
-      policy: ARQDOR_FIDELITY_APPROVAL_POLICY,
+      policy: fidelityApprovalPolicyForRender(render),
       review: result.review,
       usage: {
         input_tokens: result.inputTokens,
