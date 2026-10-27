@@ -3,6 +3,9 @@
 set -Eeuo pipefail
 LOT="${1:-}"
 [[ "$#" == 1 && "$LOT" =~ ^[A-Z][A-Z0-9]{1,15}-[0-9]{1,6}$ ]] || { echo INVALID_LOT; exit 64; }
+# Stage and builds serialize globally to protect the constrained VPS.
+exec 7>/run/lock/vendi-release-global-build.lock
+flock -n 7 || { echo BUILD_OR_STAGE_IN_PROGRESS; exit 75; }
 ROOT=/var/lib/vendi-release
 MANIFEST="$ROOT/manifests/$LOT.env"
 BUILD="$ROOT/state/$LOT"
@@ -60,6 +63,7 @@ print("HOMOLOG_BACKGROUND_JOBS_DISABLED=YES")
 print("HOMOLOG_STARTUP_MIGRATIONS_DISABLED=YES")
 PY
 docker create --name "$STAGE" --network vendorai-homolog --restart no \
+ --memory=3g --memory-swap=4g --cpus=1 \
  --env-file "$TMPDIR/env" "$IMAGE" >/dev/null
 docker start "$STAGE" >/dev/null
 HEALTHY=0
