@@ -66,3 +66,11 @@ A tabela distingue as **duas superfícies web**; o guia `CLAUDE.md` atribui o fr
 ## 7. Estado de execução desta entrega
 
 Inventário e critérios formalizados. Não foi realizado delete, parada de containers, edição de DNS, mutação de Cloudflare, migração, merge ou deploy. A própria política de segurança bloqueou exclusão direta no Railway, e o token Cloudflare impede comprovar a topologia real. Produção preservada.
+
+## 8. Evidência complementar — Cloudflare (27/10/2026)
+
+- `cloudflare_list_zones` retornou `appvendorai.com` como zona **active** com nameservers Cloudflare. Este resultado foi acessível embora `cloudflare_status` ainda responda `401 Invalid API Token`; os métodos parecem ter credenciais/escopos distintos. Evitar dizer que toda a Cloudflare é inacessível.
+- `cloudflare_get_pages_project("vendorai-website")` retornou projeto Pages com domínio customizado `appvendorai.com` e `www.appvendorai.com`, `uses_functions: true`, e último deploy em produção marcado como sucesso em **07/10/2026** (ad_hoc, sem SHA Git fornecido). **Este projeto não deve ser excluído.** É candidato operacional para o site institucional, mas roteamento efetivo ainda precisa ser verificado.
+- `cloudflare_get_pages_project("vendorai")` retornou projeto distinto, apenas com `vendorai.pages.dev`, produção desativada para publicação GitHub, deploy canônico **09/10/2026**; não há evidência de domínio customizado do aplicativo principal. O guia `CLAUDE.md` mantém `app.appvendorai.com` diretamente na Contabo/Nginx.
+- `cloudflare_list_dns_records` retornou **403 Authentication error**; consulta de DNS está bloqueada no conector atual mesmo após o usuário validar e salvar, em arquivo separado na VPS, token novo de diagnóstico. Arquivo privado não altera as credenciais de containers/conectores automaticamente. É necessário testar o token diretamente, somente leitura, antes de concluir qualquer intervenção.
+- A associação nominal de domínio à Pages **não demonstra que o tráfego esteja realmente chegando nela**; requer DNS e teste HTTP público.
