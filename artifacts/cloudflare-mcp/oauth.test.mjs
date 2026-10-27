@@ -6,7 +6,7 @@ import { spawn } from 'node:child_process';
 
 test('private OAuth: discovery, redirect restrictions, consent, PKCE, replay, refresh and revocation', { timeout: 20000 }, async () => {
   process.env.MCP_ACCESS_TOKEN = randomBytes(32).toString('hex');
-  const { handleOAuth, authorized, challenge } = await import('./dist/oauth.js');
+  const { handleOAuth, authorized, challenge, verifiedOperatorClient } = await import('./dist/oauth.js');
   const server = createServer(async (req, res) => {
     const url = new URL(req.url, process.env.MCP_PUBLIC_URL);
     if (await handleOAuth(req, res, url)) return;
@@ -95,6 +95,11 @@ test('private OAuth: discovery, redirect restrictions, consent, PKCE, replay, re
     assert.ok(cimdCode);
     const cimdTokens = await (await post('/oauth/token', { client_id: cimdClient, redirect_uri: redirect, code: cimdCode, grant_type: 'authorization_code', code_verifier: verifier })).json();
     assert.ok(cimdTokens.access_token);
+    assert.equal(
+      verifiedOperatorClient({ headers: { authorization: 'Bearer ' + cimdTokens.access_token } }),
+      createHash('sha256').update(cimdClient).digest('hex'),
+    );
+    assert.equal(verifiedOperatorClient({ headers: { authorization: 'Bearer ' + process.env.MCP_ACCESS_TOKEN } }), null);
 
     const legacyAuth = await form({ client_id: legacyClient });
     const legacyHtml = legacyAuth.html;
