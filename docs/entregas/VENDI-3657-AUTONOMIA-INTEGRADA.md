@@ -95,6 +95,43 @@ acima de 4h exigirão heartbeat independente (não implementado).
 - Leases de 4h podem vencer durante uma única ferramenta lenta; precisará
   job de renovação fora do loop ou limite de duração das ferramentas.
 
+
+## Política obrigatória de recursos e retenção (27/10/2026)
+
+**A VPS não deve receber um segundo executor permanente até validar sua capacidade
+e eliminar a duplicação operacional dos serviços existentes.**
+
+Consulta direta somente leitura: disco de 96 GB, 85 GB usados, 12 GB livres
+(89%); 25 entradas de imagens Docker, 40 contêineres (15 em execução),
+11 volumes. O Docker estimou 28,88 GB de imagens potencialmente reclamáveis;
+isso NÃO significa 28,88 GB seguramente removíveis, porque tags e camadas
+podem ser compartilhadas e imagens podem servir de rollback.
+
+O PR implementa:
+- Reutilização do mesmo SHA + mesmo Dockerfile/contexto de um lote validado:
+  `docker tag` reutiliza o mesmo image ID e camadas; **não** compila novamente,
+  não cria outro contêiner nem ocupa outra cópia integral das camadas.
+- Exatamente um build ativo por host; homologação isolada usa o mesmo lock.
+- **Build novo bloqueado** se disco livre <14 GiB, MemAvailable <2 GiB,
+  swap ocupado >75%, >=20 IDs distintos de imagens ou >=2 candidatos
+  `BUILT_NOT_DEPLOYED` com imagem presente. Os limites são conservadores e
+  devem ser calibrados com métricas reais antes da instalação.
+- **Homologação temporária**: `docker run --rm --detach`, sem restart,
+  com limites de 3 GiB RAM, 4 GiB RAM+swap e 1 CPU. Um contêiner
+  interrompido não deve permanecer como contêiner parado; limpeza extra
+  no EXIT. Não inicia sob falta de RAM, swap ou <3 GiB livres.
+- Auditoria `auditReadiness` lista quantidade de IDs de imagens, contêineres
+  ativos/parados, volumes, MemAvailable e swap, e apresenta candidatos de
+  limpeza **somente para revisão humana**, sem apagar arquivos ou volumes.
+- **Nenhum `docker prune`, `docker rmi` ou deleção de backups automática**.
+  A limpeza inicial de imagens/contêineres antigos requer identificar
+  referências de volumes, releases publicados, backups, banco, canários
+  e imagens atualmente utilizadas, e aprovar exclusões específicas.
+
+Importante: quantidade de tags/contêineres não é igual a consumo de espaço.
+O inventário inicial de 40 contêineres só confirma a quantidade, não identifica
+quais 25 parados podem ser removidos.
+
 ## 5) Testes a executar e evidências exigidas
 1. `for f in scripts/vendi-contabo-operator scripts/vendi04-*.sh; do bash -n "$f" || exit 1; done`
 2. `node --test scripts/tests/vendi-contabo-operator-status.test.mjs scripts/tests/vendi-autonomia-integrada.test.mjs`
