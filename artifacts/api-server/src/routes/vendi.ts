@@ -8,6 +8,7 @@ import {
 } from "@workspace/db";
 import { listVendiToolDomains, listVendiTools } from "../services/vendi-tool-registry.js";
 import { executeVendiMission } from "../services/vendi-mission-supervisor.js";
+import { requireRole } from "../middlewares/auth.js";
 import { getVendiPostgresErrorCode } from "../lib/vendi-db-error.js";
 
 const router: IRouter = Router();
@@ -132,7 +133,8 @@ router.post("/vendi/missions/:id/run", async (req, res) => {
   }
 });
 
-router.post("/vendi/missions/:id/approve", async (req, res) => {
+// Approving external effects is restricted to platform/tenant administrators.
+router.post("/vendi/missions/:id/approve", requireRole("super_admin", "tenant_admin"), async (req, res) => {
   const parsed = approveSchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(422).json({ error: parsed.error.flatten() });
