@@ -26,6 +26,20 @@ docker inspect vendorai-homolog-api vendorai-prod-api-candidate vendorai-mcp-nov
 [[ "$(docker inspect vendorai-prod-api-candidate -f '{{.State.Running}}')" == true ]] || exit 69
 [[ "$(docker inspect vendorai-homolog-api -f '{{.HostConfig.NetworkMode}}')" == vendorai-homolog ]] || { echo HOMOLOG_NETWORK_MISMATCH; exit 65; }
 [[ "$(docker inspect vendorai-homolog-api -f '{{len .Mounts}}')" == 0 ]] || { echo HOMOLOG_MOUNTS_UNSUPPORTED; exit 65; }
+# Even with container memory limits, never start tests under host pressure.
+MEM_KB=$(awk '/^MemAvailable:/ {print $2}' /proc/meminfo)
+SWAP_TOTAL_KB=$(awk '/^SwapTotal:/ {print $2}' /proc/meminfo)
+SWAP_FREE_KB=$(awk '/^SwapFree:/ {print $2}' /proc/meminfo)
+FREE_KB=$(df -Pk / | awk 'NR==2 {print $4}')
+[[ "$MEM_KB" =~ ^[0-9]+$ && "$SWAP_TOTAL_KB" =~ ^[0-9]+$ &&
+   "$SWAP_FREE_KB" =~ ^[0-9]+$ && "$FREE_KB" =~ ^[0-9]+$ ]] || {
+  echo RESOURCE_METRICS_UNAVAILABLE; exit 75;
+}
+if (( MEM_KB < 2097152 || FREE_KB < 3145728 ||
+      (SWAP_TOTAL_KB > 0 && (SWAP_TOTAL_KB - SWAP_FREE_KB) * 100 / SWAP_TOTAL_KB > 75) )); then
+  echo HOMOLOG_BLOCKED_RESOURCE_PRESSURE
+  exit 75
+fi
 TMPDIR=$(mktemp -d /root/vendi-homolog.XXXXXXXX)
 chmod 700 "$TMPDIR"
 STAGE="vendi-homolog-${LOT,,}-${SHA:0:12}"
