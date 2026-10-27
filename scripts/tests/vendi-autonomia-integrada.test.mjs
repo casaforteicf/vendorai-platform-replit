@@ -71,3 +71,22 @@ test("mission approval is restricted to administrators", () => {
   const routes = read("artifacts/api-server/src/routes/vendi.ts");
   assert.ok(routes.includes('router.post("/vendi/missions/:id/approve", requireRole("super_admin", "tenant_admin")'));
 });
+
+test("legacy release center cannot merge before host and cron gates are proven", () => {
+  const releaseCenter = read("artifacts/api-server/src/routes/admin_release_center.ts");
+  const start = releaseCenter.indexOf("async function executeScheduledRelease(");
+  const merge = releaseCenter.indexOf("/pulls/\" + prNumber + \"/merge", start);
+  const guard = releaseCenter.indexOf("VENDI_RELEASE_PIPELINE_NOT_VERIFIED_NO_MERGE", start);
+  assert.ok(start >= 0 && guard > start && merge > guard);
+  assert.match(releaseCenter, /VENDI_RELEASE_HOST_RECEIPTS_VERIFIED/);
+  assert.match(releaseCenter, /VENDI_RELEASE_CRON_LOCK_VERIFIED/);
+});
+
+test("mission lease migration is explicit and supervisor renews it", () => {
+  const sql = read("lib/db/migrations/202610272240_vendi_mission_leases.sql");
+  const supervisor = read("artifacts/api-server/src/services/vendi-mission-supervisor.ts");
+  assert.match(sql, /CREATE TABLE IF NOT EXISTS vendi_mission_leases/);
+  assert.match(supervisor, /VENDI_MISSION_ALREADY_RUNNING/);
+  assert.match(supervisor, /VENDI_MISSION_LEASE_LOST/);
+  assert.match(supervisor, /DELETE FROM vendi_mission_leases/);
+});
