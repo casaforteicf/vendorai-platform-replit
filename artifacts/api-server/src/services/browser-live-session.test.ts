@@ -66,10 +66,15 @@ describe("human handoff", () => {
     expect(runtime.page.goto).not.toHaveBeenCalled();
   });
   it("does not report blocked output or step exhaustion as completed", async () => {
-    runtime.plan.mockResolvedValue({ action: "finish", outcome: "blocked", answer: "Human required" });
-    const id = await session();
+    const onResult = vi.fn(async () => {});
+    runtime.plan.mockResolvedValue({ action: "finish", outcome: "blocked", answer: "Module unavailable" });
+    const id = await session(onResult);
     startLiveBrowserMission("tenant-a", id, "Read the page");
-    await waitForStatus(id, "paused");
+    await waitForStatus(id, "error");
+    expect((await getLiveBrowserSession("tenant-a", id)).pauseReason).toBeNull();
+    await vi.waitFor(() => expect(onResult).toHaveBeenCalledWith(expect.objectContaining({
+      ok: false, sessionId: id, answer: "Module unavailable",
+    })));
     runtime.plan.mockResolvedValue({ action: "navigate", url: "https://example.com" });
     const otherId = await session();
     startLiveBrowserMission("tenant-a", otherId, "Read the page", 1);

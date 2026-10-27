@@ -50,6 +50,7 @@ def envmap(container):
     if sep: out[k]=v
   return out
 env=envmap(old)
+env["VENDI_CONTROL_BASE_URL"]="https://homolog.appvendorai.com"
 token=envmap(mcp).get("BROWSER_MCP_ACCESS_TOKEN","").strip()
 if not token or "\n" in token or "\r" in token:
   raise SystemExit("TOKEN_MCP_INDISPONIVEL")
