@@ -126,6 +126,10 @@ router.get("/admin/atlas/tenant-detail/:tenantId", requireRole("super_admin"), a
 });
 
 
+function isValidPlanDate(value:string):boolean {
+ const time=Date.parse(value);
+ return value.length===10 && value.charAt(4)==="-" && value.charAt(7)==="-" && Number.isFinite(time) && new Date(time).toISOString().slice(0,10)===value;
+}
 const STRATEGY_FIELDS=["icp","pain","offer","channels","funnel","kpis","positioning","campaign","budgetNotes","goals","owner","planStatus","dueDate","actions","actualResults"] as const;
 router.get("/admin/atlas/marketing-strategies",requireRole("super_admin"),async (_req,res)=>{
  try {
@@ -144,7 +148,7 @@ router.put("/admin/atlas/marketing-strategies",requireRole("super_admin"),async(
  if(entries.length>250||entries.some(([id,value])=>{
   if(!/^niche-[0-9]{2,4}$/.test(id)||!value||Array.isArray(value)||typeof value!=="object")return true;
   const fields=Object.entries(value as Record<string,unknown>);
-  return fields.some(([k,v])=>!STRATEGY_FIELDS.includes(k as typeof STRATEGY_FIELDS[number])||typeof v!=="string"||v.length>8000|| (k==="planStatus" && !["","draft","approved","in_progress","paused","completed"].includes(v)));
+  return fields.some(([k,v])=>!STRATEGY_FIELDS.includes(k as typeof STRATEGY_FIELDS[number])||typeof v!=="string"||v.length>8000|| (k==="planStatus" && !["","draft","approved","in_progress","paused","completed"].includes(v)) || (k==="dueDate" && v!=="" && !isValidPlanDate(v)));
  })){res.status(422).json({error:"ATLAS_MARKETING_INVALID_DOCUMENT"});return;}
  const author=String(req.user?.email||req.user?.sub||"super_admin");
  try{
