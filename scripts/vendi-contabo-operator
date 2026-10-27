@@ -142,7 +142,7 @@ case "$ACTION" in
       }
     fi
     check_health
-    TOKEN=$(docker exec vendorai-mcp-contabo-fixed printenv BROWSER_MCP_ACCESS_TOKEN)
+    TOKEN=$(docker exec vendorai-mcp-novo printenv BROWSER_MCP_ACCESS_TOKEN)
     [[ -n "$TOKEN" ]] || { echo "MCP_TOKEN_MISSING"; exit 70; }
     # Read-only API smoke; never print token.
     docker exec -i -e "VENDI_HOMOLOG_AUTH=$TOKEN" "$API" node - <<'JS'
