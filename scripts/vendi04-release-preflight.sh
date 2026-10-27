@@ -8,7 +8,7 @@ REPO=/home/vendorai/vendorai-api-auth-test
 echo "LOT=$LOT"
 echo "PHASE=preflight"
 echo "=== CONTAINERS ==="
-for C in vendorai-homolog-api vendorai-prod-api-candidate vendorai-mcp-contabo-fixed; do
+for C in vendorai-homolog-api vendorai-prod-api-candidate vendorai-mcp-novo; do
   docker inspect "$C" --format 'NAME={{.Name}} STATE={{.State.Status}} IMAGE={{.Config.Image}}'
 done
 echo "=== HEALTH ==="
