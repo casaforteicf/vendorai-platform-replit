@@ -250,6 +250,23 @@ export default function VendiOperations() {
         </div>
       </Card>
 
+      <Card className="border-border/60 p-4">
+        <div className="flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center">
+          <div>
+            <h2 className="text-sm font-semibold">Desenvolvimento, homologação e publicações</h2>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Missão concluída não significa publicação. Acompanhe versões, testes e aprovações na Central de Publicações.
+            </p>
+          </div>
+          <a
+            href="/admin/melhorias"
+            className="shrink-0 rounded-md border border-border px-3 py-2 text-xs font-medium hover:bg-muted"
+          >
+            Abrir Central de Publicações (Super Admin)
+          </a>
+        </div>
+      </Card>
+
       <div className="grid gap-5 xl:grid-cols-[360px_minmax(0,1fr)]">
         <div className="space-y-5">
           <Card className="p-4">
