@@ -35,6 +35,10 @@ case "$ACTION" in
    exit 65
    ;;
  build)
+   # System-wide exclusive build gate: per-lot locking alone permits two
+   # concurrent Docker builds on the constrained production VPS.
+   exec 7>/run/lock/vendi-release-global-build.lock
+   flock -n 7 || { echo BUILD_BUSY_OTHER_LOT; exit 75; }
    /usr/local/sbin/vendi04-release-preflight "$LOT" || exit $?
    [[ -d "$REPO/.git" ]] || { echo REPOSITORY_MISSING;exit 65; }
    work="$BASE/work/$LOT"
