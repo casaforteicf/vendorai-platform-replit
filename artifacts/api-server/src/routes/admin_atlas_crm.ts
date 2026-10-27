@@ -7,6 +7,16 @@ import { sql } from "drizzle-orm";
 
 const router: IRouter = Router();
 const marketingKey = "marketing-phase1-v1";
+router.get("/admin/atlas/crm-leads/:tenantId",requireRole("super_admin"),async(req,res)=>{
+ const tenantId=String(req.params.tenantId||"");
+ if(!/^[0-9a-z_-]{1,128}$/i.test(tenantId)){res.status(422).json({error:"INVALID_TENANT_ID"});return;}
+ try{
+  const rows=await db.select({id:leadsTable.id,label:leadsTable.nome}).from(leadsTable)
+   .where(and(eq(leadsTable.tenantId,tenantId),isNull(leadsTable.excluidoEm),isNull(leadsTable.naoLeadTipo))).limit(100);
+  res.setHeader("Cache-Control","no-store");
+  res.json({tenantId,items:rows});
+ }catch{res.status(503).json({error:"ATLAS_LEADS_UNAVAILABLE"});}
+});
 router.post("/admin/atlas/tasks/:nicheId/:taskId/link-crm", requireRole("super_admin"), async (req,res) => {
  const {nicheId, taskId} = req.params;
  const {tenantId, leadId} = req.body ?? {};
@@ -22,7 +32,7 @@ router.post("/admin/atlas/tasks/:nicheId/:taskId/link-crm", requireRole("super_a
   if (!raw || !validTasksJson(raw)) {res.status(404).json({error:"ATLAS_TASK_NOT_SAVED"});return;}
   const task=(JSON.parse(raw) as Array<{id:string;title:string;owner:string;priority:string;dueDate:string;done:boolean}>).find(t=>t.id===taskId);
   if (!task) {res.status(404).json({error:"ATLAS_TASK_NOT_FOUND"});return;}
-  const [lead]=await db.select({id:leadsTable.id}).from(leadsTable).where(and(eq(leadsTable.id,leadId),eq(leadsTable.tenantId,tenantId),isNull(leadsTable.excluidoEm))).limit(1);
+  const [lead]=await db.select({id:leadsTable.id}).from(leadsTable).where(and(eq(leadsTable.id,leadId),eq(leadsTable.tenantId,tenantId),isNull(leadsTable.excluidoEm),isNull(leadsTable.naoLeadTipo))).limit(1);
   if (!lead) {res.status(422).json({error:"ATLAS_LEAD_TENANT_MISMATCH"});return;}
   const linkKey=`atlas:${nicheId}:${taskId}:${leadId}`;
   const [existing]=await db.select({id:activitiesTable.id}).from(activitiesTable).where(and(eq(activitiesTable.tenantId,tenantId),eq(activitiesTable.leadId,leadId),eq(activitiesTable.origemTemplateKey,linkKey))).limit(1);
