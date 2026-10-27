@@ -72,10 +72,11 @@ print("HOMOLOG_DATABASE_ISOLATED=YES")
 print("HOMOLOG_BACKGROUND_JOBS_DISABLED=YES")
 print("HOMOLOG_STARTUP_MIGRATIONS_DISABLED=YES")
 PY
-docker create --name "$STAGE" --network vendorai-homolog --restart no \
+# Docker --rm also removes a stopped candidate if the orchestrator dies.
+# This avoids accumulating failed/stopped test containers across releases.
+docker run --rm --detach --name "$STAGE" --network vendorai-homolog \
  --memory=3g --memory-swap=4g --cpus=1 \
  --env-file "$TMPDIR/env" "$IMAGE" >/dev/null
-docker start "$STAGE" >/dev/null
 HEALTHY=0
 for i in $(seq 1 45); do
   if docker exec "$STAGE" node -e 'fetch("http://127.0.0.1:5000/api/auth/healthz",{signal:AbortSignal.timeout(1500)}).then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))' >/dev/null 2>&1; then
