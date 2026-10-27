@@ -30,7 +30,17 @@ TMPDIR=$(mktemp -d /root/vendi-homolog.XXXXXXXX)
 chmod 700 "$TMPDIR"
 STAGE="vendi-homolog-${LOT,,}-${SHA:0:12}"
 [[ -z "$(docker ps -aq --filter "name=^/$STAGE$")" ]] || { rmdir "$TMPDIR"; echo STAGE_ALREADY_EXISTS; exit 75; }
-cleanup(){ docker rm -f "$STAGE" >/dev/null 2>&1 || true; rm -rf "$TMPDIR"; }
+PASSED=0
+cleanup(){
+  local rc="$?"
+  if [[ "$PASSED" != 1 ]]; then
+    umask 077
+    printf 'LOT=%s\nSHA=%s\nSTATUS=HOMOLOG_FAILED\nEXIT_CODE=%s\n' \
+      "$LOT" "$SHA" "$rc" > "$ROOT/state/$LOT.homolog-failed" || true
+  fi
+  docker rm -f "$STAGE" >/dev/null 2>&1 || true
+  rm -rf "$TMPDIR"
+}
 trap cleanup EXIT
 python3 - "$TMPDIR/env" <<'PY'
 import json, os, subprocess, sys
@@ -95,7 +105,8 @@ printf 'LOT=%s\nSHA=%s\nIMAGE=%s\nIMAGE_ID=%s\nSTATUS=HOMOLOGATED\nAT_EPOCH=%s\n
  "$LOT" "$SHA" "$IMAGE" "$IMAGE_ID" "$(date +%s)" > "$tmp"
 chmod 600 "$tmp"
 ln "$tmp" "$PROOF" || { rm -f "$tmp"; echo HOMOLOG_EVIDENCE_COLLISION; exit 65; }
-rm -f "$tmp"
+rm -f "$tmp" "$ROOT/state/$LOT.homolog-failed"
+PASSED=1
 echo "HOMOLOG_CANDIDATE_VERIFIED=$LOT"
 echo "HOMOLOG_RECEIPT=$PROOF"
 echo "PRODUCTION=untouched"
