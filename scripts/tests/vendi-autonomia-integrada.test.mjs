@@ -100,3 +100,17 @@ test("failed rollback health restores previous production before incident escala
   const recovered = script.indexOf("ROLLBACK_BACKUP_UNHEALTHY_ORIGINAL_RESTORED");
   assert.ok(originalRename > 0 && recovered > originalRename, "must put original container back first");
 });
+
+test("publish fails closed on changed database migrations and schema without compatible rollback proof", () => {
+  const script = read("scripts/vendi04-controlled-release.sh");
+  const baseline = script.indexOf("PRODUCTION_SOURCE_REVISION_UNKNOWN");
+  const schemaDiff = script.indexOf('diff --name-only "$BASE_SHA" "$SHA" -- lib/db/migrations');
+  const review = script.indexOf("SCHEMA_CHANGE_REVIEW_REQUIRED");
+  const containerSwap = script.indexOf('docker stop "$CURRENT"', script.indexOf("# Publish only an image"));
+  assert.ok(baseline >= 0 && schemaDiff > baseline && review > schemaDiff && containerSwap > review);
+  for (const token of [
+    "RELEASE_SOURCE_NOT_DESCENDANT_OF_PRODUCTION",
+    "SCHEMA_COMPATIBILITY_EVIDENCE_MISMATCH",
+    "STATUS=ROLLBACK_COMPATIBILITY_VERIFIED",
+  ]) assert.ok(script.includes(token), token);
+});
