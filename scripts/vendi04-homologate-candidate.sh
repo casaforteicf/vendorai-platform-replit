@@ -29,7 +29,7 @@ docker inspect vendorai-homolog-api vendorai-prod-api-candidate vendorai-mcp-nov
 TMPDIR=$(mktemp -d /root/vendi-homolog.XXXXXXXX)
 chmod 700 "$TMPDIR"
 STAGE="vendi-homolog-${LOT,,}-${SHA:0:12}"
-[[ -z "$(docker ps -aq --filter "name=^/$STAGE$")" ]] || { echo STAGE_ALREADY_EXISTS; exit 75; }
+[[ -z "$(docker ps -aq --filter "name=^/$STAGE$")" ]] || { rmdir "$TMPDIR"; echo STAGE_ALREADY_EXISTS; exit 75; }
 cleanup(){ docker rm -f "$STAGE" >/dev/null 2>&1 || true; rm -rf "$TMPDIR"; }
 trap cleanup EXIT
 python3 - "$TMPDIR/env" <<'PY'
