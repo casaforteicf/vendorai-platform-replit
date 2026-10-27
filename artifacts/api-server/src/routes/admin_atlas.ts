@@ -193,4 +193,39 @@ router.put("/admin/atlas/construction-chain",requireRole("super_admin"),async(re
  }catch{res.status(503).json({error:"ATLAS_CHAIN_STORAGE_UNAVAILABLE"});}
 });
 
+
+function validMarketRegistry(input:unknown):boolean{
+ if(!Array.isArray(input)||input.length>1000)return false;
+ const ids=new Set<string>();
+ return input.every(value=>{
+  if(!value||typeof value!=="object"||Array.isArray(value))return false;
+  const x=value as Record<string,unknown>;
+  if(Object.keys(x).some(k=>!["id","stageId","name","kind","region","category","notes","source","verified"].includes(k)))return false;
+  if(typeof x.id!=="string"||!/^market-[a-z0-9_-]{1,80}$/i.test(x.id)||ids.has(x.id))return false;
+  ids.add(x.id);
+  return typeof x.stageId==="string"&&/^[a-z0-9_-]{1,64}$/.test(x.stageId)&&typeof x.name==="string"&&!!x.name.trim()&&x.name.length<=350&&
+   ["supplier","product","opportunity"].includes(String(x.kind))&&typeof x.region==="string"&&x.region.length<=350&&typeof x.category==="string"&&x.category.length<=350&&
+   typeof x.notes==="string"&&x.notes.length<=2000&&typeof x.source==="string"&&x.source.length<=350&&x.verified===false;
+ });
+}
+router.get("/admin/atlas/market-registry",requireRole("super_admin"),async(_req,res)=>{
+ try{const result=await db.execute(sql`SELECT content,revision FROM vendor_atlas_documents WHERE document_key='market-registry-v1'`);
+ const row=result.rows[0] as {content:unknown;revision:number}|undefined;
+ res.setHeader("Cache-Control","no-store");res.json({items:row?.content??[],revision:Number(row?.revision??0)});
+ }catch{res.status(503).json({error:"ATLAS_MARKET_REGISTRY_UNAVAILABLE"});}
+});
+router.put("/admin/atlas/market-registry",requireRole("super_admin"),async(req,res)=>{
+ const {items,revision}=req.body??{};
+ if(!validMarketRegistry(items)||!Number.isInteger(revision)||revision<0||revision>1000000){res.status(422).json({error:"ATLAS_MARKET_REGISTRY_INVALID"});return;}
+ const json=JSON.stringify(items),author=String(req.user?.email||req.user?.sub||"super_admin");
+ try{const updated=await db.transaction(async tx=>{
+ const result=revision>0?await tx.execute(sql`UPDATE vendor_atlas_documents SET content=${json}::jsonb,revision=revision+1,updated_by=${author},updated_at=now() WHERE document_key='market-registry-v1' AND revision=${revision} RETURNING revision`):await tx.execute(sql`INSERT INTO vendor_atlas_documents(document_key,content,revision,updated_by) VALUES('market-registry-v1',${json}::jsonb,1,${author}) ON CONFLICT DO NOTHING RETURNING revision`);
+ const rev=Number((result.rows[0] as {revision:number}|undefined)?.revision??0);
+ if(rev)await tx.execute(sql`INSERT INTO vendor_atlas_document_history(document_key,revision,content,updated_by) VALUES('market-registry-v1',${rev},${json}::jsonb,${author})`);
+ return rev;});
+ if(!updated){res.status(409).json({error:"ATLAS_MARKET_REGISTRY_REVISION_CONFLICT"});return;}
+ res.json({ok:true,revision:updated});
+ }catch{res.status(503).json({error:"ATLAS_MARKET_REGISTRY_UNAVAILABLE"});}
+});
+
 export default router;
