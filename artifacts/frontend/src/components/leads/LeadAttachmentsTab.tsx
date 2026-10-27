@@ -343,6 +343,7 @@ export default function LeadAttachmentsTab() {
   const [mediaAssets, setMediaAssets] = useState<MediaAsset[]>([]);
   const [messageAttachments, setMessageAttachments] = useState<MessageAttachment[]>([]);
   const [paymentAttachments, setPaymentAttachments] = useState<PaymentAttachment[]>([]);
+  const [financeAccessRestricted, setFinanceAccessRestricted] = useState(false);
   const [obraDiaryAttachments, setObraDiaryAttachments] = useState<ObraDiaryAttachment[]>([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
@@ -456,9 +457,12 @@ export default function LeadAttachmentsTab() {
 
       if (paymentsResult.status === "fulfilled") {
         setPaymentAttachments(paymentsResult.value);
+        setFinanceAccessRestricted(false);
       } else {
         setPaymentAttachments([]);
-        failures.push(`Comprovantes financeiros: ${String(paymentsResult.reason)}`);
+        const restricted = String(paymentsResult.reason).includes("Acesso financeiro restrito");
+        setFinanceAccessRestricted(restricted);
+        if (!restricted) failures.push(`Comprovantes financeiros: ${String(paymentsResult.reason)}`);
       }
 
       if (diaryResult.status === "fulfilled") {
@@ -705,12 +709,14 @@ export default function LeadAttachmentsTab() {
       });
     }
 
+    // Uma URL pode aparecer em atividades, conversas, obras e pastas diferentes.
+    // As referências são distintas e não podem desaparecer na deduplicação visual.
+    // Só removemos registros com a mesma identidade de origem.
     const seen = new Set<string>();
     return rows
       .filter((row) => {
-        const fingerprint = canonicalStorageUrl(row.url);
-        if (seen.has(fingerprint)) return false;
-        seen.add(fingerprint);
+        if (seen.has(row.key)) return false;
+        seen.add(row.key);
         return true;
       })
       .sort((a, b) => new Date(b.createdAt ?? 0).getTime() - new Date(a.createdAt ?? 0).getTime());
@@ -1048,7 +1054,15 @@ export default function LeadAttachmentsTab() {
     }
   }
 
+  function isConfidentialAttachment(item: UnifiedAttachment): boolean {
+    return item.sourceKind === "payment" || item.folderPath.startsWith("Financeiro /");
+  }
+
   async function setMarketingStatus(item: UnifiedAttachment, status: MarketingStatus) {
+    if (isConfidentialAttachment(item)) {
+      toast({ title: "Documento financeiro restrito", description: "Não é permitido enviar arquivos financeiros ao marketing.", variant: "destructive" });
+      return;
+    }
     const overrides = {
       ...attachmentState.overrides,
       [item.key]: {
@@ -1088,6 +1102,10 @@ export default function LeadAttachmentsTab() {
   }
 
   async function approveForMedia(item: UnifiedAttachment) {
+    if (isConfidentialAttachment(item)) {
+      toast({ title: "Documento financeiro restrito", description: "Arquivos financeiros não podem ser aprovados para marketing.", variant: "destructive" });
+      return;
+    }
     if (!tenantId || !leadId || item.mediaAssetId) return;
     setSaving(true);
     try {
@@ -1174,6 +1192,11 @@ export default function LeadAttachmentsTab() {
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
+        {financeAccessRestricted && (
+          <p className="rounded-md border p-2 text-xs text-muted-foreground" role="status">
+            Os comprovantes financeiros são visíveis apenas para administradores autorizados.
+          </p>
+        )}
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex flex-wrap gap-1.5">
             {([
@@ -1271,9 +1294,11 @@ export default function LeadAttachmentsTab() {
                   </a>
                   <div className="space-y-2 p-3">
                     <div className="flex items-start gap-2"><div className="min-w-0 flex-1"><p className="truncate text-sm font-semibold" title={item.name}>{item.name}</p><p className="mt-0.5 truncate text-[11px] text-muted-foreground">{item.origin}{item.folderPath ? ` · ${item.folderPath}` : ""}</p></div><div className="flex items-center gap-0.5"><button type="button" className="rounded p-1 text-muted-foreground hover:bg-muted" onClick={() => openEdit(item)} title="Renomear ou mover"><Pencil className="h-3.5 w-3.5" /></button>{item.sourceKind === "lead" && <button type="button" className="rounded p-1 text-destructive hover:bg-destructive/10" onClick={() => void deleteAttachment(item)} disabled={saving} title="Excluir arquivo" aria-label={`Excluir ${item.name}`}><Trash2 className="h-3.5 w-3.5" /></button>}</div></div>
-                    <div className="flex flex-wrap gap-1"><Badge variant="outline" className="text-[10px]">{typeLabel(item)}</Badge><Badge variant="outline" className={`text-[10px] ${statusClass(item.marketingStatus)}`}>{statusLabel(item.marketingStatus)}</Badge></div>
+                    <div className="flex flex-wrap gap-1"><Badge variant="outline" className="text-[10px]">{typeLabel(item)}</Badge>{isConfidentialAttachment(item) ? <Badge variant="outline" className="text-[10px]">Uso restrito</Badge> : <Badge variant="outline" className={`text-[10px] ${statusClass(item.marketingStatus)}`}>{statusLabel(item.marketingStatus)}</Badge>}</div>
                     <div className="flex items-center justify-between text-[10px] text-muted-foreground"><span>{formatBytes(item.size)}</span><span>{formatDate(item.createdAt)}</span></div>
-                    {item.marketingStatus !== "approved" ? (
+                    {isConfidentialAttachment(item) ? (
+                      <div className="flex items-center gap-1.5 rounded-md border px-2 py-1.5 text-[10px] text-muted-foreground"><Lock className="h-3 w-3" />Documento financeiro: marketing indisponível</div>
+                    ) : item.marketingStatus !== "approved" ? (
                       <div className="grid grid-cols-2 gap-1.5 pt-1">
                         <Button size="sm" variant="outline" className="h-7 gap-1 px-2 text-[10px]" onClick={() => void setMarketingStatus(item, "candidate")} disabled={saving}><Sparkles className="h-3 w-3" />Candidato</Button>
                         <Button size="sm" variant="outline" className="h-7 gap-1 px-2 text-[10px] text-rose-600" onClick={() => void setMarketingStatus(item, "blocked")} disabled={saving}><Ban className="h-3 w-3" />Não usar</Button>
