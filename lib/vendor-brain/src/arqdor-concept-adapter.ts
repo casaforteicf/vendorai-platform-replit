@@ -27,6 +27,7 @@ export type PersistedConceptGeometryInput = {
   tenantId: string;
   projectId: string;
   configuration: unknown;
+  updatedAt?: Date | string | null;
 };
 
 type JsonObject = Record<string, unknown>;
@@ -85,7 +86,11 @@ export function adaptPersistedConceptGeometry(
     Number.isSafeInteger(configuration.revisionNumber) &&
     configuration.revisionNumber >= 1
   ) {
-    revisionId = 'draft:r' + configuration.revisionNumber;
+    const updatedAt = input.updatedAt instanceof Date
+      ? input.updatedAt
+      : typeof input.updatedAt === 'string' ? new Date(input.updatedAt) : null;
+    if (!updatedAt || !Number.isFinite(updatedAt.getTime())) reasons.push('draft_updated_at_missing');
+    else revisionId = 'draft:r' + configuration.revisionNumber + ':updated:' + updatedAt.toISOString();
   } else {
     reasons.push('draft_revision_missing');
   }
