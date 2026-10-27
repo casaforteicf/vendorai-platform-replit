@@ -40,7 +40,8 @@ test("homologation uses EXACT private candidate and does not swap live container
   assert.match(stage, /HOMOLOG_USES_PRODUCTION_DATABASE/);
   assert.match(stage, /VENDORAI_DISABLE_BACKGROUND_JOBS/);
   assert.match(stage, /VENDORAI_HOMOLOGATION_SEED/);
-  assert.match(stage, /--network vendorai-homolog --restart no/);
+  assert.match(stage, /docker run --rm --detach/);
+  assert.match(stage, /--network vendorai-homolog/);
   assert.match(stage, /STATUS=HOMOLOGATED/);
   assert.match(stage, /IMAGE_ID/);
   assert.doesNotMatch(stage, /docker (?:stop|rename|rm -f) ["']?vendorai-prod-api-candidate/);
@@ -113,4 +114,32 @@ test("publish fails closed on changed database migrations and schema without com
     "SCHEMA_COMPATIBILITY_EVIDENCE_MISMATCH",
     "STATUS=ROLLBACK_COMPATIBILITY_VERIFIED",
   ]) assert.ok(script.includes(token), token);
+});
+
+test("same SHA can reuse image layers and never rebuild without free resources", () => {
+  const runner = read("scripts/vendi04-release-runner.sh");
+  const op = read("scripts/vendi-contabo-operator");
+  assert.match(runner, /IMAGE_REUSED_EXISTING_SHA/);
+  assert.match(runner, /other_sha.*==.*SHA/);
+  assert.match(runner, /docker tag "\$oldtag" "\$IMAGE"/);
+  assert.match(runner, /BUILD_BLOCKED_RESOURCE_PRESSURE/);
+  assert.match(runner, /BUILD_BLOCKED_IMAGE_RETENTION_REVIEW/);
+  assert.match(runner, /MEM_KB < 2097152/);
+  assert.match(runner, /FREE_KB < 14680064/);
+  assert.match(op, /STATUS=BUILT_REUSED_NO_NEW_LAYERS/);
+  assert.match(op, /BUILD_BLOCKED_MEMORY_PRESSURE/);
+});
+
+test("candidate tests leave no persistent stopped Docker containers", () => {
+  const stage = read("scripts/vendi04-homologate-candidate.sh");
+  assert.match(stage, /docker run --rm --detach/);
+  assert.match(stage, /cleanup\(\)/);
+  assert.doesNotMatch(stage, /docker create --name "\$STAGE"/);
+});
+
+test("no bulk Docker prune is part of unattended release scripts", () => {
+  for (const path of scripts) {
+    const content = read(path);
+    assert.doesNotMatch(content, /docker\s+(?:system|image|volume|builder)\s+prune/);
+  }
 });
