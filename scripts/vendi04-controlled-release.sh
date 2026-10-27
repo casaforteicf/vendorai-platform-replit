@@ -171,6 +171,41 @@ NOW=$(date +%s)
 [[ "$PROOF_TIME" =~ ^[0-9]{10,12}$ ]] && (( PROOF_TIME <= NOW && NOW - PROOF_TIME <= 86400 )) || {
   echo HOMOLOG_RECEIPT_EXPIRED; exit 65;
 }
+# Pin the database migration baseline to the ACTUALLY running production image.
+# If schema changes are detected, rollback requires a separately reviewed
+# compatibility/restore proof. Never infer migration safety from HTTP 200.
+REPO=/home/vendorai/vendorai-api-auth-test
+[[ -d "$REPO/.git" ]] || { echo RELEASE_GIT_REPOSITORY_UNAVAILABLE; exit 65; }
+BASE_IMAGE=$(docker inspect "$CURRENT" --format '{{.Config.Image}}')
+BASE_REV=""
+if [[ "$BASE_IMAGE" =~ ^vendorai-api:main-([a-f0-9]{9,12})$ ]]; then
+  BASE_REV="${BASH_REMATCH[1]}"
+elif [[ "$BASE_IMAGE" =~ ^vendorai-release:vendi-[a-z0-9-]+-([a-f0-9]{12})$ ]]; then
+  BASE_REV="${BASH_REMATCH[1]}"
+fi
+[[ -n "$BASE_REV" ]] || { echo PRODUCTION_SOURCE_REVISION_UNKNOWN; exit 65; }
+BASE_SHA=$(git -c "safe.directory=$REPO" -C "$REPO" rev-parse --verify "$BASE_REV^{commit}" 2>/dev/null) ||
+  { echo PRODUCTION_SOURCE_SHA_NOT_AVAILABLE; exit 65; }
+git -c "safe.directory=$REPO" -C "$REPO" cat-file -e "$SHA^{commit}" 2>/dev/null ||
+  { echo RELEASE_CANDIDATE_SHA_NOT_AVAILABLE; exit 65; }
+git -c "safe.directory=$REPO" -C "$REPO" merge-base --is-ancestor "$BASE_SHA" "$SHA" ||
+  { echo RELEASE_SOURCE_NOT_DESCENDANT_OF_PRODUCTION; exit 65; }
+SCHEMA_FILES=$(git -c "safe.directory=$REPO" -C "$REPO" diff --name-only "$BASE_SHA" "$SHA" -- lib/db/migrations) ||
+  { echo SCHEMA_DIFF_UNAVAILABLE; exit 65; }
+if [[ -n "$SCHEMA_FILES" ]]; then
+  SCHEMA_PROOF="$ROOT/state/$LOT.schema-reviewed"
+  [[ -f "$SCHEMA_PROOF" && "$(stat -c %u "$SCHEMA_PROOF")" == 0 &&
+    "$(stat -c %a "$SCHEMA_PROOF")" == 600 ]] || {
+      echo SCHEMA_CHANGE_REVIEW_REQUIRED; exit 65;
+    }
+  grep -Fxq "LOT=$LOT" "$SCHEMA_PROOF" &&
+  grep -Fxq "BASE_SHA=$BASE_SHA" "$SCHEMA_PROOF" &&
+  grep -Fxq "SHA=$SHA" "$SCHEMA_PROOF" &&
+  grep -Fxq "STATUS=ROLLBACK_COMPATIBILITY_VERIFIED" "$SCHEMA_PROOF" || {
+    echo SCHEMA_COMPATIBILITY_EVIDENCE_MISMATCH; exit 65;
+  }
+fi
+echo "SCHEMA_CHANGE_DETECTED=$([[ -n "$SCHEMA_FILES" ]] && echo YES || echo NO)"
 [[ ! -e "$STATE" ]] || { echo RELEASE_RECORD_EXISTS_REQUIRES_RECONCILIATION;exit 65; }
 docker inspect "$CURRENT" >/dev/null
 docker inspect "$BACK" >/dev/null 2>&1 && { echo BACKUP_NAME_EXISTS;exit 65; }
