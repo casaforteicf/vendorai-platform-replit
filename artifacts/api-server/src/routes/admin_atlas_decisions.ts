@@ -15,7 +15,9 @@ export function validStrategicDecisions(input:unknown):input is Record<string,De
     typeof d.source==="string"&&d.source.length<=3000&&
     ["review","approved","rejected","measured"].includes(String(d.status))&&
     typeof d.outcome==="string"&&d.outcome.length<=5000&&
-    typeof d.updatedAt==="string"&&d.updatedAt.length<=40&&\n    (d.status!=="measured"||(d.outcome as string).trim().length>0)&&\n    (!["approved","measured"].includes(String(d.status))||(d.source as string).trim().length>0);
+    typeof d.updatedAt==="string"&&d.updatedAt.length<=40&&
+    (d.status!=="measured"||(d.outcome as string).trim().length>0)&&
+    (!["approved","measured"].includes(String(d.status))||(d.source as string).trim().length>0);
  });
 }
 router.get("/admin/atlas/strategic-decisions",requireRole("super_admin"),async(_req,res)=>{
