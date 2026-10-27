@@ -1,3 +1,8 @@
+import {
+  conceptStructuralRevision,
+  type ConceptStructuralState,
+} from '@workspace/vendor-brain/arqdor-geometry-revision';
+
 /**
  * A render must name the exact persisted geometric revision that it depicts.
  * Never derive provenance from unsaved local editor state or from wall coordinates.
@@ -20,10 +25,7 @@ export function conceptRenderRevision(
 /** Preferred token: structural revision derived from the actual saved snapshot.
  * Render-history PATCHes do not change this token; architectural edits do.
  */
-import {
-  conceptStructuralRevision,
-  type ConceptStructuralState,
-} from '@workspace/vendor-brain/arqdor-geometry-revision';
+
 
 export function conceptRenderStructuralRevision(
   saved: ConceptStructuralState,
