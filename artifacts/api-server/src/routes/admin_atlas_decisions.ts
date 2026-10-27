@@ -26,6 +26,14 @@ router.get("/admin/atlas/strategic-decisions",requireRole("super_admin"),async(_
  res.setHeader("Cache-Control","no-store");res.json({decisions:row?.content??{},revision:Number(row?.revision??0)});
  }catch{res.status(503).json({error:"ATLAS_DECISIONS_UNAVAILABLE"});}
 });
+router.get("/admin/atlas/strategic-decisions/history",requireRole("super_admin"),async(req,res)=>{
+ const limit=Number(req.query.limit??20);
+ if(!Number.isInteger(limit)||limit<1||limit>100){res.status(422).json({error:"ATLAS_HISTORY_INVALID_LIMIT"});return;}
+ try{
+ const result=await db.execute(sql`SELECT revision,updated_by,created_at FROM vendor_atlas_document_history WHERE document_key=${key} ORDER BY revision DESC LIMIT ${limit}`);
+ res.setHeader("Cache-Control","no-store");res.json({items:result.rows});
+ }catch{res.status(503).json({error:"ATLAS_HISTORY_UNAVAILABLE"});}
+});
 router.put("/admin/atlas/strategic-decisions",requireRole("super_admin"),async(req,res)=>{
  const {decisions,revision}=req.body??{};
  if(!validStrategicDecisions(decisions)||!Number.isInteger(revision)||revision<0||revision>1000000){res.status(422).json({error:"ATLAS_DECISIONS_INVALID"});return;}
