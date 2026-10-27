@@ -8,9 +8,13 @@ REPO=/home/vendorai/vendorai-api-auth-test
 echo "LOT=$LOT"
 echo "PHASE=preflight"
 echo "=== CONTAINERS ==="
-for C in vendorai-homolog-api vendorai-prod-api-candidate vendorai-mcp-contabo-fixed; do
+for C in vendorai-homolog-api vendorai-prod-api-candidate vendorai-mcp-novo; do
   docker inspect "$C" --format 'NAME={{.Name}} STATE={{.State.Status}} IMAGE={{.Config.Image}}'
 done
+echo "=== MCP HEALTH ==="
+MCP_HTTP=$(curl --silent --output /dev/null --write-out '%{http_code}' --max-time 5 "http://127.0.0.1:18789/health" || true)
+echo "MCP_HTTP=$MCP_HTTP"
+[[ "$MCP_HTTP" == "200" ]] || { echo "VENDI_MCP_UNAVAILABLE"; exit 69; }
 echo "=== HEALTH ==="
 for PORT in 5000 5001; do
   HTTP=$(curl --silent --output /dev/null --write-out '%{http_code}' --max-time 5 "http://127.0.0.1:${PORT}/api/auth/healthz" || true)
