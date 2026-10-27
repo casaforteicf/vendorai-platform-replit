@@ -99,6 +99,7 @@ if [[ "$ACTION" == rollback ]]; then
  [[ "$(sed -n 's/^STATUS=//p' "$STATE" | head -1)" == "PUBLISHED" ]] || { echo ROLLBACK_NOT_PUBLISHED;exit 65; }
  docker inspect "$SAVED" >/dev/null || { echo BACKUP_MISSING;exit 65; }
  REPLACED="${CURRENT}-failed-$(date -u +%s)"
+ docker inspect "$REPLACED" >/dev/null 2>&1 && { echo ROLLBACK_TEMP_NAME_ALREADY_EXISTS; exit 65; }
  docker stop "$CURRENT" >/dev/null
  docker rename "$CURRENT" "$REPLACED"
  if ! docker rename "$SAVED" "$CURRENT"; then
@@ -121,8 +122,24 @@ if [[ "$ACTION" == rollback ]]; then
    fi
    sleep 2
  done
+ # The backup container started, but failed its health gate. Restore the
+ # previously running image instead of leaving production in a failed state.
+ log "ROLLBACK_BACKUP_UNHEALTHY_RESTORING_ORIGINAL"
+ if docker stop "$CURRENT" >/dev/null 2>&1 &&
+    docker rename "$CURRENT" "$SAVED" &&
+    docker rename "$REPLACED" "$CURRENT" &&
+    docker start "$CURRENT" >/dev/null; then
+   for _ in $(seq 1 30); do
+     if check; then
+       echo ROLLBACK_BACKUP_UNHEALTHY_ORIGINAL_RESTORED
+       log "ROLLBACK_ABORTED_ORIGINAL_RESTORED"
+       exit 1
+     fi
+     sleep 2
+   done
+ fi
  echo ROLLBACK_HEALTH_FAILED_MANUAL_RECOVERY_REQUIRED
- log "ROLLBACK_HEALTH_FAILED"
+ log "ROLLBACK_HEALTH_FAILED_MANUAL_RECOVERY"
  exit 1
 fi
 # Publish only an image that was actually built and recorded with the requested commit.
