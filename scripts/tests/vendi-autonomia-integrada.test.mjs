@@ -143,3 +143,19 @@ test("no bulk Docker prune is part of unattended release scripts", () => {
     assert.doesNotMatch(content, /docker\s+(?:system|image|volume|builder)\s+prune/);
   }
 });
+
+test("limits outstanding candidate images without deleting backups or production assets", () => {
+  const runner = read("scripts/vendi04-release-runner.sh");
+  assert.match(runner, /BUILD_BLOCKED_UNPROMOTED_IMAGE_BACKLOG/);
+  assert.match(runner, /PENDING_IMAGES >= 2/);
+  assert.match(runner, /BUILD_BLOCKED_IMAGE_RETENTION_REVIEW/);
+  assert.match(runner, /IMAGE_REUSED_EXISTING_SHA/);
+});
+
+test("isolated homologation refuses to run when RAM, swap or disk are pressured", () => {
+  const stage = read("scripts/vendi04-homologate-candidate.sh");
+  assert.match(stage, /HOMOLOG_BLOCKED_RESOURCE_PRESSURE/);
+  assert.match(stage, /MEM_KB < 2097152/);
+  assert.match(stage, /FREE_KB < 3145728/);
+  assert.match(stage, /docker run --rm --detach/);
+});
