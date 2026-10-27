@@ -1,7 +1,7 @@
 import * as React from "react";
 import { atlasPhaseOneStrategies } from "./atlasPhaseOneStrategies";
 
-type PlanFields={owner?:string;planStatus?:string;dueDate?:string;actions?:string;actualResults?:string;goals?:string};
+type PlanFields={owner?:string;planStatus?:string;dueDate?:string;actions?:string;actualResults?:string;goals?:string;tasksJson?:string};
 type Props={
  overrides:Record<string,PlanFields>;
  strategyReady:boolean;
@@ -16,11 +16,14 @@ export default function AtlasExecutiveDashboard({overrides,strategyReady,operati
  const [filter,setFilter]=React.useState("all");
  const today=new Date().toISOString().slice(0,10);
  const plans=atlasPhaseOneStrategies.map(s=>({...s,...(overrides[s.id]||{}),planStatus:overrides[s.id]?.planStatus||"draft"}));
+ const taskStats=plans.reduce((acc,p)=>{try{const tasks=JSON.parse(p.tasksJson||"[]");if(Array.isArray(tasks))for(const task of tasks){acc.total++;if(task.done)acc.done++;else if(task.dueDate&&task.dueDate<today)acc.overdue++}}catch{}return acc},{total:0,done:0,overdue:0});
  const active=plans.filter(x=>x.planStatus==="in_progress");
  const completed=plans.filter(x=>x.planStatus==="completed");
  const overdue=plans.filter(x=>x.dueDate&&x.dueDate<today&&x.planStatus!=="completed");
  const selected=plans.filter(x=>filter==="all"||x.planStatus===filter||(filter==="overdue"&&x.dueDate&&x.dueDate<today&&x.planStatus!=="completed"));
  const cards=[
+  {label:"Tarefas concluídas",value:strategyReady?taskStats.done+" / "+taskStats.total:"—",detail:"Conclusões registradas nos planos"},
+  {label:"Tarefas atrasadas",value:strategyReady?taskStats.overdue:"—",detail:"Tarefas não concluídas após o prazo"},
   {label:"Segmentos mapeados",value:new Set(plans.map(p=>p.segment)).size,detail:"Planejamento da fase 1"},
   {label:"Nichos catalogados",value:plans.length,detail:"Estratégias-base propostas"},
   {label:"Planos em execução",value:strategyReady?active.length:"—",detail:strategyReady?"Situação informada pelos responsáveis":"Aguardando estratégias do servidor"},
@@ -32,7 +35,7 @@ export default function AtlasExecutiveDashboard({overrides,strategyReady,operati
   <div className="rounded-xl border border-emerald-800 bg-[#16283b] p-4">
    <h2 className="text-xl font-semibold">Painel executivo · Atlas 360º</h2>
    <p className="mt-1 text-sm text-slate-300">Fase 1 — Construção civil e imóveis. Estratégias-base são propostas de planejamento, não campanhas lançadas.</p>
-   <div className="mt-4 grid grid-cols-2 gap-3 lg:grid-cols-5">{cards.map(x=><div key={x.label} className="rounded-xl border border-slate-600 bg-[#20354a] p-3"><div className="text-xs text-slate-300">{x.label}</div><div className="mt-1 text-2xl font-bold">{x.value}</div><p className="mt-1 text-xs text-slate-400">{x.detail}</p></div>)}</div>
+   <div className="mt-4 grid grid-cols-2 gap-3 lg:grid-cols-4">{cards.map(x=><div key={x.label} className="rounded-xl border border-slate-600 bg-[#20354a] p-3"><div className="text-xs text-slate-300">{x.label}</div><div className="mt-1 text-2xl font-bold">{x.value}</div><p className="mt-1 text-xs text-slate-400">{x.detail}</p></div>)}</div>
   </div>
   <section className="rounded-xl border border-slate-700 bg-[#16283b] p-4">
    <h3 className="font-semibold">Dados operacionais reais</h3>
