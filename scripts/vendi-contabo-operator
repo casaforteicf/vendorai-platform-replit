@@ -4,7 +4,7 @@ set -Eeuo pipefail
 ACTION="${1:-}"
 LOT="${2:-}"
 [[ "$#" -eq 2 && "$LOT" =~ ^[A-Z][A-Z0-9]{1,15}-[0-9]{1,6}$ ]] || { echo "INVALID_ARGUMENTS"; exit 64; }
-case "$ACTION" in build|homologate|rollback|releaseStatus|preflight|publish|upgradeOperator) ;; *) echo "UNSUPPORTED_ACTION"; exit 64;; esac
+case "$ACTION" in build|homologate|rollback|releaseStatus|preflight|publish|upgradeOperator|auditReadiness) ;; *) echo "UNSUPPORTED_ACTION"; exit 64;; esac
 LOCK=/run/lock/vendi-operator.lock
 exec 9>"$LOCK"
 flock -n 9 || { echo "OPERATION_BUSY"; exit 75; }
@@ -24,7 +24,7 @@ case "$LOT" in
        audit "LOT_NOT_REGISTERED_READONLY"
        exit 0
      fi
-     if [[ "$ACTION" == "build" || "$ACTION" == "releaseStatus" || "$ACTION" == "publish" || "$ACTION" == "rollback" || "$ACTION" == "homologate" || "$ACTION" == "upgradeOperator" || "$ACTION" == "preflight" ]]; then
+     if [[ "$ACTION" == "build" || "$ACTION" == "releaseStatus" || "$ACTION" == "publish" || "$ACTION" == "rollback" || "$ACTION" == "homologate" || "$ACTION" == "upgradeOperator" || "$ACTION" == "auditReadiness" || "$ACTION" == "preflight" ]]; then
        test -f "/var/lib/vendi-release/manifests/$LOT.env" || { echo "LOT_NOT_REGISTERED"; exit 65; }
      else
        echo "UNSUPPORTED_LOT_ACTION"; exit 65
@@ -35,6 +35,10 @@ API=vendorai-homolog-api
 BACK=vendorai-homolog-pre-vendi02
 check_health(){ curl --fail --silent --max-time 8 "$HEALTH" >/dev/null; }
 case "$ACTION" in
+  auditReadiness)
+    /usr/local/sbin/vendi04-audit-readiness "$LOT"
+    audit "AUDIT_READONLY_OK"
+    ;;
   upgradeOperator)
     # No free-form shell: root-owned manifest + approval record + fixed path allowlist.
     /usr/local/sbin/vendi04-controlled-upgrade "$LOT"
