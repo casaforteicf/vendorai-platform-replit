@@ -34,6 +34,14 @@ OUT="$(pwd)/.test-evidence"
 mkdir -p "$OUT"
 RUN="$(mktemp -d "$OUT/pr-$PR-XXXXXXXX")"
 mkdir -p "$RUN/work" "$RUN/logs" "$RUN/store"
+# Evidence is retained, but disposable test data is always removed on exit.
+# Never copy package caches across runs or leave extracted source trees behind.
+cleanup_workspace() {
+  [[ -n "${RUN:-}" && -d "$RUN" && ! -L "$RUN" ]] || return 0
+  case "$RUN" in "$OUT"/pr-"$PR"-*) ;; *) echo UNSAFE_TEST_CLEANUP_PATH >&2; return 65;; esac
+  rm -rf -- "$RUN/work" "$RUN/store"
+}
+trap cleanup_workspace EXIT
 # Reuse only a hydrated ephemeral store for the SAME SHA, without copying or downloading.
 REUSE="$(printenv VENDORAI_REUSE_STORE || true)"
 if [ -n "$REUSE" ]; then
@@ -46,8 +54,11 @@ if [ -n "$REUSE" ]; then
   rmdir "$RUN/store"
   ln -s "$REUSE" "$RUN/store"
 else
-  if ! cp -a --reflink=auto "$STORE/." "$RUN/store/"; then
-    echo "Could not snapshot offline store safely" >&2; exit 69
+  # The old '--reflink=auto' silently copied every package on ext4.
+  # Require CoW reflinks; never fall back to a full duplicate of the PNPM cache.
+  if ! cp -a --reflink=always "$STORE/." "$RUN/store/"; then
+    echo "COW_SNAPSHOT_UNAVAILABLE_NO_FULL_CACHE_COPY" >&2
+    exit 75
   fi
   chmod -R u+rwX "$RUN/store"
 fi
