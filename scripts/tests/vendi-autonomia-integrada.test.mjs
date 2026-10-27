@@ -90,3 +90,13 @@ test("mission lease migration is explicit and supervisor renews it", () => {
   assert.match(supervisor, /VENDI_MISSION_LEASE_LOST/);
   assert.match(supervisor, /DELETE FROM vendi_mission_leases/);
 });
+
+test("failed rollback health restores previous production before incident escalation", () => {
+  const script = read("scripts/vendi04-controlled-release.sh");
+  assert.ok(script.includes("ROLLBACK_BACKUP_UNHEALTHY_RESTORING_ORIGINAL"));
+  assert.ok(script.includes("ROLLBACK_BACKUP_UNHEALTHY_ORIGINAL_RESTORED"));
+  assert.ok(script.includes("ROLLBACK_HEALTH_FAILED_MANUAL_RECOVERY_REQUIRED"));
+  const originalRename = script.indexOf('docker rename "$REPLACED" "$CURRENT"', script.indexOf("ROLLBACK_BACKUP_UNHEALTHY_RESTORING_ORIGINAL"));
+  const recovered = script.indexOf("ROLLBACK_BACKUP_UNHEALTHY_ORIGINAL_RESTORED");
+  assert.ok(originalRename > 0 && recovered > originalRename, "must put original container back first");
+});
