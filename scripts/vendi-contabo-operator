@@ -113,13 +113,44 @@ case "$ACTION" in
       audit "BUILD_ALREADY_COMPLETE"
       exit 0
     fi
-    # Fail closed on scarce disk space; avoid jeopardizing the live API.
+    # Try an already-verified image for this exact SHA and build context.
+    # A Docker tag aliases existing layers; no new build or container is created.
+    if /usr/local/sbin/vendi04-release-runner reuse "$LOT"; then
+      echo "LOT=$LOT"
+      echo "STATUS=BUILT_REUSED_NO_NEW_LAYERS"
+      audit "BUILD_REUSED"
+      exit 0
+    else
+      REUSE_RC=$?
+      if (( REUSE_RC != 74 )); then
+        echo "IMAGE_REUSE_ERROR=$REUSE_RC"
+        exit "$REUSE_RC"
+      fi
+    fi
+    # Fail closed on scarce disk, memory and swap headroom.
     FREE_KB=$(df -Pk / | awk 'NR==2 {print $4}')
     if [[ ! "$FREE_KB" =~ ^[0-9]+$ ]] || (( FREE_KB < 14680064 )); then
       echo "BUILD_BLOCKED_DISK_CAPACITY"
       echo "REQUIRED_FREE_KB=14680064"
       echo "FREE_KB=$FREE_KB"
       audit "DENIED_LOW_DISK"
+      exit 75
+    fi
+    MEM_KB=$(awk '/^MemAvailable:/ {print $2}' /proc/meminfo)
+    SWAP_TOTAL_KB=$(awk '/^SwapTotal:/ {print $2}' /proc/meminfo)
+    SWAP_FREE_KB=$(awk '/^SwapFree:/ {print $2}' /proc/meminfo)
+    [[ "$MEM_KB" =~ ^[0-9]+$ && "$SWAP_TOTAL_KB" =~ ^[0-9]+$ &&
+       "$SWAP_FREE_KB" =~ ^[0-9]+$ ]] || { echo RESOURCE_METRICS_UNAVAILABLE; exit 75; }
+    if (( MEM_KB < 2097152 ||
+          (SWAP_TOTAL_KB > 0 && (SWAP_TOTAL_KB - SWAP_FREE_KB) * 100 / SWAP_TOTAL_KB > 75) )); then
+      echo BUILD_BLOCKED_MEMORY_PRESSURE
+      echo "MEM_AVAILABLE_KB=$MEM_KB"
+      exit 75
+    fi
+    DISTINCT_IMAGES=$(docker image ls -q --no-trunc | sort -u | wc -l)
+    if [[ ! "$DISTINCT_IMAGES" =~ ^[0-9]+$ ]] || (( DISTINCT_IMAGES >= 20 )); then
+      echo BUILD_BLOCKED_IMAGE_RETENTION_REVIEW
+      echo "DISTINCT_IMAGES=$DISTINCT_IMAGES"
       exit 75
     fi
     command -v systemd-run >/dev/null || { echo "SYSTEMD_RUN_UNAVAILABLE"; exit 70; }
