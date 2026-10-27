@@ -159,3 +159,12 @@ test("isolated homologation refuses to run when RAM, swap or disk are pressured"
   assert.match(stage, /FREE_KB < 3145728/);
   assert.match(stage, /docker run --rm --detach/);
 });
+
+test("remote test executor never duplicates full PNPM store or retains extracted test workspace", () => {
+  const script = read("scripts/infra/test-sha.sh");
+  assert.match(script, /cp -a --reflink=always/);
+  assert.doesNotMatch(script, /cp -a --reflink=auto/);
+  assert.match(script, /COW_SNAPSHOT_UNAVAILABLE_NO_FULL_CACHE_COPY/);
+  assert.match(script, /trap cleanup_workspace EXIT/);
+  assert.match(script, /rm -rf -- "\$RUN\/work" "\$RUN\/store"/);
+});
