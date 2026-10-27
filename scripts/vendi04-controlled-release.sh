@@ -61,6 +61,24 @@ if [[ "$ACTION" == publish ]]; then
   esac
  done
 fi
+# Both publication and rollback serialize with the automatic Contabo cron deployment.
+# The independent cron deploy must use the SAME shared flock.
+# Refuse publication until a root-owned config pins a lock path whose use by
+# the cron script was audited; guessing a lock silently permits overlap.
+SHARED_LOCK_CONFIG=/etc/vendorai/vendi-shared-deploy-lock.path
+[[ -f "$SHARED_LOCK_CONFIG" &&
+   "$(stat -c %u "$SHARED_LOCK_CONFIG")" == 0 &&
+   "$(stat -c %a "$SHARED_LOCK_CONFIG")" == 600 ]] || {
+  echo SHARED_DEPLOY_LOCK_NOT_PROVISIONED; exit 65;
+}
+SHARED_LOCK=$(cat "$SHARED_LOCK_CONFIG")
+[[ "$SHARED_LOCK" =~ ^/opt/vendorai/[a-zA-Z0-9._/-]+$ && "$SHARED_LOCK" != *..* &&
+   -f /opt/vendorai/deploy-backend.sh ]] || { echo SHARED_DEPLOY_LOCK_INVALID; exit 65; }
+grep -Fq "$SHARED_LOCK" /opt/vendorai/deploy-backend.sh || {
+  echo SHARED_DEPLOY_LOCK_NOT_IN_CRON_SCRIPT; exit 65;
+}
+exec 8>"$SHARED_LOCK"
+flock -n 8 || { echo AUTOMATIC_DEPLOY_IN_PROGRESS; exit 75; }
 if [[ "$ACTION" == rollback ]]; then
  [[ -f "$STATE" ]] || { echo NO_ROLLBACK_STATE;exit 65; }
  RECORDED_IMAGE=$(sed -n 's/^IMAGE=//p' "$STATE")
@@ -136,23 +154,6 @@ NOW=$(date +%s)
 [[ "$PROOF_TIME" =~ ^[0-9]{10,12}$ ]] && (( PROOF_TIME <= NOW && NOW - PROOF_TIME <= 86400 )) || {
   echo HOMOLOG_RECEIPT_EXPIRED; exit 65;
 }
-# The independent cron deploy must use the SAME shared flock.
-# Refuse publication until a root-owned config pins a lock path whose use by
-# the cron script was audited; guessing a lock silently permits overlap.
-SHARED_LOCK_CONFIG=/etc/vendorai/vendi-shared-deploy-lock.path
-[[ -f "$SHARED_LOCK_CONFIG" &&
-   "$(stat -c %u "$SHARED_LOCK_CONFIG")" == 0 &&
-   "$(stat -c %a "$SHARED_LOCK_CONFIG")" == 600 ]] || {
-  echo SHARED_DEPLOY_LOCK_NOT_PROVISIONED; exit 65;
-}
-SHARED_LOCK=$(cat "$SHARED_LOCK_CONFIG")
-[[ "$SHARED_LOCK" =~ ^/opt/vendorai/[a-zA-Z0-9._/-]+$ && "$SHARED_LOCK" != *..* &&
-   -f /opt/vendorai/deploy-backend.sh ]] || { echo SHARED_DEPLOY_LOCK_INVALID; exit 65; }
-grep -Fq "$SHARED_LOCK" /opt/vendorai/deploy-backend.sh || {
-  echo SHARED_DEPLOY_LOCK_NOT_IN_CRON_SCRIPT; exit 65;
-}
-exec 8>"$SHARED_LOCK"
-flock -n 8 || { echo AUTOMATIC_DEPLOY_IN_PROGRESS; exit 75; }
 [[ ! -e "$STATE" ]] || { echo RELEASE_RECORD_EXISTS_REQUIRES_RECONCILIATION;exit 65; }
 docker inspect "$CURRENT" >/dev/null
 docker inspect "$BACK" >/dev/null 2>&1 && { echo BACKUP_NAME_EXISTS;exit 65; }
