@@ -78,6 +78,7 @@ import { buildExplainableFindings } from "./conceptExplainableEvaluation";
 import { clampObjectToLot, clampRoomToLot, clampWallToLot, normalizeOpeningDimensions } from "./conceptParametricEditing";
 import { buildConceptWallDiagnostics } from "./conceptWallDiagnostics";
 import { validateConceptWalls } from "./conceptWallPreflight";
+import { conceptRenderRevision } from "./conceptRenderRevision";
 
 const ConceptPlan2D = lazy(() => import("./ConceptPlan2D"));
 const ConceptTypologyPreview = lazy(() => import("./ConceptTypologyPreview"));
@@ -558,6 +559,7 @@ type ConceptDraftResponse = {
   configuration: {
     floors: number;
     desiredArea: number;
+    revisionNumber?: number;
     typology?: ConceptTypology;
     layoutPreferences?: LayoutPreferences;
     wallFirstFloors?: number[];
@@ -1129,7 +1131,10 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
   const [conceptId, setConceptId] = useState<string | null>(null);
   const conceptIdRef = useRef<string | null>(null);
   const revisionAutosaveEnabled = !guestMode && import.meta.env.VITE_MULTI04_REVISION_AUTOSAVE === "true";
+  // Staged rollout; preserve the existing editor rendering flow in production.
+  const renderGeometryClientGateEnabled = import.meta.env.VITE_ARQDOR_RENDER_GEOMETRY_GATE_CLIENT === "true";
   const conceptRevisionRef = useRef<string | null>(null);
+  const renderGeometryRevisionRef = useRef<string | null>(null);
   const revisionSaveQueueRef = useRef<Promise<void>>(Promise.resolve());
   const revisionConflictRef = useRef(false);
   const dxfImportInputRef = useRef<HTMLInputElement | null>(null);
@@ -1607,6 +1612,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
             setConceptId(null);
             conceptIdRef.current = null;
             conceptRevisionRef.current = null;
+            renderGeometryRevisionRef.current = null;
             revisionConflictRef.current = false;
             setRevisionConflictPreview(null);
             // PKG-07 / ARQ-UI: novo projeto entra direto na escolha da origem.
@@ -1637,6 +1643,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
 
         conceptIdRef.current = draft.id;
         conceptRevisionRef.current = draft.updatedAt ?? null;
+        renderGeometryRevisionRef.current = conceptRenderRevision(draft);
         revisionConflictRef.current = false;
         setRevisionConflictPreview(null);
         setConceptId(draft.id);
@@ -1886,6 +1893,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
       }
       const saved = (await response.json()) as ConceptDraftResponse;
       conceptRevisionRef.current = saved.updatedAt ?? null;
+      renderGeometryRevisionRef.current = conceptRenderRevision(saved);
       conceptIdRef.current = saved.id;
       setConceptId(saved.id);
       if (!targetId && typeof window !== "undefined") {
@@ -5927,6 +5935,13 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
     renderSubmittingRef.current = true;
     const renderProjectId = await saveConcept(5);
     if (!renderProjectId) { renderSubmittingRef.current = false; return; }
+    // The gated server requires a matching revision from the persisted save.
+    // Never synthesize a revision from local editor coordinates.
+    if (renderGeometryClientGateEnabled && !renderGeometryRevisionRef.current) {
+      setRenderError("A revisão geométrica salva ainda não está disponível. Confira as paredes e esquadrias antes do render.");
+      renderSubmittingRef.current = false;
+      return;
+    }
 
     let source: "facade" | "model3d" | "scene_photo" = options?.source ?? "facade";
     let renderView = options?.renderView ?? (source === "model3d" ? "interior" : "exterior");
@@ -6053,6 +6068,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           concept_project_id: renderProjectId,
+          project_revision: renderGeometryClientGateEnabled ? renderGeometryRevisionRef.current ?? undefined : undefined,
           original_image_url: originalImage,
           mode: "preservar",
           iluminacao: lightingMode,
