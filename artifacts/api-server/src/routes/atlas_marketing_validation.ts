@@ -1,7 +1,7 @@
 export const ATLAS_MARKETING_FIELDS = ["icp","pain","offer","channels","funnel","kpis","positioning","campaign","budgetNotes","goals","owner","planStatus","dueDate","actions","actualResults","tasksJson"] as const;
 const statuses = new Set(["","draft","approved","in_progress","paused","completed"]);
 export function isValidPlanDate(value: string): boolean {
-  if (!/^\\d{4}-\\d{2}-\\d{2}$/.test(value)) return false;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
   const time = Date.parse(value);
   return Number.isFinite(time) && new Date(time).toISOString().slice(0,10) === value;
 }
