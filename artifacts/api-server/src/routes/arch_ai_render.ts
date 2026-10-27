@@ -1,6 +1,6 @@
 import { Router, type NextFunction, type Request, type Response } from "express";
 import { and, asc, desc, eq, gte, ne } from "drizzle-orm";
-import { db, pool, archAiRendersTable, archRenderFidelityReviewsTable, aiUsageLogsTable, tenantsTable } from "@workspace/db";
+import { db, pool, archAiRendersTable, archConceptProjectsTable, archRenderFidelityReviewsTable, aiUsageLogsTable, tenantsTable } from "@workspace/db";
 import { authenticate } from "../middlewares/auth.js";
 import { inferOperationType, renderOperationTypeSchema } from "../lib/arqdor-render-version-metadata.js";
 import { syncApprovedRenderSpecifications } from "../lib/arqdor-approved-render-spec.js";
@@ -10,7 +10,9 @@ import { RenderGalleryError, updateConceptRenderGallery } from "../services/arch
 import { getArqdorRenderVideo, startArqdorRenderVideo } from "../services/arqdor-render-video.js";
 import type { ArqdorVideoMovement } from "../lib/arqdor-render-prompts.js";
 import { ObjectStorageService } from "../lib/objectStorage.js";
-import { reviewArqdorFidelity } from "../services/arqdor-fidelity-review.js";
+import { reviewArqdorFidelity, ARQDOR_FIDELITY_APPROVAL_POLICY } from "../services/arqdor-fidelity-review.js";
+import { evaluateConceptRenderGate } from "../lib/arqdor-render-geometry-gate.js";
+import { evaluateFidelityApproval } from "../lib/arqdor-render-approval-fidelity-gate.js";
 
 export const archAiRenderRouter = Router();
 const renderStorage = new ObjectStorageService();
@@ -191,6 +193,67 @@ archAiRenderRouter.post("/arch/ai-render/:id/approve", authenticate, async (req,
       success: false,
       error: "O arquivo desta versão não está disponível no Storage. Gere ou recupere uma nova versão antes de aprovar.",
       code: "RENDER_FILE_MISSING",
+    });
+  }
+
+  // LOT-07: opt-in approval safety gate. Uses persisted tenant-scoped state
+  // and the latest already recorded Fidelity Review — NO paid AI call here.
+  if (process.env.ARQDOR_RENDER_APPROVAL_FIDELITY_GATE_ENABLED === "true" && candidate.conceptProjectId) {
+    const [concept] = await db.select({
+      id: archConceptProjectsTable.id,
+      configuration: archConceptProjectsTable.configuration,
+      lot: archConceptProjectsTable.lot,
+      rooms: archConceptProjectsTable.rooms,
+      openingOverrides: archConceptProjectsTable.openingOverrides,
+      facadePreferences: archConceptProjectsTable.facadePreferences,
+      updatedAt: archConceptProjectsTable.updatedAt,
+    }).from(archConceptProjectsTable)
+      .where(and(
+        eq(archConceptProjectsTable.id, candidate.conceptProjectId),
+        eq(archConceptProjectsTable.tenantId, tid),
+      )).limit(1);
+
+    const geometryCheck = concept ? evaluateConceptRenderGate({
+      enabled: true,
+      tenantId: tid,
+      conceptProjectId: candidate.conceptProjectId,
+      configuration: concept.configuration,
+      updatedAt: concept.updatedAt,
+      structuralState: {
+        configuration: concept.configuration,
+        lot: concept.lot, rooms: concept.rooms,
+        openingOverrides: concept.openingOverrides,
+        facadePreferences: concept.facadePreferences,
+      },
+      requestedRevision: candidate.projectRevision,
+      renderView: candidate.renderView === "interior" ? "interior" : "exterior",
+    }) : null;
+
+    const [review] = await db.select().from(archRenderFidelityReviewsTable)
+      .where(and(
+        eq(archRenderFidelityReviewsTable.tenantId, tid),
+        eq(archRenderFidelityReviewsTable.renderId, candidate.id),
+      )).orderBy(desc(archRenderFidelityReviewsTable.createdAt)).limit(1);
+
+    const approvalGate = evaluateFidelityApproval({
+      enabled: true,
+      isConceptRender: true,
+      geometryVerified: Boolean(geometryCheck?.allowed && geometryCheck.enforced),
+      renderImageUrl: candidate.resultImageUrl,
+      latestReview: review ? {
+        renderImageUrl: review.renderImageUrl,
+        overallScore: review.overallScore,
+        requiresHumanReview: review.requiresHumanReview,
+        review: review.review,
+      } : null,
+    });
+    if (!approvalGate.allowed) return res.status(409).json({
+      success: false,
+      code: "ARQDOR_RENDER_FIDELITY_REVIEW_REQUIRED",
+      error: "Esta versão requer revisão geométrica e visual antes da aprovação.",
+      reasons: approvalGate.reasons,
+      // Suggest the already available endpoint; don't silently invoke paid AI.
+      review_endpoint: `/api/arch/ai-render/${encodeURIComponent(candidate.id)}/review`,
     });
   }
 
