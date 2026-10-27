@@ -152,4 +152,45 @@ router.put("/admin/atlas/marketing-strategies",requireRole("super_admin"),async(
  }catch{res.status(503).json({error:"ATLAS_MARKETING_STORAGE_UNAVAILABLE"});}
 });
 
+
+function validConstructionChain(input:unknown):boolean{
+ if(!Array.isArray(input)||input.length<1||input.length>50)return false;
+ const ids=new Set<string>();
+ for(const item of input){
+  if(!item||typeof item!=="object"||Array.isArray(item))return false;
+  const x=item as Record<string,unknown>;
+  if(typeof x.id!=="string"||!x.id.match(/^[a-z0-9_-]{1,64}$/)||ids.has(x.id)||typeof x.title!=="string"||!x.title.trim()||x.title.length>160||typeof x.description!=="string"||x.description.length>3000)return false;
+  ids.add(x.id);
+  for(const field of ["products","services","specialists","next","segments"]){
+   const values=x[field];
+   if(!Array.isArray(values)||values.length>80||values.some(v=>typeof v!=="string"||v.length>180))return false;
+  }
+  if(Object.keys(x).some(k=>!["id","title","description","products","services","specialists","next","segments"].includes(k)))return false;
+ }
+ return input.every((x:{next:string[]})=>x.next.every(id=>ids.has(id)));
+}
+router.get("/admin/atlas/construction-chain",requireRole("super_admin"),async(_req,res)=>{
+ try{
+  const result=await db.execute(sql`SELECT content,revision FROM vendor_atlas_documents WHERE document_key='construction-chain-v1'`);
+  const row=result.rows[0] as {content:unknown;revision:number}|undefined;
+  res.setHeader("Cache-Control","no-store");
+  res.json({stages:row?.content??null,revision:Number(row?.revision??0)});
+ }catch{res.status(503).json({error:"ATLAS_CHAIN_STORAGE_UNAVAILABLE"});}
+});
+router.put("/admin/atlas/construction-chain",requireRole("super_admin"),async(req,res)=>{
+ const {stages,revision}=req.body??{};
+ if(!validConstructionChain(stages)||!Number.isInteger(revision)||revision<0||revision>1000000){res.status(422).json({error:"ATLAS_CHAIN_INVALID"});return;}
+ const json=JSON.stringify(stages),author=String(req.user?.email||req.user?.sub||"super_admin");
+ try{
+  const next=await db.transaction(async tx=>{
+   const updated=revision>0?await tx.execute(sql`UPDATE vendor_atlas_documents SET content=${json}::jsonb,revision=revision+1,updated_by=${author},updated_at=now() WHERE document_key='construction-chain-v1' AND revision=${revision} RETURNING revision`):await tx.execute(sql`INSERT INTO vendor_atlas_documents(document_key,content,revision,updated_by) VALUES('construction-chain-v1',${json}::jsonb,1,${author}) ON CONFLICT DO NOTHING RETURNING revision`);
+   const rev=Number((updated.rows[0] as {revision:number}|undefined)?.revision??0);
+   if(rev)await tx.execute(sql`INSERT INTO vendor_atlas_document_history(document_key,revision,content,updated_by) VALUES('construction-chain-v1',${rev},${json}::jsonb,${author})`);
+   return rev;
+  });
+  if(!next){res.status(409).json({error:"ATLAS_CHAIN_REVISION_CONFLICT"});return;}
+  res.json({ok:true,revision:next});
+ }catch{res.status(503).json({error:"ATLAS_CHAIN_STORAGE_UNAVAILABLE"});}
+});
+
 export default router;
