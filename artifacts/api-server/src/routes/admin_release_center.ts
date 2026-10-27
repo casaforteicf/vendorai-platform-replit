@@ -1194,6 +1194,17 @@ async function notifySupportRequestersAfterPublish(release: any) {
 }
 
 async function executeScheduledRelease(release: any) {
+  // The legacy Release Center merges main and relies on a separate Contabo cron.
+  // Never allow this path to bypass the release operator until BOTH host
+  // homologation evidence and automatic-deploy coordination are independently
+  // validated and explicitly enabled by an administrator.
+  if (
+    process.env["VENDI_RELEASE_OPERATOR_VALIDATED"] !== "true" ||
+    process.env["VENDI_RELEASE_HOST_RECEIPTS_VERIFIED"] !== "true" ||
+    process.env["VENDI_RELEASE_CRON_LOCK_VERIFIED"] !== "true"
+  ) {
+    throw new Error("VENDI_RELEASE_PIPELINE_NOT_VERIFIED_NO_MERGE");
+  }
   const impact = await collectReleaseImpact(release.improvementIds, release.releaseBranch ?? "staging");
   const fingerprint = releaseFingerprint(release, impact);
   if (!impact.clean || !release.approvalFingerprint || fingerprint !== release.approvalFingerprint) throw new Error("A versão mudou ou contém alterações fora do escopo aprovado.");
