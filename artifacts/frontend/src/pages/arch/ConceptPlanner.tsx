@@ -78,7 +78,7 @@ import { buildExplainableFindings } from "./conceptExplainableEvaluation";
 import { clampObjectToLot, clampRoomToLot, clampWallToLot, normalizeOpeningDimensions } from "./conceptParametricEditing";
 import { buildConceptWallDiagnostics } from "./conceptWallDiagnostics";
 import { validateConceptWalls } from "./conceptWallPreflight";
-import { conceptRenderRevision } from "./conceptRenderRevision";
+import { conceptRenderStructuralRevision } from "./conceptRenderRevision";
 
 const ConceptPlan2D = lazy(() => import("./ConceptPlan2D"));
 const ConceptTypologyPreview = lazy(() => import("./ConceptTypologyPreview"));
@@ -1643,7 +1643,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
 
         conceptIdRef.current = draft.id;
         conceptRevisionRef.current = draft.updatedAt ?? null;
-        renderGeometryRevisionRef.current = conceptRenderRevision(draft);
+        renderGeometryRevisionRef.current = conceptRenderStructuralRevision(draft);
         revisionConflictRef.current = false;
         setRevisionConflictPreview(null);
         setConceptId(draft.id);
@@ -1893,7 +1893,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
       }
       const saved = (await response.json()) as ConceptDraftResponse;
       conceptRevisionRef.current = saved.updatedAt ?? null;
-      renderGeometryRevisionRef.current = conceptRenderRevision(saved);
+      renderGeometryRevisionRef.current = conceptRenderStructuralRevision(saved);
       conceptIdRef.current = saved.id;
       setConceptId(saved.id);
       if (!targetId && typeof window !== "undefined") {
