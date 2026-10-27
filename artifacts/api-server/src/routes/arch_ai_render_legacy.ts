@@ -245,6 +245,10 @@ archAiRenderRouter.post("/arch/ai-render", authenticate, async (req: Request, re
       id: archConceptProjectsTable.id,
       status: archConceptProjectsTable.status,
       configuration: archConceptProjectsTable.configuration,
+      lot: archConceptProjectsTable.lot,
+      rooms: archConceptProjectsTable.rooms,
+      openingOverrides: archConceptProjectsTable.openingOverrides,
+      facadePreferences: archConceptProjectsTable.facadePreferences,
       updatedAt: archConceptProjectsTable.updatedAt,
     })
       .from(archConceptProjectsTable)
@@ -259,6 +263,12 @@ archAiRenderRouter.post("/arch/ai-render", authenticate, async (req: Request, re
       conceptProjectId: concept_project_id,
       updatedAt: concept.updatedAt,
       configuration: concept.configuration,
+      structuralState: {
+        configuration: concept.configuration,
+        lot: concept.lot, rooms: concept.rooms,
+        openingOverrides: concept.openingOverrides,
+        facadePreferences: concept.facadePreferences,
+      },
       requestedRevision: project_revision,
       renderView: render_view,
     });
@@ -669,6 +679,10 @@ archAiRenderRouter.post("/arch/ai-render/:id/adjust", authenticate, async (req: 
     const [concept] = await db.select({
       id: archConceptProjectsTable.id,
       configuration: archConceptProjectsTable.configuration,
+      lot: archConceptProjectsTable.lot,
+      rooms: archConceptProjectsTable.rooms,
+      openingOverrides: archConceptProjectsTable.openingOverrides,
+      facadePreferences: archConceptProjectsTable.facadePreferences,
       updatedAt: archConceptProjectsTable.updatedAt,
     }).from(archConceptProjectsTable).where(and(
       eq(archConceptProjectsTable.id, parent.conceptProjectId),
@@ -681,6 +695,12 @@ archAiRenderRouter.post("/arch/ai-render/:id/adjust", authenticate, async (req: 
       conceptProjectId: parent.conceptProjectId,
       updatedAt: concept.updatedAt,
       configuration: concept.configuration,
+      structuralState: {
+        configuration: concept.configuration,
+        lot: concept.lot, rooms: concept.rooms,
+        openingOverrides: concept.openingOverrides,
+        facadePreferences: concept.facadePreferences,
+      },
       requestedRevision: parent.projectRevision,
       renderView: parent.renderView === "interior" ? "interior" : "exterior",
     });
