@@ -8,14 +8,15 @@
 
 | Papel | Plataforma aprovada | Condição de manutenção |
 | --- | --- | --- |
-| Website e frontend | Cloudflare Pages | Projeto de produção confirmado, DNS/route verificados, deploy rastreável |
+| Aplicativo principal `app.appvendorai.com` (frontend CRM/Arqdor) | Contabo/nginx (conforme `CLAUDE.md`, sujeito a validação de DNS/health live) | Build Vite servido em `/var/www/vendorai-app/current`; `/api/` encaminhado ao backend :5001; preservar deploy/rollback próprios |
+| Site institucional `appvendorai.com` | Worker em `artifacts/website/public/_worker.js`; publicação/origin ativos ainda não comprovados | Conferir DNS, Pages/Workers/rotas e serviço que realmente recebe tráfego antes de migrar ou retirar Railway |
 | API, jobs, Vendi e Browser Agent | VPS Contabo / Docker | Containers e funções comprovados por healthcheck e dependências |
 | Banco | PostgreSQL em operação oficial do ambiente correspondente | Origem e destino documentados, backup testado e isolamento por tenant |
 | Objetos/arquivos | Cloudflare R2 | Buckets e referências de aplicações verificadas |
 | Código e revisão | GitHub `casaforteicf/vendorai-platform-replit` | Branch + SHA + revisão; **GitHub Actions não é o mecanismo de deploy** |
 | Publicação | Operador Vendi na Contabo e implantação frontend Cloudflare | Homologação, evidências, rollback e confirmação pós-publicação |
 
-A tabela acima representa a **arquitetura desejada**, não certificação de que o DNS e todos os ambientes atuais já correspondem a ela.
+A tabela distingue as **duas superfícies web**; o guia `CLAUDE.md` atribui o frontend principal ao Nginx/Contabo, mas isto e o caminho do website público devem ser confirmados no DNS e pelos cabeçalhos/respostas reais. Nenhuma mudança de hospedagem deve ser feita com base apenas no nome de um projeto Cloudflare Pages.
 
 ## 2. Evidências verificadas em 27/10/2026
 
@@ -56,7 +57,7 @@ A tabela acima representa a **arquitetura desejada**, não certificação de que
 
 ## 6. Ordem de execução
 
-- **P0 — desbloquear Cloudflare:** substituir token de forma segura no conector, com escopo mínimo para consulta; não registrar tokens em GitHub. Confirmar zone, Pages, DNS, rotas e origin do `appvendorai.com`; corrigir o POST 404 primeiro.
+- **P0 — desbloquear Cloudflare para o site público:** substituir token de forma segura no conector, com escopo mínimo para consulta; não registrar tokens em GitHub. Confirmar zone, Pages, DNS, rotas e origin do `appvendorai.com`; corrigir o POST 404 primeiro.
 - **P1 — limpar Railway sem dados:** remover os oito serviços do `vendorai-audit-cleanup`, somente após liberação de exclusão e confirmação final de ausência de consumidores; checar resultado.
 - **P2 — encerrar legados web:** documentar DNS e dependências para retirar Railway do tráfego, depois desativar/remover domínios e serviços legados um por vez.
 - **P3 — consolidar Contabo:** mapear nomes->imagem/sha->volume/rede->porta->função->rollback. Preservar prod/homolog e limpeza seletiva dos canários sem uso, só com autorização do operador e backup comprovado.
