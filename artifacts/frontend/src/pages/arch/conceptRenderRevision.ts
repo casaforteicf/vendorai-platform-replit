@@ -16,3 +16,17 @@ export function conceptRenderRevision(
   if (!Number.isFinite(timestamp.getTime())) return null;
   return 'draft:r' + revision + ':updated:' + timestamp.toISOString();
 }
+
+/** Preferred token: structural revision derived from the actual saved snapshot.
+ * Render-history PATCHes do not change this token; architectural edits do.
+ */
+import {
+  conceptStructuralRevision,
+  type ConceptStructuralState,
+} from '@workspace/vendor-brain/arqdor-geometry-revision';
+
+export function conceptRenderStructuralRevision(
+  saved: ConceptStructuralState,
+): string | null {
+  return conceptStructuralRevision(saved);
+}
