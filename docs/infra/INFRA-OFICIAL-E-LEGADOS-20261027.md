@@ -103,3 +103,12 @@ Em 27/10/2026, usando POST de JSON inválido `{}`, headers `Content-Type: applic
 **Diagnóstico:** API de destino recebe o POST e valida; fallback ocorre também no subdomínio Pages, isolando problema no deploy/encaminhamento do próprio site (não no registro DNS do domínio customizado). O projeto `vendorai-website` teve última publicação em 07/10/2026 e o código `main` atualmente usa `https://api.appvendorai.com` como origin. **Hipótese forte: Worker/artefato publicado antigo** — conferir o script Cloudflare Pages ativo antes de promover novo build; não afirmar que a URL Railway está presente no script sem inspecioná-lo.
 
 Para correção: identificar conteúdo do Worker `pages-worker--19232173-production` por API somente leitura (se token permitir), construir o website a partir de SHA reproduzível, verificar `dist/public/_worker.js` e integridade dos assets/SEO, implantar prévia isolada, repetir o POST e navegabilidade, assegurar caminho de rollback para deploy anterior, promover com credencial de publicação autorizada, repetir testes no domínio de produção. **Não chamar redeploy sem garantir artefatos atualizados.**
+
+## 11. Correção confirmada do website em produção — 27/10/2026
+
+- Cloudflare Pages canonical production: `b6eeee1a-8505-4e81-a86b-90f47e8bfbbf`, ambiente `production`, branch `main`, SHA de artefato `8879c930d5f76f121df69670074d33e714dd3b67`, estado `success` confirmado via API Cloudflare.
+- Site `https://appvendorai.com`: smoke na VPS retornou HOME=200, BLOG=200, POST de JSON inválido em `/api/site/behavior-event` = 400 (validação pela API Contabo), sem fallback Railway.
+- A prévia v2 `c7403793-ae27-4af6-ab48-44936f9fc26f` tinha passado os mesmos testes, com somente 1 redirecionamento da página de blog.
+- Rollback disponível para deployment anterior `54b28165-b285-4145-805f-f478d4fc0b68` (07/10/2026), não executado.
+- **Não confundir o rollback de Pages com operação de exclusão Railway**. Embora Railway deixe de aparecer na resposta HTTP do site, recursos Railway/volumes/DNS ainda exigem triagem própria.
+- Código-fonte em `main` GitHub segue `c713d1cc3852c7164bda58006df549d3715ec45a`; o PR #3646, ainda draft, contém as duas alterações para sincronizar. A comparação apontou apenas 2 commits à frente, 0 atrás e 2 arquivos modificados. Antes de fazer merge, comprovar que a atualização de `main` não dispara indevidamente publicação do backend via cron/Vendi sem os respectivos gates. **Evitar novo deploy do site a partir da `main` antiga**.
