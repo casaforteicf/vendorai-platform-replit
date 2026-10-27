@@ -59,6 +59,14 @@ describe('ARQDOR LOT-06: legacy opening association candidates', () => {
     const first = wall();
     expect(codes([first, { ...first, id: 'W2' }], [windowMarker()])).toContain('AMBIGUOUS_WALL');
   });
+  it('distinguishes identical wall ids located on separate floors', () => {
+    const ground = wall();
+    const upper = { ...ground, floor: 1 };
+    const marker = { ...windowMarker(), floor: 1 };
+    const result = audit([ground, upper], [marker]);
+    expect(result.status).toBe('candidates_found');
+    expect(result.candidates[0]).toMatchObject({ wallId: 'W1', floor: 1 });
+  });
   it('does not accept host wall ID collisions', () => {
     const first = wall();
     const result = audit([first, { ...first }], [windowMarker()]);
