@@ -267,7 +267,7 @@ function releaseOperatorGrant(operation: ReleaseOperation, lot: string): string 
 
 // Structured operations only: fixed script on the host, no arbitrary shell from the model.
 // Host-side operator enforces its own action allowlist and audit trail.
-async function contaboOperate(action: "build" | "homologate" | "rollback" | "releaseStatus" | "preflight" | "publish", lot: string) {
+async function contaboOperate(action: "build" | "homologate" | "rollback" | "releaseStatus" | "preflight" | "publish" | "upgradeOperator", lot: string) {
   if (!/^[A-Z][A-Z0-9]{1,15}-[0-9]{1,6}$/.test(lot)) throw new Error("Invalid lot identifier");
   const host = process.env["VENDI_CONTABO_SSH_HOST"] || (existsSync("/app/.vendi-ssh/host") ? readFileSync("/app/.vendi-ssh/host", "utf8").trim() : undefined);
   const key = process.env["VENDI_CONTABO_SSH_KEY_PATH"] || "/app/.vendi-ssh/id_ed25519";
@@ -505,7 +505,7 @@ function createCloudflareMcpServer() {
     {
       description: "Executa operações fixas do Vendi na Contabo. Ações que alteram o host exigem grant OAuth por operador, lote e ação, além dos gates do operador host.",
       inputSchema: z.object({
-        action: z.enum(["build", "homologate", "rollback", "releaseStatus", "preflight", "publish"]),
+        action: z.enum(["build", "homologate", "rollback", "releaseStatus", "preflight", "publish", "upgradeOperator"]),
         lot: z.string().regex(/^[A-Z][A-Z0-9]{1,15}-[0-9]{1,6}$/),
       }),
       annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false },
