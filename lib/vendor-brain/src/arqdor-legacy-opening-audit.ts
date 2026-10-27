@@ -64,12 +64,13 @@ export function auditLegacyOpeningAnchors(input: {
       add('INVALID_WALL', id, 'Identificação, pavimento ou posição da parede inválida.');
       continue;
     }
-    if (wallIds.has(id)) {
-      duplicatedWallIds.add(id);
+    const scopedWallId = String(wall.floor) + ":" + id;
+    if (wallIds.has(scopedWallId)) {
+      duplicatedWallIds.add(scopedWallId);
       add('DUPLICATE_WALL_ID', id, 'Há mais de uma parede com o mesmo ID.');
       continue;
     }
-    wallIds.add(id);
+    wallIds.add(scopedWallId);
     const dx = wall.x2 - wall.x1;
     const dy = wall.y2 - wall.y1;
     if (Math.hypot(dx, dy) <= EPS || (Math.abs(dx) > EPS && Math.abs(dy) > EPS)) {
@@ -101,7 +102,8 @@ export function auditLegacyOpeningAnchors(input: {
     const height = opening.height;
     const sillHeight = opening.sillHeight;
     const matches = walls.filter(wall => {
-      if (duplicatedWallIds.has(wall.id) || wall.floor !== opening.floor) return false;
+      if (duplicatedWallIds.has(String(wall.floor) + ":" + wall.id) ||
+        wall.floor !== opening.floor) return false;
       const horizontal = Math.abs(wall.y2 - wall.y1) < EPS;
       if ((horizontal ? 'horizontal' : 'vertical') !== opening.orientation) return false;
       const center = horizontal ? opening.x : opening.y;
