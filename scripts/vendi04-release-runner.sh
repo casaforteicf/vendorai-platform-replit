@@ -112,6 +112,27 @@ case "$ACTION" in
      echo "DISTINCT_IMAGES=$DISTINCT_IMAGES"
      exit 75
    fi
+   # At most two unpromoted candidate images may be retained across all lots.
+   # Historical states without an actual Docker image do not count. Never
+   # delete these images automatically; an operator must reconcile/retain.
+   PENDING_IMAGES=0
+   for pending_state in "$BASE"/state/*; do
+     [[ -f "$pending_state" && ! -L "$pending_state" ]] || continue
+     pending_lot="${pending_state##*/}"
+     [[ "$pending_lot" =~ ^[A-Z][A-Z0-9]{1,15}-[0-9]{1,6}$ ]] || continue
+     [[ "$pending_lot" != "$LOT" ]] || continue
+     grep -Fxq 'STATUS=BUILT_NOT_DEPLOYED' "$pending_state" || continue
+     pending_image=$(sed -n 's/^IMAGE=//p' "$pending_state" | head -1)
+     [[ "$pending_image" =~ ^vendorai-release:vendi-[a-z0-9-]+-[0-9a-f]{12}$ ]] || continue
+     if docker image inspect "$pending_image" >/dev/null 2>&1; then
+       PENDING_IMAGES=$((PENDING_IMAGES + 1))
+     fi
+   done
+   if (( PENDING_IMAGES >= 2 )); then
+     echo BUILD_BLOCKED_UNPROMOTED_IMAGE_BACKLOG
+     echo "PENDING_IMAGES=$PENDING_IMAGES"
+     exit 75
+   fi
    mkdir -p "$work"
    cleanup(){ rm -rf "$work"; }
    trap cleanup EXIT
