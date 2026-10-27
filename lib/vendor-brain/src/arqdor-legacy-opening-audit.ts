@@ -50,6 +50,10 @@ export function auditLegacyOpeningAnchors(input: {
     add('INVALID_OPENING', 'project', 'São necessárias listas de paredes e aberturas.');
     return { status: 'requires_review', candidates, issues, totalOpenings: 0 };
   }
+  if (!input.walls.length || !input.openings.length) {
+    add('INVALID_OPENING', 'project', 'Sem paredes ou aberturas: nenhuma associação pode ser comprovada.');
+    return { status: 'requires_review', candidates, issues, totalOpenings: input.openings.length };
+  }
   const wallIds = new Set<string>();
   const duplicatedWallIds = new Set<string>();
   const walls: LegacyReferenceWall[] = [];
