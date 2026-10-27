@@ -64,6 +64,13 @@ case "$ACTION" in
       fi
       /usr/local/sbin/vendi04-release-runner status "$LOT"
       EVIDENCE="/var/lib/vendi-release/state/$LOT.homolog"
+      HOMOLOG_UNIT="vendi-homolog-${LOT,,}.service"
+      if systemctl is-active --quiet "$HOMOLOG_UNIT"; then
+        echo "HOMOLOG_STATUS=IN_PROGRESS"
+      elif systemctl is-failed --quiet "$HOMOLOG_UNIT"; then
+        echo "HOMOLOG_STATUS=FAILED"
+        systemctl show "$HOMOLOG_UNIT" --no-pager -p Result -p ExecMainStatus || true
+      fi
       if [[ -f "$EVIDENCE" ]]; then
         echo "HOMOLOG_EVIDENCE=present"
         grep -E '^(SHA|IMAGE_ID|STATUS|AT_EPOCH|MODE)=' "$EVIDENCE" || true
@@ -137,10 +144,33 @@ case "$ACTION" in
     audit "BUILD_QUEUED"
     ;;
   homologate)
-    # Read-only candidate homologation on a private container; primary homolog
-    # and production are never swapped. Produces a root-owned SHA receipt.
-    /usr/local/sbin/vendi04-homologate-candidate "$LOT"
-    audit "HOMOLOG_CANDIDATE_PASSED"
+    # Candidate homologation may take longer than MCP SSH timeout; queue on host
+    # with private logs, isolated container and an exact-SHA receipt on success.
+    HOMOLOG_UNIT="vendi-homolog-${LOT,,}.service"
+    if systemctl is-active --quiet "$HOMOLOG_UNIT"; then
+      echo "STATUS=HOMOLOG_IN_PROGRESS"
+      echo "LOT=$LOT"
+      exit 0
+    fi
+    if [[ -e "/var/lib/vendi-release/state/$LOT.homolog" ]]; then
+      echo "HOMOLOG_RECEIPT_ALREADY_EXISTS"
+      exit 65
+    fi
+    install -d -o root -g root -m 700 /var/log/vendi-builds
+    HOMOLOG_LOG="/var/log/vendi-builds/$LOT.homolog.log"
+    touch "$HOMOLOG_LOG"; chmod 600 "$HOMOLOG_LOG"
+    systemd-run --unit="${HOMOLOG_UNIT%.service}" --collect --no-block \
+      --property=Type=exec --property=Restart=no \
+      --property=CPUQuota=100% --property=Nice=10 \
+      --property=OOMScoreAdjust=500 \
+      --property="StandardOutput=append:$HOMOLOG_LOG" \
+      --property="StandardError=append:$HOMOLOG_LOG" \
+      /usr/local/sbin/vendi04-homologate-candidate "$LOT"
+    echo "LOT=$LOT"
+    echo "STATUS=HOMOLOG_QUEUED"
+    echo "SYSTEMD_UNIT=$HOMOLOG_UNIT"
+    echo "PRODUCTION=untouched"
+    audit "HOMOLOG_QUEUED"
     ;;
   rollback)
     if [[ "$LOT" != "VENDI-02" ]]; then /usr/local/sbin/vendi04-controlled-release rollback "$LOT"; audit "ROLLBACK_COMPLETED"; exit 0; fi
