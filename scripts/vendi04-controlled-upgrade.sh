@@ -29,6 +29,7 @@ FILES=(
   vendi04-controlled-release
   vendi04-homologate-candidate
   vendi04-controlled-upgrade
+  vendi04-audit-readiness
 )
 # Paths to archive are constant and NOT taken from model text or repository data.
 SOURCES=(
@@ -38,6 +39,7 @@ SOURCES=(
   scripts/vendi04-controlled-release.sh
   scripts/vendi04-homologate-candidate.sh
   scripts/vendi04-controlled-upgrade.sh
+  scripts/vendi04-audit-readiness.sh
 )
 WORK=$(mktemp -d /root/vendi-operator-upgrade.XXXXXXXX)
 chmod 700 "$WORK"
