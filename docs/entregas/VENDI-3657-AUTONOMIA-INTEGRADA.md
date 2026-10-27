@@ -18,7 +18,7 @@ e preparação do operador instalado. `main` pode disparar publicação automát
 | Homologação | container efêmero na rede privada `vendorai-homolog`, sem porta do host | `DATABASE_URL` homolog diferente de produção; workers e startup migrations desabilitados |
 | Prova | recibo root-only: lote, SHA, imagem, image ID, instante e status | Somente emitido após health/CRM read-only |
 | Publicação | valida recibo SHA+image ID+idade <=24h e locks | Cron deve usar lock comum, auditado e pinado por administrador |
-| Rollback | também exige o lock do cron | Backup exato e produção corrente devem corresponder ao registro |
+| Rollback | também exige o lock do cron; restaura a imagem anterior se o backup não passar no healthcheck | Backup exato e produção corrente devem corresponder ao registro |
 | Autoatualização | ação `upgradeOperator` de lista fixa de scripts, backup e restauração | Manifesto e aprovação por SHA root-owned; precisa bootstrap inicial |
 | Auditoria | ação `auditReadiness` somente leitura | Sem imprimir variáveis sensíveis |
 | Missões | aprovação restrita aos admins, lease de banco renovável | Migration de lease aplicada e testada |
@@ -61,7 +61,7 @@ acima de 4h exigirão heartbeat independente (não implementado).
   `BUILT_NOT_DEPLOYED` ou `BUILD_FAILED`, com log e RC persistentes.
 - Homologação: imagem exata, banco distinto, migrations e workers desabilitados,
   chamadas HTTP read-only e recibo. Sem recibo, publicar é **negado**.
-- Publicação: recebo root-owned SHA/digest/idade válida; sem lock compartilhado
+- Publicação: recibo root-owned SHA/digest/idade válida; compara o SHA do candidato com o commit da imagem realmente ativa, bloqueando alteração em `lib/db/migrations` ou `lib/db/src/schema` sem comprovante root-owned de compatibilidade de rollback (com BASE_SHA, SHA e lote). Sem lock compartilhado
   de cron `/etc/vendorai/vendi-shared-deploy-lock.path` verificado, é **negada**.
   Não configurar por suposição: confirmar lock REAL de
   `/opt/vendorai/deploy-backend.sh` e `/opt/vendorai/deploy-frontend-auto.sh`.
