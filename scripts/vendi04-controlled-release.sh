@@ -190,7 +190,7 @@ git -c "safe.directory=$REPO" -C "$REPO" cat-file -e "$SHA^{commit}" 2>/dev/null
   { echo RELEASE_CANDIDATE_SHA_NOT_AVAILABLE; exit 65; }
 git -c "safe.directory=$REPO" -C "$REPO" merge-base --is-ancestor "$BASE_SHA" "$SHA" ||
   { echo RELEASE_SOURCE_NOT_DESCENDANT_OF_PRODUCTION; exit 65; }
-SCHEMA_FILES=$(git -c "safe.directory=$REPO" -C "$REPO" diff --name-only "$BASE_SHA" "$SHA" -- lib/db/migrations) ||
+SCHEMA_FILES=$(git -c "safe.directory=$REPO" -C "$REPO" diff --name-only "$BASE_SHA" "$SHA" -- lib/db/migrations lib/db/src/schema) ||
   { echo SCHEMA_DIFF_UNAVAILABLE; exit 65; }
 if [[ -n "$SCHEMA_FILES" ]]; then
   SCHEMA_PROOF="$ROOT/state/$LOT.schema-reviewed"
