@@ -203,6 +203,7 @@ import customIntegrationsRouter, { customIntegrationsPublicRouter } from "./cust
 import changelogRouter from "./changelog";
 import adminInternalKnowledgeRouter from "./admin_internal_knowledge";
 import adminAtlasRouter from "./admin_atlas.js";
+import adminAtlasCrmRouter from "./admin_atlas_crm.js";
 import pacotesRouter from "./pacotes";
 import mlStatusRouter from "./ml_status";
 import internalScoutSignalRouter from "./internal_scout_signal";
@@ -462,6 +463,7 @@ router.use(customIntegrationsRouter);
 router.use(changelogRouter);
 router.use(adminInternalKnowledgeRouter);
 router.use(adminAtlasRouter);
+router.use(adminAtlasCrmRouter);
 router.use(pacotesRouter);
 router.use(mlStatusRouter);
 router.use(leadOportunidadesPrevistasRouter);
