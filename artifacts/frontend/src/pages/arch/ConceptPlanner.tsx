@@ -79,6 +79,7 @@ import { clampObjectToLot, clampRoomToLot, clampWallToLot, normalizeOpeningDimen
 import { buildConceptWallDiagnostics } from "./conceptWallDiagnostics";
 import { validateConceptWalls } from "./conceptWallPreflight";
 import { auditLegacyOpeningAnchors } from "@workspace/vendor-brain/arqdor-legacy-opening-audit";
+import { compareFacadeOpeningFidelity } from "./conceptFacadeOpeningFidelity";
 import { conceptRenderStructuralRevision } from "./conceptRenderRevision";
 
 const ConceptPlan2D = lazy(() => import("./ConceptPlan2D"));
@@ -5988,6 +5989,20 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
         setRenderLightingOverride(null);
       }
       const derivedFacade = buildDerivedFacadeModel(modelLevels, safeRooms, normalizeSitePlacement(sitePlacement));
+      if (renderGeometryClientGateEnabled && renderView === "exterior") {
+        const geometryPreservingFacade = buildDerivedFacadeModel(
+          modelLevels, safeRooms, normalizeSitePlacement(sitePlacement),
+          { preserveOpeningGeometry: true },
+        );
+        const openingFidelity = compareFacadeOpeningFidelity(geometryPreservingFacade, derivedFacade);
+        if (!openingFidelity.valid) {
+          throw new Error(
+            "Fachada incompatível com a planta: esquadrias foram deslocadas, reduzidas ou omitidas. " +
+            "Confira os vãos antes do render (" +
+            openingFidelity.issues.map(item => item.openingId).slice(0, 5).join(", ") + ").",
+          );
+        }
+      }
       const kontextSummary = renderView === "exterior"
         ? buildConceptKontextSummary({
             floors: derivedFacade.floors,
