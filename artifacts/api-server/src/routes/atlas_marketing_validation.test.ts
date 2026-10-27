@@ -10,6 +10,7 @@ describe("Atlas marketing plan validation",()=>{
  });
  it("accepts true calendar dates and rejects rollover dates",()=>{
   expect(isValidPlanDate("2028-02-29")).toBe(true);
+  expect(isValidPlanDate("2026-10-26")).toBe(true);
   for(const d of ["2027-02-29","2026-02-30","2026-13-01","2026-1-02","never"])expect(isValidPlanDate(d)).toBe(false);
  });
 });
@@ -18,6 +19,7 @@ describe("Atlas strategic task validation",()=>{
  const tasks=[{id:"task-1",title:"Falar com fornecedores",owner:"Equipe comercial",priority:"high",dueDate:"2026-11-15",done:false}];
  it("accepts individually tracked tasks",()=>{
   expect(validTasksJson(JSON.stringify(tasks))).toBe(true);
+  expect(validTasksJson(JSON.stringify([{...tasks[0],dueDate:"2026-10-26"}]))).toBe(true);
   expect(isValidMarketingPayload({revision:1,strategies:{"niche-01":{tasksJson:JSON.stringify(tasks)}}})).toBe(true);
  });
  it("rejects invalid task structures and duplicate IDs",()=>{
