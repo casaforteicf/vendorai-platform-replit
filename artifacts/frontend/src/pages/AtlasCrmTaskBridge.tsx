@@ -7,7 +7,7 @@ export default function AtlasCrmTaskBridge({nicheId,tasksJson,operations,ready}:
  const [leads,setLeads]=React.useState<CrmLead[]>([]);
  const [message,setMessage]=React.useState("");
  const [busy,setBusy]=React.useState(false);
- React.useEffect(()=>{setLead("");setLeads([]);if(!tenant)return;let active=true;const token=localStorage.getItem("vendorai_token");fetch("/api/admin/atlas/tenant-detail/"+encodeURIComponent(tenant),{headers:{Authorization:"Bearer "+token}}).then(async r=>{if(!r.ok)throw Error("HTTP "+r.status);return r.json()}).then(data=>{if(!active)return;const source=data.sources?.find((s:{domain:string})=>s.domain==="crm");if(source?.status!=="ok"){setMessage("Lista de leads indisponível.");return}setLeads(source.items||[]);setMessage("Selecione um lead do tenant.")}).catch(e=>{if(active)setMessage("Não foi possível carregar leads: "+String(e))});return()=>{active=false}},[tenant]);
+ React.useEffect(()=>{setLead("");setLeads([]);if(!tenant)return;let active=true;const token=localStorage.getItem("vendorai_token");fetch("/api/admin/atlas/crm-leads/"+encodeURIComponent(tenant),{headers:{Authorization:"Bearer "+token},cache:"no-store"}).then(async r=>{if(!r.ok)throw Error("HTTP "+r.status);return r.json()}).then(data=>{if(!active)return;setLeads(Array.isArray(data.items)?data.items:[]);setMessage("Selecione um lead do tenant.")}).catch(e=>{if(active)setMessage("Não foi possível carregar leads: "+String(e))});return()=>{active=false}},[tenant]);
  React.useEffect(()=>{setTenant("");setLead("");setMessage("")},[nicheId]);
  let tasks:Array<{id:string;title:string;done:boolean}>=[];
  try{const parsed=JSON.parse(tasksJson||"[]");if(Array.isArray(parsed))tasks=parsed.filter(t=>typeof t.id==="string"&&typeof t.title==="string")}catch{}
