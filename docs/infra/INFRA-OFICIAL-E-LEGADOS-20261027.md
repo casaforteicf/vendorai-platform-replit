@@ -74,3 +74,18 @@ Inventário e critérios formalizados. Não foi realizado delete, parada de cont
 - `cloudflare_get_pages_project("vendorai")` retornou projeto distinto, apenas com `vendorai.pages.dev`, produção desativada para publicação GitHub, deploy canônico **09/10/2026**; não há evidência de domínio customizado do aplicativo principal. O guia `CLAUDE.md` mantém `app.appvendorai.com` diretamente na Contabo/Nginx.
 - `cloudflare_list_dns_records` retornou **403 Authentication error**; consulta de DNS está bloqueada no conector atual mesmo após o usuário validar e salvar, em arquivo separado na VPS, token novo de diagnóstico. Arquivo privado não altera as credenciais de containers/conectores automaticamente. É necessário testar o token diretamente, somente leitura, antes de concluir qualquer intervenção.
 - A associação nominal de domínio à Pages **não demonstra que o tráfego esteja realmente chegando nela**; requer DNS e teste HTTP público.
+
+## 9. DNS e Workers confirmados por consulta do operador na VPS (27/10/2026)
+
+Leitura direta de API Cloudflare com o novo token de diagnóstico, resposta `DNS_STATUS=OK` e `WORKERS_STATUS=OK`:
+
+| Host | Tipo | Valor | Proxy |
+| --- | --- | --- | --- |
+| `appvendorai.com` | CNAME | `vendorai-website.pages.dev` | true |
+| `www.appvendorai.com` | CNAME | `vendorai-website.pages.dev` | true |
+| `app.appvendorai.com` | A | `31.220.96.205` (Contabo) | false |
+| `api.appvendorai.com` | A | `31.220.96.205` (Contabo) | false |
+
+Rotas Workers consultadas: `mcp.appvendorai.com/*` sem script atribuído; `app.appvendorai.com/*` sem script atribuído; `*.appvendorai.com/*` atribuído a `vendorai-subdomain-proxy`. A rota wildcard não corresponde ao domínio raiz `appvendorai.com`, mas pode afetar subdomínios proxied. Não remover sem confirmação de dependências.
+
+**Conclusão atualizada:** DNS de produção não encaminha `appvendorai.com` para Railway: aponta para o projeto Cloudflare Pages `vendorai-website`. A resposta pública `x-railway-fallback` deve ser investigada como possível proxy/artefato antigo no deploy Pages de **07/10/2026** ou outra regra de borda; ainda não está provada a origem precisa. O arquivo fonte atual `artifacts/website/public/_worker.js` encaminha `/api/*` a `https://api.appvendorai.com`, apesar do nome legado `RAILWAY_ORIGIN`. Não alterar DNS, Worker wildcard nem eliminar serviço Railway ainda.
