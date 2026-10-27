@@ -76,6 +76,9 @@ case "$ACTION" in
         grep -E '^(SHA|IMAGE_ID|STATUS|AT_EPOCH|MODE)=' "$EVIDENCE" || true
       else
         echo "HOMOLOG_EVIDENCE=missing"
+        if [[ -f "/var/lib/vendi-release/state/$LOT.homolog-failed" ]]; then
+          grep -E '^(STATUS|EXIT_CODE)=' "/var/lib/vendi-release/state/$LOT.homolog-failed" || true
+        fi
       fi
       if systemctl is-failed --quiet "$UNIT"; then
         echo "BUILD_UNIT_FAILED=$UNIT"
