@@ -26,15 +26,19 @@ test("Vendi CRM native tool resolves tenant and excludes deleted leads", () => {
   assert.doesNotMatch(handler, /\.insert\(|\.update\(|\.delete\(/);
 });
 
-test("Browser Agent exposes explicit homolog routing and never silently falls back", () => {
+test("Browser Agent exposes explicit homolog routing and tenant-scoped write authorization", () => {
   const connections = mcp.slice(mcp.indexOf('"browser_agent_connections"'), mcp.indexOf('"browser_agent_run"'));
   const run = mcp.slice(mcp.indexOf('"browser_agent_run"'), mcp.indexOf("return server;", mcp.indexOf('"browser_agent_run"')));
   assert.match(connections, /environment:\s*z\.enum\(\["default", "homolog"\]\)/);
   assert.match(connections, /environment === "homolog" \? requiredEnv\("VENDI_HOMOLOG_API_BASE"\)/);
   assert.match(connections, /\}, targetBase\)/);
-  assert.match(run, /environment === "homolog" && \(mode === "autonomo" \|\| allowWrite === true\)/);
-  assert.match(run, /mode: environment === "homolog" \? "assistido" : mode/);
-  assert.match(run, /allowWrite: environment === "homolog" \? false : allowWrite/);
+  assert.match(mcp, /VENDI_BROWSER_OPERATOR_POLICY/);
+  assert.match(mcp, /authorizeBrowserOperation\(\{/);
+  assert.match(mcp, /operation: "homolog_run_write"/);
+  assert.match(mcp, /tenantKey/);
+  assert.match(run, /homologWriteRequested = environment === "homolog" && \(mode === "autonomo" \|\| allowWrite === true\)/);
+  assert.match(run, /mode: environment === "homolog" && !homologWriteRequested \? "assistido" : mode/);
+  assert.match(run, /allowWrite: environment === "homolog" && !homologWriteRequested \? false : allowWrite/);
   assert.match(run, /\}, targetBase\)/);
 });
 

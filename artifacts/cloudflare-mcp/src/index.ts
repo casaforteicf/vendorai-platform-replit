@@ -8,6 +8,7 @@ import { toNodeHandler } from "@modelcontextprotocol/node";
 import * as z from "zod/v4";
 import { authorized, challenge, handleOAuth, verifiedOperatorClient } from "./oauth.js";
 import { authorizeReleaseOperation, type ReleaseOperation } from "./release-operator-policy.js";
+import { authorizeBrowserOperation } from "./browser-operator-policy.js";
 
 const API_BASE = "https://api.cloudflare.com/client/v4";
 const DEFAULT_GITHUB_OWNER = "casaforteicf";
@@ -203,6 +204,7 @@ function operatorGrant(operation: "request_test" | "get_test_result", lot?: stri
   }
   return client;
 }
+
 async function testHostAction(action: "request" | "result", args: string[]) {
   // Only fixed action and strictly validated fields; no shell command provided by model.
   const host = process.env["VENDI_CONTABO_SSH_HOST"] || (existsSync("/app/.vendi-ssh/host") ? readFileSync("/app/.vendi-ssh/host", "utf8").trim() : undefined);
@@ -258,7 +260,7 @@ async function contaboReadOnly(action: keyof typeof CONTABO_READ_ONLY_COMMANDS) 
 
 function releaseOperatorGrant(operation: ReleaseOperation, lot: string): string {
   return authorizeReleaseOperation({
-    client: testOperatorSession.getStore(),
+    client: testOperatorSession.getStore() ?? null,
     policyText: process.env["VENDI_RELEASE_OPERATOR_POLICY"],
     operation,
     lot,
@@ -642,14 +644,29 @@ function createCloudflareMcpServer() {
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
     },
     async ({ tenantKey, environment, goal, connectionId, startUrl, mode, allowWrite, maxSteps }) => {
-      // Homologation requests are explicitly routed and are read-only; never silently fall back to production.
-      if (environment === "homolog" && (mode === "autonomo" || allowWrite === true)) {
-        throw new Error("HOMOLOG_BROWSER_READ_ONLY_REQUIRED");
+      // Homologation never falls back to production. Writes require an authenticated OAuth
+      // operator plus an explicit, tenant-scoped server-side grant.
+      const homologWriteRequested = environment === "homolog" && (mode === "autonomo" || allowWrite === true);
+      if (homologWriteRequested) {
+        authorizeBrowserOperation({
+          client: testOperatorSession.getStore() ?? null,
+          policyText: process.env["VENDI_BROWSER_OPERATOR_POLICY"],
+          operation: "homolog_run_write",
+          tenantKey,
+        });
       }
       const targetBase = environment === "homolog" ? requiredEnv("VENDI_HOMOLOG_API_BASE") : undefined;
       const result = await vendorApi<unknown>("/internal/browser-mcp/run", {
         method: "POST",
-        body: JSON.stringify({ tenantKey, goal, connectionId, startUrl, mode: environment === "homolog" ? "assistido" : mode, allowWrite: environment === "homolog" ? false : allowWrite, maxSteps }),
+        body: JSON.stringify({
+          tenantKey,
+          goal,
+          connectionId,
+          startUrl,
+          mode: environment === "homolog" && !homologWriteRequested ? "assistido" : mode,
+          allowWrite: environment === "homolog" && !homologWriteRequested ? false : allowWrite,
+          maxSteps,
+        }),
       }, targetBase);
       return toolText(result);
     },
