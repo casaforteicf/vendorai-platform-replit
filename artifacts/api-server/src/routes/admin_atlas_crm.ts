@@ -35,6 +35,6 @@ router.post("/admin/atlas/tasks/:nicheId/:taskId/link-crm", requireRole("super_a
     origem:"atlas",origemTemplateKey:linkKey,
   }).returning({id:activitiesTable.id});
   res.status(201).json({ok:true,alreadyLinked:false,activityId:created.id});
- }catch{res.status(503).json({error:"ATLAS_CRM_LINK_UNAVAILABLE"});}
+ }catch(error){if((error as {code?:string})?.code==="23505"){res.status(409).json({error:"ATLAS_CRM_LINK_ALREADY_CREATED_RELOAD"});return;}res.status(503).json({error:"ATLAS_CRM_LINK_UNAVAILABLE"});}
 });
 export default router;
