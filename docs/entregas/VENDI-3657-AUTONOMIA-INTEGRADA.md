@@ -85,7 +85,7 @@ acima de 4h exigirão heartbeat independente (não implementado).
   o GitHub/MCP ainda não provê fluxo de aprovação integrado de duas partes.
 - Homologação funcional completa do aplicativo (frontend, Arqdor, Praça.ai,
   CRM e operações) vai além do smoke de saúde e CRM read-only.
-- A Central de Missões ainda não recebe telemetria host-side contínua.
+- A Central de Missões ganhou um link para a Central de Publicações existente, mas ainda não recebe telemetria host-side contínua.
   Já existe uma Central de Publicações administrativa: **reutilizar essa UI**,
   não criar segunda central. Falta integrar eventos do operador/MCP à tabela
   de releases com identidade, timestamps e recibos verificáveis.
@@ -96,14 +96,14 @@ acima de 4h exigirão heartbeat independente (não implementado).
   job de renovação fora do loop ou limite de duração das ferramentas.
 
 ## 5) Testes a executar e evidências exigidas
-1. `bash -n scripts/vendi-contabo-operator scripts/vendi04-*.sh`
+1. `for f in scripts/vendi-contabo-operator scripts/vendi04-*.sh; do bash -n "$f" || exit 1; done`
 2. `node --test scripts/tests/vendi-contabo-operator-status.test.mjs scripts/tests/vendi-autonomia-integrada.test.mjs`
 3. `pnpm --filter @workspace/api-server exec tsc -p tsconfig.launch-ci.json --noEmit`
 4. `pnpm --filter @workspace/api-server run build`
-5. `pnpm --filter @workspace/cloudflare-mcp build` (confirmar nome efetivo no workspace).
+5. `pnpm --filter @workspace/cloudflare-mcp build` e `pnpm --filter @workspace/cloudflare-mcp typecheck`.
 6. Testes isolados de lotes, gates negativos, banco separado e receipt.
 7. Contabo: snapshot anterior restaurável; testar homolog e rollback em
    staging, nunca assumir que HTTP 200 sozinho comprova funcionalidade.
 
-**Status em 27/10/2026:** código em PR draft; testes e instalação no host
+**Status em 27/10/2026:** código em PR draft, incluindo o gate do Release Center e lease de missões; testes e instalação no host
 não executados nesta etapa. Produção não alterada.
