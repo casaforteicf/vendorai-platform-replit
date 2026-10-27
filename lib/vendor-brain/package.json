@@ -30,7 +30,8 @@
     "./business-observer": "./src/business-observer.ts",
     "./business-agent": "./src/business-agent.ts",
     "./engines/*": "./src/engines/*.ts",
-    "./policies": "./src/policies/index.ts"
+    "./policies": "./src/policies/index.ts",
+    "./arqdor-derived-artifact-gate": "./src/arqdor-derived-artifact-gate.ts"
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json --noEmit"
