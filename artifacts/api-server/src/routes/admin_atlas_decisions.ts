@@ -4,7 +4,7 @@ import {sql} from "drizzle-orm";
 import {requireRole} from "../middlewares/auth.js";
 const router:IRouter=Router(),key="strategic-decisions-v1";
 type Decision={impact:number;effort:number;source:string;status:"review"|"approved"|"rejected"|"measured";outcome:string;updatedAt:string};
-function valid(input:unknown):input is Record<string,Decision>{
+export function validStrategicDecisions(input:unknown):input is Record<string,Decision>{
  if(!input||typeof input!=="object"||Array.isArray(input)||Object.keys(input).length>100)return false;
  return Object.entries(input).every(([id,v])=>{
   if(!/^[a-z0-9_-]{1,70}$/.test(id)||!v||typeof v!=="object"||Array.isArray(v))return false;
@@ -15,7 +15,7 @@ function valid(input:unknown):input is Record<string,Decision>{
     typeof d.source==="string"&&d.source.length<=3000&&
     ["review","approved","rejected","measured"].includes(String(d.status))&&
     typeof d.outcome==="string"&&d.outcome.length<=5000&&
-    typeof d.updatedAt==="string"&&d.updatedAt.length<=40;
+    typeof d.updatedAt==="string"&&d.updatedAt.length<=40&&\n    (d.status!=="measured"||(d.outcome as string).trim().length>0)&&\n    (!["approved","measured"].includes(String(d.status))||(d.source as string).trim().length>0);
  });
 }
 router.get("/admin/atlas/strategic-decisions",requireRole("super_admin"),async(_req,res)=>{
@@ -26,7 +26,7 @@ router.get("/admin/atlas/strategic-decisions",requireRole("super_admin"),async(_
 });
 router.put("/admin/atlas/strategic-decisions",requireRole("super_admin"),async(req,res)=>{
  const {decisions,revision}=req.body??{};
- if(!valid(decisions)||!Number.isInteger(revision)||revision<0||revision>1000000){res.status(422).json({error:"ATLAS_DECISIONS_INVALID"});return;}
+ if(!validStrategicDecisions(decisions)||!Number.isInteger(revision)||revision<0||revision>1000000){res.status(422).json({error:"ATLAS_DECISIONS_INVALID"});return;}
  const payload=JSON.stringify(decisions),author=String(req.user?.email||req.user?.sub||"super_admin");
  try{const updated=await db.transaction(async tx=>{
  const result=revision>0?await tx.execute(sql`UPDATE vendor_atlas_documents SET content=${payload}::jsonb,revision=revision+1,updated_by=${author},updated_at=now() WHERE document_key=${key} AND revision=${revision} RETURNING revision`):await tx.execute(sql`INSERT INTO vendor_atlas_documents(document_key,content,revision,updated_by) VALUES(${key},${payload}::jsonb,1,${author}) ON CONFLICT DO NOTHING RETURNING revision`);
