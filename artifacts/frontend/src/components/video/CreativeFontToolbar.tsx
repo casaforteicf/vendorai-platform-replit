@@ -25,13 +25,13 @@ function installFontFaces() {
   style.textContent = PUBLISHED_FONTS.map((font) => {
     const url = `/fonts/vendorai/${encodeURIComponent(fontAssetName(font.sourceFile))}`;
     return `@font-face{font-family:${JSON.stringify(font.family)};src:url(${JSON.stringify(url)}) format('woff2');font-style:normal;font-weight:normal;font-display:swap;}`;
-  }).join("\\n");
+  }).join("\n");
   // The Awaking family ships with three real weights, not a synthetic browser bold.
   if (PUBLISHED_FONTS.some((font) => font.id === "awaking")) {
     style.textContent += [
       "@font-face{font-family:'Awaking';src:url('/fonts/vendorai/awaking-light.woff2') format('woff2');font-weight:300;font-style:normal;font-display:swap;}",
       "@font-face{font-family:'Awaking';src:url('/fonts/vendorai/awaking-bold.woff2') format('woff2');font-weight:700;font-style:normal;font-display:swap;}",
-    ].join("\\n");
+    ].join("\n");
   }
   document.head.appendChild(style);
 }
