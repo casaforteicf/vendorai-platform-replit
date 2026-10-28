@@ -20,10 +20,12 @@ export const FIND_ACTIVE_SQL = `SELECT id FROM arch_ai_renders
 export const REGENERATE_SQL = `INSERT INTO arch_ai_renders
   (id, tenant_id, project_id, concept_project_id, parent_render_id, mode, ambiente,
    estilo, iluminacao, angulo, mask_zones, original_image_url, source, render_view,
-   job_input, prompt, motor, status, operation_type)
+   job_input, prompt, motor, status, operation_type,
+   project_revision, scene_id, scene_name, camera_snapshot, source_model_version)
   SELECT $3, tenant_id, project_id, concept_project_id, id, mode, ambiente,
     estilo, COALESCE($5::text, iluminacao), angulo, mask_zones, original_image_url, source, render_view,
-    $6::jsonb || jsonb_build_object('regenerationKey', $4::text), CASE WHEN $5::text IS NULL THEN prompt ELSE NULL END, motor, 'queued', 'initial'
+    $6::jsonb || jsonb_build_object('regenerationKey', $4::text), CASE WHEN $5::text IS NULL THEN prompt ELSE NULL END, motor, 'queued', 'initial',
+    project_revision, scene_id, scene_name, camera_snapshot, source_model_version
   FROM arch_ai_renders WHERE id = $1 AND tenant_id = $2
   RETURNING id, status`;
 
