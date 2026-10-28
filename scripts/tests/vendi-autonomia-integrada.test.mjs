@@ -164,7 +164,10 @@ test("remote test executor never duplicates full PNPM store or retains extracted
   const script = read("scripts/infra/test-sha.sh");
   assert.match(script, /cp -a --reflink=always/);
   assert.doesNotMatch(script, /cp -a --reflink=auto/);
-  assert.match(script, /COW_SNAPSHOT_UNAVAILABLE_NO_FULL_CACHE_COPY/);
+  assert.match(script, /COW_UNAVAILABLE_USING_READONLY_OFFLINE_STORE/);
+  assert.match(script, /STORE_MOUNT="\$STORE_MOUNT,readonly"/);
+  assert.match(script, /CACHE_FILL_BLOCKED_READONLY_SHARED_STORE/);
+  assert.doesNotMatch(script, /cp -a "\$STORE/);
   assert.match(script, /trap cleanup_workspace EXIT/);
   assert.match(script, /rm -rf -- "\$RUN\/work" "\$RUN\/store"/);
 });
