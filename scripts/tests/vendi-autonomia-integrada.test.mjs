@@ -192,3 +192,16 @@ test("candidate tests include the host autonomy regression suite", () => {
   assert.match(runner, /scripts\/tests\/vendi-autonomia-integrada\.test\.mjs/);
   assert.match(runner, /scripts\/tests\/vendi-contabo-operator-status\.test\.mjs/);
 });
+
+test("production lock checks the existing Contabo BASE/LOCK script and actual fd9 flock", () => {
+  const release = read("scripts/vendi04-controlled-release.sh");
+  assert.ok(release.includes('SHARED_LOCK_CONFIG=/etc/vendorai/vendi-shared-deploy-lock.path'));
+  assert.ok(release.includes('[[ "$SHARED_LOCK" == "/opt/vendorai/deploy.lock" ]]'));
+  assert.ok(release.includes("grep -Fxq 'BASE=\"/opt/vendorai\"'"));
+  assert.ok(release.includes("grep -Fxq 'LOCK=\"$BASE/deploy.lock\"'"));
+  assert.ok(release.includes("9>[[:space:]]*"));
+  assert.ok(release.includes("[$]LOCK"));
+  assert.ok(release.includes("flock[[:space:]]+-n[[:space:]]+9"));
+  assert.ok(release.includes("SHARED_DEPLOY_LOCK_NOT_IN_CRON_SCRIPT"));
+  assert.ok(release.includes('exec 8>"$SHARED_LOCK"'));
+});
