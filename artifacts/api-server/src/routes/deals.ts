@@ -972,11 +972,13 @@ router.get("/tenants/:tenantId/deals", async (req, res) => {
     ));
   }
 
-  const deals = await db
-    .select()
-    .from(dealsTable)
-    .where(and(...conditions))
-    .orderBy(dealsTable.createdAt);
+  // A consulta e os subselects notExists compartilham a mesma transacao
+  // com contexto de tenant; nao concede BYPASSRLS nem altera grants.
+  const deals = await db.transaction(async (tx) => {
+    await tx.execute(sql`select set_config('app.tenant_id', ${tenantId}, true)`);
+    return tx.select().from(dealsTable)
+      .where(and(...conditions)).orderBy(dealsTable.createdAt);
+  });
 
   res.json(deals);
 });

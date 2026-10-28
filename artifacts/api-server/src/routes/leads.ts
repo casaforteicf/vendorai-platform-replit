@@ -817,11 +817,13 @@ router.get("/tenants/:tenantId/leads", async (req, res) => {
     )!);
   }
 
-  const leads = await db
-    .select()
-    .from(leadsTable)
-    .where(and(...conditions))
-    .orderBy(leadsTable.createdAt);
+  // RLS Contabo: set_config local e SELECT devem usar a MESMA conexao.
+  // tenantId ja foi validado acima com o JWT ou autorizacao de representante.
+  const leads = await db.transaction(async (tx) => {
+    await tx.execute(sql`select set_config('app.tenant_id', ${tenantId}, true)`);
+    return tx.select().from(leadsTable)
+      .where(and(...conditions)).orderBy(leadsTable.createdAt);
+  });
 
   if (isOwnTenant) {
     const sharedRows = await db.select({
