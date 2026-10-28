@@ -145,7 +145,8 @@ export async function runVendiOperationalObserver(log: Logger) {
         objective: [
           "Faça a triagem operacional autônoma deste tenant.",
           "Analise as exceções informadas e use somente as ferramentas oficiais do Vendi.",
-          "Resolva automaticamente apenas ações de baixo/médio risco permitidas pela política.",
+          "Esta triagem é somente leitura: diagnostique as exceções e recomende ações internas.",
+          "Tarefa vencida não autoriza contato com cliente. Não envie mensagens nem despache agentes de atendimento.",
           "Não faça gasto, publicação externa, contato externo de alto risco, exclusão ou mudança crítica sem aprovação.",
           "Quando não houver ferramenta segura para corrigir diretamente, diagnostique, produza evidências e deixe a próxima ação pronta.",
           "Confirme o resultado de cada ação executada antes de considerar a missão concluída.",
