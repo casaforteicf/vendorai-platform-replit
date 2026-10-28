@@ -433,10 +433,10 @@ export function startLiveBrowserMission(
         if (action.action === "finish") {
           if (action.outcome === "blocked") {
             session.error = action.answer;
-            session.paused = true;
-            session.pauseReason = "human_verification";
-            session.status = "paused";
-            continue;
+            session.paused = false;
+            session.pauseReason = null;
+            session.status = "error";
+            return;
           }
           if (action.outcome !== "completed") throw new Error(action.answer);
           if (session.onSessionPersist) await session.onSessionPersist(await session.page.cookies());

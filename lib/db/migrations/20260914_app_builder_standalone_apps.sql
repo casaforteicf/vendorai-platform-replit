@@ -1,3 +1,113 @@
+-- VendorAI App Builder — fundação multi-vertical e multi-tenant.
+-- Esta migration cria somente o núcleo estrutural: templates/versionamento,
+-- instâncias por tenant e registries reutilizáveis. Nenhum app vertical é criado aqui.
+
+CREATE TABLE IF NOT EXISTS app_verticals (
+  id text PRIMARY KEY,
+  key text NOT NULL,
+  name text NOT NULL,
+  family_key text,
+  status text NOT NULL DEFAULT 'active',
+  metadata jsonb NOT NULL DEFAULT '{}'::jsonb,
+  created_at timestamp NOT NULL DEFAULT now(),
+  updated_at timestamp NOT NULL DEFAULT now(),
+  CONSTRAINT app_verticals_status_check
+    CHECK (status IN ('active', 'inactive', 'archived'))
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS app_verticals_key_uidx
+  ON app_verticals (key);
+CREATE INDEX IF NOT EXISTS app_verticals_family_idx
+  ON app_verticals (family_key);
+CREATE INDEX IF NOT EXISTS app_verticals_status_idx
+  ON app_verticals (status);
+
+CREATE TABLE IF NOT EXISTS app_templates (
+  id text PRIMARY KEY,
+  vertical_id text NOT NULL REFERENCES app_verticals(id) ON DELETE RESTRICT,
+  parent_template_id text REFERENCES app_templates(id) ON DELETE SET NULL,
+  name text NOT NULL,
+  slug text NOT NULL,
+  description text,
+  status text NOT NULL DEFAULT 'draft',
+  settings jsonb NOT NULL DEFAULT '{}'::jsonb,
+  created_at timestamp NOT NULL DEFAULT now(),
+  updated_at timestamp NOT NULL DEFAULT now(),
+  CONSTRAINT app_templates_status_check
+    CHECK (status IN ('draft', 'active', 'archived'))
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS app_templates_vertical_slug_uidx
+  ON app_templates (vertical_id, slug);
+CREATE INDEX IF NOT EXISTS app_templates_vertical_status_idx
+  ON app_templates (vertical_id, status);
+CREATE INDEX IF NOT EXISTS app_templates_parent_idx
+  ON app_templates (parent_template_id);
+
+CREATE TABLE IF NOT EXISTS app_template_versions (
+  id text PRIMARY KEY,
+  template_id text NOT NULL REFERENCES app_templates(id) ON DELETE CASCADE,
+  version integer NOT NULL,
+  status text NOT NULL DEFAULT 'draft',
+  definition jsonb NOT NULL DEFAULT '{}'::jsonb,
+  change_log text,
+  published_at timestamp,
+  created_at timestamp NOT NULL DEFAULT now(),
+  CONSTRAINT app_template_versions_version_check CHECK (version > 0),
+  CONSTRAINT app_template_versions_status_check
+    CHECK (status IN ('draft', 'published', 'archived'))
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS app_template_versions_template_version_uidx
+  ON app_template_versions (template_id, version);
+CREATE INDEX IF NOT EXISTS app_template_versions_status_idx
+  ON app_template_versions (status);
+
+CREATE TABLE IF NOT EXISTS app_instances (
+  id text PRIMARY KEY,
+  tenant_id text NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  template_id text NOT NULL REFERENCES app_templates(id) ON DELETE RESTRICT,
+  template_version_id text NOT NULL REFERENCES app_template_versions(id) ON DELETE RESTRICT,
+  name text NOT NULL,
+  slug text NOT NULL,
+  status text NOT NULL DEFAULT 'draft',
+  theme jsonb NOT NULL DEFAULT '{}'::jsonb,
+  navigation jsonb NOT NULL DEFAULT '[]'::jsonb,
+  settings jsonb NOT NULL DEFAULT '{}'::jsonb,
+  white_label jsonb NOT NULL DEFAULT '{}'::jsonb,
+  created_at timestamp NOT NULL DEFAULT now(),
+  updated_at timestamp NOT NULL DEFAULT now(),
+  CONSTRAINT app_instances_status_check
+    CHECK (status IN ('draft', 'preview', 'published', 'archived'))
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS app_instances_tenant_slug_uidx
+  ON app_instances (tenant_id, slug);
+CREATE INDEX IF NOT EXISTS app_instances_tenant_status_idx
+  ON app_instances (tenant_id, status);
+CREATE INDEX IF NOT EXISTS app_instances_template_idx
+  ON app_instances (template_id);
+
+CREATE TABLE IF NOT EXISTS app_instance_versions (
+  id text PRIMARY KEY,
+  tenant_id text NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  app_instance_id text NOT NULL REFERENCES app_instances(id) ON DELETE CASCADE,
+  template_version_id text REFERENCES app_template_versions(id) ON DELETE SET NULL,
+  version integer NOT NULL,
+  status text NOT NULL DEFAULT 'draft',
+  definition jsonb NOT NULL DEFAULT '{}'::jsonb,
+  published_at timestamp,
+  created_at timestamp NOT NULL DEFAULT now(),
+  CONSTRAINT app_instance_versions_version_check CHECK (version > 0),
+  CONSTRAINT app_instance_versions_status_check
+    CHECK (status IN ('draft', 'published', 'archived'))
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS app_instance_versions_instance_version_uidx
+  ON app_instance_versions (app_instance_id, version);
+CREATE INDEX IF NOT EXISTS app_instance_versions_tenant_status_idx
+  ON app_instance_versions (tenant_id, status);
+
 -- App Builder: permitir construção de apps antes de existir tenant.
 -- O app pode nascer como prospect/internal e depois ser vinculado a um tenant real.
 

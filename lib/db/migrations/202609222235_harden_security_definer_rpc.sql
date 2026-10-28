@@ -1,27 +1,29 @@
--- Harden security-definer/internal helper functions exposed through PostgREST.
---
--- Trigger/event-trigger functions must remain executable by the database/backend,
--- but must not be callable directly by browser-facing roles.
-
+-- Harden existing internal functions without inventing legacy Supabase helpers.
+-- New trigger functions receive the same ACL in their defining migrations 205/210.
 BEGIN;
 
-REVOKE EXECUTE ON FUNCTION public.rls_auto_enable()
-  FROM PUBLIC, anon, authenticated;
-
-REVOKE EXECUTE ON FUNCTION public.vendorai_create_order_work_card_on_won()
-  FROM PUBLIC, anon, authenticated;
-
-REVOKE EXECUTE ON FUNCTION public.vendorai_log_deal_stage_event()
-  FROM PUBLIC, anon, authenticated;
-
-REVOKE EXECUTE ON FUNCTION public.vendorai_log_work_card_stage_event()
-  FROM PUBLIC, anon, authenticated;
-
--- Keep the restricted backend role explicit.
-GRANT EXECUTE ON FUNCTION public.rls_auto_enable() TO vendorai_app;
-GRANT EXECUTE ON FUNCTION public.vendorai_create_order_work_card_on_won() TO vendorai_app;
-GRANT EXECUTE ON FUNCTION public.vendorai_log_deal_stage_event() TO vendorai_app;
-GRANT EXECUTE ON FUNCTION public.vendorai_log_work_card_stage_event() TO vendorai_app;
+DO $vendi_hardening$
+DECLARE
+  signature text;
+  target regprocedure;
+  browser_role text;
+BEGIN
+  FOREACH signature IN ARRAY ARRAY['public.rls_auto_enable()', 'public.vendorai_create_order_work_card_on_won()', 'public.vendorai_log_deal_stage_event()', 'public.vendorai_log_work_card_stage_event()']
+  LOOP
+    target := to_regprocedure(signature);
+    IF target IS NULL THEN
+      CONTINUE; -- Optional legacy helper or function created later by 205/210.
+    END IF;
+    EXECUTE format('REVOKE EXECUTE ON FUNCTION %s FROM PUBLIC', target);
+    FOREACH browser_role IN ARRAY ARRAY['anon', 'authenticated'] LOOP
+      IF to_regrole(browser_role) IS NOT NULL THEN
+        EXECUTE format('REVOKE EXECUTE ON FUNCTION %s FROM %I', target, browser_role);
+      END IF;
+    END LOOP;
+    EXECUTE format('GRANT EXECUTE ON FUNCTION %s TO vendorai_app', target);
+  END LOOP;
+END
+$vendi_hardening$;
 
 -- Foundational RLS helpers only use pg_catalog built-ins. Pinning search_path
 -- removes object-hijacking risk and resolves the mutable-search-path advisory.

@@ -682,7 +682,6 @@ ALTER TABLE "tenants" ADD COLUMN "openai_api_key_encrypted" text;--> statement-b
 ALTER TABLE "tenants" ADD COLUMN "openai_key_configured_at" timestamp;--> statement-breakpoint
 ALTER TABLE "tenants" ADD COLUMN "openai_key_status" text DEFAULT 'nao_configurada';--> statement-breakpoint
 ALTER TABLE "tenants" ADD COLUMN "suspended_reason" text;--> statement-breakpoint
-ALTER TABLE "leads" ADD COLUMN "documento" text;--> statement-breakpoint
 ALTER TABLE "leads" ADD COLUMN "assigned_to" text;--> statement-breakpoint
 ALTER TABLE "leads" ADD COLUMN "instagram_scoped_id" text;--> statement-breakpoint
 ALTER TABLE "leads" ADD COLUMN "instagram_handle" text;--> statement-breakpoint
@@ -722,20 +721,8 @@ ALTER TABLE "agent_configs" ADD COLUMN "meta_waba_id" text;--> statement-breakpo
 ALTER TABLE "agent_configs" ADD COLUMN "meta_access_token" text;--> statement-breakpoint
 ALTER TABLE "agent_configs" ADD COLUMN "meta_verify_token" text;--> statement-breakpoint
 ALTER TABLE "deals" ADD COLUMN "categoria_perda" text;--> statement-breakpoint
-ALTER TABLE "deals" ADD COLUMN "closure_triggered_at" timestamp;--> statement-breakpoint
-ALTER TABLE "deals" ADD COLUMN "contract_status" text;--> statement-breakpoint
-ALTER TABLE "deals" ADD COLUMN "contract_error" text;--> statement-breakpoint
-ALTER TABLE "deals" ADD COLUMN "onboarding_status" text;--> statement-breakpoint
-ALTER TABLE "deals" ADD COLUMN "onboarding_error" text;--> statement-breakpoint
-ALTER TABLE "deals" ADD COLUMN "zapsign_doc_id" text;--> statement-breakpoint
-ALTER TABLE "deals" ADD COLUMN "lost_at" timestamp;--> statement-breakpoint
-ALTER TABLE "deals" ADD COLUMN "lost_reason" text;--> statement-breakpoint
-ALTER TABLE "deals" ADD COLUMN "lost_reason_detail" text;--> statement-breakpoint
 ALTER TABLE "deals" ADD COLUMN "assigned_to" text;--> statement-breakpoint
 ALTER TABLE "deals" ADD COLUMN "tipo_fechamento" "deal_tipo_fechamento";--> statement-breakpoint
-ALTER TABLE "deals" ADD COLUMN "asaas_charge_id" text;--> statement-breakpoint
-ALTER TABLE "deals" ADD COLUMN "charge_link" text;--> statement-breakpoint
-ALTER TABLE "deals" ADD COLUMN "charge_status" text;--> statement-breakpoint
 ALTER TABLE "deals" ADD COLUMN "etapa_saas" text;--> statement-breakpoint
 ALTER TABLE "deals" ADD COLUMN "mrr" numeric(12, 2);--> statement-breakpoint
 ALTER TABLE "deals" ADD COLUMN "arr" numeric(12, 2);--> statement-breakpoint
@@ -857,6 +844,4 @@ ALTER TABLE "agendamentos" ADD CONSTRAINT "agendamentos_agenda_id_agendas_id_fk"
 CREATE INDEX "leads_tenant_phone_idx" ON "leads" USING btree ("tenant_id","telefone");--> statement-breakpoint
 CREATE INDEX "leads_tenant_doc_idx" ON "leads" USING btree ("tenant_id","documento");--> statement-breakpoint
 ALTER TABLE "tenants" ADD CONSTRAINT "tenants_subdomain_slug_unique" UNIQUE("subdomain_slug");--> statement-breakpoint
-ALTER TABLE "tenants" ADD CONSTRAINT "analysis_staleness_hours_positive" CHECK ("tenants"."analysis_staleness_hours" IS NULL OR "tenants"."analysis_staleness_hours" >= 1);--> statement-breakpoint
-ALTER TABLE "tenants" ADD CONSTRAINT "analysis_message_threshold_positive" CHECK ("tenants"."analysis_message_threshold" IS NULL OR "tenants"."analysis_message_threshold" >= 1);--> statement-breakpoint
 ALTER TABLE "tenants" ADD CONSTRAINT "max_analyses_per_hour_positive" CHECK ("tenants"."max_analyses_per_hour" IS NULL OR "tenants"."max_analyses_per_hour" >= 1);

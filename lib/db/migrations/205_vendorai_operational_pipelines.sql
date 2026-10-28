@@ -8,6 +8,37 @@ EXCEPTION
   WHEN duplicate_object THEN NULL;
 END $$;
 
+DO $$ BEGIN CREATE TYPE entrega_modo AS ENUM ('agendada', 'assincrona'); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+DO $$ BEGIN CREATE TYPE entrega_status AS ENUM ('aguardando', 'agendada', 'em_transito', 'entregue', 'cancelada'); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+DO $$ BEGIN CREATE TYPE entrega_periodo AS ENUM ('manha', 'tarde'); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+DO $$ BEGIN CREATE TYPE entrega_feedback_status AS ENUM ('aguardando_resposta', 'aguardando_motivo', 'positivo', 'negativo'); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+CREATE TABLE IF NOT EXISTS entregas (
+  id text PRIMARY KEY,
+  tenant_id text NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  deal_id text NOT NULL REFERENCES deals(id) ON DELETE CASCADE,
+  proposta_id text REFERENCES propostas(id) ON DELETE SET NULL,
+  lead_id text REFERENCES leads(id) ON DELETE SET NULL,
+  assigned_to text REFERENCES users(id) ON DELETE SET NULL,
+  modo entrega_modo NOT NULL DEFAULT 'assincrona',
+  status entrega_status NOT NULL DEFAULT 'aguardando',
+  periodo entrega_periodo,
+  lote_numero integer,
+  data_liberacao_prevista timestamp,
+  data_liberacao_efetiva timestamp,
+  data_prevista timestamp,
+  data_entregue timestamp,
+  agendamento_id text REFERENCES agendamentos(id) ON DELETE SET NULL,
+  endereco_entrega text,
+  itens jsonb NOT NULL DEFAULT '[]'::jsonb,
+  observacoes text,
+  feedback_status entrega_feedback_status,
+  feedback_motivo text,
+  avaliacao_solicitada boolean NOT NULL DEFAULT false,
+  feedback_respondido_em timestamp,
+  created_at timestamp NOT NULL DEFAULT now(),
+  updated_at timestamp NOT NULL DEFAULT now()
+);
 ALTER TABLE entregas
   ADD COLUMN IF NOT EXISTS lote_numero integer,
   ADD COLUMN IF NOT EXISTS data_liberacao_prevista timestamp,
@@ -158,3 +189,28 @@ WHERE d.etapa IN ('ganho', 'em_execucao', 'entregue')
       AND wc.deal_id = d.id
       AND wc.tipo = 'pedido'
   );
+
+
+-- Restrict browser execution when these trigger functions are first created.
+DO $vendi_hardening$
+DECLARE
+  signature text;
+  target regprocedure;
+  browser_role text;
+BEGIN
+  FOREACH signature IN ARRAY ARRAY['public.vendorai_create_order_work_card_on_won()']
+  LOOP
+    target := to_regprocedure(signature);
+    IF target IS NULL THEN
+      RAISE EXCEPTION 'Required trigger function missing: %', signature;
+    END IF;
+    EXECUTE format('REVOKE EXECUTE ON FUNCTION %s FROM PUBLIC', target);
+    FOREACH browser_role IN ARRAY ARRAY['anon', 'authenticated'] LOOP
+      IF to_regrole(browser_role) IS NOT NULL THEN
+        EXECUTE format('REVOKE EXECUTE ON FUNCTION %s FROM %I', target, browser_role);
+      END IF;
+    END LOOP;
+    EXECUTE format('GRANT EXECUTE ON FUNCTION %s TO vendorai_app', target);
+  END LOOP;
+END
+$vendi_hardening$;

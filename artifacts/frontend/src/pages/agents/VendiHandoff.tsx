@@ -149,6 +149,10 @@ export default function VendiHandoff() {
                   void control({ action: "click", x, y });
                 }}
               />
+            ) : error ? (
+              <div className="max-w-md text-center text-sm text-destructive">
+                A sessão remota não está disponível. Gere um novo link de controle no Vendi.
+              </div>
             ) : (
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
                 <Loader2 className="h-4 w-4 animate-spin" />Carregando sessão…

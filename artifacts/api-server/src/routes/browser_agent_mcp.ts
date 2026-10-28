@@ -51,27 +51,32 @@ router.post("/internal/browser-mcp/homolog-bootstrap", async (req, res) => {
     return;
   }
 
-  const verifyUrl = process.env["HOMOLOGATION_UPSTREAM_AUTH_ME_URL"]?.trim()
-    || "https://app.appvendorai.com/api/auth/me";
+  const serviceToken = process.env["BROWSER_MCP_ACCESS_TOKEN"]?.trim();
+  const serviceAuthorized = Boolean(serviceToken) && upstreamToken === serviceToken;
 
-  let upstreamUser: any;
-  try {
-    const verifyResponse = await fetch(verifyUrl, {
-      headers: { authorization: `Bearer ${upstreamToken}` },
-    });
-    if (!verifyResponse.ok) {
-      res.status(401).json({ error: "upstream_token_rejected", status: verifyResponse.status });
+  if (!serviceAuthorized) {
+    const verifyUrl = process.env["HOMOLOGATION_UPSTREAM_AUTH_ME_URL"]?.trim()
+      || "https://app.appvendorai.com/api/auth/me";
+
+    let upstreamUser: any;
+    try {
+      const verifyResponse = await fetch(verifyUrl, {
+        headers: { authorization: `Bearer ${upstreamToken}` },
+      });
+      if (!verifyResponse.ok) {
+        res.status(401).json({ error: "upstream_token_rejected", status: verifyResponse.status });
+        return;
+      }
+      upstreamUser = await verifyResponse.json();
+    } catch {
+      res.status(502).json({ error: "upstream_auth_unreachable" });
       return;
     }
-    upstreamUser = await verifyResponse.json();
-  } catch {
-    res.status(502).json({ error: "upstream_auth_unreachable" });
-    return;
-  }
 
-  if (upstreamUser?.platformRole !== "super_admin") {
-    res.status(403).json({ error: "super_admin_required" });
-    return;
+    if (upstreamUser?.platformRole !== "super_admin") {
+      res.status(403).json({ error: "super_admin_required" });
+      return;
+    }
   }
 
   const tenantId = await resolveTenantId(parsed.data.tenantKey);
@@ -482,39 +487,17 @@ router.post("/internal/browser-mcp/run", async (req, res) => {
         actorType: "ai",
       };
     } else if (firstPartyHost === "homolog.appvendorai.com") {
-      // Gera primeiro uma credencial técnica válida na produção e a apresenta à
-      // homologação. A homologação valida essa credencial contra /auth/me da
-      // produção e só então emite um JWT local com o próprio JWT_SECRET.
-      const principalSelect = {
-        id: usersTable.id,
-        email: usersTable.email,
-        name: usersTable.name,
-        platformRole: usersTable.platformRole,
-        role: usersTable.role,
-        userFunction: usersTable.userFunction,
-        active: usersTable.active,
-      };
-      const [platformPrincipal] = await db.select(principalSelect)
-        .from(usersTable)
-        .where(and(eq(usersTable.platformRole, "super_admin"), eq(usersTable.active, true)))
-        .limit(1);
-      if (!platformPrincipal) throw new Error("VENDI_AUTH_PRINCIPAL_NOT_FOUND");
-
-      const upstreamToken = signToken({
-        sub: platformPrincipal.id,
-        email: platformPrincipal.email,
-        platformRole: platformPrincipal.platformRole,
-        tenantId,
-        role: platformPrincipal.role,
-        userFunction: platformPrincipal.userFunction ?? undefined,
-        actorType: "ai",
-      });
+      // Homolog accepts the existing MCP service credential and mints a local,
+      // tenant-scoped JWT. This keeps the trust boundary explicit without
+      // depending on a production-signed user token.
+      const bootstrapToken = process.env["BROWSER_MCP_ACCESS_TOKEN"]?.trim();
+      if (!bootstrapToken) throw new Error("VENDI_HOMOLOG_BOOTSTRAP_TOKEN_MISSING");
 
       const exchangeUrl = new URL("/api/internal/browser-mcp/homolog-bootstrap", firstPartyUrl.origin);
       const exchangeResponse = await fetch(exchangeUrl, {
         method: "POST",
         headers: {
-          authorization: `Bearer ${upstreamToken}`,
+          authorization: `Bearer ${bootstrapToken}`,
           "content-type": "application/json",
         },
         body: JSON.stringify({ tenantKey: parsed.data.tenantKey }),
