@@ -25,7 +25,16 @@ df -h /
 echo "=== CAPACITY ==="
 FREE_KB=$(df -Pk / | awk 'NR==2 {print $4}')
 echo "FREE_KB=$FREE_KB"
-if [[ "$FREE_KB" -lt 2097152 ]]; then
-  echo "BUILD_BLOCKED_LOW_DISK"; exit 75
+if (( FREE_KB < 2097152 )); then
+  echo "PREFLIGHT_BLOCKED_LOW_DISK"
+  exit 75
 fi
-echo "VENDI04_RELEASE_PREFLIGHT_PASSED"
+# Preflight can pass for a zero-layer image reuse even when a new Docker build
+# cannot. Report the distinction rather than claiming the host is build-ready.
+if (( FREE_KB < 14680064 )); then
+  echo "NEW_IMAGE_BUILD_CAPACITY=BLOCKED_LOW_DISK"
+  echo "NEW_IMAGE_MIN_FREE_KB=14680064"
+else
+  echo "NEW_IMAGE_BUILD_CAPACITY=DISK_READY"
+fi
+echo "VENDI04_RELEASE_PREFLIGHT_PASSED_HEALTH_AND_WORKSPACE_ONLY"
