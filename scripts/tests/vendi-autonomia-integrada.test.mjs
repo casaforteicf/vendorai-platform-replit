@@ -181,7 +181,7 @@ test("successive release guard permits exactly one matching active predecessor",
   assert.match(release, /prior_superseded=1/);
   assert.match(release, /STATUS=SUPERSEDED\$\/STATUS=PUBLISHED/);
   assert.ok(
-    release.indexOf("STATUS=SUPERSEDED") > release.indexOf('[[ "$ok" == 1 ]]'),
+    release.indexOf("s/^STATUS=PUBLISHED$/STATUS=SUPERSEDED/") > release.indexOf('[[ "$ok" == 1 ]]'),
     "prior release must not be superseded before candidate health passes",
   );
   assert.ok(release.includes("rm -f \"$STATE\""), "failed release must clear new release state");
