@@ -3,6 +3,7 @@ import {
   type CanonicalGeometrySnapshot,
   type GeometryIssue,
 } from './arqdor-geometry-preflight';
+import { conceptStructuralRevision, type ConceptStructuralState } from './arqdor-geometry-revision';
 
 /**
  * ARQDOR LOT-02 — read-only adapter from arch_concept_projects.configuration.
@@ -28,6 +29,8 @@ export type PersistedConceptGeometryInput = {
   projectId: string;
   configuration: unknown;
   updatedAt?: Date | string | null;
+  /** Optional authoritative persisted structure for geometry-only revisions. */
+  structuralState?: ConceptStructuralState;
 };
 
 type JsonObject = Record<string, unknown>;
@@ -81,6 +84,10 @@ export function adaptPersistedConceptGeometry(
       reasons.push('master_source_mismatch');
     const proof = isObject(selected.acceptanceProof) ? selected.acceptanceProof : null;
     if (!proof || proof.status !== 'approved') reasons.push('master_not_approved');
+  } else if (input.structuralState !== undefined) {
+    const digest = conceptStructuralRevision(input.structuralState);
+    if (digest) revisionId = digest;
+    else reasons.push('structural_geometry_revision_unavailable');
   } else if (
     typeof configuration.revisionNumber === 'number' &&
     Number.isSafeInteger(configuration.revisionNumber) &&

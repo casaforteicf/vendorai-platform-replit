@@ -27,6 +27,7 @@ import {
   archMaterialTenantAccessTable,
 } from "@workspace/db";
 import { authenticate } from "../middlewares/auth.js";
+import { evaluateConceptRenderGate } from "../lib/arqdor-render-geometry-gate.js";
 import { ObjectStorageService } from "../lib/objectStorage.js";
 import {
   createZoneMask,
@@ -244,11 +245,41 @@ archAiRenderRouter.post("/arch/ai-render", authenticate, async (req: Request, re
       id: archConceptProjectsTable.id,
       status: archConceptProjectsTable.status,
       configuration: archConceptProjectsTable.configuration,
+      lot: archConceptProjectsTable.lot,
+      rooms: archConceptProjectsTable.rooms,
+      openingOverrides: archConceptProjectsTable.openingOverrides,
+      facadePreferences: archConceptProjectsTable.facadePreferences,
+      updatedAt: archConceptProjectsTable.updatedAt,
     })
       .from(archConceptProjectsTable)
       .where(and(eq(archConceptProjectsTable.id, concept_project_id), eq(archConceptProjectsTable.tenantId, tid)))
       .limit(1);
     if (!concept) return res.status(404).json({ success: false, error: "Pré-projeto não encontrado." });
+    // This gate is opt-in and checks the source revision BEFORE creating a paid job.
+    // Never trust geometry or tenant identifiers from a client-provided snapshot.
+    const geometryGate = evaluateConceptRenderGate({
+      enabled: process.env.ARQDOR_RENDER_GEOMETRY_GATE_ENABLED === "true",
+      tenantId: tid,
+      conceptProjectId: concept_project_id,
+      updatedAt: concept.updatedAt,
+      configuration: concept.configuration,
+      structuralState: {
+        configuration: concept.configuration,
+        lot: concept.lot, rooms: concept.rooms,
+        openingOverrides: concept.openingOverrides,
+        facadePreferences: concept.facadePreferences,
+      },
+      requestedRevision: project_revision,
+      renderView: render_view,
+    });
+    if (!geometryGate.allowed) {
+      return res.status(409).json({
+        success: false,
+        error: "A planta ou a revisão geométrica exige conferência antes do render.",
+        code: geometryGate.code,
+        details: { reasons: geometryGate.reasons, issues: geometryGate.issueCodes },
+      });
+    }
     const conceptConfiguration = (concept.configuration ?? {}) as any;
     const realEnvironmentContext = interventionPromptContext(
       (conceptConfiguration?.realEnvironment ?? null) as RealEnvironmentAnalysis | null,
@@ -642,6 +673,43 @@ archAiRenderRouter.post("/arch/ai-render/:id/adjust", authenticate, async (req: 
   if (!parent) return res.status(404).json({ success: false, error: "Render pai não encontrado" });
   if (parent.status !== "concluido") {
     return res.status(400).json({ success: false, error: "O render pai ainda não foi concluído" });
+  }
+
+  if (parent.conceptProjectId && process.env.ARQDOR_RENDER_GEOMETRY_GATE_ENABLED === "true") {
+    const [concept] = await db.select({
+      id: archConceptProjectsTable.id,
+      configuration: archConceptProjectsTable.configuration,
+      lot: archConceptProjectsTable.lot,
+      rooms: archConceptProjectsTable.rooms,
+      openingOverrides: archConceptProjectsTable.openingOverrides,
+      facadePreferences: archConceptProjectsTable.facadePreferences,
+      updatedAt: archConceptProjectsTable.updatedAt,
+    }).from(archConceptProjectsTable).where(and(
+      eq(archConceptProjectsTable.id, parent.conceptProjectId),
+      eq(archConceptProjectsTable.tenantId, tid),
+    )).limit(1);
+    if (!concept) return res.status(404).json({ success: false, error: "Pré-projeto de origem não encontrado." });
+    const geometryGate = evaluateConceptRenderGate({
+      enabled: true,
+      tenantId: tid,
+      conceptProjectId: parent.conceptProjectId,
+      updatedAt: concept.updatedAt,
+      configuration: concept.configuration,
+      structuralState: {
+        configuration: concept.configuration,
+        lot: concept.lot, rooms: concept.rooms,
+        openingOverrides: concept.openingOverrides,
+        facadePreferences: concept.facadePreferences,
+      },
+      requestedRevision: parent.projectRevision,
+      renderView: parent.renderView === "interior" ? "interior" : "exterior",
+    });
+    if (!geometryGate.allowed) return res.status(409).json({
+      success: false,
+      error: "A revisão geométrica de origem mudou ou exige conferência antes do ajuste.",
+      code: geometryGate.code,
+      details: { reasons: geometryGate.reasons, issues: geometryGate.issueCodes },
+    });
   }
 
   const parsed = adjustBodySchema.safeParse(req.body);

@@ -34,8 +34,7 @@ describe('Arqdor LOT-02: persisted concept geometry adapter', () => {
     expect(a).not.toBe(b);
   });
   it('rejects draft geometry without the persisted updatedAt', () => {
-    const source: ReturnType<typeof input> & { updatedAt?: string } = input();
-    delete source.updatedAt;
+    const { updatedAt: _omitted, ...source } = input();
     const result = adaptPersistedConceptGeometry(source);
     expect(result.status).toBe('requires_review');
     expect(result.reasons).toContain('draft_updated_at_missing');
