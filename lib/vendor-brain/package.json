@@ -31,7 +31,9 @@
     "./business-agent": "./src/business-agent.ts",
     "./engines/*": "./src/engines/*.ts",
     "./policies": "./src/policies/index.ts",
-    "./arqdor-derived-artifact-gate": "./src/arqdor-derived-artifact-gate.ts"
+    "./arqdor-derived-artifact-gate": "./src/arqdor-derived-artifact-gate.ts",
+    "./arqdor-geometry-revision": "./src/arqdor-geometry-revision.ts",
+    "./arqdor-legacy-opening-audit": "./src/arqdor-legacy-opening-audit.ts"
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json --noEmit"

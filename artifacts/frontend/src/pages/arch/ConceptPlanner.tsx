@@ -78,7 +78,9 @@ import { buildExplainableFindings } from "./conceptExplainableEvaluation";
 import { clampObjectToLot, clampRoomToLot, clampWallToLot, normalizeOpeningDimensions } from "./conceptParametricEditing";
 import { buildConceptWallDiagnostics } from "./conceptWallDiagnostics";
 import { validateConceptWalls } from "./conceptWallPreflight";
-import { conceptRenderRevision } from "./conceptRenderRevision";
+import { auditLegacyOpeningAnchors } from "@workspace/vendor-brain/arqdor-legacy-opening-audit";
+import { compareFacadeOpeningFidelity } from "./conceptFacadeOpeningFidelity";
+import { conceptRenderStructuralRevision } from "./conceptRenderRevision";
 
 const ConceptPlan2D = lazy(() => import("./ConceptPlan2D"));
 const ConceptTypologyPreview = lazy(() => import("./ConceptTypologyPreview"));
@@ -1133,6 +1135,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
   const revisionAutosaveEnabled = !guestMode && import.meta.env.VITE_MULTI04_REVISION_AUTOSAVE === "true";
   // Staged rollout; preserve the existing editor rendering flow in production.
   const renderGeometryClientGateEnabled = import.meta.env.VITE_ARQDOR_RENDER_GEOMETRY_GATE_CLIENT === "true";
+  const legacyOpeningAuditEnabled = import.meta.env.VITE_ARQDOR_LEGACY_OPENING_AUDIT === "true";
   const conceptRevisionRef = useRef<string | null>(null);
   const renderGeometryRevisionRef = useRef<string | null>(null);
   const revisionSaveQueueRef = useRef<Promise<void>>(Promise.resolve());
@@ -1643,7 +1646,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
 
         conceptIdRef.current = draft.id;
         conceptRevisionRef.current = draft.updatedAt ?? null;
-        renderGeometryRevisionRef.current = conceptRenderRevision(draft);
+        renderGeometryRevisionRef.current = conceptRenderStructuralRevision(draft);
         revisionConflictRef.current = false;
         setRevisionConflictPreview(null);
         setConceptId(draft.id);
@@ -1893,7 +1896,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
       }
       const saved = (await response.json()) as ConceptDraftResponse;
       conceptRevisionRef.current = saved.updatedAt ?? null;
-      renderGeometryRevisionRef.current = conceptRenderRevision(saved);
+      renderGeometryRevisionRef.current = conceptRenderStructuralRevision(saved);
       conceptIdRef.current = saved.id;
       setConceptId(saved.id);
       if (!targetId && typeof window !== "undefined") {
@@ -5986,6 +5989,20 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
         setRenderLightingOverride(null);
       }
       const derivedFacade = buildDerivedFacadeModel(modelLevels, safeRooms, normalizeSitePlacement(sitePlacement));
+      if (renderGeometryClientGateEnabled && renderView === "exterior") {
+        const geometryPreservingFacade = buildDerivedFacadeModel(
+          modelLevels, safeRooms, normalizeSitePlacement(sitePlacement),
+          { preserveOpeningGeometry: true },
+        );
+        const openingFidelity = compareFacadeOpeningFidelity(geometryPreservingFacade, derivedFacade);
+        if (!openingFidelity.valid) {
+          throw new Error(
+            "Fachada incompatível com a planta: esquadrias foram deslocadas, reduzidas ou omitidas. " +
+            "Confira os vãos antes do render (" +
+            openingFidelity.issues.map(item => item.openingId).slice(0, 5).join(", ") + ").",
+          );
+        }
+      }
       const kontextSummary = renderView === "exterior"
         ? buildConceptKontextSummary({
             floors: derivedFacade.floors,
@@ -6216,6 +6233,32 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
       if (timer) clearTimeout(timer);
     };
   }, [conceptId, conceptRender?.renderId, editorView, renderHistoryRevision]);
+
+  // LOT-06: diagnostic only. Does not amend saved geometry or bypass the backend gate.
+  const legacyOpeningAudit = useMemo(() => {
+    if (!legacyOpeningAuditEnabled) return null;
+    return auditLegacyOpeningAnchors({
+      walls: modelLevels.flatMap(level => [
+        ...(level.walls ?? []).map(wall => ({
+          id: wall.id, floor: level.floor,
+          x1: wall.x1, y1: wall.y1, x2: wall.x2, y2: wall.y2,
+        })),
+        ...(level.customWalls ?? []).map(wall => ({
+          id: wall.id, floor: level.floor,
+          x1: wall.x1, y1: wall.y1, x2: wall.x2, y2: wall.y2,
+          thickness: wall.thickness,
+        })),
+      ]),
+      openings: modelLevels.flatMap(level =>
+        (level.openings ?? []).map(opening => ({
+          id: opening.id, floor: level.floor, type: opening.type,
+          orientation: opening.orientation, x: opening.x, y: opening.y,
+          width: opening.width, height: opening.height,
+          sillHeight: opening.sillHeight,
+        })),
+      ),
+    });
+  }, [legacyOpeningAuditEnabled, modelLevels]);
 
   const galleryVersions = conceptRender?.history ?? [];
   const primaryRender = galleryVersions.find((item) => item.renderId === primaryRenderId);
@@ -9658,6 +9701,25 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                   {editorView === "render" && (
                     <div className="min-h-[calc(100dvh-64px)] bg-slate-100 px-3 pb-24 pt-4 md:p-5">
                       <div className="mx-auto flex w-full max-w-7xl flex-col gap-4">
+                        {legacyOpeningAudit && (
+                          <div role="status" className="rounded-2xl border border-amber-300 bg-amber-50 p-3 text-xs text-amber-950">
+                            <div className="font-semibold">Diagnóstico de esquadrias legadas · modo experimental</div>
+                            <p className="mt-1">
+                              {legacyOpeningAudit.candidates.length} vínculos candidatos,
+                              {" "}{legacyOpeningAudit.issues.length} pendências.
+                              Nenhum vínculo foi gravado ou aprovado automaticamente.
+                            </p>
+                            {legacyOpeningAudit.issues.length > 0 && (
+                              <ul className="mt-2 list-disc space-y-1 pl-4">
+                                {legacyOpeningAudit.issues.slice(0, 5).map((issue, index) => (
+                                  <li key={issue.entityId + "-" + index}>
+                                    {issue.entityId}: {issue.message}
+                                  </li>
+                                ))}
+                              </ul>
+                            )}
+                          </div>
+                        )}
                         <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border bg-white px-4 py-3 shadow-sm">
                           <div>
                             <div className="flex items-center gap-2 text-sm font-semibold">
