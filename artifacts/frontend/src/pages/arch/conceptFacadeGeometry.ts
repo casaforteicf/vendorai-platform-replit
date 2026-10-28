@@ -57,6 +57,7 @@ export function buildDerivedFacadeModel(
   levels: ConceptModelLevel[],
   rooms: ConceptRoomShape[],
   placement: SitePlacement,
+  options?: { preserveOpeningGeometry?: boolean },
 ): DerivedFacadeModel {
   const safePlacement = normalizeSitePlacement(placement);
   const currentRooms = buildingRooms(rooms);
@@ -121,7 +122,7 @@ export function buildDerivedFacadeModel(
 
   // Porta e janela no mesmo trecho da fachada (ex.: porta de entrada no fundo da varanda e a
   // porta-janela da sala) não podem se sobrepor no desenho: a janela recua para o lado livre.
-  for (const door of openings.filter((item) => item.type === "door")) {
+  if (!options?.preserveOpeningGeometry) for (const door of openings.filter((item) => item.type === "door")) {
     const doorStart = door.axis - door.width / 2 - 0.15;
     const doorEnd = door.axis + door.width / 2 + 0.15;
     for (let index = openings.length - 1; index >= 0; index -= 1) {
