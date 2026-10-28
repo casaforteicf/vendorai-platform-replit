@@ -2,6 +2,7 @@ import { Router, type IRouter } from "express";
 import { eq, and } from "drizzle-orm";
 import {
   db,
+  pool,
   tenantsTable,
   tenantNavModulesTable,
   usersTable,
@@ -288,16 +289,26 @@ router.get("/tenants/:tenantId/tad-effective-modules", async (req, res) => {
   if (current.platformRole !== "super_admin" && current.tenantId !== tenantId) {
     return res.status(403).json({ error: "Forbidden" });
   }
-  const [row] = await db.select({ permissions: usersTable.permissions })
-    .from(usersTable)
-    .where(and(eq(usersTable.id, current.sub), eq(usersTable.tenantId, tenantId)))
-    .limit(1);
-  if (!row && current.platformRole !== "super_admin") {
+  // RLS da tabela users exige contexto transacional de tenant.
+  // A lookup segura existente recupera SOMENTE a identidade autenticada:
+  // a origem do email e do id e o JWT previamente verificado pelo middleware.
+  const result = await pool.query<{ id: string; tenant_id: string; active: boolean; permissions: string[] | null; platform_role: string; user_function: string | null }>(
+    `SELECT id, tenant_id, active, permissions, platform_role, user_function
+       FROM app_security.lookup_user_for_auth($1)`,
+    [current.email],
+  );
+  const row = result.rows[0];
+  if (!row || row.id !== current.sub || !row.active) {
+    return res.status(401).json({ error: "User not found or inactive" });
+  }
+  // Esta rota nao pode conceder direitos de outro tenant apenas por JWT.
+  // Para administradores de tenant, o tenant solicitado deve ser o da conta.
+  if (row.platform_role !== "super_admin" && row.tenant_id !== tenantId) {
     return res.status(403).json({ error: "User not found in tenant" });
   }
-  const admin = current.platformRole === "super_admin" ||
-    current.platformRole === "tenant_admin" || current.userFunction === "administrador";
-  const grants = row?.permissions;
+  const admin = row.platform_role === "super_admin" ||
+    row.platform_role === "tenant_admin" || row.user_function === "administrador";
+  const grants = row.permissions;
   const keys = NAV_MODULE_CATALOG.map(m => m.moduleKey).filter(key => {
     if (admin) return true;
     const accepted = TAD_USER_PERMISSION_MAP[key];
