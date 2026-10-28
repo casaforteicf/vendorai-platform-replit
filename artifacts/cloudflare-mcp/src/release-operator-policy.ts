@@ -9,7 +9,7 @@ type ReleaseGrant = {
 };
 
 export function authorizeReleaseOperation(input: {
-  client: string | null;
+  client: string | null | undefined;
   policyText?: string;
   operation: ReleaseOperation;
   lot: string;
