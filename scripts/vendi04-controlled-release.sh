@@ -94,13 +94,13 @@ SHARED_LOCK=$(cat "$SHARED_LOCK_CONFIG")
 # Accept either an explicit absolute path or this exact, audited derivation.
 # Never assume that the presence of a flock command alone proves the same lock.
 DEPLOY_SCRIPT=/opt/vendorai/deploy-backend.sh
-if grep -Fq "$SHARED_LOCK" "$DEPLOY_SCRIPT"; then
-  :
-elif [[ "$SHARED_LOCK" == "/opt/vendorai/deploy.lock" ]] &&
-     grep -Fxq 'BASE="/opt/vendorai"' "$DEPLOY_SCRIPT" &&
-     grep -Fxq 'LOCK="$BASE/deploy.lock"' "$DEPLOY_SCRIPT" &&
-     grep -Eq 'exec[[:space:]]+9>[[:space:]]*"?\\$LOCK"?' "$DEPLOY_SCRIPT" &&
-     grep -Eq 'flock[[:space:]]+-n[[:space:]]+9([[:space:]]|$)' "$DEPLOY_SCRIPT"; then
+# Only accept the exact known cron layout; comments or an unrelated flock
+# statement are not sufficient evidence of lock coordination.
+if [[ "$SHARED_LOCK" == "/opt/vendorai/deploy.lock" ]] &&
+   grep -Fxq 'BASE="/opt/vendorai"' "$DEPLOY_SCRIPT" &&
+   grep -Fxq 'LOCK="$BASE/deploy.lock"' "$DEPLOY_SCRIPT" &&
+   grep -Eq '^[[:space:]]*exec[[:space:]]+9>[[:space:]]*"?[$]LOCK"?' "$DEPLOY_SCRIPT" &&
+   grep -Eq '^[[:space:]]*if[[:space:]]+![[:space:]]+flock[[:space:]]+-n[[:space:]]+9([[:space:]]|;)' "$DEPLOY_SCRIPT"; then
   :
 else
   echo SHARED_DEPLOY_LOCK_NOT_IN_CRON_SCRIPT; exit 65
