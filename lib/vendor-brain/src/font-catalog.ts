@@ -83,10 +83,7 @@ export const VENDORAI_PUBLISHED_FONT_IDS = [
   "malibu-serif",
   "type-ultimate-swashes",
   "adobo",
-  "awaking",
-  "clarissa",
-  "manage",
-  "qualli",
+  // Luxury families remain catalog candidates until licensed WOFF2 assets are committed.
 ] as const;
 
 const PUBLISHED_FONT_SET = new Set<string>(VENDORAI_PUBLISHED_FONT_IDS);
