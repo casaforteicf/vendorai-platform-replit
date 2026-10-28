@@ -200,7 +200,7 @@ router.post("/site/behavior-event", async (req, res) => {
     await tx.insert(webBehaviorEventsTable).values({
       anonymousSessionId: d.anonymousSessionId,
       tenantId: INSTITUTIONAL_TENANT_ID,
-      leadId: identifiedSession?.leadId ?? null,
+      leadId: session?.leadId ?? null,
       adCampaignId,
       eventType: d.eventType,
       pageUrl: d.pageUrl ?? null,
