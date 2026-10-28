@@ -551,6 +551,26 @@ router.patch("/tenants/:tenantId/pipeline-stages/:id", async (req, res) => {
 
   const parsed = updatePipelineStageSchema.safeParse(req.body);
   if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+  // Evita gravar uma etapa sem nome ou uma ordem inválida. A edição deve
+  // manter as chaves internas, mas precisa validar os campos visíveis.
+  if (parsed.data.label !== undefined && !parsed.data.label.trim()) {
+    return res.status(422).json({ error: "O nome da etapa não pode ficar vazio." });
+  }
+  if (parsed.data.ordem !== undefined && (!Number.isInteger(parsed.data.ordem) || parsed.data.ordem < 0)) {
+    return res.status(422).json({ error: "A ordem da etapa deve ser um número inteiro não negativo." });
+  }
+  if (parsed.data.label !== undefined) parsed.data.label = parsed.data.label.trim();
+
+
+  // Edits may not erase the visible stage label; a blank label makes the
+  // pipeline appear broken even though its underlying key still exists.
+  if (parsed.data.label !== undefined) {
+    const label = parsed.data.label.trim();
+    if (!label || label.length > 120) {
+      return res.status(422).json({ error: "O nome da etapa deve ter entre 1 e 120 caracteres." });
+    }
+    parsed.data.label = label;
+  }
 
   if (parsed.data.atividadesPadrao !== undefined) {
     const templates = z.array(activityTemplateSchema).max(30).safeParse(parsed.data.atividadesPadrao);

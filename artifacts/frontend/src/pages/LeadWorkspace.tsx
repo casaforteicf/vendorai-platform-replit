@@ -559,10 +559,16 @@ export default function LeadWorkspace() {
       }
       // Open immediately on click; preparing stage/owner suggestions must not block the dialog.
       // This also makes backend/permission issues visible in the confirmation UI.
-      setOpen(true);
-      const nextConfigured = stages.slice(Math.max(0, currentIndex + 1)).find((stage) => !hiddenFromCommercialFlow.has(stage.key));
-      const requested = requestedStage && stages.some((stage) => stage.key === requestedStage) ? requestedStage : null;
+      if (deal.etapa !== "em_aquecimento" && currentIndex < 0) {
+        toast({ title: "Etapa atual não encontrada", description: "Atualize a configuração da pipeline antes de avançar o atendimento.", variant: "destructive" });
+        return;
+      }
+      const nextConfigured = stages.slice(currentIndex + 1).find((stage) => !hiddenFromCommercialFlow.has(stage.key));
+      const requestedIndex = requestedStage ? stages.findIndex((stage) => stage.key === requestedStage) : -1;
+      const requested = requestedIndex > currentIndex && !hiddenFromCommercialFlow.has(requestedStage ?? "")
+        ? requestedStage : null;
       const stage = deal.etapa === "em_aquecimento" ? "novo" : (requested ?? nextConfigured?.key ?? "");
+      setOpen(true);
       if (!stage) {
         setOpen(false);
         toast({ title: "Sem próxima etapa", description: "Verifique a configuração da pipeline.", variant: "destructive" });
