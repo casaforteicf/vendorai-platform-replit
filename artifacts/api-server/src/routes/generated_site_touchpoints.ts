@@ -118,7 +118,9 @@ router.post("/generated-site/touchpoint", async (req, res) => {
       resolveRequestGeo(req),
     ]);
 
-    await db.insert(webBehaviorEventsTable).values({
+    await db.transaction(async (tx) => {
+      await tx.execute(sql`SELECT set_config('app.tenant_id', ${tenantId}, true)`);
+      await tx.insert(webBehaviorEventsTable).values({
       anonymousSessionId: data.anonymousSessionId,
       tenantId,
       adCampaignId,
@@ -146,6 +148,7 @@ router.post("/generated-site/touchpoint", async (req, res) => {
         longitude: geo.longitude,
         geoSource: geo.source,
       },
+      });
     });
 
     if (coldProspectLeadId) {
