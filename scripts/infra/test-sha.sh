@@ -44,6 +44,7 @@ cleanup_workspace() {
 trap cleanup_workspace EXIT
 # Reuse only a hydrated ephemeral store for the SAME SHA, without copying or downloading.
 REUSE="$(printenv VENDORAI_REUSE_STORE || true)"
+READONLY_SHARED_STORE=0
 if [ -n "$REUSE" ]; then
   REUSE="$(realpath -e "$REUSE")"
   case "$REUSE" in "$OUT"/pr-*/store) ;; *) echo "Refusing external store reuse" >&2; exit 65;; esac
@@ -53,14 +54,24 @@ if [ -n "$REUSE" ]; then
   grep -qx "cache-fetch exit=0" "$OLD_RUN/results.txt" || { echo "Reusable store not hydrated" >&2; exit 65; }
   rmdir "$RUN/store"
   ln -s "$REUSE" "$RUN/store"
+  READONLY_SHARED_STORE=1
 else
   # The old '--reflink=auto' silently copied every package on ext4.
   # Require CoW reflinks; never fall back to a full duplicate of the PNPM cache.
-  if ! cp -a --reflink=always "$STORE/." "$RUN/store/"; then
-    echo "COW_SNAPSHOT_UNAVAILABLE_NO_FULL_CACHE_COPY" >&2
-    exit 75
+  if cp -a --reflink=always "$STORE/." "$RUN/store/" >/dev/null 2>&1; then
+    chmod -R u+rwX "$RUN/store"
+  else
+    # Common ext4 VPS disks cannot do CoW. Do NOT duplicate the entire
+    # package cache: mount the original offline store read-only in Docker.
+    rm -rf -- "$RUN/store"
+    ln -s "$STORE" "$RUN/store"
+    READONLY_SHARED_STORE=1
+    echo "COW_UNAVAILABLE_USING_READONLY_OFFLINE_STORE"
   fi
-  chmod -R u+rwX "$RUN/store"
+fi
+STORE_MOUNT="type=bind,src=$RUN/store,dst=/pnpm/store"
+if [[ "$READONLY_SHARED_STORE" == 1 ]]; then
+  STORE_MOUNT="$STORE_MOUNT,readonly"
 fi
 printf 'pr=%s\nbranch=%s\nsha=%s\nsuite=%s\nstarted=%s\n' "$PR" "$BRANCH" "$SHA" "$SUITE" "$(date -u +%FT%TZ)" >"$RUN/manifest.txt"
 git fetch --no-tags origin "refs/pull/$PR/head" >"$RUN/logs/fetch-pr.log" 2>&1
@@ -75,7 +86,7 @@ chmod -R a+rwX "$RUN/work"
 run() {
   name="$1"; shift
   set +e
-  "${DOCKER_CMD[@]}" run --rm --cidfile "$RUN/logs/$name.cid" --network none --cap-drop ALL --security-opt no-new-privileges --pids-limit 256 --memory 4g --cpus 2     --user "$(id -u):$(id -g)" --tmpfs /tmp:rw,nosuid,size=256m     --mount "type=bind,src=$RUN/work,dst=/workspace"     --mount "type=bind,src=$RUN/store,dst=/pnpm/store"     -w /workspace -e CI=true -e HOME=/tmp -e PNPM_STORE_DIR=/pnpm/store "$IMAGE"     sh -c "$*" >"$RUN/logs/$name.log" 2>&1
+  "${DOCKER_CMD[@]}" run --rm --cidfile "$RUN/logs/$name.cid" --network none --cap-drop ALL --security-opt no-new-privileges --pids-limit 256 --memory 4g --cpus 2     --user "$(id -u):$(id -g)" --tmpfs /tmp:rw,nosuid,size=256m     --mount "type=bind,src=$RUN/work,dst=/workspace"     --mount "$STORE_MOUNT"     -w /workspace -e CI=true -e HOME=/tmp -e PNPM_STORE_DIR=/pnpm/store "$IMAGE"     sh -c "$*" >"$RUN/logs/$name.log" 2>&1
   code=$?
   set -e
   printf '%s exit=%s\n' "$name" "$code" | tee -a "$RUN/results.txt"
@@ -84,11 +95,15 @@ run() {
 # No secrets, Docker socket, shared writable store, lifecycle scripts, or official DB.
 # The actual test phase continues with --network none.
 if [ "${VENDORAI_PREPARE_OFFLINE:-0}" = "1" ]; then
+  [[ "$READONLY_SHARED_STORE" == 0 ]] || {
+    echo "CACHE_FILL_BLOCKED_READONLY_SHARED_STORE" >&2
+    exit 75
+  }
   set +e
   "${DOCKER_CMD[@]}" run --rm --network bridge --cap-drop ALL --security-opt no-new-privileges --pids-limit 256 --memory 4g --cpus 2 \
     --user "$(id -u):$(id -g)" --tmpfs /tmp:rw,nosuid,size=256m \
     --mount "type=bind,src=$RUN/work,dst=/workspace" \
-    --mount "type=bind,src=$RUN/store,dst=/pnpm/store" \
+    --mount "$STORE_MOUNT" \
     -w /workspace -e CI=true -e HOME=/tmp -e PNPM_STORE_DIR=/pnpm/store \
     "$IMAGE" sh -c 'pnpm fetch --frozen-lockfile --ignore-scripts --store-dir /pnpm/store' >"$RUN/logs/cache-fetch.log" 2>&1
   fetch_code=$?
