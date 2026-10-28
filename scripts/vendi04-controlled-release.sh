@@ -50,14 +50,29 @@ assert_consistent(){
  fi
 }
 assert_consistent || { log "DENIED_INCONSISTENT_RELEASE_STATE";exit 65; }
-# Global release safety: no other lot may retain an unresolved publication.
-# An inconsistent historical release MUST be reconciled explicitly (not deleted).
+# At most one preceding release can be active. Its state may be transitioned to
+# SUPERSEDED only AFTER the new candidate passes its production health gate.
+# Preserve its backup container; older/inconsistent PUBLISHED states still block.
+PREVIOUS_PUBLISHED_RECORD=""
 if [[ "$ACTION" == publish ]]; then
+ active_pre_publish=$(docker inspect "$CURRENT" --format '{{.Config.Image}}' 2>/dev/null || true)
+ [[ -n "$active_pre_publish" ]] || { echo ACTIVE_PRODUCTION_IMAGE_UNKNOWN; exit 65; }
  for record in "$ROOT"/state/*.prod; do
-  [[ -f "$record" && "$record" != "$STATE" ]] || continue
+  [[ -f "$record" && ! -L "$record" && "$record" != "$STATE" ]] || continue
+  [[ "$(stat -c %u "$record")" == 0 ]] || { echo UNSAFE_HISTORICAL_RELEASE_RECORD; exit 65; }
   record_status=$(sed -n 's/^STATUS=//p' "$record" | head -1)
   case "$record_status" in
-   PUBLISHED|INCONSISTENT*) echo "OTHER_RELEASE_REQUIRES_RECONCILIATION"; log "BLOCKED_OTHER_RELEASE=$record"; exit 65;;
+   PUBLISHED)
+    record_image=$(sed -n 's/^IMAGE=//p' "$record" | head -1)
+    record_backup=$(sed -n 's/^BACKUP=//p' "$record" | head -1)
+    [[ "$record_image" == "$active_pre_publish" && -n "$record_backup" ]] &&
+      docker inspect "$record_backup" >/dev/null 2>&1 || {
+       echo OTHER_RELEASE_REQUIRES_RECONCILIATION; log "BLOCKED_OTHER_RELEASE=$record"; exit 65;
+      }
+    [[ -z "$PREVIOUS_PUBLISHED_RECORD" ]] || { echo MULTIPLE_ACTIVE_RELEASE_RECORDS; exit 65; }
+    PREVIOUS_PUBLISHED_RECORD="$record"
+    ;;
+   INCONSISTENT*) echo OTHER_RELEASE_REQUIRES_RECONCILIATION; log "BLOCKED_OTHER_RELEASE=$record"; exit 65;;
   esac
  done
 fi
@@ -226,13 +241,23 @@ if any("\n" in x or "\r" in x for x in a): raise SystemExit("MULTILINE_ENV_UNSUP
 with open(sys.argv[2],"w") as f:f.write("\n".join(a)+"\n")
 PY
 docker create --name "$NEXT" --network "$NETWORK" --restart unless-stopped --env-file "$ENVFILE" -p 127.0.0.1:5001:5000 "$IMAGE" >/dev/null
-swapped=0;success=0
+swapped=0;success=0;prior_superseded=0
 restore(){
- if [[ "$swapped" == 1 && "$success" != 1 ]]; then
+ if [[ "$success" != 1 ]]; then
    log "ROLLING_BACK_FAILED_PUBLISH"
-   docker rm -f "$CURRENT" >/dev/null 2>&1 || true
-   docker rename "$BACK" "$CURRENT"
-   docker start "$CURRENT" >/dev/null
+   if [[ "$swapped" == 1 ]]; then
+     docker rm -f "$CURRENT" >/dev/null 2>&1 || true
+     docker rename "$BACK" "$CURRENT" || log "FAILED_TO_RESTORE_BACKUP_NAME"
+   fi
+   # Includes failure after stopping the original but before its rename.
+   docker start "$CURRENT" >/dev/null 2>&1 || log "FAILED_TO_RESTART_ORIGINAL"
+   rm -f "$STATE"
+   if [[ "$prior_superseded" == 1 && -n "$PREVIOUS_PUBLISHED_RECORD" ]]; then
+     restore_tmp=$(mktemp "$ROOT/state/.restore-prior.XXXXXXXX")
+     sed 's/^STATUS=SUPERSEDED$/STATUS=PUBLISHED/' "$PREVIOUS_PUBLISHED_RECORD" > "$restore_tmp"
+     chmod 600 "$restore_tmp"
+     mv -f "$restore_tmp" "$PREVIOUS_PUBLISHED_RECORD" || log "PRIOR_RECORD_RECONCILIATION_REQUIRED"
+   fi
  fi
  docker rm -f "$NEXT" >/dev/null 2>&1 || true
 }
@@ -245,6 +270,16 @@ docker start "$CURRENT" >/dev/null
 ok=0
 for _ in $(seq 1 45); do if check; then ok=1;break;fi;sleep 2;done
 [[ "$ok" == 1 ]] || { echo RELEASE_HEALTH_FAILED;log "HEALTH_FAILED";exit 1; }
+# Commit the supersession record only after the new image is healthy.
+# If the subsequent new-state write fails, the EXIT trap restores both records.
+if [[ -n "$PREVIOUS_PUBLISHED_RECORD" ]]; then
+ prior_tmp=$(mktemp "$ROOT/state/.supersede.XXXXXXXX")
+ sed 's/^STATUS=PUBLISHED$/STATUS=SUPERSEDED/' "$PREVIOUS_PUBLISHED_RECORD" > "$prior_tmp"
+ chmod 600 "$prior_tmp"
+ mv -f "$prior_tmp" "$PREVIOUS_PUBLISHED_RECORD"
+ prior_superseded=1
+fi
+umask 077
 printf 'LOT=%s\nSHA=%s\nIMAGE=%s\nBACKUP=%s\nSTATUS=PUBLISHED\n' "$LOT" "$SHA" "$IMAGE" "$BACK" > "$STATE"
 success=1
 log "PUBLISHED sha=$SHA backup=$BACK"
