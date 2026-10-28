@@ -520,13 +520,20 @@ export async function refundVendorCredits(input: {
 }
 
 export async function getActiveEntitlements(tenantId: string, now = new Date()) {
-  return db
-    .select()
-    .from(tenantEntitlementsTable)
-    .where(and(
-      eq(tenantEntitlementsTable.tenantId, tenantId),
-      eq(tenantEntitlementsTable.active, true),
-      sql`${tenantEntitlementsTable.startsAt} <= ${now}`,
-      sql`(${tenantEntitlementsTable.endsAt} is null or ${tenantEntitlementsTable.endsAt} > ${now})`,
-    ));
+  // Contexto RLS e consulta devem ocorrer na MESMA transacao/conexao.
+  // set_config(..., true) e local a transacao; nunca altera o pool global.
+  // O tenantId deve ser autorizado pelo middleware nas rotas que chamam
+  // esta funcao, nao pode vir diretamente de um tenant arbitrario do cliente.
+  return db.transaction(async (tx) => {
+    await tx.execute(sql`select set_config('app.tenant_id', ${tenantId}, true)`);
+    return tx
+      .select()
+      .from(tenantEntitlementsTable)
+      .where(and(
+        eq(tenantEntitlementsTable.tenantId, tenantId),
+        eq(tenantEntitlementsTable.active, true),
+        sql`${tenantEntitlementsTable.startsAt} <= ${now}`,
+        sql`(${tenantEntitlementsTable.endsAt} is null or ${tenantEntitlementsTable.endsAt} > ${now})`,
+      ));
+  });
 }
