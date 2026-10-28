@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   checkpointFromState,
+  isDuplicateExtraction,
+  browserTaskOutcome,
+  isVendorAppShellLoading,
   classifyBrowserError,
   isRetryableBrowserError,
   validateBrowserUrl,
@@ -33,6 +36,48 @@ describe("validateBrowserUrl", () => {
     expect(() =>
       validateBrowserUrl("https://evil.example.net", ["example.com"]),
     ).toThrow("Host não permitido");
+  });
+});
+
+describe("first-party bootstrap loading detection", () => {
+  it("flags the exact Vendor.ai Suspense fallback as not ready", () => {
+    expect(isVendorAppShellLoading("Carregando o sistema…")).toBe(true);
+    expect(isVendorAppShellLoading(" Carregando o sistema... ")).toBe(true);
+  });
+
+  it("does not flag loaded CRM pages, other loading states, or blank pages", () => {
+    expect(isVendorAppShellLoading("Negócios Pipeline")).toBe(false);
+    expect(isVendorAppShellLoading("Carregando leads…")).toBe(false);
+    expect(isVendorAppShellLoading("")).toBe(false);
+  });
+});
+
+describe("browser task block and human challenge classification", () => {
+  it("does not request human verification when tenant services are absent", () => {
+    const result = browserTaskOutcome("blocked", "Nenhum serviço habilitado para o perfil.", "https://example.com/tad", []);
+    expect(result).toEqual({
+      ok: false,
+      status: "blocked",
+      finalUrl: "https://example.com/tad",
+      answer: "Nenhum serviço habilitado para o perfil.",
+      steps: [],
+    });
+  });
+
+  it("preserves explicit failure and confirmed browser-challenge signaling", () => {
+    expect(browserTaskOutcome("failed", "Central não carregada", "https://example.com/tad", []).status).toBe("failed");
+    expect(classifyBrowserError(new Error("BROWSER_BLOCKED: verificação real exigida"))).toBe("blocked");
+  });
+});
+
+describe("planner continuation after extraction", () => {
+  it("detects repeated identical extraction to avoid wasting all mission steps", () => {
+    expect(isDuplicateExtraction({ action: "extract" }, { action: "extract" })).toBe(true);
+    expect(isDuplicateExtraction({ action: "extract", selector: "#panel" }, { action: "extract", selector: "#panel" })).toBe(true);
+  });
+  it("permits a different selector or a follow-up navigation/action", () => {
+    expect(isDuplicateExtraction({ action: "extract" }, { action: "navigate", url: "https://example.com" })).toBe(false);
+    expect(isDuplicateExtraction({ action: "extract", selector: "#a" }, { action: "extract", selector: "#b" })).toBe(false);
   });
 });
 

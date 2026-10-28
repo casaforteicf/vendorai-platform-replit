@@ -36,6 +36,19 @@ export function assertBrowserPageAccessible(state: { title: string; text: string
   }
 }
 
+// A blocked task (e.g. missing tenant services) is not a CAPTCHA.
+// Return a normal failed mission, preserving the audit trail without handing
+// the browser to a person. Only assertBrowserPageAccessible may initiate the
+// BROWSER_BLOCKED human-verification handoff.
+export function browserTaskOutcome(
+  outcome: "blocked" | "failed",
+  answer: string,
+  finalUrl: string,
+  steps: BrowserAgentStep[],
+) {
+  return { ok: false as const, status: outcome, finalUrl, answer, steps };
+}
+
 export type PlannedAction =
   | { action: "navigate"; url: string; reason?: string }
   | { action: "click"; selector: string; reason?: string }
@@ -45,6 +58,11 @@ export type PlannedAction =
   | { action: "upload"; selector: string; url: string; reason?: string }
   | { action: "extract"; selector?: string; reason?: string }
   | { action: "finish"; answer: string; outcome: "completed" | "blocked" | "failed"; reason?: string };
+
+export function isDuplicateExtraction(previous: PlannedAction, next: PlannedAction): boolean {
+  return previous.action === "extract" && next.action === "extract"
+    && previous.selector === next.selector;
+}
 
 export interface BrowserAgentCheckpoint {
   url: string;
@@ -154,6 +172,26 @@ export function checkpointFromState(state: { url: string; title: string; text: s
     interactiveCount: state.interactive.length,
     capturedAt: new Date().toISOString(),
   };
+}
+
+// A visible React.lazy() fallback is not proof that a first-party Vendor.ai
+// page has finished loading. In particular the fast read-only path must not
+// return ok=true when the only DOM content is this loading shell.
+export function isVendorAppShellLoading(text: string): boolean {
+  return /^Carregando o sistema(?:…|\.\.\.)/i.test(text.trim());
+}
+
+async function waitForVendorAppShell(page: Page, timeoutMs = 12_000) {
+  let state = await withBrowserRetry(() => snapshotBrowserPage(page), 2);
+  if (!isVendorAppShellLoading(state.text)) return { state, stalled: false, waited: false };
+
+  const deadline = Date.now() + timeoutMs;
+  do {
+    await new Promise((resolve) => setTimeout(resolve, 750));
+    state = await withBrowserRetry(() => snapshotBrowserPage(page), 2);
+  } while (isVendorAppShellLoading(state.text) && Date.now() < deadline);
+
+  return { state, stalled: isVendorAppShellLoading(state.text), waited: true };
 }
 
 export interface BrowserAgentInput {
@@ -525,6 +563,27 @@ export async function runBrowserAgent(input: BrowserAgentInput) {
       }
     }
 
+    // The first-party app is lazy-loaded. Wait only when its own bootstrap
+    // shell is visible; a fast snapshot must never report that shell as success.
+    // Keep the wait bounded so the browser lease cannot hang indefinitely.
+    if (input.firstPartyAuthToken) {
+      const startup = await waitForVendorAppShell(page);
+      if (startup.stalled) {
+        return {
+          ok: false,
+          finalUrl: startup.state.url,
+          answer: "VENDI_FRONTEND_BOOTSTRAP_STALLED: página permaneceu em Carregando o sistema após aguardar a inicialização.",
+          steps: [{
+            index: 1,
+            action: "snapshot",
+            url: startup.state.url,
+            detail: "first_party_bootstrap_stalled",
+            checkpoint: checkpointFromState(startup.state),
+          }],
+        };
+      }
+    }
+
     // Read-only short missions are commonly used as health/snapshot checks.
     // Avoid an unnecessary LLM planning round-trip after navigation: return the
     // current DOM deterministically so connector calls stay within their request budget.
@@ -552,6 +611,7 @@ export async function runBrowserAgent(input: BrowserAgentInput) {
 
     let selectorRecoveryNote = "";
     let noChangeStreak = 0;
+    let queuedAction: PlannedAction | null = null;
     for (let index = 1; index <= maxSteps; index++) {
       const state = await withBrowserRetry(() => snapshotBrowserPage(page));
       assertBrowserPageAccessible(state);
@@ -559,7 +619,11 @@ export async function runBrowserAgent(input: BrowserAgentInput) {
         ? input.goal + "\nRECUPERAÇÃO DE NAVEGAÇÃO: " + selectorRecoveryNote
         : input.goal;
       selectorRecoveryNote = "";
-      const action = await planBrowserAction(input.tenantId, planningGoal, state, steps, secretsAvailable);
+      // Reuse the action planned immediately after an extraction. Previously
+      // it was discarded unless it was finish, causing repeated extractions.
+      const action: PlannedAction = queuedAction
+        ?? await planBrowserAction(input.tenantId, planningGoal, state, steps, secretsAvailable);
+      queuedAction = null;
       steps.push({
         index,
         action: action.action,
@@ -569,7 +633,7 @@ export async function runBrowserAgent(input: BrowserAgentInput) {
       });
 
       if (action.action === "finish") {
-        if (action.outcome !== "completed") throw new Error(`BROWSER_${action.outcome.toUpperCase()}: ${action.answer}`);
+        if (action.outcome !== "completed") return browserTaskOutcome(action.outcome, action.answer, state.url, steps);
         if (input.onSessionPersist) await input.onSessionPersist(await page.cookies());
         if (input.onProfilePersist) await input.onProfilePersist(await captureBrowserProfile(page));
         return { ok: true, finalUrl: state.url, answer: action.answer, steps };
@@ -638,11 +702,15 @@ export async function runBrowserAgent(input: BrowserAgentInput) {
           secretsAvailable,
         );
         if (next.action === "finish") {
-          if (next.outcome !== "completed") throw new Error(`BROWSER_${next.outcome.toUpperCase()}: ${next.answer}`);
+          if (next.outcome !== "completed") return browserTaskOutcome(next.outcome, next.answer, state2.url, steps);
           if (input.onSessionPersist) await input.onSessionPersist(await page.cookies());
           if (input.onProfilePersist) await input.onProfilePersist(await captureBrowserProfile(page));
           return { ok: true, finalUrl: page.url(), answer: next.answer, steps };
         }
+        if (isDuplicateExtraction(action, next)) {
+          return browserTaskOutcome("failed", "VENDI_BROWSER_REPEAT_EXTRACTION: mesma extração solicitada após receber o conteúdo; não houve avanço na missão.", state2.url, steps);
+        }
+        queuedAction = next;
       }
     }
 
