@@ -89,9 +89,22 @@ SHARED_LOCK_CONFIG=/etc/vendorai/vendi-shared-deploy-lock.path
 SHARED_LOCK=$(cat "$SHARED_LOCK_CONFIG")
 [[ "$SHARED_LOCK" =~ ^/opt/vendorai/[a-zA-Z0-9._/-]+$ && "$SHARED_LOCK" != *..* &&
    -f /opt/vendorai/deploy-backend.sh ]] || { echo SHARED_DEPLOY_LOCK_INVALID; exit 65; }
-grep -Fq "$SHARED_LOCK" /opt/vendorai/deploy-backend.sh || {
-  echo SHARED_DEPLOY_LOCK_NOT_IN_CRON_SCRIPT; exit 65;
-}
+# The installed Contabo cron derives its lock from BASE and LOCK variables:
+# BASE="/opt/vendorai"; LOCK="$BASE/deploy.lock"; exec 9>"$LOCK"; flock -n 9.
+# Accept either an explicit absolute path or this exact, audited derivation.
+# Never assume that the presence of a flock command alone proves the same lock.
+DEPLOY_SCRIPT=/opt/vendorai/deploy-backend.sh
+if grep -Fq "$SHARED_LOCK" "$DEPLOY_SCRIPT"; then
+  :
+elif [[ "$SHARED_LOCK" == "/opt/vendorai/deploy.lock" ]] &&
+     grep -Fxq 'BASE="/opt/vendorai"' "$DEPLOY_SCRIPT" &&
+     grep -Fxq 'LOCK="$BASE/deploy.lock"' "$DEPLOY_SCRIPT" &&
+     grep -Eq 'exec[[:space:]]+9>[[:space:]]*"?\\$LOCK"?' "$DEPLOY_SCRIPT" &&
+     grep -Eq 'flock[[:space:]]+-n[[:space:]]+9([[:space:]]|$)' "$DEPLOY_SCRIPT"; then
+  :
+else
+  echo SHARED_DEPLOY_LOCK_NOT_IN_CRON_SCRIPT; exit 65
+fi
 exec 8>"$SHARED_LOCK"
 flock -n 8 || { echo AUTOMATIC_DEPLOY_IN_PROGRESS; exit 75; }
 if [[ "$ACTION" == rollback ]]; then
