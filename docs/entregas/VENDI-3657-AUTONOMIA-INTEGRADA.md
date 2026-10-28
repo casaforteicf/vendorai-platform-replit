@@ -144,3 +144,15 @@ quais 25 parados podem ser removidos.
 
 **Status em 27/10/2026:** código em PR draft, incluindo o gate do Release Center e lease de missões; testes e instalação no host
 não executados nesta etapa. Produção não alterada.
+
+## Auditoria operacional de retomada (27/10/2026)
+
+**Escopo:** consultas diretas Contabo/GitHub sem alteração da produção; correções abaixo realizadas somente nesta branch, não instaladas.
+
+- Produção e homologação: health HTTP 200. Browser Agent: configurado; teste de navegação somente leitura em homolog.appvendorai.com/tad retornou sucesso. CRM de homologação retornou resumo read-only do tenant homolog-krafht.
+- VPS: / de 96 GB, aproximadamente 85 GB usados (89%), ~12 GB livres; 40 contêineres no total, 15 ativos, 25 entradas de imagens. **Não executar prune indiscriminado.**
+- Host: VENDI-3657 ainda LOT_NOT_REGISTERED, nenhum build. Baseline VENDI-02 informa ROLLBACK_BACKUP=missing para o seu contêiner de homologação; verificar independentemente o rollback **de produção** antes do primeiro release.
+- PR 3657: continua draft e não mesclado. O commit candidato deve ser reobtido do HEAD após cada alteração; releases e aprovações anteriores não servem para SHA novo.
+- Ajustes feitos nesta branch: encadeamento controlado de releases PUBLISHED → SUPERSEDED após saúde; restauração do estado anterior em falha; sinalização correta de capacidade de novo build (14 GiB) no preflight; cache PNPM com tentativa CoW e fallback de store **somente leitura** em ext4 sem cópia integral; regressões dos scripts incluídas na suite MCP/full. A instalação do operador novo ainda requer bootstrap com acesso administrativo.
+- Verificações de fonte dos pontos alterados foram executadas; **não** equivalem a `bash -n`, `node --test`, `tsc`, build real, teste de rollback nem homologação de candidato. Testes isolados continuam bloqueados pelo executor remoto existente.
+- Antes de publicar: comprovar cron lock real, identidade e restauração de backups, migrations, grants OAuth, capacidade do host e duas publicações consecutivas em staging. Não marcar nenhuma etapa de implantação como concluída sem evidências.
