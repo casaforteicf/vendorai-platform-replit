@@ -25,7 +25,11 @@ fi
 if ! git remote get-url origin | grep -Eq '^(git@github.com:|https://github.com/)casaforteicf/vendorai-platform-replit(\.git)?$'; then
   echo "Unexpected Git remote" >&2; exit 65
 fi
-IMAGE="vendorai-test-node24:local"
+# Reuse existing Node 24 image and the host's pinned pnpm package read-only.
+IMAGE="node:24-bookworm-slim"
+PNPM_DIR="/home/vendorai/.cache/node/corepack/v1/pnpm/10.26.1"
+[[ -f "$PNPM_DIR/bin/pnpm.cjs" && ! -L "$PNPM_DIR" ]] || { echo PNPM_10_26_1_NOT_AVAILABLE; exit 69; }
+PNPM_MOUNT="type=bind,src=$PNPM_DIR,dst=/opt/pnpm,readonly"
 STORE="$(printenv VENDORAI_OFFLINE_STORE || true)"
 
 [ -n "$STORE" ] && [ -d "$STORE" ] || { echo "VENDORAI_OFFLINE_STORE required" >&2; exit 69; }
@@ -100,7 +104,7 @@ chmod -R a+rwX "$RUN/work"
 run() {
   name="$1"; shift
   set +e
-  "${DOCKER_CMD[@]}" run --rm --cidfile "$RUN/logs/$name.cid" --network none --cap-drop ALL --security-opt no-new-privileges --pids-limit 256 --memory 4g --memory-swap 4g --cpus 1     --user "$(id -u):$(id -g)" --tmpfs /tmp:rw,nosuid,size=256m     --mount "type=bind,src=$RUN/work,dst=/workspace"     --mount "$STORE_MOUNT"     -w /workspace -e CI=true -e HOME=/tmp -e PNPM_STORE_DIR=/pnpm/store "$IMAGE"     sh -c "$*" >"$RUN/logs/$name.log" 2>&1
+  "${DOCKER_CMD[@]}" run --rm --cidfile "$RUN/logs/$name.cid" --network none --cap-drop ALL --security-opt no-new-privileges --pids-limit 256 --memory 4g --memory-swap 4g --cpus 1     --user "$(id -u):$(id -g)" --tmpfs /tmp:rw,nosuid,size=256m     --mount "type=bind,src=$RUN/work,dst=/workspace"     --mount "$STORE_MOUNT" --mount "$PNPM_MOUNT"     -w /workspace -e CI=true -e HOME=/tmp -e PNPM_STORE_DIR=/pnpm/store "$IMAGE"     sh -c "$*" >"$RUN/logs/$name.log" 2>&1
   code=$?
   set -e
   printf '%s exit=%s\n' "$name" "$code" | tee -a "$RUN/results.txt"
@@ -117,9 +121,9 @@ if [ "${VENDORAI_PREPARE_OFFLINE:-0}" = "1" ]; then
   "${DOCKER_CMD[@]}" run --rm --network bridge --cap-drop ALL --security-opt no-new-privileges --pids-limit 256 --memory 4g --memory-swap 4g --cpus 1 \
     --user "$(id -u):$(id -g)" --tmpfs /tmp:rw,nosuid,size=256m \
     --mount "type=bind,src=$RUN/work,dst=/workspace" \
-    --mount "$STORE_MOUNT" \
+    --mount "$STORE_MOUNT" --mount "$PNPM_MOUNT" \
     -w /workspace -e CI=true -e HOME=/tmp -e PNPM_STORE_DIR=/pnpm/store \
-    "$IMAGE" sh -c 'pnpm fetch --frozen-lockfile --ignore-scripts --store-dir /pnpm/store' >"$RUN/logs/cache-fetch.log" 2>&1
+    "$IMAGE" sh -c 'node /opt/pnpm/bin/pnpm.cjs fetch --frozen-lockfile --ignore-scripts --store-dir /pnpm/store' >"$RUN/logs/cache-fetch.log" 2>&1
   fetch_code=$?
   set -e
   printf 'cache-fetch exit=%s\n' "$fetch_code" | tee -a "$RUN/results.txt"
@@ -128,30 +132,30 @@ if [ "${VENDORAI_PREPARE_OFFLINE:-0}" = "1" ]; then
     exit "$fetch_code"
   fi
 fi
-run install "pnpm install --offline --frozen-lockfile --ignore-scripts --store-dir /pnpm/store"
+run install "node /opt/pnpm/bin/pnpm.cjs install --offline --frozen-lockfile --ignore-scripts --store-dir /pnpm/store"
 if ! grep -qx 'install exit=0' "$RUN/results.txt"; then echo "Install failed; downstream tests skipped"; exit 1; fi
 # Targeted CRM unit tests: useful during cross-module TypeScript failures.
 # Never qualifies as the global TypeScript gate or official homologation.
 if [ "$SUITE" = crm ]; then
-  run crm-vitest "pnpm --filter @workspace/api-server exec vitest run src/lib/crm-lead-idempotency.test.ts src/lib/crm-lead-idempotency.nonfinite.test.ts src/lib/crm-partial-execution.test.ts src/lib/crm-relationship-history.test.ts src/routes/leads.restore.contract.test.ts"
+  run crm-vitest "node /opt/pnpm/bin/pnpm.cjs --filter @workspace/api-server exec vitest run src/lib/crm-lead-idempotency.test.ts src/lib/crm-lead-idempotency.nonfinite.test.ts src/lib/crm-partial-execution.test.ts src/lib/crm-relationship-history.test.ts src/routes/leads.restore.contract.test.ts"
 fi
 if [ "$SUITE" = mcp ] || [ "$SUITE" = full ]; then
   run vendi-operator-regression "node --test scripts/tests/vendi-autonomia-integrada.test.mjs scripts/tests/vendi-contabo-operator-status.test.mjs"
   run mcp-contract "node --test artifacts/cloudflare-mcp/vendi-crm-contract.test.mjs"
-  run mcp-ts "pnpm --filter @workspace/cloudflare-mcp typecheck"
-  run mcp-build "pnpm --filter @workspace/cloudflare-mcp build"
+  run mcp-ts "node /opt/pnpm/bin/pnpm.cjs --filter @workspace/cloudflare-mcp typecheck"
+  run mcp-build "node /opt/pnpm/bin/pnpm.cjs --filter @workspace/cloudflare-mcp build"
   if grep -qx 'mcp-build exit=0' "$RUN/results.txt"; then
     run mcp-oauth "node --test artifacts/cloudflare-mcp/oauth.test.mjs artifacts/cloudflare-mcp/tests/*.test.mjs"
   fi
 fi
 if [ "$SUITE" = api ] || [ "$SUITE" = full ]; then
-  run api-ts "pnpm --filter @workspace/api-server typecheck"
-  run api-vitest "pnpm --filter @workspace/api-server test"
-  run api-build "pnpm --filter @workspace/api-server build"
+  run api-ts "node /opt/pnpm/bin/pnpm.cjs --filter @workspace/api-server typecheck"
+  run api-vitest "node /opt/pnpm/bin/pnpm.cjs --filter @workspace/api-server test"
+  run api-build "node /opt/pnpm/bin/pnpm.cjs --filter @workspace/api-server build"
 fi
 if [ "$SUITE" = frontend ] || [ "$SUITE" = full ]; then
-  run frontend-ts "pnpm --filter @workspace/frontend typecheck"
-  run frontend-build "pnpm --filter @workspace/frontend build"
+  run frontend-ts "node /opt/pnpm/bin/pnpm.cjs --filter @workspace/frontend typecheck"
+  run frontend-build "node /opt/pnpm/bin/pnpm.cjs --filter @workspace/frontend build"
 fi
 printf 'finished=%s\n' "$(date -u +%FT%TZ)" >>"$RUN/manifest.txt"
 echo "Evidence: $RUN"
