@@ -140,6 +140,13 @@ async function reloadBrowserPage(page: Page, timeout = 12_000) {
 }
 
 
+// A loaded HTML shell can display only a spinner while the SPA hydrates.
+// It is not a successful health/snapshot check until meaningful content appears.
+export function isBrowserSnapshotLoading(state: { text: string; interactive: unknown[] }): boolean {
+  const text = state.text.replace(/\s+/g, " ").trim();
+  return state.interactive.length === 0 && /^(?:carregando(?: o sistema)?|loading|aguarde)[.\s…!]*$/i.test(text);
+}
+
 export function checkpointFromState(state: { url: string; title: string; text: string; interactive: unknown[] }): BrowserAgentCheckpoint {
   const normalized = state.text.replace(/\s+/g, " ").trim().slice(0, 600);
   let hash = 2166136261;
@@ -529,8 +536,22 @@ export async function runBrowserAgent(input: BrowserAgentInput) {
     // Avoid an unnecessary LLM planning round-trip after navigation: return the
     // current DOM deterministically so connector calls stay within their request budget.
     if (!input.allowWrite && maxSteps <= 3) {
-      const state = await withBrowserRetry(() => snapshotBrowserPage(page), 2);
+      let state = await withBrowserRetry(() => snapshotBrowserPage(page), 2);
       assertBrowserPageAccessible(state);
+      for (let attempt = 0; attempt < 3 && isBrowserSnapshotLoading(state); attempt++) {
+        await new Promise((resolve) => setTimeout(resolve, 1200));
+        state = await withBrowserRetry(() => snapshotBrowserPage(page), 2);
+        assertBrowserPageAccessible(state);
+      }
+      if (isBrowserSnapshotLoading(state)) {
+        return {
+          ok: false,
+          finalUrl: state.url,
+          answer: "BROWSER_PAGE_NOT_READY: a página continua carregando sem conteúdo interativo.",
+          steps: [{ index: 1, action: "snapshot", url: state.url,
+            detail: "readonly_snapshot_loading_timeout", checkpoint: checkpointFromState(state) }],
+        };
+      }
       const visibleText = state.text.slice(0, 6000);
       return {
         ok: true,

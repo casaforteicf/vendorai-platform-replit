@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   checkpointFromState,
   classifyBrowserError,
+  isBrowserSnapshotLoading,
   isRetryableBrowserError,
   validateBrowserUrl,
 } from "./browser-agent.js";
@@ -33,6 +34,18 @@ describe("validateBrowserUrl", () => {
     expect(() =>
       validateBrowserUrl("https://evil.example.net", ["example.com"]),
     ).toThrow("Host não permitido");
+  });
+});
+
+describe("read-only Browser Agent snapshot readiness", () => {
+  it("does not report a loading SPA shell as a completed check", () => {
+    expect(isBrowserSnapshotLoading({ text: "Carregando o sistema…", interactive: [] })).toBe(true);
+    expect(isBrowserSnapshotLoading({ text: "Loading...", interactive: [] })).toBe(true);
+  });
+
+  it("allows meaningful public content or an interactive loaded page", () => {
+    expect(isBrowserSnapshotLoading({ text: "Produtos VendorAI disponíveis", interactive: [] })).toBe(false);
+    expect(isBrowserSnapshotLoading({ text: "Carregando o sistema…", interactive: [{}] })).toBe(false);
   });
 });
 
