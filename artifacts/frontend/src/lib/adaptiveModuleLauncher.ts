@@ -47,6 +47,40 @@ export function authorizedLauncherModules(input: {
 }
 
 /**
+ * UI-only module inventory for the TAD. The platform Superadmin can see
+ * all environment cards, including those without a ready route. This never
+ * changes API authorization or grants tenant entitlements.
+ */
+export function resolveTadLauncherModules(input: {
+  audience: LauncherAudience;
+  enabledModules: readonly LauncherModule[];
+  permittedModules: readonly LauncherModule[];
+  previewModules?: readonly LauncherModule[];
+  isPlatformSuperAdmin?: boolean;
+}): { authorized: LauncherModuleInfo[]; listed: LauncherModuleInfo[] } {
+  if (input.isPlatformSuperAdmin) {
+    return {
+      authorized: LAUNCHER_MODULES.filter(module => module.route !== null),
+      listed: [...LAUNCHER_MODULES],
+    };
+  }
+
+  const authorized = authorizedLauncherModules(input);
+  const available = new Set(authorized.map(module => module.key));
+  const preview = new Set(input.previewModules ?? []);
+  const enabled = new Set(input.enabledModules);
+  const listed = [
+    ...authorized,
+    ...LAUNCHER_MODULES.filter(module =>
+      !available.has(module.key) &&
+      preview.has(module.key) &&
+      enabled.has(module.key) &&
+      module.audiences.includes(input.audience)),
+  ];
+  return { authorized, listed };
+}
+
+/**
  * Determines an initial navigation without guessing a route.
  * Missing entitlement or missing route = show selector, not forced navigation.
  */
