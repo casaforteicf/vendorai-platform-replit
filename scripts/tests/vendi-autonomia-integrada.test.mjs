@@ -168,3 +168,24 @@ test("remote test executor never duplicates full PNPM store or retains extracted
   assert.match(script, /trap cleanup_workspace EXIT/);
   assert.match(script, /rm -rf -- "\$RUN\/work" "\$RUN\/store"/);
 });
+
+test("successive release guard permits exactly one matching active predecessor", () => {
+  const release = read("scripts/vendi04-controlled-release.sh");
+  assert.match(release, /PREVIOUS_PUBLISHED_RECORD=""/);
+  assert.match(release, /record_image.*==.*active_pre_publish/);
+  assert.match(release, /MULTIPLE_ACTIVE_RELEASE_RECORDS/);
+  assert.match(release, /STATUS=SUPERSEDED/);
+  assert.match(release, /prior_superseded=1/);
+  assert.match(release, /STATUS=SUPERSEDED\$\/STATUS=PUBLISHED/);
+  assert.ok(
+    release.indexOf("STATUS=SUPERSEDED") > release.indexOf('[[ "$ok" == 1 ]]'),
+    "prior release must not be superseded before candidate health passes",
+  );
+  assert.ok(release.includes("rm -f \"$STATE\""), "failed release must clear new release state");
+});
+
+test("candidate tests include the host autonomy regression suite", () => {
+  const runner = read("scripts/infra/test-sha.sh");
+  assert.match(runner, /scripts\/tests\/vendi-autonomia-integrada\.test\.mjs/);
+  assert.match(runner, /scripts\/tests\/vendi-contabo-operator-status\.test\.mjs/);
+});
