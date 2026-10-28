@@ -1,4 +1,4 @@
-export type ReleaseOperation = "build" | "homologate" | "rollback" | "preflight" | "publish" | "upgradeOperator";
+export type ReleaseOperation = "build" | "homologate" | "rollback" | "preflight" | "publish" | "upgradeOperator" | "releaseStatus" | "auditReadiness";
 
 type ReleaseGrant = {
   lots?: string[];
@@ -21,7 +21,10 @@ export function authorizeReleaseOperation(input: {
     throw new Error("RELEASE_OPERATOR_POLICY_INVALID");
   }
 
-  const grant = policies[input.client];
+  if (!policies || typeof policies !== "object" || Array.isArray(policies)) {
+    throw new Error("RELEASE_OPERATOR_POLICY_INVALID");
+  }
+  const grant = Object.hasOwn(policies, input.client) ? policies[input.client] : undefined;
   if (!grant
     || !Array.isArray(grant.actions)
     || !grant.actions.includes(input.operation)

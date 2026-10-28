@@ -79,7 +79,7 @@ def evidence_bytes(root):
 
 def run(pr, branch, sha, suite, lot):
     args = validated(pr, branch, sha, suite)
-    if not re.fullmatch(r"LOT-(0[1-9]|1[0-4])", lot):
+    if not re.fullmatch(r"[A-Z][A-Z0-9]{1,15}-[0-9]{1,6}", lot):
         raise ValueError("INVALID_LOT")
     if os.geteuid() == 0:
         raise ValueError("MUST_RUN_UNPRIVILEGED")

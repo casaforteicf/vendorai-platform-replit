@@ -45,6 +45,7 @@ reuse_existing_sha_image() {
     grep -Fxq 'STATUS=BUILT_NOT_DEPLOYED' "$oldstate" || continue
     oldid=$(docker image inspect "$oldtag" --format '{{.Id}}' 2>/dev/null) || continue
     [[ "$oldid" == sha256:* ]] || continue
+    grep -Fxq "IMAGE_ID=$oldid" "$oldstate" || continue
     docker tag "$oldtag" "$IMAGE"
     [[ "$(docker image inspect "$IMAGE" --format '{{.Id}}')" == "$oldid" ]] || return 70
     umask 077
@@ -99,7 +100,8 @@ case "$ACTION" in
       "$SWAP_TOTAL_KB" =~ ^[0-9]+$ && "$SWAP_FREE_KB" =~ ^[0-9]+$ ]] || {
      echo RESOURCE_METRICS_UNAVAILABLE; exit 75;
    }
-   if (( FREE_KB < 14680064 || MEM_KB < 2097152 ||
+   # Four GiB builder budget plus two GiB headroom for the existing services.
+   if (( FREE_KB < 14680064 || MEM_KB < 6291456 ||
          (SWAP_TOTAL_KB > 0 && (SWAP_TOTAL_KB - SWAP_FREE_KB) * 100 / SWAP_TOTAL_KB > 75) )); then
      echo BUILD_BLOCKED_RESOURCE_PRESSURE
      echo "FREE_KB=$FREE_KB MEM_AVAILABLE_KB=$MEM_KB"
@@ -116,15 +118,23 @@ case "$ACTION" in
    # Historical states without an actual Docker image do not count. Never
    # delete these images automatically; an operator must reconcile/retain.
    PENDING_IMAGES=0
+   declare -A pending_ids=()
    for pending_state in "$BASE"/state/*; do
      [[ -f "$pending_state" && ! -L "$pending_state" ]] || continue
      pending_lot="${pending_state##*/}"
      [[ "$pending_lot" =~ ^[A-Z][A-Z0-9]{1,15}-[0-9]{1,6}$ ]] || continue
      [[ "$pending_lot" != "$LOT" ]] || continue
+     published_state="$BASE/state/$pending_lot.prod"
+     if [[ -f "$published_state" && ! -L "$published_state" && "$(stat -c %u "$published_state")" == 0 ]] &&
+        grep -Eq '^STATUS=(PUBLISHED|SUPERSEDED|ROLLED_BACK)$' "$published_state"; then
+       continue
+     fi
      grep -Fxq 'STATUS=BUILT_NOT_DEPLOYED' "$pending_state" || continue
      pending_image=$(sed -n 's/^IMAGE=//p' "$pending_state" | head -1)
      [[ "$pending_image" =~ ^vendorai-release:vendi-[a-z0-9-]+-[0-9a-f]{12}$ ]] || continue
-     if docker image inspect "$pending_image" >/dev/null 2>&1; then
+     pending_id=$(docker image inspect "$pending_image" --format '{{.Id}}' 2>/dev/null) || continue
+     if [[ -n "$pending_id" && -z "${pending_ids[$pending_id]:-}" ]]; then
+       pending_ids[$pending_id]=1
        PENDING_IMAGES=$((PENDING_IMAGES + 1))
      fi
    done
@@ -150,9 +160,12 @@ case "$ACTION" in
      exit "$rc"
    }
    trap build_failed ERR
-   docker build --pull=false -f "$work/$DOCKERFILE" -t "$IMAGE" "$work/$CONTEXT"
+   # systemd limits constrain the CLI, not dockerd's build containers. The
+   # existing legacy builder must enforce these limits inside Docker itself.
+   DOCKER_BUILDKIT=0 docker build --pull=false --memory=4g --memory-swap=4g --cpu-period=100000 --cpu-quota=100000 -f "$work/$DOCKERFILE" -t "$IMAGE" "$work/$CONTEXT"
    docker image inspect "$IMAGE" --format 'BUILD_IMAGE_ID={{.Id}}'
-   { echo "LOT=$LOT";echo "SHA=$SHA";echo "IMAGE=$IMAGE";echo "STATUS=BUILT_NOT_DEPLOYED"; } > "$STATE.tmp"
+   umask 077
+   { echo "LOT=$LOT";echo "SHA=$SHA";echo "IMAGE=$IMAGE";docker image inspect "$IMAGE" --format 'IMAGE_ID={{.Id}}';echo "STATUS=BUILT_NOT_DEPLOYED"; } > "$STATE.tmp"
    mv "$STATE.tmp" "$STATE"
    record "BUILD_DONE image=$IMAGE"
    echo "VENDI04_BUILD_SUCCEEDED_NO_DEPLOY"

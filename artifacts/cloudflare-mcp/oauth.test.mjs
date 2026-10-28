@@ -162,6 +162,13 @@ test('real MCP server still initializes and lists tools behind authentication', 
     const tools = await call('tools/list', {}, 2);
     assert.ok(tools.result.tools.length >= 10);
     assert.ok(tools.result.tools.some(x => x.name === 'browser_agent_run'));
+    // A legacy administrative token can list tools but must never invoke even
+    // read-only host operations without a signed, action-scoped OAuth principal.
+    for (const action of ['build', 'publish', 'rollback', 'releaseStatus', 'auditReadiness', 'upgradeOperator']) {
+      const denied = await call('tools/call', { name: 'vendi_contabo_operate', arguments: {action, lot: 'VENDI-3657'} }, 3);
+      assert.equal(denied.result?.isError, true, action);
+      assert.match(JSON.stringify(denied.result), /OPERATOR_IDENTITY_REQUIRED/);
+    }
   } finally {
     if (!child.killed) child.kill('SIGTERM');
     await Promise.race([

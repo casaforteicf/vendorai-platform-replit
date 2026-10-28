@@ -156,3 +156,53 @@ não executados nesta etapa. Produção não alterada.
 - Ajustes feitos nesta branch: encadeamento controlado de releases PUBLISHED → SUPERSEDED após saúde; restauração do estado anterior em falha; sinalização correta de capacidade de novo build (14 GiB) no preflight; cache PNPM com tentativa CoW e fallback de store **somente leitura** em ext4 sem cópia integral; regressões dos scripts incluídas na suite MCP/full. A instalação do operador novo ainda requer bootstrap com acesso administrativo.
 - Verificações de fonte dos pontos alterados foram executadas; **não** equivalem a `bash -n`, `node --test`, `tsc`, build real, teste de rollback nem homologação de candidato. Testes isolados continuam bloqueados pelo executor remoto existente.
 - Antes de publicar: comprovar cron lock real, identidade e restauração de backups, migrations, grants OAuth, capacidade do host e duas publicações consecutivas em staging. Não marcar nenhuma etapa de implantação como concluída sem evidências.
+
+## Revisão operacional de 28/10/2026 — PR #3657
+
+Esta seção prevalece sobre descrições históricas acima. Nenhuma instalação,
+publicação, migration de produção, merge ou limpeza do host foi executada.
+
+- Publicações sucessivas transferem PUBLISHED/SUPERSEDED após saúde; rollback
+  reativa o predecessor e preserva os backups. Interrupções mantêm marcador
+  INCONSISTENT para reconciliação administrativa. A consistência é decidida
+  depois do flock em `/opt/vendorai/deploy.lock`, compartilhado com o cron.
+- Build exige 14 GiB livres, 6 GiB MemAvailable (4 de orçamento + 2 de reserva),
+  swap usado <=75%, menos de 20 imagens distintas e limite de candidatos.
+  Limites Docker: 4 GiB, sem swap adicional, uma CPU; sem remoção automática.
+- Testes exigem 8 GiB livres e o mesmo orçamento de memória. O store pnpm usa
+  reflink obrigatório ou bind somente leitura; não faz cópia integral fallback.
+- Homologação usa o DB local da rede Docker existente, fixa todas as variantes
+  de URL no mesmo banco e impõe sessões read-only. URLs externas são recusadas.
+- Central usa o MCP existente, com binding administrativo por release UUID,
+  lote existente e SHA completo (`VENDI_RELEASE_BINDINGS`). O endpoint privado
+  `VENDI_RELEASE_MCP_URL` e o token OAuth `VENDI_RELEASE_MCP_OAUTH_TOKEN` são
+  provisionados fora do Git. Não cria PR nem mescla main para publicar.
+- `/admin/releases/:id/operator` permite build/homologate/releaseStatus a
+  super_admin. Os recibos ficam em `admin_releases.test_summary`. Publish e
+  rollback passam pelo mesmo operador, grants por ação/lote e digest ativo.
+  É uma integração de backend; publicação de frontend no Cloudflare Pages
+  não está automatizada por este adaptador.
+- O grant OAuth identifica cliente assinado dedicado, não a pessoa dentro de
+  cliente compartilhado. Token legado não autoriza operações no host.
+- Release exige arquivo root:600 `<lote>.tests` com LOT, SHA,
+  STATUS=PASSED e SUITE=api,mcp,operator,rollback,migrations. Somente responsável
+  pelos testes pode atestar o resultado; arquivo não foi criado nesta rodada.
+- Migration de leases testada duas vezes em PostgreSQL 17 descartável, com
+  roles, RLS, disputa/expiração, cascade e dump/restore de dados sintéticos.
+  Isso NÃO valida catálogo, papéis, backup integral ou restore do vendorai-core.
+
+Evidências da rodada: 30 testes Node de operador/ponte/cache + 10 de OAuth e
+política; 6 cenários Bash executados por harness Python (Docker simulado),
+3 cenários do gerador real de ambiente e 14 regressões da fachada de testes.
+Build/typecheck MCP e typecheck direcionado do adaptador passaram. Ensaio
+Docker real com serviços sintéticos e migration/restore sintéticos passaram.
+Typecheck global API abortou por heap; build API isolado falhou por dependências
+ausentes no cache reutilizado. Candidato real não foi construído/homologado.
+
+Bloqueios observados: VPS abaixo dos gates de disco/RAM/swap; imagem do executor
+não está presente; lock global de build ausente; nenhum manifesto existente
+aponta para o SHA deste PR; versão ativa foi alterada externamente durante a
+inspeção e exige reconciliação de proveniência. Não registrar novo lote:
+responsável deve definir a atualização controlada de um registro existente,
+preservando histórico e backups. Não habilitar flags da Central até concluir
+os gates. Missões com etapa >4h ainda exigem heartbeat independente.

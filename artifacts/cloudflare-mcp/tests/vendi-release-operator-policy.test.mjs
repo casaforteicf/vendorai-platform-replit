@@ -10,6 +10,20 @@ const policyText = JSON.stringify({
   },
 });
 
+testCase("rejects null and array policy documents with a controlled error", () => {
+  for (const policyText of ["null", "[]", "42"]) {
+    assert.throws(() => authorizeReleaseOperation({client, policyText, operation: "publish", lot: "VENDI-05"}), /RELEASE_OPERATOR_POLICY_INVALID/);
+  }
+});
+
+testCase("read-only host operations and upgrades need their own action grants", () => {
+  for (const operation of ["releaseStatus", "auditReadiness", "upgradeOperator"]) {
+    assert.throws(() => authorizeReleaseOperation({client, policyText, operation, lot: "VENDI-05"}), /OPERATOR_NOT_AUTHORIZED/);
+    const scoped = JSON.stringify({[client]: {lots: ["VENDI-05"], actions: [operation]}});
+    assert.equal(authorizeReleaseOperation({client, policyText: scoped, operation, lot: "VENDI-05"}), client);
+  }
+});
+
 testCase("allows only an explicitly granted release action and lot", () => {
   assert.equal(authorizeReleaseOperation({
     client,

@@ -73,12 +73,16 @@ test("mission approval is restricted to administrators", () => {
   assert.ok(routes.includes('router.post("/vendi/missions/:id/approve", requireRole("super_admin", "tenant_admin")'));
 });
 
-test("legacy release center cannot merge before host and cron gates are proven", () => {
+test("release center publishes only through host receipts and never merges main", () => {
   const releaseCenter = read("artifacts/api-server/src/routes/admin_release_center.ts");
   const start = releaseCenter.indexOf("async function executeScheduledRelease(");
-  const merge = releaseCenter.indexOf("/pulls/\" + prNumber + \"/merge", start);
+  const end = releaseCenter.indexOf("// Estado persistente", start);
+  const publish = releaseCenter.indexOf('callReleaseOperator("publish", lot)', start);
   const guard = releaseCenter.indexOf("VENDI_RELEASE_PIPELINE_NOT_VERIFIED_NO_MERGE", start);
-  assert.ok(start >= 0 && guard > start && merge > guard);
+  assert.ok(start >= 0 && guard > start && publish > guard);
+  assert.doesNotMatch(releaseCenter.slice(start, end), /\/merge|merge_method/);
+  assert.match(releaseCenter.slice(start, end), /requireHomologated/);
+  assert.match(releaseCenter.slice(start, end), /requirePublished/);
   assert.match(releaseCenter, /VENDI_RELEASE_HOST_RECEIPTS_VERIFIED/);
   assert.match(releaseCenter, /VENDI_RELEASE_CRON_LOCK_VERIFIED/);
 });
@@ -124,7 +128,7 @@ test("same SHA can reuse image layers and never rebuild without free resources",
   assert.match(runner, /docker tag "\$oldtag" "\$IMAGE"/);
   assert.match(runner, /BUILD_BLOCKED_RESOURCE_PRESSURE/);
   assert.match(runner, /BUILD_BLOCKED_IMAGE_RETENTION_REVIEW/);
-  assert.match(runner, /MEM_KB < 2097152/);
+  assert.match(runner, /MEM_KB < 6291456/);
   assert.match(runner, /FREE_KB < 14680064/);
   assert.match(op, /STATUS=BUILT_REUSED_NO_NEW_LAYERS/);
   assert.match(op, /BUILD_BLOCKED_MEMORY_PRESSURE/);

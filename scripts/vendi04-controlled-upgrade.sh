@@ -8,8 +8,8 @@ ROOT=/var/lib/vendi-release
 REPO=/home/vendorai/vendorai-api-auth-test
 MANIFEST="$ROOT/manifests/$LOT.env"
 APPROVAL="$ROOT/state/$LOT.operator-upgrade-approved"
-[[ -f "$MANIFEST" && "$(stat -c %u "$MANIFEST")" == 0 ]] || { echo ROOT_MANIFEST_REQUIRED; exit 65; }
-[[ -f "$APPROVAL" && "$(stat -c %u "$APPROVAL")" == 0 &&
+[[ -f "$MANIFEST" && ! -L "$MANIFEST" && "$(stat -c %u "$MANIFEST")" == 0 && "$(stat -c %a "$MANIFEST")" == 600 ]] || { echo ROOT_MANIFEST_REQUIRED; exit 65; }
+[[ -f "$APPROVAL" && ! -L "$APPROVAL" && "$(stat -c %u "$APPROVAL")" == 0 &&
    "$(stat -c %a "$APPROVAL")" == 600 ]] || { echo EXPLICIT_OPERATOR_UPGRADE_APPROVAL_REQUIRED; exit 65; }
 SHA=$(sed -n 's/^SHA=//p' "$MANIFEST" | head -1)
 [[ "$SHA" =~ ^[a-f0-9]{40}$ ]] || { echo INVALID_SHA; exit 65; }
@@ -22,6 +22,12 @@ exec 7>/run/lock/vendi-release-global-build.lock
 flock -n 7 || { echo BUILD_IN_PROGRESS; exit 75; }
 exec 8>/run/lock/vendi-production-release.lock
 flock -n 8 || { echo PRODUCTION_RELEASE_IN_PROGRESS; exit 75; }
+SHARED_CONFIG=/etc/vendorai/vendi-shared-deploy-lock.path
+[[ -f "$SHARED_CONFIG" && ! -L "$SHARED_CONFIG" && "$(stat -c %u "$SHARED_CONFIG")" == 0 && "$(stat -c %a "$SHARED_CONFIG")" == 600 ]] || { echo SHARED_DEPLOY_LOCK_NOT_PROVISIONED; exit 65; }
+SHARED_LOCK=$(cat "$SHARED_CONFIG")
+[[ "$SHARED_LOCK" == /opt/vendorai/deploy.lock && ! -L "$SHARED_LOCK" ]] || { echo SHARED_DEPLOY_LOCK_INVALID; exit 65; }
+exec 9>"$SHARED_LOCK"
+flock -n 9 || { echo AUTOMATIC_DEPLOY_IN_PROGRESS; exit 75; }
 FILES=(
   vendi-contabo-operator
   vendi04-release-runner
@@ -90,7 +96,7 @@ for i in "${!FILES[@]}"; do
   src="$WORK/${SOURCES[i]}"
   dst="/usr/local/sbin/${FILES[i]}"
   temp=$(mktemp "/usr/local/sbin/.vendi-install.XXXXXXXX")
-  install -m 0755 -o root -g root "$src" "$temp"
+  install -m 0750 -o root -g root "$src" "$temp"
   mv -f "$temp" "$dst"
   updated=$((updated+1))
 done

@@ -47,13 +47,16 @@ assert_consistent(){
  if [[ "$st" == "PUBLISHED" ]]; then
   if [[ -z "$recorded" || "$active" != "$recorded" ]]; then echo RELEASE_IMAGE_MISMATCH; return 65; fi
   if [[ -z "$backup" ]] || ! docker inspect "$backup" >/dev/null 2>&1; then echo RELEASE_BACKUP_MISSING; return 65; fi
+  recorded_id=$(sed -n 's/^IMAGE_ID=//p' "$STATE" | head -1)
+  if [[ -n "$recorded_id" && "$(docker inspect "$CURRENT" --format '{{.Image}}')" != "$recorded_id" ]]; then echo RELEASE_DIGEST_MISMATCH; return 65; fi
  fi
 }
-assert_consistent || { log "DENIED_INCONSISTENT_RELEASE_STATE";exit 65; }
+# The consistency checks below are executed only after acquiring the cron lock.
 # At most one preceding release can be active. Its state may be transitioned to
 # SUPERSEDED only AFTER the new candidate passes its production health gate.
 # Preserve its backup container; older/inconsistent PUBLISHED states still block.
 PREVIOUS_PUBLISHED_RECORD=""
+check_predecessor(){
 if [[ "$ACTION" == publish ]]; then
  active_pre_publish=$(docker inspect "$CURRENT" --format '{{.Config.Image}}' 2>/dev/null || true)
  [[ -n "$active_pre_publish" ]] || { echo ACTIVE_PRODUCTION_IMAGE_UNKNOWN; exit 65; }
@@ -61,6 +64,8 @@ if [[ "$ACTION" == publish ]]; then
   [[ -f "$record" && ! -L "$record" && "$record" != "$STATE" ]] || continue
   [[ "$(stat -c %u "$record")" == 0 ]] || { echo UNSAFE_HISTORICAL_RELEASE_RECORD; exit 65; }
   record_status=$(sed -n 's/^STATUS=//p' "$record" | head -1)
+  record_lot="${record##*/}"; record_lot="${record_lot%.prod}"
+  [[ "$record_lot" =~ ^[A-Z][A-Z0-9]{1,15}-[0-9]{1,6}$ ]] || { echo INVALID_HISTORICAL_LOT; exit 65; }
   case "$record_status" in
    PUBLISHED)
     record_image=$(sed -n 's/^IMAGE=//p' "$record" | head -1)
@@ -73,15 +78,20 @@ if [[ "$ACTION" == publish ]]; then
     PREVIOUS_PUBLISHED_RECORD="$record"
     ;;
    INCONSISTENT*) echo OTHER_RELEASE_REQUIRES_RECONCILIATION; log "BLOCKED_OTHER_RELEASE=$record"; exit 65;;
+   SUPERSEDED)
+    record_image=$(sed -n 's/^IMAGE=//p' "$record" | head -1)
+    [[ "$record_image" != "$active_pre_publish" ]] || { echo ACTIVE_PREDECESSOR_REQUIRES_RECONCILIATION; exit 65; }
+    ;;
   esac
  done
 fi
+}
 # Both publication and rollback serialize with the automatic Contabo cron deployment.
 # The independent cron deploy must use the SAME shared flock.
 # Refuse publication until a root-owned config pins a lock path whose use by
 # the cron script was audited; guessing a lock silently permits overlap.
 SHARED_LOCK_CONFIG=/etc/vendorai/vendi-shared-deploy-lock.path
-[[ -f "$SHARED_LOCK_CONFIG" &&
+[[ -f "$SHARED_LOCK_CONFIG" && ! -L "$SHARED_LOCK_CONFIG" &&
    "$(stat -c %u "$SHARED_LOCK_CONFIG")" == 0 &&
    "$(stat -c %a "$SHARED_LOCK_CONFIG")" == 600 ]] || {
   echo SHARED_DEPLOY_LOCK_NOT_PROVISIONED; exit 65;
@@ -105,8 +115,20 @@ if [[ "$SHARED_LOCK" == "/opt/vendorai/deploy.lock" ]] &&
 else
   echo SHARED_DEPLOY_LOCK_NOT_IN_CRON_SCRIPT; exit 65
 fi
+[[ ! -L "$SHARED_LOCK" ]] || { echo UNSAFE_SHARED_LOCK; exit 65; }
 exec 8>"$SHARED_LOCK"
 flock -n 8 || { echo AUTOMATIC_DEPLOY_IN_PROGRESS; exit 75; }
+for record in "$ROOT"/state/*.prod; do
+ [[ -e "$record" || -L "$record" ]] || continue
+ [[ -f "$record" && ! -L "$record" && "$(stat -c %u "$record")" == 0 && "$(stat -c %a "$record")" == 600 ]] || { echo UNSAFE_RELEASE_RECORD; exit 65; }
+done
+ declared_previous=$(get PREVIOUS_LOT)
+ if [[ -n "$declared_previous" ]]; then
+   [[ "$PREVIOUS_PUBLISHED_RECORD" == "$ROOT/state/$declared_previous.prod" ]] || { echo DECLARED_PREDECESSOR_MISMATCH; exit 65; }
+ fi
+assert_consistent || { log "DENIED_INCONSISTENT_RELEASE_STATE"; exit 65; }
+[[ "$(docker inspect "$CURRENT" --format '{{.State.Running}}')" == true ]] || { echo ACTIVE_PRODUCTION_NOT_RUNNING; exit 65; }
+check_predecessor
 if [[ "$ACTION" == rollback ]]; then
  [[ -f "$STATE" ]] || { echo NO_ROLLBACK_STATE;exit 65; }
  RECORDED_IMAGE=$(sed -n 's/^IMAGE=//p' "$STATE")
@@ -126,10 +148,43 @@ if [[ "$ACTION" == rollback ]]; then
 
  [[ "$(sed -n 's/^STATUS=//p' "$STATE" | head -1)" == "PUBLISHED" ]] || { echo ROLLBACK_NOT_PUBLISHED;exit 65; }
  docker inspect "$SAVED" >/dev/null || { echo BACKUP_MISSING;exit 65; }
+ PREVIOUS_LOT=$(sed -n 's/^PREVIOUS_LOT=//p' "$STATE" | head -1)
+ PREVIOUS_RECORD=""
+ if [[ -n "$PREVIOUS_LOT" ]]; then
+   [[ "$PREVIOUS_LOT" =~ ^[A-Z][A-Z0-9]{1,15}-[0-9]{1,6}$ && "$PREVIOUS_LOT" != "$LOT" ]] || { echo INVALID_PREVIOUS_LOT; exit 65; }
+   PREVIOUS_RECORD="$ROOT/state/$PREVIOUS_LOT.prod"
+   [[ -f "$PREVIOUS_RECORD" ]] && grep -Fxq STATUS=SUPERSEDED "$PREVIOUS_RECORD" || { echo PREDECESSOR_STATE_MISMATCH; exit 65; }
+   prior_image=$(sed -n 's/^IMAGE=//p' "$PREVIOUS_RECORD" | head -1)
+   prior_backup=$(sed -n 's/^BACKUP=//p' "$PREVIOUS_RECORD" | head -1)
+   [[ "$(docker inspect "$SAVED" --format '{{.Config.Image}}')" == "$prior_image" ]] && docker inspect "$prior_backup" >/dev/null 2>&1 || { echo PREDECESSOR_BACKUP_MISMATCH; exit 65; }
+ fi
  REPLACED="${CURRENT}-failed-$(date -u +%s)"
  docker inspect "$REPLACED" >/dev/null 2>&1 && { echo ROLLBACK_TEMP_NAME_ALREADY_EXISTS; exit 65; }
+ ROLLBACK_ORIGINAL=$(mktemp "$ROOT/state/.rollback-original.XXXXXXXX")
+ cp -p "$STATE" "$ROLLBACK_ORIGINAL"
+ rollback_done=0
+ rollback_exit(){
+   rc=$?
+   trap - EXIT
+   if [[ "$rollback_done" != 1 ]]; then
+     recovery_state=$(mktemp "$ROOT/state/.rollback-recovery.XXXXXXXX")
+     if [[ "$(docker inspect "$CURRENT" --format '{{.Config.Image}}' 2>/dev/null || true)" == "$RECORDED_IMAGE" ]] && check; then
+       cat "$ROLLBACK_ORIGINAL" > "$recovery_state"
+     else
+       sed 's/^STATUS=.*/STATUS=INCONSISTENT_ROLLBACK/' "$ROLLBACK_ORIGINAL" > "$recovery_state"
+     fi
+     chmod 600 "$recovery_state"; mv -f "$recovery_state" "$STATE"
+   fi
+   rm -f "$ROLLBACK_ORIGINAL"
+   exit "$rc"
+ }
+ trap rollback_exit EXIT
+ sed 's/^STATUS=PUBLISHED$/STATUS=INCONSISTENT_ROLLBACK/' "$ROLLBACK_ORIGINAL" > "$STATE"
  docker stop "$CURRENT" >/dev/null
- docker rename "$CURRENT" "$REPLACED"
+ if ! docker rename "$CURRENT" "$REPLACED"; then
+   docker start "$CURRENT" >/dev/null || true
+   echo ROLLBACK_ORIGINAL_RENAME_FAILED; exit 1
+ fi
  if ! docker rename "$SAVED" "$CURRENT"; then
    docker rename "$REPLACED" "$CURRENT"
    docker start "$CURRENT" >/dev/null || true
@@ -139,13 +194,22 @@ if [[ "$ACTION" == rollback ]]; then
    docker rename "$CURRENT" "$SAVED"
    docker rename "$REPLACED" "$CURRENT"
    docker start "$CURRENT" >/dev/null || true
-   echo ROLLBACK_START_FAILED_ORIGINAL_RESTORED;exit 1
+   if check; then echo ROLLBACK_START_FAILED_ORIGINAL_RESTORED;
+   else echo ROLLBACK_START_FAILED_MANUAL_RECOVERY_REQUIRED; fi
+   exit 1
  fi
  for _ in $(seq 1 30); do
    if check; then
      tmpstate=$(mktemp "$ROOT/state/.rollback.XXXXXXXX")
-     sed 's/^STATUS=PUBLISHED$/STATUS=ROLLED_BACK/' "$STATE" > "$tmpstate"
+     sed 's/^STATUS=PUBLISHED$/STATUS=ROLLED_BACK/' "$ROLLBACK_ORIGINAL" > "$tmpstate"
+     docker inspect "$CURRENT" --format 'RESTORED_IMAGE_ID={{.Image}}' >> "$tmpstate"
      chmod 600 "$tmpstate"; mv -f "$tmpstate" "$STATE"
+     if [[ -n "$PREVIOUS_RECORD" ]]; then
+       tmpprior=$(mktemp "$ROOT/state/.reactivate.XXXXXXXX")
+       sed -e 's/^STATUS=SUPERSEDED$/STATUS=PUBLISHED/' -e '/^SUPERSEDED_BY=/d' "$PREVIOUS_RECORD" > "$tmpprior"
+       chmod 600 "$tmpprior"; mv -f "$tmpprior" "$PREVIOUS_RECORD"
+     fi
+     rollback_done=1
      echo ROLLBACK_HEALTH_200;log "ROLLBACK_OK";exit 0
    fi
    sleep 2
@@ -171,12 +235,18 @@ if [[ "$ACTION" == rollback ]]; then
  exit 1
 fi
 # Publish only an image that was actually built and recorded with the requested commit.
+TEST_PROOF="$ROOT/state/$LOT.tests"
+[[ -f "$TEST_PROOF" && ! -L "$TEST_PROOF" && "$(stat -c %u "$TEST_PROOF")" == 0 && "$(stat -c %a "$TEST_PROOF")" == 600 ]] || { echo TECHNICAL_TEST_RECEIPT_REQUIRED; exit 65; }
+grep -Fxq "LOT=$LOT" "$TEST_PROOF" && grep -Fxq "SHA=$SHA" "$TEST_PROOF" &&
+grep -Fxq 'STATUS=PASSED' "$TEST_PROOF" && grep -Fxq 'SUITE=api,mcp,operator,rollback,migrations' "$TEST_PROOF" || { echo TECHNICAL_TEST_RECEIPT_MISMATCH; exit 65; }
 BUILDSTATE="$ROOT/state/$LOT"
 [[ -f "$BUILDSTATE" ]] || { echo BUILD_NOT_RECORDED;exit 65; }
 grep -Fxq "SHA=$SHA" "$BUILDSTATE" || { echo SHA_MISMATCH;exit 65; }
 grep -Fxq "IMAGE=$IMAGE" "$BUILDSTATE" || { echo IMAGE_MISMATCH;exit 65; }
 grep -Fxq "STATUS=BUILT_NOT_DEPLOYED" "$BUILDSTATE" || { echo BUILD_NOT_APPROVED;exit 65; }
 docker image inspect "$IMAGE" >/dev/null
+BUILD_IMAGE_ID=$(sed -n 's/^IMAGE_ID=//p' "$BUILDSTATE" | head -1)
+[[ "$BUILD_IMAGE_ID" == "$(docker image inspect "$IMAGE" --format '{{.Id}}')" ]] || { echo BUILD_DIGEST_MISMATCH; exit 65; }
 # A built image is never sufficient for publication. Require a recent, root-owned
 # receipt from the isolated read-only candidate homologation of this exact image ID.
 PROOF="$ROOT/state/$LOT.homolog"
@@ -254,6 +324,11 @@ if any("\n" in x or "\r" in x for x in a): raise SystemExit("MULTILINE_ENV_UNSUP
 with open(sys.argv[2],"w") as f:f.write("\n".join(a)+"\n")
 PY
 docker create --name "$NEXT" --network "$NETWORK" --restart unless-stopped --env-file "$ENVFILE" -p 127.0.0.1:5001:5000 "$IMAGE" >/dev/null
+# Creating from a tag is safe only if the resulting container uses the verified digest.
+if [[ "$(docker inspect "$NEXT" --format '{{.Image}}')" != "$ACTUAL_IMAGE_ID" ]]; then
+ docker rm "$NEXT" >/dev/null
+ echo CANDIDATE_DIGEST_CHANGED; exit 65
+fi
 swapped=0;success=0;prior_superseded=0
 restore(){
  if [[ "$success" != 1 ]]; then
@@ -264,17 +339,28 @@ restore(){
    fi
    # Includes failure after stopping the original but before its rename.
    docker start "$CURRENT" >/dev/null 2>&1 || log "FAILED_TO_RESTART_ORIGINAL"
+   recovered=0
+   for _ in $(seq 1 30); do
+     if [[ "$(docker inspect "$CURRENT" --format '{{.Config.Image}}' 2>/dev/null || true)" == "$BASE_IMAGE" ]] && check; then recovered=1; break; fi
+     sleep 2
+   done
+   if [[ "$recovered" != 1 ]]; then
+     log "INCONSISTENT_PUBLISH_RECOVERY_FAILED"
+     return 1
+   fi
    rm -f "$STATE"
    if [[ "$prior_superseded" == 1 && -n "$PREVIOUS_PUBLISHED_RECORD" ]]; then
      restore_tmp=$(mktemp "$ROOT/state/.restore-prior.XXXXXXXX")
-     sed 's/^STATUS=SUPERSEDED$/STATUS=PUBLISHED/' "$PREVIOUS_PUBLISHED_RECORD" > "$restore_tmp"
+     sed -e 's/^STATUS=SUPERSEDED$/STATUS=PUBLISHED/' -e '/^SUPERSEDED_BY=/d' "$PREVIOUS_PUBLISHED_RECORD" > "$restore_tmp"
      chmod 600 "$restore_tmp"
      mv -f "$restore_tmp" "$PREVIOUS_PUBLISHED_RECORD" || log "PRIOR_RECORD_RECONCILIATION_REQUIRED"
    fi
  fi
  docker rm -f "$NEXT" >/dev/null 2>&1 || true
 }
-trap 'rc=$?; trap - EXIT; restore; cleanup; exit "$rc"' EXIT
+trap 'rc=$?; trap - EXIT; restore || true; cleanup; exit "$rc"' EXIT
+umask 077
+printf 'LOT=%s\nSHA=%s\nIMAGE=%s\nBACKUP=%s\nSTATUS=INCONSISTENT_PUBLISHING\n' "$LOT" "$SHA" "$IMAGE" "$BACK" > "$STATE"
 docker stop "$CURRENT" >/dev/null
 docker rename "$CURRENT" "$BACK"
 swapped=1
@@ -288,12 +374,19 @@ for _ in $(seq 1 45); do if check; then ok=1;break;fi;sleep 2;done
 if [[ -n "$PREVIOUS_PUBLISHED_RECORD" ]]; then
  prior_tmp=$(mktemp "$ROOT/state/.supersede.XXXXXXXX")
  sed 's/^STATUS=PUBLISHED$/STATUS=SUPERSEDED/' "$PREVIOUS_PUBLISHED_RECORD" > "$prior_tmp"
+ printf 'SUPERSEDED_BY=%s\n' "$LOT" >> "$prior_tmp"
  chmod 600 "$prior_tmp"
  mv -f "$prior_tmp" "$PREVIOUS_PUBLISHED_RECORD"
  prior_superseded=1
 fi
 umask 077
-printf 'LOT=%s\nSHA=%s\nIMAGE=%s\nBACKUP=%s\nSTATUS=PUBLISHED\n' "$LOT" "$SHA" "$IMAGE" "$BACK" > "$STATE"
+previous_lot=""
+if [[ -n "$PREVIOUS_PUBLISHED_RECORD" ]]; then
+ previous_lot="${PREVIOUS_PUBLISHED_RECORD##*/}"; previous_lot="${previous_lot%.prod}"
+fi
+newstate=$(mktemp "$ROOT/state/.publish.XXXXXXXX")
+printf 'LOT=%s\nSHA=%s\nIMAGE=%s\nIMAGE_ID=%s\nBACKUP=%s\nPREVIOUS_LOT=%s\nSTATUS=PUBLISHED\n' "$LOT" "$SHA" "$IMAGE" "$ACTUAL_IMAGE_ID" "$BACK" "$previous_lot" > "$newstate"
+chmod 600 "$newstate"; mv -f "$newstate" "$STATE"
 success=1
 log "PUBLISHED sha=$SHA backup=$BACK"
 echo "VENDI04_PRODUCTION_HEALTH_200_BACKUP_PRESERVED"

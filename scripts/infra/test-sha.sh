@@ -8,6 +8,20 @@ PR="$1"; BRANCH="$2"; SHA="$3"; SUITE="$4"
 case "$BRANCH" in *..*|/*|*/|*'//'*) echo "Invalid branch" >&2; exit 64;; esac
 ROOT="$(git rev-parse --show-toplevel)"
 cd "$ROOT"
+# Tests share the existing host build/homologation semaphore. Provision the lock
+# once administratively; never replace its inode while an operation may hold it.
+RESOURCE_LOCK=/run/lock/vendi-release-global-build.lock
+[[ -f "$RESOURCE_LOCK" && ! -L "$RESOURCE_LOCK" ]] || { echo TEST_RESOURCE_LOCK_NOT_PROVISIONED; exit 75; }
+exec 7<"$RESOURCE_LOCK"
+flock -n 7 || { echo BUILD_OR_TEST_IN_PROGRESS; exit 75; }
+FREE_KB=$(df -Pk "$ROOT" | awk 'NR==2 {print $4}')
+MEM_KB=$(awk '/^MemAvailable:/ {print $2}' /proc/meminfo)
+SWAP_TOTAL_KB=$(awk '/^SwapTotal:/ {print $2}' /proc/meminfo)
+SWAP_FREE_KB=$(awk '/^SwapFree:/ {print $2}' /proc/meminfo)
+[[ "$FREE_KB" =~ ^[0-9]+$ && "$MEM_KB" =~ ^[0-9]+$ && "$SWAP_TOTAL_KB" =~ ^[0-9]+$ && "$SWAP_FREE_KB" =~ ^[0-9]+$ ]] || { echo RESOURCE_METRICS_UNAVAILABLE; exit 75; }
+if (( FREE_KB < 8388608 || MEM_KB < 6291456 || (SWAP_TOTAL_KB > 0 && (SWAP_TOTAL_KB-SWAP_FREE_KB)*100/SWAP_TOTAL_KB > 75) )); then
+  echo TEST_BLOCKED_RESOURCE_PRESSURE; exit 75
+fi
 if ! git remote get-url origin | grep -Eq '^(git@github.com:|https://github.com/)casaforteicf/vendorai-platform-replit(\.git)?$'; then
   echo "Unexpected Git remote" >&2; exit 65
 fi
@@ -86,7 +100,7 @@ chmod -R a+rwX "$RUN/work"
 run() {
   name="$1"; shift
   set +e
-  "${DOCKER_CMD[@]}" run --rm --cidfile "$RUN/logs/$name.cid" --network none --cap-drop ALL --security-opt no-new-privileges --pids-limit 256 --memory 4g --cpus 2     --user "$(id -u):$(id -g)" --tmpfs /tmp:rw,nosuid,size=256m     --mount "type=bind,src=$RUN/work,dst=/workspace"     --mount "$STORE_MOUNT"     -w /workspace -e CI=true -e HOME=/tmp -e PNPM_STORE_DIR=/pnpm/store "$IMAGE"     sh -c "$*" >"$RUN/logs/$name.log" 2>&1
+  "${DOCKER_CMD[@]}" run --rm --cidfile "$RUN/logs/$name.cid" --network none --cap-drop ALL --security-opt no-new-privileges --pids-limit 256 --memory 4g --memory-swap 4g --cpus 1     --user "$(id -u):$(id -g)" --tmpfs /tmp:rw,nosuid,size=256m     --mount "type=bind,src=$RUN/work,dst=/workspace"     --mount "$STORE_MOUNT"     -w /workspace -e CI=true -e HOME=/tmp -e PNPM_STORE_DIR=/pnpm/store "$IMAGE"     sh -c "$*" >"$RUN/logs/$name.log" 2>&1
   code=$?
   set -e
   printf '%s exit=%s\n' "$name" "$code" | tee -a "$RUN/results.txt"
@@ -100,7 +114,7 @@ if [ "${VENDORAI_PREPARE_OFFLINE:-0}" = "1" ]; then
     exit 75
   }
   set +e
-  "${DOCKER_CMD[@]}" run --rm --network bridge --cap-drop ALL --security-opt no-new-privileges --pids-limit 256 --memory 4g --cpus 2 \
+  "${DOCKER_CMD[@]}" run --rm --network bridge --cap-drop ALL --security-opt no-new-privileges --pids-limit 256 --memory 4g --memory-swap 4g --cpus 1 \
     --user "$(id -u):$(id -g)" --tmpfs /tmp:rw,nosuid,size=256m \
     --mount "type=bind,src=$RUN/work,dst=/workspace" \
     --mount "$STORE_MOUNT" \
@@ -125,6 +139,10 @@ if [ "$SUITE" = mcp ] || [ "$SUITE" = full ]; then
   run vendi-operator-regression "node --test scripts/tests/vendi-autonomia-integrada.test.mjs scripts/tests/vendi-contabo-operator-status.test.mjs"
   run mcp-contract "node --test artifacts/cloudflare-mcp/vendi-crm-contract.test.mjs"
   run mcp-ts "pnpm --filter @workspace/cloudflare-mcp typecheck"
+  run mcp-build "pnpm --filter @workspace/cloudflare-mcp build"
+  if grep -qx 'mcp-build exit=0' "$RUN/results.txt"; then
+    run mcp-oauth "node --test artifacts/cloudflare-mcp/oauth.test.mjs artifacts/cloudflare-mcp/tests/*.test.mjs"
+  fi
 fi
 if [ "$SUITE" = api ] || [ "$SUITE" = full ]; then
   run api-ts "pnpm --filter @workspace/api-server typecheck"

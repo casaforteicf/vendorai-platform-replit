@@ -68,10 +68,33 @@ mcp=envmap("vendorai-mcp-novo")
 def identity(url):
     v=urlsplit(url)
     return ((v.hostname or "").lower(),v.port or 5432,v.path.rstrip("/").lower())
-if not homolog.get("DATABASE_URL") or not prod.get("DATABASE_URL"):
+def runtime_url(env):
+    # Same precedence as lib/db/src/index.ts; never test a fallback while the
+    # application actually connects using a higher-priority production URL.
+    return env.get('APP_DATABASE_URL') or env.get('SUPABASE_DATABASE_URL') or env.get('DATABASE_URL')
+homolog_url=runtime_url(homolog)
+prod_url=runtime_url(prod)
+if not homolog_url or not prod_url:
     raise SystemExit("DATABASE_IDENTITY_UNVERIFIED")
-if identity(homolog["DATABASE_URL"])==identity(prod["DATABASE_URL"]):
+if identity(homolog_url)==identity(prod_url):
     raise SystemExit("HOMOLOG_USES_PRODUCTION_DATABASE")
+# This host uses the existing local homolog DB. Fail closed on external aliases
+# (including alternate Supabase pooler/direct hosts) until independently reviewed.
+db=json.loads(subprocess.check_output(['docker','inspect','vendorai-homolog-db'],text=True))[0]
+network=db.get('NetworkSettings',{}).get('Networks',{}).get('vendorai-homolog',{})
+aliases=set(network.get('Aliases') or []) | {'vendorai-homolog-db'}
+target=urlsplit(homolog_url)
+if not db['State']['Running'] or not network or target.hostname not in aliases or (target.port or 5432)!=5432:
+    raise SystemExit('HOMOLOG_DATABASE_NOT_LOCAL_ISOLATED')
+if any(identity(value)==identity(homolog_url) for key,value in prod.items() if key in ('APP_DATABASE_URL','SUPABASE_DATABASE_URL','DATABASE_URL') and value):
+    raise SystemExit('HOMOLOG_USES_PRODUCTION_DATABASE')
+# Prevent alternate URL selection and prohibit writes at the PostgreSQL session.
+from urllib.parse import parse_qsl, urlencode, urlunsplit
+query=dict(parse_qsl(target.query,keep_blank_values=True))
+query['options']='-c default_transaction_read_only=on'
+homolog_url=urlunsplit(target._replace(query=urlencode(query)))
+for key in ('APP_DATABASE_URL','SUPABASE_DATABASE_URL','DATABASE_URL'):
+    homolog[key]=homolog_url
 if not mcp.get("BROWSER_MCP_ACCESS_TOKEN"):
     raise SystemExit("HOMOLOG_MCP_TOKEN_MISSING")
 homolog["BROWSER_MCP_ACCESS_TOKEN"]=mcp["BROWSER_MCP_ACCESS_TOKEN"]
