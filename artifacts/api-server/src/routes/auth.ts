@@ -1047,15 +1047,17 @@ router.post("/auth/register", authenticate, requireRole("super_admin"), async (r
 });
 
 protectedRouter.get("/auth/me", async (req, res) => {
-  const [user] = await db
-    .select(PUBLIC_FIELDS)
-    .from(usersTable)
-    .where(eq(usersTable.id, req.user!.sub));
-
-  if (!user || !user.active) {
+  // O JWT ja foi verificado pelo middleware authenticate.
+  // A consulta direta em users depende do RLS e nao encontra usuarios sem
+  // app.tenant_id. A lookup autenticada usa a funcao SECURITY DEFINER
+  // existente; vincular obrigatoriamente email e id do JWT evita trocar
+  // a identidade por um email fornecido pelo cliente.
+  const authUser = await findUserForAuth(req.user!.email);
+  if (!authUser || authUser.id !== req.user!.sub || !authUser.active) {
     res.status(401).json({ error: "User not found or inactive" });
     return;
   }
+  const { password: _secretPassword, ...user } = authUser;
 
   const sessionTenant = await resolveSessionTenantContext({
     userId: user.id,
@@ -1082,15 +1084,17 @@ protectedRouter.get("/auth/me", async (req, res) => {
 });
 
 protectedRouter.post("/auth/refresh", async (req, res) => {
-  const [user] = await db
-    .select(PUBLIC_FIELDS)
-    .from(usersTable)
-    .where(eq(usersTable.id, req.user!.sub));
-
-  if (!user || !user.active) {
+  // O JWT ja foi verificado pelo middleware authenticate.
+  // A consulta direta em users depende do RLS e nao encontra usuarios sem
+  // app.tenant_id. A lookup autenticada usa a funcao SECURITY DEFINER
+  // existente; vincular obrigatoriamente email e id do JWT evita trocar
+  // a identidade por um email fornecido pelo cliente.
+  const authUser = await findUserForAuth(req.user!.email);
+  if (!authUser || authUser.id !== req.user!.sub || !authUser.active) {
     res.status(401).json({ error: "User not found or inactive" });
     return;
   }
+  const { password: _secretPassword, ...user } = authUser;
 
   const sessionTenant = await resolveSessionTenantContext({
     userId: user.id,
