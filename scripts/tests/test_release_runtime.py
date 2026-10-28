@@ -105,10 +105,7 @@ class ReleaseRuntime(unittest.TestCase):
         (self.root/'ledger/manifests'/f'{lot}.env').write_text(f'SHA={sha}\n')
         (self.root/'ledger/state'/lot).write_text(f'SHA={sha}\nIMAGE={image}\nIMAGE_ID=sha256:{sha}\nSTATUS=BUILT_NOT_DEPLOYED\n')
         tests=self.root/'ledger/state'/f'{lot}.tests'
-        tests.write_text(f'LOT={lot}\nSHA={sha}\nSTATUS=PASSED\nSUITE=api,mcp,operator,rollback,migrations\n'); tests.chmod(0o600)
-        proof=self.root/'ledger/state'/f'{lot}.homolog'
-        proof.write_text(f'LOT={lot}\nSHA={sha}\nIMAGE={image}\nIMAGE_ID=sha256:{sha}\nSTATUS=HOMOLOGATED\nMODE=ISOLATED_READONLY\nAT_EPOCH={int(time.time())}\n')
-        proof.chmod(0o600)
+        tests.write_text(f'LOT={lot}\nSHA={sha}\nIMAGE_ID=sha256:{sha}\nAT_EPOCH={int(time.time())}\nSTATUS=PASSED\nSUITE=api,mcp,operator,rollback,migrations\n'); tests.chmod(0o600)
         return lot,image
     def run_release(self, action, lot, expected=0):
         result=subprocess.run(['bash',str(self.script),action,lot],env=self.env,text=True,capture_output=True,timeout=20)
@@ -158,9 +155,23 @@ class ReleaseRuntime(unittest.TestCase):
 
     def test_wrong_sha_and_digest_never_stop_production(self):
         a,_=self.prepare(1)
-        proof=self.root/'ledger/state'/f'{a}.homolog'
+        proof=self.root/'ledger/state'/f'{a}.tests'
         proof.write_text(proof.read_text().replace('IMAGE_ID=sha256:', 'IMAGE_ID=sha256:wrong'))
         self.run_release('publish',a,65)
         self.assertFalse(any(c[0] in ['stop','create'] for c in self.read()['calls']))
+
+    def test_expired_tests_block_direct_publish_without_homologation(self):
+        a,_=self.prepare(1)
+        proof=self.root/'ledger/state'/f'{a}.tests'
+        import re
+        proof.write_text(re.sub(r'AT_EPOCH=\d+', 'AT_EPOCH=1000000000', proof.read_text()))
+        self.assertIn('TECHNICAL_TEST_RECEIPT_EXPIRED',self.run_release('publish',a,65))
+        self.assertFalse(any(c[0] in ['stop','create'] for c in self.read()['calls']))
+
+    def test_non_api_target_never_swaps_api(self):
+        a,_=self.prepare(1)
+        with (self.root/'ledger/manifests'/f'{a}.env').open('a') as f: f.write('TARGET=mcp\n')
+        self.assertIn('TARGET_REQUIRES_DEDICATED_DEPLOYMENT_HANDLER',self.run_release('publish',a,65))
+        self.assertEqual(self.read()['calls'],[])
 
 if __name__ == '__main__': unittest.main(verbosity=2)

@@ -10,7 +10,7 @@ import { collectDevAgentCheckEvidence } from "../lib/dev-agent-check-evidence.js
 import { runBrowserAgent } from "../services/browser-agent.js";
 import { signToken } from "../lib/jwt.js";
 
-import { callReleaseOperator, hostReceipt, releaseBinding, requireHomologated, requirePublished } from "../lib/vendi-release-operator.js";
+import { callReleaseOperator, hostReceipt, releaseBinding, requireTested, requirePublished } from "../lib/vendi-release-operator.js";
 
 const router: IRouter = Router();
 
@@ -1217,7 +1217,7 @@ async function notifySupportRequestersAfterPublish(release: any) {
 async function executeScheduledRelease(release: any) {
   // The legacy Release Center merges main and relies on a separate Contabo cron.
   // Never allow this path to bypass the release operator until BOTH host
-  // homologation evidence and automatic-deploy coordination are independently
+  // exact-image test evidence and automatic-deploy coordination are independently
   // validated and explicitly enabled by an administrator.
   if (
     process.env["VENDI_RELEASE_OPERATOR_VALIDATED"] !== "true" ||
@@ -1240,7 +1240,7 @@ async function executeScheduledRelease(release: any) {
 
   const sha = String(candidate.object.sha);
   const lot = releaseBinding(String(release.id), sha, process.env["VENDI_RELEASE_BINDINGS"]);
-  requireHomologated(hostReceipt(await callReleaseOperator("releaseStatus", lot), lot, sha));
+  requireTested(hostReceipt(await callReleaseOperator("releaseStatus", lot), lot, sha));
   // Publish the approved exact SHA through the existing operator, never merge
   // main or create another PR. A transport failure is an unknown outcome and
   // blocks the release for reconciliation; it must not trigger an automatic retry.

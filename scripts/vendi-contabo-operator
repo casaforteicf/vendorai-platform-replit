@@ -135,13 +135,14 @@ def record(path, required=False):
     result={}
     for line in path.read_text().splitlines():
         k,sep,v=line.partition('=')
-        if k in ('LOT','SHA','IMAGE','IMAGE_ID','STATUS','AT_EPOCH','MODE','BACKUP','PREVIOUS_LOT','RESTORED_IMAGE_ID'):
+        if k in ('LOT','SHA','IMAGE','IMAGE_ID','STATUS','AT_EPOCH','MODE','SUITE','BACKUP','PREVIOUS_LOT','RESTORED_IMAGE_ID'):
             if k in result: raise SystemExit('DUPLICATE_RECEIPT_KEY')
             result[k]=v
     return result
 manifest=record(root/'manifests'/(lot+'.env'),True)
 active=subprocess.run(['docker','inspect','vendorai-prod-api-candidate','--format','{{.Image}}'],capture_output=True,text=True)
 receipt={'lot':lot,'sha':manifest.get('SHA'),'build':record(root/'state'/lot),
+         'tests':record(root/'state'/(lot+'.tests')),
          'homolog':record(root/'state'/(lot+'.homolog')),
          'production':record(root/'state'/(lot+'.prod')),
          'activeImageId':active.stdout.strip() if active.returncode==0 else ''}

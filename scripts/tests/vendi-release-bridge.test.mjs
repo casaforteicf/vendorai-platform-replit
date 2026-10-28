@@ -37,3 +37,12 @@ test('MCP denial or mismatched action is never a successful publication',async()
     await assert.rejects(callReleaseOperator('publish',lot,{url:'https://operator.example/mcp',token:'synthetic',fetcher:async()=>new Response(JSON.stringify(message))}),/VENDI_RELEASE_MCP/);
   }
 });
+
+test('direct release requires fresh tests of the exact digest without mandatory homologation', async()=>{
+  const {requireTested}=await import('../../artifacts/api-server/src/lib/vendi-release-operator.ts');
+  const value=receipt(); value.homolog={};
+  value.tests={LOT:lot,SHA:sha,IMAGE_ID:id,STATUS:'PASSED',SUITE:'api,mcp,operator,rollback,migrations',AT_EPOCH:String(Math.floor(Date.now()/1000))};
+  requireTested(value);
+  value.tests.IMAGE_ID='wrong'; assert.throws(()=>requireTested(value),/TESTS_NOT_VERIFIED/);
+  value.tests.IMAGE_ID=id; value.tests.AT_EPOCH='1'; assert.throws(()=>requireTested(value),/TESTS_NOT_VERIFIED/);
+});

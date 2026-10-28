@@ -206,3 +206,52 @@ inspeção e exige reconciliação de proveniência. Não registrar novo lote:
 responsável deve definir a atualização controlada de um registro existente,
 preservando histórico e backups. Não habilitar flags da Central até concluir
 os gates. Missões com etapa >4h ainda exigem heartbeat independente.
+
+## Diretriz posterior de 28/10/2026 — autorização dinâmica e publicação direta
+
+O pedido atualizado substitui a obrigatoriedade de homologação. Publicação direta
+passa a exigir `.tests` root:600 com LOT, SHA, IMAGE_ID, AT_EPOCH (até 24h),
+STATUS=PASSED e SUITE=api,mcp,operator,rollback,migrations. Mantêm-se aprovações,
+backup, schema review, lock do cron, saúde e reversão. Homologação continua
+opcional. O publicador atual é de API: TARGET ausente conserva o legado api;
+TARGET diferente de api falha fechado, sem publicar módulos errados.
+O preflight não depende mais do container removido vendorai-homolog-api.
+Essas mudanças de host/API permanecem código candidato, não instalado.
+
+Autorização dinâmica de #3661 incorporada sem perder validações de documentos
+nulos, ações extras e grants por ação. Emissão OAuth agora inclui client assinado,
+preservando correção já presente na imagem instalada mas ausente nesta branch.
+Teste real de emissão/refresh verifica a identidade usada pelos grants.
+
+Com autorização expressa do usuário, o MCP existente recebeu somente o módulo
+da PR #3661 (fonte d2f110abf1a138bdabd71ec0977ed6856d4509d6), preservando os demais
+binários, configuração, ações concedidas e segredos. Imagem derivada do baseline
+060360e3df1f, sem reconstruir API ou outros serviços. allRegisteredLots=true foi
+ativado somente no único cliente já autorizado. SSH passou a bind persistente
+read-only; JSON de recriação root:600 em /etc/vendorai/mcp-novo/create.json.
+Backup do container anterior mantido; oito testes em imagem isolada e saúde
+HTTP passaram. Rollback real ao container anterior e retorno ao candidato
+passaram com HTTP 200 em ambos. O conector autenticado chegou ao operador para
+VENDI-3616; preflight host falhou pelo nome de homologação removido. Lote ausente
+continua negado pelo host. Não ocorreu publicação ou migração de API/DB.
+
+Inventário anterior de disco está superado: nova consulta confirmou 17.33 GiB
+livres, 14 imagens distintas antes da imagem MCP candidata, 12 containers/8
+ativos antes da atualização, MemAvailable ~2.14 GiB e swap ~31%. RAM ainda
+abaixo do gate de 6 GiB para build/testes completos. Nenhuma limpeza feita nesta
+tarefa; exclusões anteriores ocorreram externamente. Backups de produção,
+manifestos e dados preservados. Integração completa com a Central e publicação
+real da API ainda dependem de testes completos, proveniência, backup/restore e
+instalação autorizada do restante do operador. Não declarar autonomia integral.
+
+Fechamento da ativação MCP: após ensaio real do preflight contra o host, somente
+`vendi04-release-preflight` foi atualizado com backup e locks. Hash instalado:
+bdeb80d314dada5e20cdacffb6a588fa84e0d5d2084a53ea71957cd1f5e6b77d.
+O preflight de VENDI-3616 passou pelo conector OAuth/SSH real, com SHA do manifesto
+confirmado. É aprovação de saúde/workspace, não aprovação de build/publicação.
+O instalador legado não persistente foi desabilitado no código para impedir
+retorno ao container aposentado ou sobrescrita parcial do MCP.
+Regressões desta diretriz: 42 testes Node e 8 cenários Python/Bash passaram;
+MCP build/typecheck e adaptador typecheck passaram. Publicador direto continua
+não instalado. API mudou externamente durante a sessão para a variante
+login-3659-tad-3660-commercial-3662; esta tarefa não publicou essa versão.

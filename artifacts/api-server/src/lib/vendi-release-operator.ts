@@ -7,6 +7,7 @@ export type HostReceipt = {
   sha: string;
   build: Record<string, string>;
   homolog: Record<string, string>;
+  tests?: Record<string, string>;
   production: Record<string, string>;
   activeImageId: string;
 };
@@ -81,4 +82,15 @@ export function requirePublished(receipt: HostReceipt): void {
   if (receipt.production.STATUS !== "PUBLISHED" || receipt.production.SHA !== receipt.sha ||
       !/^sha256:[0-9a-f]{64}$/.test(receipt.production.IMAGE_ID ?? "") ||
       receipt.production.IMAGE_ID !== receipt.activeImageId) throw new Error("VENDI_RELEASE_PUBLICATION_NOT_VERIFIED");
+}
+
+export function requireTested(receipt: HostReceipt, now = Date.now()): void {
+  const {lot, sha, build, tests} = receipt;
+  const at = Number(tests?.AT_EPOCH) * 1000;
+  if (build.SHA !== sha || build.STATUS !== "BUILT_NOT_DEPLOYED" || tests?.LOT !== lot || tests.SHA !== sha ||
+      tests.STATUS !== "PASSED" || tests.SUITE !== "api,mcp,operator,rollback,migrations" ||
+      !/^sha256:[0-9a-f]{64}$/.test(build.IMAGE_ID ?? "") || tests.IMAGE_ID !== build.IMAGE_ID ||
+      !Number.isFinite(at) || at > now || now - at > 86400000) {
+    throw new Error("VENDI_RELEASE_TESTS_NOT_VERIFIED");
+  }
 }

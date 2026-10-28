@@ -9,6 +9,7 @@ const read = (path) => readFileSync(root + path, "utf8");
 const scripts = [
   "scripts/vendi-contabo-operator",
   "scripts/vendi04-release-runner.sh",
+  "scripts/vendi04-release-preflight.sh",
   "scripts/vendi04-controlled-release.sh",
   "scripts/vendi04-homologate-candidate.sh",
   "scripts/vendi04-controlled-upgrade.sh",
@@ -49,11 +50,11 @@ test("homologation uses EXACT private candidate and does not swap live container
 
 test("production promotion requires same SHA, image ID and fresh receipt, plus cron lock", () => {
   const script = read("scripts/vendi04-controlled-release.sh");
-  const verify = script.indexOf("HOMOLOG_RECEIPT_REQUIRED");
+  const verify = script.indexOf("TECHNICAL_TEST_RECEIPT_REQUIRED");
   const publish = script.indexOf('docker create --name "$NEXT"');
   assert.ok(verify > 0 && publish > verify, "verification must occur before container replacement");
-  for (const token of ["HOMOLOG_RECEIPT_MISMATCH", "HOMOLOG_IMAGE_DIGEST_MISMATCH",
-    "HOMOLOG_RECEIPT_EXPIRED", "SHARED_DEPLOY_LOCK_NOT_PROVISIONED",
+  for (const token of ["TECHNICAL_TEST_RECEIPT_MISMATCH", "TECHNICAL_TEST_IMAGE_DIGEST_MISMATCH",
+    "TECHNICAL_TEST_RECEIPT_EXPIRED", "SHARED_DEPLOY_LOCK_NOT_PROVISIONED",
     "AUTOMATIC_DEPLOY_IN_PROGRESS"]) assert.ok(script.includes(token), token);
 });
 
@@ -81,7 +82,7 @@ test("release center publishes only through host receipts and never merges main"
   const guard = releaseCenter.indexOf("VENDI_RELEASE_PIPELINE_NOT_VERIFIED_NO_MERGE", start);
   assert.ok(start >= 0 && guard > start && publish > guard);
   assert.doesNotMatch(releaseCenter.slice(start, end), /\/merge|merge_method/);
-  assert.match(releaseCenter.slice(start, end), /requireHomologated/);
+  assert.match(releaseCenter.slice(start, end), /requireTested/);
   assert.match(releaseCenter.slice(start, end), /requirePublished/);
   assert.match(releaseCenter, /VENDI_RELEASE_HOST_RECEIPTS_VERIFIED/);
   assert.match(releaseCenter, /VENDI_RELEASE_CRON_LOCK_VERIFIED/);

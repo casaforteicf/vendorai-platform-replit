@@ -3,6 +3,7 @@ export type ReleaseOperation = "build" | "homologate" | "rollback" | "preflight"
 type ReleaseGrant = {
   lots?: string[];
   actions?: string[];
+  allRegisteredLots?: boolean;
 };
 
 export function authorizeReleaseOperation(input: {
@@ -13,6 +14,7 @@ export function authorizeReleaseOperation(input: {
 }): string {
   if (!input.client) throw new Error("OPERATOR_IDENTITY_REQUIRED");
   if (!input.policyText) throw new Error("RELEASE_OPERATOR_POLICY_MISSING");
+  if (!/^[A-Z][A-Z0-9]{1,15}-[0-9]{1,6}$/.test(input.lot)) throw new Error("INVALID_LOT_IDENTIFIER");
 
   let policies: Record<string, ReleaseGrant>;
   try {
@@ -28,8 +30,7 @@ export function authorizeReleaseOperation(input: {
   if (!grant
     || !Array.isArray(grant.actions)
     || !grant.actions.includes(input.operation)
-    || !Array.isArray(grant.lots)
-    || !grant.lots.includes(input.lot)) {
+    || !(grant.allRegisteredLots === true || (Array.isArray(grant.lots) && grant.lots.includes(input.lot)))) {
     throw new Error("OPERATOR_NOT_AUTHORIZED");
   }
 

@@ -28,6 +28,8 @@ fi
 [[ -f "$MANIFEST" && "$(stat -c %u "$MANIFEST")" == 0 ]] || { echo MISSING_ROOT_MANIFEST; exit 65; }
 get(){ sed -n "s/^$1=//p" "$MANIFEST" | head -1; }
 SHA=$(get SHA)
+TARGET=$(get TARGET); TARGET=${TARGET:-api}
+[[ "$TARGET" == api ]] || { echo TARGET_REQUIRES_DEDICATED_DEPLOYMENT_HANDLER; exit 65; }
 [[ "$SHA" =~ ^[0-9a-f]{40}$ ]] || { echo INVALID_SHA; exit 65; }
 IMAGE="vendorai-release:${LOT,,}-${SHA:0:12}"
 TAG="${LOT,,}-${SHA:0:12}"
@@ -247,27 +249,18 @@ grep -Fxq "STATUS=BUILT_NOT_DEPLOYED" "$BUILDSTATE" || { echo BUILD_NOT_APPROVED
 docker image inspect "$IMAGE" >/dev/null
 BUILD_IMAGE_ID=$(sed -n 's/^IMAGE_ID=//p' "$BUILDSTATE" | head -1)
 [[ "$BUILD_IMAGE_ID" == "$(docker image inspect "$IMAGE" --format '{{.Id}}')" ]] || { echo BUILD_DIGEST_MISMATCH; exit 65; }
-# A built image is never sufficient for publication. Require a recent, root-owned
-# receipt from the isolated read-only candidate homologation of this exact image ID.
-PROOF="$ROOT/state/$LOT.homolog"
-[[ -f "$PROOF" && "$(stat -c %u "$PROOF")" == 0 &&
-   "$(stat -c %a "$PROOF")" == 600 ]] || { echo HOMOLOG_RECEIPT_REQUIRED; exit 65; }
-grep -Fxq "LOT=$LOT" "$PROOF" &&
-grep -Fxq "SHA=$SHA" "$PROOF" &&
-grep -Fxq "IMAGE=$IMAGE" "$PROOF" &&
-grep -Fxq "STATUS=HOMOLOGATED" "$PROOF" &&
-grep -Fxq "MODE=ISOLATED_READONLY" "$PROOF" || {
-  echo HOMOLOG_RECEIPT_MISMATCH; exit 65;
-}
+# Direct publication still requires recent technical tests of this exact image.
+# Optional homologation remains available, but is no longer a mandatory stage.
+PROOF="$TEST_PROOF"
 PROOF_IMAGE_ID=$(sed -n 's/^IMAGE_ID=//p' "$PROOF" | head -1)
 ACTUAL_IMAGE_ID=$(docker image inspect "$IMAGE" --format '{{.Id}}')
 [[ -n "$PROOF_IMAGE_ID" && "$PROOF_IMAGE_ID" == "$ACTUAL_IMAGE_ID" ]] || {
-  echo HOMOLOG_IMAGE_DIGEST_MISMATCH; exit 65;
+  echo TECHNICAL_TEST_IMAGE_DIGEST_MISMATCH; exit 65;
 }
 PROOF_TIME=$(sed -n 's/^AT_EPOCH=//p' "$PROOF" | head -1)
 NOW=$(date +%s)
 [[ "$PROOF_TIME" =~ ^[0-9]{10,12}$ ]] && (( PROOF_TIME <= NOW && NOW - PROOF_TIME <= 86400 )) || {
-  echo HOMOLOG_RECEIPT_EXPIRED; exit 65;
+  echo TECHNICAL_TEST_RECEIPT_EXPIRED; exit 65;
 }
 # Pin the database migration baseline to the ACTUALLY running production image.
 # If schema changes are detected, rollback requires a separately reviewed

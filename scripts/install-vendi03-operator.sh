@@ -1,5 +1,12 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
+# This historical installer targets a retired container and patches only its
+# writable layer. It also replaces the host operator before preserving a backup.
+# Keep it disabled: the existing service now has a pinned image, read-only SSH
+# mount and root-only recreation payload in /etc/vendorai/mcp-novo/create.json.
+echo LEGACY_NONPERSISTENT_MCP_INSTALLER_DISABLED >&2
+echo 'Use the reviewed update/rollback procedure for vendorai-mcp-novo; do not patch /app/dist in place.' >&2
+exit 65
 MCP=vendorai-mcp-contabo-fixed
 ROOT=/home/vendorai/vendorai-api-auth-test
 SRC="$ROOT/artifacts/cloudflare-mcp/src/index.ts"

@@ -6,7 +6,7 @@ import { spawn } from 'node:child_process';
 
 test('private OAuth: discovery, redirect restrictions, consent, PKCE, replay, refresh and revocation', { timeout: 20000 }, async () => {
   process.env.MCP_ACCESS_TOKEN = randomBytes(32).toString('hex');
-  const { handleOAuth, authorized, challenge } = await import('./dist/oauth.js');
+  const { handleOAuth, authorized, challenge, verifiedOperatorClient } = await import('./dist/oauth.js');
   const server = createServer(async (req, res) => {
     const url = new URL(req.url, process.env.MCP_PUBLIC_URL);
     if (await handleOAuth(req, res, url)) return;
@@ -82,6 +82,7 @@ test('private OAuth: discovery, redirect restrictions, consent, PKCE, replay, re
     assert.equal((await post('/oauth/token', { ...exchange, resource: 'https://attacker.example' })).status, 400);
     const tokens = await (await post('/oauth/token', exchange)).json();
     assert.ok(tokens.access_token); assert.ok(tokens.refresh_token);
+    assert.equal(verifiedOperatorClient({headers:{authorization:'Bearer '+tokens.access_token}}), createHash('sha256').update(client).digest('hex'));
     const noResourceCode = await grant();
     const noResourceTokens = await (await post('/oauth/token', { client_id: client, redirect_uri: redirect, code: noResourceCode, grant_type: 'authorization_code', code_verifier: verifier })).json();
     assert.ok(noResourceTokens.access_token);
@@ -116,6 +117,7 @@ test('private OAuth: discovery, redirect restrictions, consent, PKCE, replay, re
     const renewal = { client_id: client, resource, grant_type: 'refresh_token', refresh_token: tokens.refresh_token };
     const rotated = await (await post('/oauth/token', renewal)).json();
     assert.notEqual(rotated.refresh_token, tokens.refresh_token);
+    assert.equal(verifiedOperatorClient({headers:{authorization:'Bearer '+rotated.access_token}}), createHash('sha256').update(client).digest('hex'));
     assert.equal((await post('/oauth/token', renewal)).status, 400);
     assert.equal((await fetch(resource, { headers: { Authorization: 'Bearer ' + rotated.access_token } })).status, 401);
     assert.equal((await post('/oauth/token', { ...renewal, refresh_token: rotated.refresh_token })).status, 400);

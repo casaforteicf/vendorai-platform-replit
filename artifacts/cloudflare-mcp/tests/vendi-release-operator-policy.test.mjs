@@ -72,3 +72,11 @@ testCase("denies malformed grant scopes", () => {
     /OPERATOR_NOT_AUTHORIZED/,
   );
 });
+
+testCase("dynamic delegation preserves per-action grants and validates lot identifiers", () => {
+  const dynamic = JSON.stringify({[client]:{allRegisteredLots:true,actions:["preflight"]}});
+  for (const lot of ["VENDI-3616","VENDI-3659"]) assert.equal(authorizeReleaseOperation({client,policyText:dynamic,operation:"preflight",lot}),client);
+  assert.throws(()=>authorizeReleaseOperation({client,policyText:dynamic,operation:"publish",lot:"VENDI-3616"}),/OPERATOR_NOT_AUTHORIZED/);
+  assert.throws(()=>authorizeReleaseOperation({client,policyText:dynamic,operation:"preflight",lot:"../VENDI-3616"}),/INVALID_LOT_IDENTIFIER/);
+  assert.throws(()=>authorizeReleaseOperation({client,policyText:JSON.stringify({[client]:{allRegisteredLots:"true",actions:["preflight"]}}),operation:"preflight",lot:"VENDI-3616"}),/OPERATOR_NOT_AUTHORIZED/);
+});
