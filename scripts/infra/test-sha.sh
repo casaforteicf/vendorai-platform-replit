@@ -106,7 +106,8 @@ if ! grep -qx 'install exit=0' "$RUN/results.txt"; then echo "Install failed; do
 if [ "$SUITE" = crm ]; then
   run crm-vitest "pnpm --filter @workspace/api-server exec vitest run src/lib/crm-lead-idempotency.test.ts src/lib/crm-lead-idempotency.nonfinite.test.ts src/lib/crm-partial-execution.test.ts src/lib/crm-relationship-history.test.ts src/routes/leads.restore.contract.test.ts"
 fi
-if [ "$SUITE" = mcp ]; then
+if [ "$SUITE" = mcp ] || [ "$SUITE" = full ]; then
+  run vendi-operator-regression "node --test scripts/tests/vendi-autonomia-integrada.test.mjs scripts/tests/vendi-contabo-operator-status.test.mjs"
   run mcp-contract "node --test artifacts/cloudflare-mcp/vendi-crm-contract.test.mjs"
   run mcp-ts "pnpm --filter @workspace/cloudflare-mcp typecheck"
 fi
