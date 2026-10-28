@@ -10,6 +10,8 @@ import { collectDevAgentCheckEvidence } from "../lib/dev-agent-check-evidence.js
 import { runBrowserAgent } from "../services/browser-agent.js";
 import { signToken } from "../lib/jwt.js";
 
+import { callReleaseOperator, hostReceipt, releaseBinding, requireTested, requirePublished } from "../lib/vendi-release-operator.js";
+
 const router: IRouter = Router();
 
 const releaseCreateSchema = z.object({
@@ -697,6 +699,25 @@ async function invalidateReleasesForImprovement(improvementId: string, reason: s
 
 router.use("/admin", requireRole("super_admin"));
 
+// Reuse the existing release row and pre-registered host lot. No new release,
+// branch, PR or infrastructure is created by these development-stage actions.
+router.post("/admin/releases/:id/operator", async (req, res) => {
+  const input = z.object({action: z.enum(["build", "homologate", "releaseStatus"])}).parse(req.body);
+  const release = await getReleaseById(String(req.params.id));
+  if (!release) return res.status(404).json({error: "Publicação não encontrada"});
+  if (["publishing", "published", "rolled_back"].includes(release.status) && input.action !== "releaseStatus") {
+    return res.status(409).json({error: "Publicação já iniciada; reconcilie antes de alterar a candidata."});
+  }
+  const sha = String(release.headSha ?? "");
+  const lot = releaseBinding(String(release.id), sha, process.env["VENDI_RELEASE_BINDINGS"]);
+  const output = await callReleaseOperator(input.action, lot);
+  await pool.query("UPDATE admin_releases SET test_summary=$2,updated_at=now() WHERE id=$1", [
+    release.id, JSON.stringify({source: "contabo-operator", action: input.action, lot, sha,
+      actor: actor(req), output, at: new Date().toISOString()}).slice(0, 12000),
+  ]);
+  return res.status(input.action === "releaseStatus" ? 200 : 202).json({lot, sha, action: input.action, output});
+});
+
 router.post("/admin/improvements/:id/adjustments", async (req, res) => {
   await ensureSchema();
   const parsed = adjustmentSchema.safeParse(req.body);
@@ -1194,6 +1215,17 @@ async function notifySupportRequestersAfterPublish(release: any) {
 }
 
 async function executeScheduledRelease(release: any) {
+  // The legacy Release Center merges main and relies on a separate Contabo cron.
+  // Never allow this path to bypass the release operator until BOTH host
+  // exact-image test evidence and automatic-deploy coordination are independently
+  // validated and explicitly enabled by an administrator.
+  if (
+    process.env["VENDI_RELEASE_OPERATOR_VALIDATED"] !== "true" ||
+    process.env["VENDI_RELEASE_HOST_RECEIPTS_VERIFIED"] !== "true" ||
+    process.env["VENDI_RELEASE_CRON_LOCK_VERIFIED"] !== "true"
+  ) {
+    throw new Error("VENDI_RELEASE_PIPELINE_NOT_VERIFIED_NO_MERGE");
+  }
   const impact = await collectReleaseImpact(release.improvementIds, release.releaseBranch ?? "staging");
   const fingerprint = releaseFingerprint(release, impact);
   if (!impact.clean || !release.approvalFingerprint || fingerprint !== release.approvalFingerprint) throw new Error("A versão mudou ou contém alterações fora do escopo aprovado.");
@@ -1206,48 +1238,21 @@ async function executeScheduledRelease(release: any) {
   if (String(currentMain.object?.sha ?? "") !== String(impact.base.sha ?? "")) throw new Error("A main mudou desde a aprovação. Nova comparação e aprovação são necessárias.");
   if (String(candidate.object?.sha ?? "") !== String(impact.head.sha ?? "")) throw new Error("A versão candidata mudou desde a aprovação. Nova comparação e aprovação são necessárias.");
 
-  const releaseEvidence = await collectDevAgentCheckEvidence(String(candidate.object.sha));
-  if (releaseEvidence.codeFailures.length) {
-    throw new Error("A versão possui falhas de código/teste: " + releaseEvidence.codeFailures.map((item) => item.name).join(", "));
-  }
-  if (releaseEvidence.pending.length) {
-    throw new Error("Os testes da versão ainda estão em execução: " + releaseEvidence.pending.map((item) => item.name).join(", "));
-  }
-  if (!releaseEvidence.successes.length) {
-    throw new Error("Nenhum gate técnico concluído com sucesso foi comprovado para a versão.");
-  }
-
-  let prNumber = release.releasePrNumber ? Number(release.releasePrNumber) : null;
-  let prUrl = release.releasePrUrl ?? null;
-  if (!prNumber) {
-    const pr = await githubJson("/repos/" + config.owner + "/" + config.repo + "/pulls", {
-      method: "POST",
-      body: JSON.stringify({
-        title: ("[Release] " + release.version + " — " + release.name).slice(0, 120),
-        body: ("Publicação aprovada pelo Super Admin.\n\nVersão: " + release.version + "\nNome: " + release.name + "\nMelhorias: " + (release.improvementIds ?? []).join(", ") + "\n\nFingerprint: " + release.approvalFingerprint).slice(0, 12000),
-        head: releaseBranch,
-        base: "main",
-        draft: false,
-      }),
-    });
-    prNumber = Number(pr.number);
-    prUrl = pr.html_url ?? null;
-    await pool.query("UPDATE admin_releases SET release_pr_number=$2,release_pr_url=$3,updated_at=now() WHERE id=$1", [release.id, prNumber, prUrl]);
-  }
-
-  const pr = await githubJson("/repos/" + config.owner + "/" + config.repo + "/pulls/" + prNumber);
-  if (pr.mergeable === false || pr.state !== "open" || pr.draft) throw new Error("PR da publicação não está mergeável ou pronto.");
-  const merged = await githubJson("/repos/" + config.owner + "/" + config.repo + "/pulls/" + prNumber + "/merge", {
-    method: "PUT",
-    body: JSON.stringify({ merge_method: "squash", sha: pr.head?.sha }),
-  });
-  if (!merged.merged) throw new Error(merged.message ?? "GitHub não confirmou a publicação.");
-
+  const sha = String(candidate.object.sha);
+  const lot = releaseBinding(String(release.id), sha, process.env["VENDI_RELEASE_BINDINGS"]);
+  requireTested(hostReceipt(await callReleaseOperator("releaseStatus", lot), lot, sha));
+  // Publish the approved exact SHA through the existing operator, never merge
+  // main or create another PR. A transport failure is an unknown outcome and
+  // blocks the release for reconciliation; it must not trigger an automatic retry.
+  await callReleaseOperator("publish", lot);
+  const receipt = hostReceipt(await callReleaseOperator("releaseStatus", lot), lot, sha);
+  requirePublished(receipt);
   await pool.query(
-    "UPDATE admin_releases SET status='monitoring',published_sha=$2,release_pr_number=$3,release_pr_url=$4,last_error=NULL,updated_at=now() WHERE id=$1",
-    [release.id, merged.sha ?? null, prNumber, prUrl],
+    "UPDATE admin_releases SET status='published',published_sha=$2,published_at=now(),test_summary=$3,last_error=NULL,updated_at=now() WHERE id=$1",
+    [release.id, sha, JSON.stringify({source: "contabo-operator", receipt, verifiedAt: new Date().toISOString()})],
   );
-  return { sha: merged.sha ?? null, prNumber, prUrl };
+  return {sha, prNumber: release.releasePrNumber, prUrl: release.releasePrUrl};
+
 }
 
 // Estado persistente; a tabela é criada exclusivamente por migration, nunca no runtime.
@@ -1636,33 +1641,20 @@ router.post("/admin/releases/:id/rollback", async (req, res) => {
   if (!release) return res.status(404).json({ error: "Publicação não encontrada" });
   if (release.status !== "published" || !release.publishedSha) return res.status(409).json({ error: "Rollback só é permitido para uma publicação concluída." });
 
-  const config = githubConfig();
-  const mainRef = await githubJson("/repos/" + config.owner + "/" + config.repo + "/git/ref/heads/main");
-  const currentMainSha = String(mainRef.object?.sha ?? "");
-  if (currentMainSha !== String(release.publishedSha)) return res.status(409).json({ error: "Existem publicações posteriores. Rollback direto desta versão foi bloqueado." });
-
-  const publishedCommit = await githubJson("/repos/" + config.owner + "/" + config.repo + "/git/commits/" + encodeURIComponent(release.publishedSha));
-  const parentSha = String(publishedCommit.parents?.[0]?.sha ?? "");
-  if (!parentSha) return res.status(409).json({ error: "Commit anterior não encontrado para rollback." });
-  const parentCommit = await githubJson("/repos/" + config.owner + "/" + config.repo + "/git/commits/" + encodeURIComponent(parentSha));
-  const rollbackCommit = await githubJson("/repos/" + config.owner + "/" + config.repo + "/git/commits", {
-    method: "POST",
-    body: JSON.stringify({
-      message: "rollback: " + release.version + " — " + release.name,
-      tree: parentCommit.tree?.sha,
-      parents: [currentMainSha],
-    }),
-  });
-  await githubJson("/repos/" + config.owner + "/" + config.repo + "/git/refs/heads/main", {
-    method: "PATCH",
-    body: JSON.stringify({ sha: rollbackCommit.sha, force: false }),
-  });
-
+  const lot = releaseBinding(String(release.id), String(release.publishedSha), process.env["VENDI_RELEASE_BINDINGS"]);
+  requirePublished(hostReceipt(await callReleaseOperator("releaseStatus", lot), lot, String(release.publishedSha)));
+  await callReleaseOperator("rollback", lot);
+  const receipt = hostReceipt(await callReleaseOperator("releaseStatus", lot), lot, String(release.publishedSha));
+  if (receipt.production.STATUS !== "ROLLED_BACK" ||
+      !/^sha256:[0-9a-f]{64}$/.test(receipt.production.RESTORED_IMAGE_ID ?? "") ||
+      receipt.activeImageId !== receipt.production.RESTORED_IMAGE_ID) {
+    return res.status(409).json({error: "VENDI_ROLLBACK_RECONCILIATION_REQUIRED"});
+  }
   await pool.query(
     "UPDATE admin_releases SET status='rolled_back',last_error=$2,updated_at=now() WHERE id=$1",
-    [release.id, "Rollback autorizado por " + actor(req) + "; revisão " + rollbackCommit.sha + "."],
+    [release.id, JSON.stringify({actor: actor(req), source: "contabo-operator", receipt})],
   );
-  return res.json({ ok: true, rollbackSha: rollbackCommit.sha, previousSha: parentSha });
+  return res.json({ok: true, receipt});
 });
 
 router.get("/admin/releases-metrics", async (_req, res) => {

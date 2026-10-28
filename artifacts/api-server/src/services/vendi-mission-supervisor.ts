@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { and, asc, eq } from "drizzle-orm";
 import {
   db,
@@ -5,6 +6,7 @@ import {
   vendiMissionEventsTable,
   notificationsTable,
   usersTable,
+  pool,
 } from "@workspace/db";
 import { callOpenAI } from "../lib/ai-gateway.js";
 import { sendDirectWhatsAppMessage } from "./omnichannel.js";
@@ -145,6 +147,21 @@ export async function executeVendiMission(input: {
     .limit(1);
   if (!mission) throw new Error("VENDI_MISSION_NOT_FOUND");
 
+  // Atomic DB lease; unlike session advisory locks this works with transaction
+  // poolers. After a crash, an expired lease can be reclaimed.
+  const leaseToken = randomUUID();
+  const acquired = await pool.query(
+    `INSERT INTO vendi_mission_leases (mission_id,tenant_id,lease_token,lease_until)
+       VALUES ($1,$2,$3,now()+interval '4 hours')
+       ON CONFLICT (mission_id) DO UPDATE
+         SET lease_token=EXCLUDED.lease_token,lease_until=EXCLUDED.lease_until
+       WHERE vendi_mission_leases.lease_until < now()
+       RETURNING lease_token`,
+    [input.missionId, input.tenantId, leaseToken],
+  );
+  if (!acquired.rowCount) throw new Error("VENDI_MISSION_ALREADY_RUNNING");
+  try {
+
   const existingEvents = await db
     .select()
     .from(vendiMissionEventsTable)
@@ -203,6 +220,16 @@ export async function executeVendiMission(input: {
   let currentSuccessCriteria = Array.isArray(mission.successCriteria) ? mission.successCriteria : [];
 
   for (let stepIndex = 0; stepIndex < plan.length; stepIndex++) {
+    // Refresh the lease and fail closed if another worker reclaimed it.
+    const heartbeat = await pool.query(
+      `UPDATE vendi_mission_leases
+         SET lease_until=now()+interval '4 hours'
+       WHERE mission_id=$1 AND tenant_id=$2 AND lease_token=$3
+         AND lease_until>now()
+       RETURNING lease_token`,
+      [input.missionId, input.tenantId, leaseToken],
+    );
+    if (!heartbeat.rowCount) throw new Error("VENDI_MISSION_LEASE_LOST");
     if (completedToolIndices.has(stepIndex)) continue;
     const step = plan[stepIndex]!;
     const tool = getVendiTool(step.toolId);
@@ -512,4 +539,10 @@ export async function executeVendiMission(input: {
   });
 
   return { ok: true, status: "completed" as const, missionId: mission.id, result };
+  } finally {
+    await pool.query(
+      "DELETE FROM vendi_mission_leases WHERE mission_id=$1 AND tenant_id=$2 AND lease_token=$3",
+      [input.missionId, input.tenantId, leaseToken],
+    ).catch((error) => logger.error({ error, missionId: input.missionId }, "vendi/missions: failed to release lease"));
+  }
 }

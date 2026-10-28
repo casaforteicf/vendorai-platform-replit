@@ -123,3 +123,24 @@ Runtime test limits: one job at a time, 2 CPUs/4 GiB per existing Docker test co
 **Desativação imediata:** remover a entrada do operador central em `VENDI_TEST_OPERATOR_POLICY`, mantendo ferramentas fail-closed. Se surgir acesso cruzado, dados sensíveis no log, falta de espaço ou falha ao parar processos, bloquear novas solicitações. Reverter o MCP à versão privada anterior aprovada e o worktree isolado ao SHA anterior conhecido, sem tocar API de produção/homologação, bancos, Docker oficial, backups ou imagens de rollback.
 
 **Dependência explícita do operador autorizado:** disponibilizar uma operação de implantação/reinício **do container privado MCP** com política de autorização aprovada e revisão de SSH, e uma operação de atualização **somente do worktree de testes**. Os atuais comandos `vendi_contabo_operate` não expõem essas ações; não devem ser improvisados como deploy de produção. A execução por terminal do proprietário não é requisito arquitetônico.
+
+## Correção vigente no PR #3657 (28/10/2026)
+
+Esta seção substitui instruções históricas conflitantes sobre cópia de cache,
+CPU e retenção. O executor exige o lock global existente
+`/run/lock/vendi-release-global-build.lock`, disco >=8 GiB, MemAvailable >=6 GiB
+(4 GiB por teste e 2 GiB reservados aos serviços), swap usado <=75%.
+O container usa 1 CPU, memória e memory-swap de 4 GiB (sem swap adicional).
+Não provisiona nem substitui automaticamente o inode do lock.
+
+Cache: `cp --reflink=always` ou montagem do store original somente leitura.
+Não há fallback para cópia integral. Se CoW não existe, preenchimento online
+não pode escrever no store original e falha fechado. Stores antigos hidratados
+podem ser reutilizados somente por SHA idêntico e read-only. Ao terminar são
+removidos apenas work/store da execução descartável; logs/manifest/resultados
+são preservados. O administrador precisa disponibilizar um store completo do
+lockfile exato antes de executar em ext4 sem CoW.
+
+As ferramentas aceitam identificadores de lotes existentes no formato restrito
+PREFIXO-NUMERO (incluindo VENDI); isso não cria lotes nem amplia grants.
+Permissão explícita continua obrigatória por cliente OAuth, ação e lote.

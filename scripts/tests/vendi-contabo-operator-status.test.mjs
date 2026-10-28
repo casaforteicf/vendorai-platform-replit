@@ -16,5 +16,6 @@ test("unregistered lots return an explicit read-only status before release comma
 });
 test("other operations still reject unregistered lots", () => {
   assert.ok(source.includes('test -f "/var/lib/vendi-release/manifests/$LOT.env" || { echo "LOT_NOT_REGISTERED"; exit 65; }'));
-  assert.ok(source.includes("HOMOLOGATE_OR_ROLLBACK_REQUIRES_PROVISIONED_DEPLOYMENT"));
+  assert.ok(source.includes('/usr/local/sbin/vendi04-homologate-candidate "$LOT"'));
+  assert.ok(source.includes('/usr/local/sbin/vendi04-controlled-release rollback "$LOT"'));
 });

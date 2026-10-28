@@ -3,8 +3,8 @@
 set -Eeuo pipefail
 ACTION="${1:-}"
 LOT="${2:-}"
-[[ "$#" -eq 2 && "$LOT" =~ ^[A-Z][A-Z0-9]{1,15}-[0-9]{1,6}$ ]] || { echo "INVALID_ARGUMENTS"; exit 64; }
-case "$ACTION" in build|homologate|rollback|releaseStatus|preflight|publish) ;; *) echo "UNSUPPORTED_ACTION"; exit 64;; esac
+[[ ( "$#" -eq 2 || ( "$#" -eq 5 && "$ACTION" == "registerLot" ) ) && "$LOT" =~ ^[A-Z][A-Z0-9]{1,15}-[0-9]{1,6}$ ]] || { echo "INVALID_ARGUMENTS"; exit 64; }
+case "$ACTION" in build|homologate|rollback|releaseStatus|preflight|publish|upgradeOperator|auditReadiness|registerLot) ;; *) echo "UNSUPPORTED_ACTION"; exit 64;; esac
 LOCK=/run/lock/vendi-operator.lock
 exec 9>"$LOCK"
 flock -n 9 || { echo "OPERATION_BUSY"; exit 75; }
@@ -12,6 +12,41 @@ AUDIT=/var/log/vendi-contabo-operator.log
 touch "$AUDIT"; chmod 600 "$AUDIT"
 audit(){ printf '%s lot=%s action=%s result=%s\n' "$(date -u +%FT%TZ)" "$LOT" "$ACTION" "$1" >> "$AUDIT"; }
 trap 'audit "FAIL_rc$?"' ERR
+# Registration is immutable and serialized under the existing operator lock.
+# Arguments: registerLot LOT SHA DOCKERFILE CONTEXT
+if [[ "$ACTION" == "registerLot" ]]; then
+  [[ "$LOT" != "VENDI-02" ]] || { echo LEGACY_LOT_PROTECTED; exit 65; }
+  SHA="${3:-}"; DOCKERFILE="${4:-}"; CONTEXT="${5:-}"
+  [[ "$SHA" =~ ^[a-f0-9]{40}$ ]] || { echo INVALID_SHA; exit 64; }
+  for value in "$DOCKERFILE" "$CONTEXT"; do
+    [[ "$value" =~ ^[A-Za-z0-9_./-]+$ && "$value" != /* && "$value" != *..* ]] || { echo INVALID_SOURCE_PATH; exit 64; }
+  done
+  REPO=/home/vendorai/vendorai-api-auth-test
+  [[ -d "$REPO/.git" ]] || { echo REPOSITORY_MISSING; exit 65; }
+  git -c safe.directory="$REPO" -C "$REPO" cat-file -e "$SHA^{commit}" || { echo COMMIT_NOT_FETCHED; exit 65; }
+  git -c safe.directory="$REPO" -C "$REPO" cat-file -e "$SHA:$DOCKERFILE" || { echo DOCKERFILE_NOT_IN_COMMIT; exit 65; }
+  if [[ "$CONTEXT" == "." ]]; then
+    [[ "$(git -c safe.directory="$REPO" -C "$REPO" cat-file -t "$SHA^{tree}" 2>/dev/null || true)" == tree ]] || { echo CONTEXT_NOT_DIRECTORY; exit 65; }
+  else
+    [[ "$(git -c safe.directory="$REPO" -C "$REPO" cat-file -t "$SHA:$CONTEXT" 2>/dev/null || true)" == tree ]] || { echo CONTEXT_NOT_DIRECTORY; exit 65; }
+  fi
+  DIR=/var/lib/vendi-release/manifests
+  install -d -o root -g root -m 0700 "$DIR"
+  FILE="$DIR/$LOT.env"
+  [[ ! -e "$FILE" && ! -L "$FILE" ]] || { echo LOT_ALREADY_REGISTERED; exit 65; }
+  umask 077
+  TEMP=$(mktemp "$DIR/.register.XXXXXXXX")
+  trap 'rm -f "$TEMP"' EXIT
+  printf 'SHA=%s\nDOCKERFILE=%s\nCONTEXT=%s\n' "$SHA" "$DOCKERFILE" "$CONTEXT" > "$TEMP"
+  chmod 0600 "$TEMP"
+  # Hard link avoids overwriting another concurrently-created manifest.
+  ln "$TEMP" "$FILE" || { echo LOT_ALREADY_REGISTERED; exit 65; }
+  rm -f "$TEMP"
+  trap - EXIT
+  audit "REGISTERED_SHA_$SHA"
+  echo "LOT_REGISTERED=$LOT SHA=$SHA"
+  exit 0
+fi
 # Stage definitions are fixed, immutable in operator source.
 case "$LOT" in
   VENDI-02) ;;
@@ -24,7 +59,7 @@ case "$LOT" in
        audit "LOT_NOT_REGISTERED_READONLY"
        exit 0
      fi
-     if [[ "$ACTION" == "build" || "$ACTION" == "releaseStatus" || "$ACTION" == "publish" || "$ACTION" == "rollback" || "$ACTION" == "homologate" || "$ACTION" == "preflight" ]]; then
+     if [[ "$ACTION" == "build" || "$ACTION" == "releaseStatus" || "$ACTION" == "publish" || "$ACTION" == "rollback" || "$ACTION" == "homologate" || "$ACTION" == "upgradeOperator" || "$ACTION" == "auditReadiness" || "$ACTION" == "preflight" ]]; then
        test -f "/var/lib/vendi-release/manifests/$LOT.env" || { echo "LOT_NOT_REGISTERED"; exit 65; }
      else
        echo "UNSUPPORTED_LOT_ACTION"; exit 65
@@ -35,6 +70,15 @@ API=vendorai-homolog-api
 BACK=vendorai-homolog-pre-vendi02
 check_health(){ curl --fail --silent --max-time 8 "$HEALTH" >/dev/null; }
 case "$ACTION" in
+  auditReadiness)
+    /usr/local/sbin/vendi04-audit-readiness "$LOT"
+    audit "AUDIT_READONLY_OK"
+    ;;
+  upgradeOperator)
+    # No free-form shell: root-owned manifest + approval record + fixed path allowlist.
+    /usr/local/sbin/vendi04-controlled-upgrade "$LOT"
+    audit "OPERATOR_UPGRADE_COMPLETE"
+    ;;
   preflight)
     /usr/local/sbin/vendi04-release-preflight "$LOT"
     audit "PREFLIGHT_OK"
@@ -44,7 +88,68 @@ case "$ACTION" in
     audit "PUBLISH_COMPLETED"
     ;;
   releaseStatus)
-    if [[ "$LOT" != "VENDI-02" ]]; then /usr/local/sbin/vendi04-release-runner status "$LOT"; exit $?; fi
+    if [[ "$LOT" != "VENDI-02" ]]; then
+      UNIT="vendi-build-${LOT,,}.service"
+      if systemctl is-active --quiet "$UNIT"; then
+        echo "LOT=$LOT"
+        echo "STATUS=BUILD_IN_PROGRESS"
+        echo "SYSTEMD_UNIT=$UNIT"
+        echo "PRODUCTION=untouched"
+        exit 0
+      fi
+      /usr/local/sbin/vendi04-release-runner status "$LOT"
+      EVIDENCE="/var/lib/vendi-release/state/$LOT.homolog"
+      HOMOLOG_UNIT="vendi-homolog-${LOT,,}.service"
+      if systemctl is-active --quiet "$HOMOLOG_UNIT"; then
+        echo "HOMOLOG_STATUS=IN_PROGRESS"
+      elif systemctl is-failed --quiet "$HOMOLOG_UNIT"; then
+        echo "HOMOLOG_STATUS=FAILED"
+        systemctl show "$HOMOLOG_UNIT" --no-pager -p Result -p ExecMainStatus || true
+      fi
+      if [[ -f "$EVIDENCE" ]]; then
+        echo "HOMOLOG_EVIDENCE=present"
+        grep -E '^(SHA|IMAGE_ID|STATUS|AT_EPOCH|MODE)=' "$EVIDENCE" || true
+      else
+        echo "HOMOLOG_EVIDENCE=missing"
+        if [[ -f "/var/lib/vendi-release/state/$LOT.homolog-failed" ]]; then
+          grep -E '^(STATUS|EXIT_CODE)=' "/var/lib/vendi-release/state/$LOT.homolog-failed" || true
+        fi
+      fi
+      if systemctl is-failed --quiet "$UNIT"; then
+        echo "BUILD_UNIT_FAILED=$UNIT"
+        systemctl show "$UNIT" --no-pager -p Result -p ExecMainStatus || true
+      fi
+      # One structured, sanitized snapshot for the existing Release Center.
+      # Files are never sourced. Untrusted metadata fails closed.
+      python3 - "$LOT" <<'PY'
+import json, os, pathlib, stat, subprocess, sys
+lot=sys.argv[1]
+root=pathlib.Path('/var/lib/vendi-release')
+def record(path, required=False):
+    if not path.exists():
+        if required: raise SystemExit('RECEIPT_FILE_MISSING')
+        return {}
+    st=path.lstat()
+    if not stat.S_ISREG(st.st_mode) or st.st_uid!=0 or st.st_mode & 0o022:
+        raise SystemExit('UNSAFE_RECEIPT_FILE')
+    result={}
+    for line in path.read_text().splitlines():
+        k,sep,v=line.partition('=')
+        if k in ('LOT','SHA','IMAGE','IMAGE_ID','STATUS','AT_EPOCH','MODE','SUITE','BACKUP','PREVIOUS_LOT','RESTORED_IMAGE_ID'):
+            if k in result: raise SystemExit('DUPLICATE_RECEIPT_KEY')
+            result[k]=v
+    return result
+manifest=record(root/'manifests'/(lot+'.env'),True)
+active=subprocess.run(['docker','inspect','vendorai-prod-api-candidate','--format','{{.Image}}'],capture_output=True,text=True)
+receipt={'lot':lot,'sha':manifest.get('SHA'),'build':record(root/'state'/lot),
+         'tests':record(root/'state'/(lot+'.tests')),
+         'homolog':record(root/'state'/(lot+'.homolog')),
+         'production':record(root/'state'/(lot+'.prod')),
+         'activeImageId':active.stdout.strip() if active.returncode==0 else ''}
+print('RELEASE_RECEIPT_JSON='+json.dumps(receipt,separators=(',',':')))
+PY
+      exit 0
+    fi
     echo "LOT=$LOT"
     echo "HOMOLOG_HEALTH=$(curl --silent --output /dev/null --write-out '%{http_code}' --max-time 8 "$HEALTH" || true)"
     docker inspect "$API" --format 'HOMOLOG={{.State.Status}} IMAGE={{.Config.Image}}'
@@ -53,50 +158,117 @@ case "$ACTION" in
     audit "OK"
     ;;
   build)
-    /usr/local/sbin/vendi04-release-runner build "$LOT"
-    audit "BUILD_REQUEST_COMPLETED"
+    # Docker builds last longer than the MCP SSH 180-second limit. Queue them
+    # on the host and keep logs/status there; never stream build output via SSH.
+    # Preserve the existing root-owned manifest, exact-SHA source, and
+    # vendi04-release-runner gates. This action never changes production.
+    /usr/local/sbin/vendi04-release-preflight "$LOT"
+    UNIT="vendi-build-${LOT,,}.service"
+    if systemctl is-active --quiet "$UNIT"; then
+      echo "LOT=$LOT"
+      echo "STATUS=BUILD_IN_PROGRESS"
+      audit "BUILD_ALREADY_RUNNING"
+      exit 0
+    fi
+    STATE="/var/lib/vendi-release/state/$LOT"
+    if [[ -f "$STATE" ]] && grep -Fxq "STATUS=BUILT_NOT_DEPLOYED" "$STATE"; then
+      echo "LOT=$LOT"
+      echo "STATUS=ALREADY_BUILT"
+      audit "BUILD_ALREADY_COMPLETE"
+      exit 0
+    fi
+    # Try an already-verified image for this exact SHA and build context.
+    # A Docker tag aliases existing layers; no new build or container is created.
+    if /usr/local/sbin/vendi04-release-runner reuse "$LOT"; then
+      echo "LOT=$LOT"
+      echo "STATUS=BUILT_REUSED_NO_NEW_LAYERS"
+      audit "BUILD_REUSED"
+      exit 0
+    else
+      REUSE_RC=$?
+      if (( REUSE_RC != 74 )); then
+        echo "IMAGE_REUSE_ERROR=$REUSE_RC"
+        exit "$REUSE_RC"
+      fi
+    fi
+    # Fail closed on scarce disk, memory and swap headroom.
+    FREE_KB=$(df -Pk / | awk 'NR==2 {print $4}')
+    if [[ ! "$FREE_KB" =~ ^[0-9]+$ ]] || (( FREE_KB < 14680064 )); then
+      echo "BUILD_BLOCKED_DISK_CAPACITY"
+      echo "REQUIRED_FREE_KB=14680064"
+      echo "FREE_KB=$FREE_KB"
+      audit "DENIED_LOW_DISK"
+      exit 75
+    fi
+    MEM_KB=$(awk '/^MemAvailable:/ {print $2}' /proc/meminfo)
+    SWAP_TOTAL_KB=$(awk '/^SwapTotal:/ {print $2}' /proc/meminfo)
+    SWAP_FREE_KB=$(awk '/^SwapFree:/ {print $2}' /proc/meminfo)
+    [[ "$MEM_KB" =~ ^[0-9]+$ && "$SWAP_TOTAL_KB" =~ ^[0-9]+$ &&
+       "$SWAP_FREE_KB" =~ ^[0-9]+$ ]] || { echo RESOURCE_METRICS_UNAVAILABLE; exit 75; }
+    if (( MEM_KB < 2097152 ||
+          (SWAP_TOTAL_KB > 0 && (SWAP_TOTAL_KB - SWAP_FREE_KB) * 100 / SWAP_TOTAL_KB > 75) )); then
+      echo BUILD_BLOCKED_MEMORY_PRESSURE
+      echo "MEM_AVAILABLE_KB=$MEM_KB"
+      exit 75
+    fi
+    DISTINCT_IMAGES=$(docker image ls -q --no-trunc | sort -u | wc -l)
+    if [[ ! "$DISTINCT_IMAGES" =~ ^[0-9]+$ ]] || (( DISTINCT_IMAGES >= 20 )); then
+      echo BUILD_BLOCKED_IMAGE_RETENTION_REVIEW
+      echo "DISTINCT_IMAGES=$DISTINCT_IMAGES"
+      exit 75
+    fi
+    command -v systemd-run >/dev/null || { echo "SYSTEMD_RUN_UNAVAILABLE"; exit 70; }
+    install -d -o root -g root -m 700 /var/log/vendi-builds
+    LOG="/var/log/vendi-builds/$LOT.log"
+    touch "$LOG"; chmod 600 "$LOG"
+    # One transient unit per lot. Limits shield production from runaway builds.
+    systemd-run --unit="${UNIT%.service}" --collect --no-block \
+      --property=Type=exec \
+      --property=Restart=no \
+      --property=CPUQuota=100% \
+      --property=Nice=10 \
+      --property=OOMScoreAdjust=500 \
+      --property=MemoryHigh=4G \
+      --property=MemoryMax=6G \
+      --property=MemorySwapMax=2G \
+      --property="StandardOutput=append:$LOG" \
+      --property="StandardError=append:$LOG" \
+      /usr/local/sbin/vendi04-release-runner build "$LOT"
+    echo "LOT=$LOT"
+    echo "STATUS=BUILD_QUEUED"
+    echo "SYSTEMD_UNIT=$UNIT"
+    echo "LOG_SAVED_LOCALLY=YES"
+    echo "PRODUCTION=untouched"
+    audit "BUILD_QUEUED"
     ;;
   homologate)
-    # For non-legacy lots, test only the exact image already deployed to homologation.
-    if [[ "$LOT" != "VENDI-02" ]]; then
-      MANIFEST="/var/lib/vendi-release/manifests/$LOT.env"
-      BUILDSTATE="/var/lib/vendi-release/state/$LOT"
-      [[ "$(stat -c %u "$MANIFEST")" == 0 ]] || { echo MANIFEST_OWNER_INVALID; exit 65; }
-      EXPECTED_SHA=$(sed -n 's/^SHA=//p' "$MANIFEST" | head -1)
-      [[ "$EXPECTED_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo INVALID_MANIFEST_SHA; exit 65; }
-      EXPECTED_IMAGE="vendorai-release:${LOT,,}-${EXPECTED_SHA:0:12}"
-      [[ -f "$BUILDSTATE" ]] || { echo BUILD_STATE_MISSING; exit 65; }
-      grep -Fxq "SHA=$EXPECTED_SHA" "$BUILDSTATE" &&
-      grep -Fxq "IMAGE=$EXPECTED_IMAGE" "$BUILDSTATE" &&
-      grep -Fxq "STATUS=BUILT_NOT_DEPLOYED" "$BUILDSTATE" || { echo BUILD_SHA_NOT_VERIFIED; exit 65; }
-      ACTUAL_IMAGE=$(docker inspect "$API" --format '{{.Config.Image}}' 2>/dev/null || true)
-      [[ "$ACTUAL_IMAGE" == "$EXPECTED_IMAGE" ]] || {
-        echo "HOMOLOG_IMAGE_SHA_MISMATCH"
-        echo "EXPECTED_SHA=$EXPECTED_SHA"
-        echo "HOMOLOG_IMAGE=$ACTUAL_IMAGE"
-        exit 65
-      }
+    # Candidate homologation may take longer than MCP SSH timeout; queue on host
+    # with private logs, isolated container and an exact-SHA receipt on success.
+    HOMOLOG_UNIT="vendi-homolog-${LOT,,}.service"
+    if systemctl is-active --quiet "$HOMOLOG_UNIT"; then
+      echo "STATUS=HOMOLOG_IN_PROGRESS"
+      echo "LOT=$LOT"
+      exit 0
     fi
-    check_health
-    TOKEN=$(docker exec vendorai-mcp-contabo-fixed printenv BROWSER_MCP_ACCESS_TOKEN)
-    [[ -n "$TOKEN" ]] || { echo "MCP_TOKEN_MISSING"; exit 70; }
-    # Read-only API smoke; never print token.
-    docker exec -i -e "VENDI_HOMOLOG_AUTH=$TOKEN" "$API" node - <<'JS'
-(async()=>{
- const u="http://127.0.0.1:5000/api/internal/browser-mcp/crm-summary";
- async function call(tenant,auth){
-  const r=await fetch(u,{method:"POST",headers:{"content-type":"application/json",...(auth?{authorization:"Bearer "+process.env.VENDI_HOMOLOG_AUTH}:{})},body:JSON.stringify({tenantKey:tenant}),signal:AbortSignal.timeout(10000)});
-  return {status:r.status,body:await r.json().catch(()=>({}))};
- }
- const unauthorized=await call("krafht-homolog",false);
- const missing=await call("vendi-no-tenant-000000",true);
- const valid=await call("krafht-homolog",true);
- console.log("UNAUTHORIZED_HTTP="+unauthorized.status,"MISSING_HTTP="+missing.status,"CRM_HTTP="+valid.status,"ACTIVE_LEADS="+valid.body.crm?.activeLeads);
- if(unauthorized.status!==401||missing.status!==404||valid.status!==200||!Number.isInteger(valid.body.crm?.activeLeads)) process.exitCode=1;
-})().catch(e=>{console.error("SMOKE_FAILED:"+e.message);process.exitCode=1});
-JS
-    echo "HOMOLOG_SMOKE_PASSED_LOT=$LOT"
-    audit "OK"
+    if [[ -e "/var/lib/vendi-release/state/$LOT.homolog" ]]; then
+      echo "HOMOLOG_RECEIPT_ALREADY_EXISTS"
+      exit 65
+    fi
+    install -d -o root -g root -m 700 /var/log/vendi-builds
+    HOMOLOG_LOG="/var/log/vendi-builds/$LOT.homolog.log"
+    touch "$HOMOLOG_LOG"; chmod 600 "$HOMOLOG_LOG"
+    systemd-run --unit="${HOMOLOG_UNIT%.service}" --collect --no-block \
+      --property=Type=exec --property=Restart=no \
+      --property=CPUQuota=100% --property=Nice=10 \
+      --property=OOMScoreAdjust=500 \
+      --property="StandardOutput=append:$HOMOLOG_LOG" \
+      --property="StandardError=append:$HOMOLOG_LOG" \
+      /usr/local/sbin/vendi04-homologate-candidate "$LOT"
+    echo "LOT=$LOT"
+    echo "STATUS=HOMOLOG_QUEUED"
+    echo "SYSTEMD_UNIT=$HOMOLOG_UNIT"
+    echo "PRODUCTION=untouched"
+    audit "HOMOLOG_QUEUED"
     ;;
   rollback)
     if [[ "$LOT" != "VENDI-02" ]]; then /usr/local/sbin/vendi04-controlled-release rollback "$LOT"; audit "ROLLBACK_COMPLETED"; exit 0; fi

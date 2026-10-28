@@ -14,21 +14,23 @@ test('pnpm v10 path resolves to store root, not /pnpm/store/v10/v10',()=>{
   assert.match(script,/\[ -d "\$STORE\/v10" \]/);
 });
 test('shared cache is snapshotted; only per-run store is mounted writable',()=>{
-  assert.match(script,/cp -a --reflink=auto "\$STORE\/\." "\$RUN\/store\/"/);
+  assert.match(script,/cp -a --reflink=always "\$STORE\/\." "\$RUN\/store\/"/);
+  assert.match(script,/STORE_MOUNT="\$STORE_MOUNT,readonly"/);
   assert.match(script,/src=\$RUN\/store,dst=\/pnpm\/store"/);
   assert.doesNotMatch(script,/src=\$STORE,dst=\/pnpm\/store/);
   assert.match(script,/--network none/);
   assert.doesNotMatch(script,/--env-file|--network host|docker\.sock/);
 });
-test('snapshot is writable while original v10 remains intact',()=>{
+test('CoW snapshot or read-only fallback preserves original v10',()=>{
   const dir=mkdtempSync(join(tmpdir(),'infra-pnpm-v10-'));
   try {
     const source=join(dir,'shared'); const target=join(dir,'isolated');
     mkdirSync(join(source,'v10'),{recursive:true}); mkdirSync(target);
     writeFileSync(join(source,'v10','fixture'),'unchanged');
-    const copy=spawnSync('cp',['-a','--reflink=auto',source+'/.',target+'/'],{encoding:'utf8'});
-    assert.equal(copy.status,0,copy.stderr);
-    writeFileSync(join(target,'v10','new-metadata'),'writable');
+    const copy=spawnSync('cp',['-a','--reflink=always',source+'/.',target+'/'],{encoding:'utf8'});
+    assert.ifError(copy.error);
+    if (copy.status === 0) writeFileSync(join(target,'v10','fixture'),'changed snapshot');
+    else assert.notEqual(copy.status,0,'unsupported CoW must fail instead of copying');
     assert.equal(readFileSync(join(source,'v10','fixture'),'utf8'),'unchanged');
     assert.equal(statSync(join(source,'v10')).isDirectory(),true);
   } finally { rmSync(dir,{recursive:true,force:true}); }

@@ -168,7 +168,7 @@ async function deleteSaasCustomHostname(hostnameId: string) {
 
 
 async function vendorApi<T>(path: string, init: RequestInit = {}, baseOverride?: string): Promise<T> {
-  const base = (baseOverride || process.env["VENDORAI_API_BASE"] || "https://vendorai-platform-replit-production.up.railway.app").replace(/\/$/, "");
+  const base = (baseOverride || requiredEnv("VENDORAI_API_BASE")).replace(/\/$/, "");
   const token = requiredEnv("BROWSER_MCP_ACCESS_TOKEN");
   const response = await fetch(`${base}${path}`, {
     ...init,
@@ -197,8 +197,9 @@ function operatorGrant(operation: "request_test" | "get_test_result", lot?: stri
   const policyText = process.env["VENDI_TEST_OPERATOR_POLICY"];
   if (!policyText) throw new Error("OPERATOR_POLICY_MISSING");
   const policies = JSON.parse(policyText) as Record<string, { lots: string[]; actions: string[] }>;
-  const grant = policies[client];
-  if (!grant || !grant.actions?.includes(operation) || (lot && !grant.lots?.includes(lot))) {
+  if (!policies || typeof policies !== "object" || Array.isArray(policies)) throw new Error("OPERATOR_POLICY_INVALID");
+  const grant = Object.hasOwn(policies, client) ? policies[client] : undefined;
+  if (!grant || !Array.isArray(grant.actions) || !Array.isArray(grant.lots) || !grant.actions.includes(operation) || (lot && !grant.lots.includes(lot))) {
     throw new Error("OPERATOR_NOT_AUTHORIZED");
   }
   return client;
@@ -258,7 +259,7 @@ async function contaboReadOnly(action: keyof typeof CONTABO_READ_ONLY_COMMANDS) 
 
 function releaseOperatorGrant(operation: ReleaseOperation, lot: string): string {
   return authorizeReleaseOperation({
-    client: testOperatorSession.getStore(),
+    client: testOperatorSession.getStore() ?? null,
     policyText: process.env["VENDI_RELEASE_OPERATOR_POLICY"],
     operation,
     lot,
@@ -267,7 +268,7 @@ function releaseOperatorGrant(operation: ReleaseOperation, lot: string): string 
 
 // Structured operations only: fixed script on the host, no arbitrary shell from the model.
 // Host-side operator enforces its own action allowlist and audit trail.
-async function contaboOperate(action: "build" | "homologate" | "rollback" | "releaseStatus" | "preflight" | "publish", lot: string) {
+async function contaboOperate(action: "build" | "homologate" | "rollback" | "releaseStatus" | "preflight" | "publish" | "upgradeOperator" | "auditReadiness", lot: string) {
   if (!/^[A-Z][A-Z0-9]{1,15}-[0-9]{1,6}$/.test(lot)) throw new Error("Invalid lot identifier");
   const host = process.env["VENDI_CONTABO_SSH_HOST"] || (existsSync("/app/.vendi-ssh/host") ? readFileSync("/app/.vendi-ssh/host", "utf8").trim() : undefined);
   const key = process.env["VENDI_CONTABO_SSH_KEY_PATH"] || "/app/.vendi-ssh/id_ed25519";
@@ -505,18 +506,15 @@ function createCloudflareMcpServer() {
     {
       description: "Executa operações fixas do Vendi na Contabo. Ações que alteram o host exigem grant OAuth por operador, lote e ação, além dos gates do operador host.",
       inputSchema: z.object({
-        action: z.enum(["build", "homologate", "rollback", "releaseStatus", "preflight", "publish"]),
+        action: z.enum(["build", "homologate", "rollback", "releaseStatus", "preflight", "publish", "upgradeOperator", "auditReadiness"]),
         lot: z.string().regex(/^[A-Z][A-Z0-9]{1,15}-[0-9]{1,6}$/),
       }),
       annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false },
     },
     async ({ action, lot }) => {
-      if (action === "releaseStatus") {
-        return toolText(await contaboOperate(action, lot));
-      }
-      releaseOperatorGrant(action, lot);
+      const operator = releaseOperatorGrant(action, lot);
       const result = await contaboOperate(action, lot);
-      console.info(JSON.stringify({ type: "vendi_release_operation", action, lot, status: "completed", timestamp: new Date().toISOString() }));
+      console.info(JSON.stringify({ type: "vendi_release_operation", operator, action, lot, status: "completed", timestamp: new Date().toISOString() }));
       return toolText(result);
     },
   );
@@ -527,7 +525,7 @@ function createCloudflareMcpServer() {
       description: "Central authenticated operator: request isolated tests of an exact PR SHA.",
       inputSchema: z.object({
         agent: z.string().regex(/^AGENT-(0[1-9]|1[0-4])$/),
-        lot: z.string().regex(/^LOT-(0[1-9]|1[0-4])$/),
+        lot: z.string().regex(/^[A-Z][A-Z0-9]{1,15}-[0-9]{1,6}$/),
         pr: z.number().int().min(1).max(9999999),
         branch: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._/-]{0,180}$/),
         sha: z.string().regex(/^[a-fA-F0-9]{40}$/),
@@ -556,7 +554,7 @@ function createCloudflareMcpServer() {
     {
       description: "Read isolated test run results as authorized central operator.",
       inputSchema: z.object({
-        lot: z.string().regex(/^LOT-(0[1-9]|1[0-4])$/),
+        lot: z.string().regex(/^[A-Z][A-Z0-9]{1,15}-[0-9]{1,6}$/),
         runId: z.string().regex(/^pr-[1-9][0-9]*-[A-Za-z0-9_-]{8}$/),
       }),
       annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },

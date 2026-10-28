@@ -1,15 +1,13 @@
-export type ReleaseOperation = "build" | "homologate" | "rollback" | "preflight" | "publish";
+export type ReleaseOperation = "build" | "homologate" | "rollback" | "preflight" | "publish" | "upgradeOperator" | "releaseStatus" | "auditReadiness";
 
 type ReleaseGrant = {
   lots?: string[];
   actions?: string[];
-  // Delegates lot existence/registration validation to the existing restricted host operator.
-  // Does not grant additional actions or access to arbitrary host commands.
   allRegisteredLots?: boolean;
 };
 
 export function authorizeReleaseOperation(input: {
-  client: string | null | undefined;
+  client: string | null;
   policyText?: string;
   operation: ReleaseOperation;
   lot: string;
@@ -25,12 +23,14 @@ export function authorizeReleaseOperation(input: {
     throw new Error("RELEASE_OPERATOR_POLICY_INVALID");
   }
 
-  const grant = policies[input.client];
+  if (!policies || typeof policies !== "object" || Array.isArray(policies)) {
+    throw new Error("RELEASE_OPERATOR_POLICY_INVALID");
+  }
+  const grant = Object.hasOwn(policies, input.client) ? policies[input.client] : undefined;
   if (!grant
     || !Array.isArray(grant.actions)
     || !grant.actions.includes(input.operation)
-    || !(grant.allRegisteredLots === true
-      || (Array.isArray(grant.lots) && grant.lots.includes(input.lot)))) {
+    || !(grant.allRegisteredLots === true || (Array.isArray(grant.lots) && grant.lots.includes(input.lot)))) {
     throw new Error("OPERATOR_NOT_AUTHORIZED");
   }
 

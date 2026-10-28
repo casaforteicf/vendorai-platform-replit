@@ -60,7 +60,7 @@ class GateTests(unittest.TestCase):
   self.assertIn('def status(run, lot):',s)
  def test_invalid_lot(self):
   with self.assertRaisesRegex(ValueError,"INVALID_LOT"):
-   mod.run(3428,"feat/crm","a"*40,"crm","LOT-99")
+   mod.run(3428,"feat/crm","a"*40,"crm","../LOT-99")
 
  def test_lot_result_authorization_real_fixture(self):
   import tempfile
