@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 const src = readFileSync(new URL("../artifacts/frontend/src/modules/arqdor/workspace/ArqWorkspace.tsx", import.meta.url), "utf8");
 const nav = src.match(/const FLOW_STEPS: FlowStep\[\] = \[([\s\S]*?)\n\]/)?.[1];
 assert.ok(nav, "navigation config missing");
-const labels = [...nav.matchAll(/label:'([^']+)'/g)].map(m => m[1]);
+const labels = [...nav.matchAll(/(?<!sub)label:'([^']+)'/g)].map(m => m[1]);
 assert.deepEqual(labels, ["Projetos","Modelagem 2D/3D","Materiais","Render","Especificações","Orçamento","Entrega"]);
 assert.equal((src.match(/<FlowNav\s/g)||[]).length, 1, "duplicate main navigation");
 assert.ok(!src.includes("Gerar Render\n"), "duplicate Render CTA");
