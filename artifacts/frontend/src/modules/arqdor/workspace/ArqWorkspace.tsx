@@ -935,7 +935,7 @@ function WorkspaceInner() {
           boxShadow:PHX.shadow, gap:0, zIndex:200, position:'relative',
         }}>
 
-          {/* Logo */}
+          {/* Logo oficial: usar somente arquivo original da marca quando publicado no frontend. */}
           <div style={{
             width:136, flexShrink:0, display:'flex', alignItems:'center', gap:8,
             padding:'0 16px', borderRight:`1px solid ${PHX.border}`, height:'100%',
