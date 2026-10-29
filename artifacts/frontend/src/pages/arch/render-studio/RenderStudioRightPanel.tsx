@@ -113,6 +113,7 @@ export function RenderStudioRightPanel({
                 </select>
                 <div style={{ fontSize: 10, color: D.dim }}>Os parâmetros são aplicados pelo fluxo de renderização existente; controles de câmera 3D dependem da integração com o modelo.</div>
               </section>
+            )}
 
             {/* P2-15: Camadas — dados reais */}
             {tab === "camadas" && (
