@@ -1,14 +1,14 @@
 import type { CSSProperties } from "react";
 
 export const RENDER_STUDIO_THEME = {
-  bg: "#F7F8FA", surface: "#FFFFFF", card: "#FFFFFF",
-  border: "#E5E7EB", borderLight: "#D8DEE8",
+  bg: "#171C1D", surface: "#232A2B", card: "#232A2B",
+  border: "#384445", borderLight: "#465354",
   purple: "#059669", purpleHov: "#047857", purpleMid: "#10B981",
   purpleGlow: "rgba(5,150,105,0.16)", purpleText: "#047857",
-  text: "#172033", muted: "#64748B", dim: "#94A3B8",
+  text: "#E8EFEB", muted: "#AAB8B2", dim: "#81938B",
   green: "#10B981", greenDim: "rgba(16,185,129,0.12)",
   red: "#EF4444", amber: "#F59E0B",
-  inputBg: "#FFFFFF", overlay: "rgba(247,248,250,0.92)",
+  inputBg: "#232A2B", overlay: "rgba(23,28,29,0.96)",
 } as const;
 
 export const renderStudioInputStyle: CSSProperties = {
