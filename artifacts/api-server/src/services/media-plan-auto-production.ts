@@ -112,7 +112,7 @@ function providerSupported(canal: string) {
 }
 
 function campaignForItem(content: PlanContent, pilar: string) {
-  const name = normalize(pilar.split(" · ")[0] || "");
+  const name = normalize(pilar.split(" � ")[0] || "");
   return content.campanhas?.find((campaign) => normalize(campaign.nome) === name) ?? null;
 }
 
@@ -122,15 +122,15 @@ function directionText(campaign: Campaign, item: { temaSugerido: string; canal: 
     item.temaSugerido,
     `Campanha: ${campaign.nome}`,
     `Objetivo: ${campaign.objetivo}`,
-    `Produto/serviço: ${campaign.produtoServico}`,
-    `Público: ${campaign.publico}`,
+    `Produto/servi�o: ${campaign.produtoServico}`,
+    `P�blico: ${campaign.publico}`,
     campaign.oferta ? `Oferta/CTA: ${campaign.oferta}` : "",
     campaign.mensagemCentral ? `Mensagem central: ${campaign.mensagemCentral}` : "",
     `Canal: ${item.canal}`,
     `Formato: ${item.tipo.replaceAll("_", " ")}`,
-    channel?.funcao ? `Função desta mídia: ${channel.funcao}` : "",
-    campaign.regiao ? `Região: ${campaign.regiao}` : "",
-    campaign.regraComunicacaoGeografica ? `Regra geográfica: ${campaign.regraComunicacaoGeografica}` : "",
+    channel?.funcao ? `Fun��o desta m�dia: ${channel.funcao}` : "",
+    campaign.regiao ? `Regi�o: ${campaign.regiao}` : "",
+    campaign.regraComunicacaoGeografica ? `Regra geogr�fica: ${campaign.regraComunicacaoGeografica}` : "",
     `Pilar: ${item.pilar}`,
   ].filter(Boolean).join("\n");
 }
@@ -185,8 +185,8 @@ async function generateDraft(input: {
     desiredCta: input.campaign.oferta,
     referencePatterns: [
       `Campanha validada: ${input.campaign.nome}`,
-      `Produto/serviço validado: ${input.campaign.produtoServico}`,
-      `Público validado: ${input.campaign.publico}`,
+      `Produto/servi�o validado: ${input.campaign.produtoServico}`,
+      `P�blico validado: ${input.campaign.publico}`,
       `Mensagem central validada: ${input.campaign.mensagemCentral}`,
     ].join("\n"),
   };
@@ -296,7 +296,7 @@ async function startAutomatedVideo(input: {
   const scenes = Array.isArray(variation.scenes) ? variation.scenes : [];
   const script = scenes.map((scene, index) => {
     const row = scene && typeof scene === "object" && !Array.isArray(scene) ? scene as Record<string, unknown> : {};
-    return `Cena ${index + 1}: ${String(row.visual ?? "")} | Fala: ${String(row.fala ?? "")} | Duração: ${String(row.duracao ?? "")}`;
+    return `Cena ${index + 1}: ${String(row.visual ?? "")} | Fala: ${String(row.fala ?? "")} | Dura��o: ${String(row.duracao ?? "")}`;
   }).join("\n");
   const prompt = [
     input.theme,
@@ -310,7 +310,7 @@ async function startAutomatedVideo(input: {
   const job = await createVendorAiMediaGenerationJob({
     tenantId: input.tenantId,
     userId: null,
-    title: `${input.campaign.nome} · ${input.theme}`.slice(0, 120),
+    title: `${input.campaign.nome} � ${input.theme}`.slice(0, 120),
     operation: "video_generate",
     context: {
       prompt: prompt.slice(0, 4000),
@@ -367,7 +367,7 @@ export async function produceUpcomingMediaPlanOrganicContent(now = new Date()) {
   if (Date.now() < aiBillingCircuitOpenUntil) {
     logger.warn(
       { openUntil: new Date(aiBillingCircuitOpenUntil).toISOString() },
-      "Produção automática do Plano de Mídia pausada pelo circuit breaker de cobrança",
+      "Produ��o autom�tica do Plano de M�dia pausada pelo circuit breaker de cobran�a",
     );
     return 0;
   }
@@ -451,7 +451,7 @@ export async function produceUpcomingMediaPlanOrganicContent(now = new Date()) {
         });
       }
       produced += 1;
-      logger.info({ tenantId: row.tenantId, calendarItemId: row.id, type: row.tipo, generationId: generation.id }, "Plano de Mídia produziu conteúdo orgânico no backend");
+      logger.info({ tenantId: row.tenantId, calendarItemId: row.id, type: row.tipo, generationId: generation.id }, "Plano de M�dia produziu conte�do org�nico no backend");
     } catch (error) {
       const status = gatewayStatus(error);
       await db.update(contentCalendarItemsTable).set({
@@ -464,7 +464,7 @@ export async function produceUpcomingMediaPlanOrganicContent(now = new Date()) {
         eq(contentCalendarItemsTable.id, row.id),
         eq(contentCalendarItemsTable.contentGenerationId, claim),
       )).catch(() => undefined);
-      logger.warn({ error, status, tenantId: row.tenantId, calendarItemId: row.id, type: row.tipo }, "Produção automática do Plano de Mídia falhou");
+      logger.warn({ error, status, tenantId: row.tenantId, calendarItemId: row.id, type: row.tipo }, "Produ��o autom�tica do Plano de M�dia falhou");
 
       if (status === 402 || status === 429) {
         aiBillingCircuitOpenUntil = Date.now() + BILLING_CIRCUIT_MS;
@@ -475,7 +475,7 @@ export async function produceUpcomingMediaPlanOrganicContent(now = new Date()) {
             calendarItemId: row.id,
             openUntil: new Date(aiBillingCircuitOpenUntil).toISOString(),
           },
-          "Circuit breaker abriu: produção automática de IA pausada após erro de cobrança/quota",
+          "Circuit breaker abriu: produ��o autom�tica de IA pausada ap�s erro de cobran�a/quota",
         );
         break;
       }
@@ -542,7 +542,7 @@ export async function reconcileAutomatedReelVideos() {
         } as any,
       }).where(and(eq(contentGenerationsTable.id, row.generationId), eq(contentGenerationsTable.tenantId, row.tenantId)));
       reconciled += 1;
-      logger.info({ tenantId: row.tenantId, calendarItemId: row.id, generationId: row.generationId, jobId, type: row.tipo }, "Vídeo automático do Plano de Mídia recebeu o arquivo final");
+      logger.info({ tenantId: row.tenantId, calendarItemId: row.id, generationId: row.generationId, jobId, type: row.tipo }, "V�deo autom�tico do Plano de M�dia recebeu o arquivo final");
     } else if (job.status === "error") {
       await db.update(contentGenerationsTable).set({
         result: {

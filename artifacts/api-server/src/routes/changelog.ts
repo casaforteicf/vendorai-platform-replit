@@ -86,10 +86,10 @@ type ExternalHealth = {
 };
 
 async function checkAsaasHealth(tenantId: string, configured: boolean): Promise<ExternalHealth> {
-  if (!configured) return { configured: false, reachable: null, status: "not_configured", message: "Asaas não configurado." };
+  if (!configured) return { configured: false, reachable: null, status: "not_configured", message: "Asaas n�o configurado." };
   try {
     const apiKey = await getTenantAsaasApiKey(tenantId);
-    if (!apiKey) return { configured: true, reachable: false, status: "failed", message: "Chave Asaas salva, mas não pôde ser descriptografada." };
+    if (!apiKey) return { configured: true, reachable: false, status: "failed", message: "Chave Asaas salva, mas n�o p�de ser descriptografada." };
     const response = await fetch("https://api.asaas.com/api/v3/myAccount", {
       headers: { access_token: apiKey },
       signal: AbortSignal.timeout(6000),
@@ -98,12 +98,12 @@ async function checkAsaasHealth(tenantId: string, configured: boolean): Promise<
       ? { configured: true, reachable: true, status: "ok", message: "Asaas autenticado e respondendo." }
       : { configured: true, reachable: false, status: "failed", message: `Asaas respondeu HTTP ${response.status}.` };
   } catch {
-    return { configured: true, reachable: false, status: "failed", message: "Não foi possível validar a conexão com Asaas." };
+    return { configured: true, reachable: false, status: "failed", message: "N�o foi poss�vel validar a conex�o com Asaas." };
   }
 }
 
 async function checkZapSignHealth(apiKey: string | null | undefined): Promise<ExternalHealth> {
-  if (!apiKey) return { configured: false, reachable: null, status: "not_configured", message: "ZapSign não configurado." };
+  if (!apiKey) return { configured: false, reachable: null, status: "not_configured", message: "ZapSign n�o configurado." };
   try {
     const response = await fetch("https://api.zapsign.com.br/api/v1/users/me/", {
       headers: { Authorization: `Bearer ${apiKey}` },
@@ -113,7 +113,7 @@ async function checkZapSignHealth(apiKey: string | null | undefined): Promise<Ex
       ? { configured: true, reachable: true, status: "ok", message: "ZapSign autenticado e respondendo." }
       : { configured: true, reachable: false, status: "failed", message: `ZapSign respondeu HTTP ${response.status}.` };
   } catch {
-    return { configured: true, reachable: false, status: "failed", message: "Não foi possível validar a conexão com ZapSign." };
+    return { configured: true, reachable: false, status: "failed", message: "N�o foi poss�vel validar a conex�o com ZapSign." };
   }
 }
 
@@ -208,10 +208,10 @@ router.get("/tenants/:tenantId/configuration-health", requireRole("super_admin",
       webhookUrlValid: stockUrlValid,
       hasApiKey: Boolean(tenant.apiKeyEstoque),
       message: !stockConfigured
-        ? "Integração de estoque não configurada."
+        ? "Integra��o de estoque n�o configurada."
         : stockReady
-          ? "Webhook/API de estoque possui URL válida e configuração persistida."
-          : "Integração de estoque está incompleta ou com URL inválida.",
+          ? "Webhook/API de estoque possui URL v�lida e configura��o persistida."
+          : "Integra��o de estoque est� incompleta ou com URL inv�lida.",
     },
     documents: {
       status: documentsStatus,
@@ -219,17 +219,17 @@ router.get("/tenants/:tenantId/configuration-health", requireRole("super_admin",
       templateConfigured: contractTemplateConfigured,
       settingsConfigured: contractSettingsConfigured,
       message: contractRequired && !contractTemplateConfigured
-        ? "O tipo de fechamento exige contrato, mas não há modelo de contrato configurado."
+        ? "O tipo de fechamento exige contrato, mas n�o h� modelo de contrato configurado."
         : contractTemplateConfigured
-          ? "Modelo de contrato disponível para o fluxo documental."
-          : "Contrato não é obrigatório no fechamento atual; modelo continua opcional.",
+          ? "Modelo de contrato dispon�vel para o fluxo documental."
+          : "Contrato n�o � obrigat�rio no fechamento atual; modelo continua opcional.",
     },
     commercial: {
       status: commercialStatus,
       closureType,
       message: commercialStatus === "ok"
         ? `Regra de fechamento ativa: ${closureType}.`
-        : "Tipo de fechamento inválido; revise a configuração comercial.",
+        : "Tipo de fechamento inv�lido; revise a configura��o comercial.",
     },
   };
 
@@ -325,7 +325,7 @@ router.post("/tenants/:tenantId/configuration-history/:auditId/rollback", requir
   const auditId = String(req.params.auditId || "");
   if (!tenantId || !auditId || !canAccessTenant(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
   if (req.body?.confirm !== "RESTAURAR") {
-    return res.status(422).json({ error: "Confirmação explícita necessária" });
+    return res.status(422).json({ error: "Confirma��o expl�cita necess�ria" });
   }
 
   const [sourceAudit] = await db.select().from(erpAuditoriaTable).where(and(
@@ -334,29 +334,29 @@ router.post("/tenants/:tenantId/configuration-history/:auditId/rollback", requir
     eq(erpAuditoriaTable.modulo, "configuracoes"),
   )).limit(1);
 
-  if (!sourceAudit) return res.status(404).json({ error: "Alteração não encontrada" });
+  if (!sourceAudit) return res.status(404).json({ error: "Altera��o n�o encontrada" });
   if (sourceAudit.entidade !== "business_profile" || sourceAudit.acao !== "atualizar" || !sourceAudit.entidadeId) {
     return res.status(409).json({
-      error: "Rollback automático não permitido para esta alteração",
-      reason: "Nesta fase, apenas atualizações do Perfil da Empresa podem ser restauradas automaticamente.",
+      error: "Rollback autom�tico n�o permitido para esta altera��o",
+      reason: "Nesta fase, apenas atualiza��es do Perfil da Empresa podem ser restauradas automaticamente.",
     });
   }
 
   const rollbackInput = safeBusinessProfileRollbackInput(sourceAudit.antes);
   if (!rollbackInput) {
-    return res.status(409).json({ error: "Snapshot anterior não contém campos restauráveis" });
+    return res.status(409).json({ error: "Snapshot anterior n�o cont�m campos restaur�veis" });
   }
 
   const parsed = updateBusinessProfileSchema.safeParse(rollbackInput);
   if (!parsed.success) {
-    return res.status(422).json({ error: "Snapshot anterior não é compatível com o perfil atual" });
+    return res.status(422).json({ error: "Snapshot anterior n�o � compat�vel com o perfil atual" });
   }
 
   const [current] = await db.select().from(businessProfilesTable).where(and(
     eq(businessProfilesTable.id, sourceAudit.entidadeId),
     eq(businessProfilesTable.tenantId, tenantId),
   )).limit(1);
-  if (!current) return res.status(404).json({ error: "Perfil da empresa atual não encontrado" });
+  if (!current) return res.status(404).json({ error: "Perfil da empresa atual n�o encontrado" });
 
   const [restored] = await db.update(businessProfilesTable)
     .set({ ...parsed.data, updatedAt: new Date() })
