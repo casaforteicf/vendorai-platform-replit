@@ -95,7 +95,7 @@ export default function MarketingInstagram() {
   const [, setLocation] = useLocation();
   const tenantId = user?.tenantId ?? "";
 
-  const { data: library, isError: libraryError } = useQuery<{ items: ContentLibraryItem[] }>({
+  const { data: library, isPending: libraryPending, isError: libraryError } = useQuery<{ items: ContentLibraryItem[] }>({
     queryKey: ["content-library", tenantId],
     queryFn: async () => {
       const res = await fetch(`/api/tenants/${tenantId}/content/library`, { headers: authHeaders() });
@@ -143,6 +143,7 @@ export default function MarketingInstagram() {
 
   const {
     data: calendar = [],
+    isPending: calendarLoading,
     isError: calendarError,
   } = useQuery<CalendarItem[]>({
     queryKey: ["instagram-content-calendar", tenantId],
@@ -212,7 +213,15 @@ export default function MarketingInstagram() {
           ? "Permissão de publicação incompleta"
           : "Conta não conectada";
 
-  const nextAction = connectionError
+  const nextAction = connectionLoading
+    ? {
+        title: "Verificando conexão do Instagram",
+        description: "Consultando as permissões de publicação. Aguarde a verificação antes de conectar outra conta.",
+        button: "Abrir integrações",
+        href: "/configuracoes?tab=integracoes",
+        tone: "warning" as const,
+      }
+    : connectionError
     ? {
         title: "Verificar serviço do Instagram",
         description: "O VendorAI não conseguiu consultar a integração agora. Não trate isso como conta desconectada até a API responder novamente.",
@@ -228,7 +237,15 @@ export default function MarketingInstagram() {
           href: "/configuracoes?tab=integracoes",
           tone: "warning" as const,
         }
-      : websiteError
+      : websiteLoading
+        ? {
+            title: "Verificando destino de conversão",
+            description: "Consultando o site configurado para a empresa.",
+            button: "Abrir configurações",
+            href: "/configuracoes",
+            tone: "warning" as const,
+          }
+        : websiteError
         ? {
             title: "Verificar destino de conversão",
             description: "A conexão do Instagram está pronta, mas o site oficial não pôde ser consultado agora.",
@@ -244,7 +261,15 @@ export default function MarketingInstagram() {
               href: "/configuracoes",
               tone: "warning" as const,
             }
-          : calendarError
+          : calendarLoading
+            ? {
+                title: "Carregando calendário",
+                description: "Consultando a fila antes de sugerir uma nova publicação.",
+                button: "Abrir Gerador",
+                href: "/content",
+                tone: "warning" as const,
+              }
+            : calendarError
             ? {
                 title: "Verificar calendário",
                 description: "Instagram e destino estão prontos, mas a fila de publicações não pôde ser carregada agora.",
@@ -443,25 +468,25 @@ export default function MarketingInstagram() {
         <Card>
           <CardContent className="p-4">
             <div className="flex items-center gap-2 text-xs text-muted-foreground"><CalendarDays className="h-4 w-4" /> Próx. 7 dias</div>
-            <p className="mt-2 text-2xl font-semibold">{calendarError ? "—" : upcoming.length}</p>
+            <p className="mt-2 text-2xl font-semibold">{calendarError || calendarLoading ? "—" : upcoming.length}</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="p-4">
             <div className="flex items-center gap-2 text-xs text-muted-foreground"><Clock3 className="h-4 w-4" /> Em revisão</div>
-            <p className="mt-2 text-2xl font-semibold">{calendarError ? "—" : inReview}</p>
+            <p className="mt-2 text-2xl font-semibold">{calendarError || calendarLoading ? "—" : inReview}</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="p-4">
             <div className="flex items-center gap-2 text-xs text-muted-foreground"><CheckCircle2 className="h-4 w-4" /> Aprovados</div>
-            <p className="mt-2 text-2xl font-semibold">{calendarError ? "—" : approved}</p>
+            <p className="mt-2 text-2xl font-semibold">{calendarError || calendarLoading ? "—" : approved}</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="p-4">
             <div className="flex items-center gap-2 text-xs text-muted-foreground"><Library className="h-4 w-4" /> Biblioteca Feed</div>
-            <p className="mt-2 text-2xl font-semibold">{libraryError ? "—" : draftOptions.length}</p>
+            <p className="mt-2 text-2xl font-semibold">{libraryError || libraryPending ? "—" : draftOptions.length}</p>
           </CardContent>
         </Card>
       </div>
@@ -477,7 +502,9 @@ export default function MarketingInstagram() {
           </p>
         </CardHeader>
         <CardContent className="space-y-2">
-          {calendarError ? (
+          {calendarLoading ? (
+            <p role="status" className="rounded-lg border p-4 text-sm text-muted-foreground">Carregando publicações agendadas...</p>
+          ) : calendarError ? (
             <div className="flex flex-col gap-3 rounded-lg border border-amber-200 bg-amber-50/40 p-4 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <p className="text-sm font-medium">Não foi possível carregar a fila agora.</p>
@@ -522,7 +549,13 @@ export default function MarketingInstagram() {
         </CardContent>
       </Card>
 
-      <InstagramGridPreview tenantId={tenantId} draftOptions={draftOptions} />
+      {libraryPending ? (
+        <p role="status" className="rounded-lg border p-4 text-sm text-muted-foreground">Carregando rascunhos da biblioteca...</p>
+      ) : libraryError ? (
+        <p role="alert" className="rounded-lg border border-amber-200 p-4 text-sm text-muted-foreground">Não foi possível consultar os rascunhos da biblioteca. Tente novamente após restabelecer a conexão.</p>
+      ) : (
+        <InstagramGridPreview tenantId={tenantId} draftOptions={draftOptions} />
+      )}
 
       <LayoutIntelligenceCard tenantId={tenantId} />
 

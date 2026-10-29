@@ -15,7 +15,7 @@ import {
   Handshake, Shield, Cpu, Bug, Coins, Wrench, Pill, Home, Car, HelpCircle, WalletCards, Camera, KanbanSquare, ClipboardCheck, FileCheck, UserCog, Instagram,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { ui20ServiceForPath } from "@/lib/ui20ServiceRoutes";
+import { ui20SidebarServiceForPath } from "@/lib/ui20ServiceRoutes";
 import { getUi20VisibleServices } from "@/lib/ui20ServiceVisibility";
 import { Button } from "@/components/ui/button";
 import logoFull from "/logo-full-light.svg";
@@ -847,7 +847,7 @@ export function SidebarLayout({ children, arqdorVisible = false }: { children: R
         { id: "prospecting", name: "Prospecção", links: crmNav.filter(item => item.href === "/app/prospector") },
         { id: "agenda", name: "Agenda", links: [...agendaNav, ...verticalNav.filter(item => item.href.endsWith("/agenda"))] },
         { id: "commercial", name: "Comercial", links: commercialNav },
-        { id: "marketing", name: "Marketing", links: navigation.filter(item => ui20ServiceForPath(item.href) === "marketing") },
+        { id: "marketing", name: "Marketing", links: [...navigation.filter(item => ui20ServiceForPath(item.href) === "marketing"), { href: "/midias", name: "Biblioteca de Mídias", icon: FolderOpen }] },
         { id: "erp", name: "ERP", links: [...financeNav, ...verticalOperationNav.filter(item => !["/obras", "/insumos", "/composicoes"].includes(item.href))] },
         { id: "ia", name: "IA Hub", links: aiKnowledgeNav },
         { id: "intelligence", name: "Inteligência", links: inteligenciaNav },
@@ -859,8 +859,7 @@ export function SidebarLayout({ children, arqdorVisible = false }: { children: R
         { id: "support", name: "Suporte", links: [{ href: "/faq", name: "Central de ajuda", icon: HelpCircle }] },
       ];
       const permittedServices = getUi20VisibleServices({ modules: tenantNavModules, isAdmin: isTenantAdmin, arqdorEligible: arqdorVisible, loading: !tenantNavModules });
-      const detected = ui20ServiceForPath(path);
-      const selected = serviceGroups.find(group => group.id === detected) ?? serviceGroups[0];
+      const selected = serviceGroups.find(group => group.id === ui20SidebarServiceForPath(path)) ?? serviceGroups[0];
       const canShowService = permittedServices.has(selected.id as Parameters<typeof permittedServices.has>[0]);
       const unique = (canShowService ? selected.links : []).filter((item, index, all) => all.findIndex((other) => other.href === item.href) === index);
       return (

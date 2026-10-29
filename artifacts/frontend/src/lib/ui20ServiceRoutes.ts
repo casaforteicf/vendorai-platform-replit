@@ -9,7 +9,7 @@ export const ui20RouteGroups: Record<Ui20Service, readonly string[]> = {
   intelligence: ["/vkg", "/scout", "/relatorios"],
   works: ["/obras", "/insumos", "/composicoes"],
   library: ["/midias"],
-  marketing: ["/marketing", "/content", "/ads", "/analytics", "/campanhas", "/diagnostico-planejamento"],
+  marketing: ["/marketing", "/content", "/content-studio", "/content-autopilot", "/ads", "/analytics", "/campanhas", "/diagnostico-planejamento"],
   erp: ["/erp", "/estoque", "/entregas"],
   ia: ["/agents", "/vendi", "/base-conhecimento", "/brain"],
   marketplace: ["/marketplace"],
@@ -25,4 +25,12 @@ export function ui20ServiceForPath(location: string): Ui20Service | null {
     .flatMap(([id, paths]) => paths.filter(prefix => path === prefix || (prefix !== "/" && path.startsWith(prefix + "/"))).map(prefix => ({id, length:prefix.length})))
     .sort((a,b)=>b.length-a.length);
   return matches[0]?.id ?? null;
+}
+
+/** Presentation-only: the shared Media Library appears inside Marketing. */
+export function ui20SidebarServiceForPath(location: string): Ui20Service | null {
+  const path = normalize(location);
+  return path === "/midias" || path.startsWith("/midias/")
+    ? "marketing"
+    : ui20ServiceForPath(location);
 }

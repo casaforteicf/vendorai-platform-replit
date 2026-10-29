@@ -31,7 +31,7 @@ const TAD_LABELS: Partial<Record<LauncherModule, { description: string; section:
   omnichannel: { description: "Conversas e atendimento integrado", section: "Comercial" },
   agenda: { description: "Compromissos, tarefas e visitas", section: "Produtividade" },
   arqdor: { description: "Projetos, modelagem, render e especificações", section: "Projetos" },
-  obras: { description: "Execução, checklists e assistência", section: "Operação" },
+  obras: { description: "Processos, equipes e entregas por segmento", section: "Operação" },
   pdv: { description: "Vendas de balcão", section: "Operação" },
   erp: { description: "Gestão operacional e financeira", section: "Operação" },
   marketplace_casa: { description: "Produtos, serviços e anunciantes", section: "Marketplace" },
@@ -75,7 +75,6 @@ const MODULE_TONE: Partial<Record<LauncherModule, Tone>> = {
 
 const PHOTO: Partial<Record<LauncherModule, string>> = {
   arqdor: "https://images.unsplash.com/photo-1600607687920-4e2a09cf159d?auto=format&fit=crop&w=760&q=80",
-  obras: "https://images.unsplash.com/photo-1504307651254-35680f356dfd?auto=format&fit=crop&w=760&q=80",
 };
 
 const MARKETPLACE_TILES = [
@@ -354,16 +353,11 @@ export default function TadCentral({ audience, enabledModules, permittedModules,
       </header>
 
       <div className="mx-auto max-w-[1520px] px-3 pb-12 pt-4 sm:px-4 md:px-7 md:pt-5">
-        {/* ── Hero ───────────────────────────────────────────────────── */}
-        <section className="relative mb-5 overflow-hidden rounded-2xl border border-cyan-400/15 bg-[#081521] shadow-[0_0_48px_-24px_rgba(34,211,238,.55)]">
-          <img src="https://images.unsplash.com/photo-1600607687920-4e2a09cf159d?auto=format&fit=crop&w=1400&q=85" alt="" className="pointer-events-none absolute inset-y-0 right-0 h-full w-full object-cover object-center opacity-45 md:w-[62%] md:opacity-90" />
-          <div className="pointer-events-none absolute inset-0 bg-gradient-to-r from-[#081521] via-[#081521]/85 via-45% to-[#081521]/10" />
-          <div className="relative z-10 max-w-xl px-5 py-7 md:px-9 md:py-11">
-            <p className="text-[11px] font-bold uppercase tracking-[.24em] text-cyan-300">TAD · Central do ecossistema</p>
-            <h1 className={DISPLAY + " mt-3 text-[32px] font-bold leading-[1.05] tracking-tight text-white md:text-[46px]"}>Bem-vindo ao <span className="text-cyan-300 [text-shadow:0_0_24px_rgba(34,211,238,.55)]">TAD</span></h1>
-            <p className="mt-3 text-base font-semibold text-slate-100">Tudo que sua empresa precisa, em um só lugar.</p>
-            <p className="mt-1 text-sm text-slate-300">Escolha um ambiente e continue trabalhando sem menus duplicados.</p>
-          </div>
+        {/* Central de Ambientes: cabeçalho compacto, sem banner de setor específico. */}
+        <section className="mb-5 rounded-2xl border border-white/10 bg-[#0b1726] px-5 py-6 md:px-8 md:py-7" aria-labelledby="tad-welcome-title">
+          <p className="text-[11px] font-semibold uppercase tracking-[.16em] text-slate-400">Vendor.ai · Central de Ambientes</p>
+          <h1 id="tad-welcome-title" className={DISPLAY + " mt-2 text-2xl font-semibold tracking-tight text-white md:text-3xl"}>Escolha onde trabalhar</h1>
+          <p className="mt-2 max-w-2xl text-sm leading-relaxed text-slate-300">Cada ambiente reúne suas ferramentas e funcionalidades. Selecione um módulo abaixo para começar.</p>
         </section>
 
         {/* ── Busca (mobile) + filtro ────────────────────────────────── */}
