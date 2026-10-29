@@ -372,6 +372,7 @@ export default function PipelineOperacional() {
   const [selectedCard, setSelectedCard] = useState<WorkCard | null>(null);
   const [supportOpen, setSupportOpen] = useState(false);
   const [deliveryOpen, setDeliveryOpen] = useState(false);
+  const [directExecutionOpen, setDirectExecutionOpen] = useState(false);
   const [stageFormKey, setStageFormKey] = useState<string | null>(null);
   const [installationTemplatesOpen, setInstallationTemplatesOpen] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -416,7 +417,7 @@ export default function PipelineOperacional() {
     const next = search.toString();
     window.history.replaceState(null, "", `${window.location.pathname}${next ? `?${next}` : ""}`);
   }, [cardsQuery.data, selectedCard]);
-  const needsContext = supportOpen || deliveryOpen || Boolean(selectedCard);
+  const needsContext = supportOpen || deliveryOpen || directExecutionOpen || Boolean(selectedCard);
   const leadsQuery = useQuery<Lead[]>({
     queryKey: ["work-card-leads", tenantId], enabled: !!tenantId && needsContext,
     queryFn: () => api(`/api/tenants/${tenantId}/leads`), staleTime: 60_000, refetchOnWindowFocus: false,
@@ -430,7 +431,7 @@ export default function PipelineOperacional() {
     queryFn: () => api(`/api/tenants/${tenantId}/deals`), staleTime: 60_000, refetchOnWindowFocus: false,
   });
   const proposalsQuery = useQuery<Proposal[]>({
-    queryKey: ["work-card-proposals", tenantId], enabled: !!tenantId && (supportOpen || deliveryOpen),
+    queryKey: ["work-card-proposals", tenantId], enabled: !!tenantId && (supportOpen || deliveryOpen || directExecutionOpen),
     queryFn: () => api(`/api/tenants/${tenantId}/propostas`), staleTime: 60_000, refetchOnWindowFocus: false,
   });
   const attachmentsQuery = useQuery<Attachment[]>({
@@ -614,6 +615,7 @@ export default function PipelineOperacional() {
           {pipeline === "execucao" ? (
             <>
               {isAdmin && <Button variant="outline" onClick={() => setInstallationTemplatesOpen(true)} className="gap-2"><ClipboardCheck className="h-4 w-4" /> Configurar instalação</Button>}
+              <Button onClick={() => setDirectExecutionOpen(true)} className="gap-2"><Plus className="h-4 w-4" /> Novo Pedido / Obra</Button>
               <Button onClick={() => setDeliveryOpen(true)} className="gap-2"><Truck className="h-4 w-4" /> Liberar itens para entrega</Button>
             </>
           ) : (
@@ -1339,6 +1341,20 @@ export default function PipelineOperacional() {
         token={token ?? ""}
       />
 
+      <DirectExecutionDialog
+        open={directExecutionOpen}
+        onOpenChange={setDirectExecutionOpen}
+        tenantId={tenantId}
+        token={token ?? ""}
+        deals={dealsQuery.data ?? []}
+        leads={leadsQuery.data ?? []}
+        users={usersQuery.data ?? []}
+        existingCards={cardsQuery.data ?? []}
+        onCreated={async () => {
+          setDirectExecutionOpen(false);
+          await queryClient.invalidateQueries({ queryKey: ["work-cards", tenantId, "execucao"] });
+        }}
+      />
       <DeliveryDialog
         open={deliveryOpen}
         onOpenChange={setDeliveryOpen}
@@ -2000,6 +2016,188 @@ function DeliveryDialog({ open, onOpenChange, tenantId, token, deals, leads, use
           </div>
         </div>
         <DialogFooter><Button variant="outline" onClick={() => onOpenChange(false)}>Cancelar</Button><Button disabled={saving || balanceQuery.isLoading} onClick={() => void submit()}>{saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Criar lote e card</Button></DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+
+function DirectExecutionDialog({ open, onOpenChange, tenantId, token, leads, deals, users, existingCards, onCreated }: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  tenantId: string;
+  token: string;
+  leads: Lead[];
+  deals: Deal[];
+  users: User[];
+  existingCards: WorkCard[];
+  onCreated: () => void | Promise<void>;
+}) {
+  const { toast } = useToast();
+  const [leadId, setLeadId] = useState("");
+  const [dealId, setDealId] = useState("");
+  const [titulo, setTitulo] = useState("");
+  const [responsavelId, setResponsavelId] = useState("");
+  const [notes, setNotes] = useState("");
+  const [file, setFile] = useState<File | null>(null);
+  const [extracting, setExtracting] = useState(false);
+  const [extracted, setExtracted] = useState<{ cliente?: string; valorTotal?: number; confianca?: number; observacoes?: string; itens?: unknown[] } | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  async function extractDocument() {
+    if (!file || !fileValid || extracting) return;
+    setExtracting(true);
+    try {
+      // Reutiliza o extrator de orçamento já disponível no CRM.
+      // Outros contratos ou pedidos podem exigir revisão manual.
+      const formData = new FormData();
+      formData.append("file", file, file.name);
+      const response = await fetch(`/api/tenants/${tenantId}/deals/extract-quote`, {
+        method: "POST", headers: { Authorization: `Bearer ${token}` }, body: formData,
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.error || "Não foi possível extrair os dados.");
+      setExtracted(result);
+      if (!titulo.trim() && result.titulo) setTitulo(String(result.titulo));
+      if (!notes.trim() && result.observacoes) setNotes(String(result.observacoes));
+      const norm = (value: unknown) => String(value || "").trim().toLowerCase();
+      const customer = norm(result.cliente);
+      const matched = leads.find((lead) => customer && (norm(lead.nome) === customer || norm(lead.empresa) === customer));
+      if (matched && !dealId) setLeadId(matched.id);
+      toast({ title: "Leitura concluída", description: "Confira os dados extraídos antes de criar a execução." });
+    } catch (error) {
+      toast({ title: "Leitura automática indisponível", description: error instanceof Error ? error.message : String(error), variant: "destructive" });
+    } finally { setExtracting(false); }
+  }
+  const selectedDeal = deals.find((item) => item.id === dealId);
+  const resolvedLeadId = selectedDeal?.leadId || leadId || null;
+  const selectedLead = leads.find((item) => item.id === resolvedLeadId);
+  const duplicates = existingCards.filter((item) => item.pipeline === "execucao" && (
+    (dealId && item.dealId === dealId && item.tipo === "pedido_direto") ||
+    (file && item.metadata?.sourceFileName === file.name &&
+      item.leadId === resolvedLeadId && item.tipo === "pedido_direto")
+  ));
+  const fileValid = !file || (file.size > 0 && file.size <= 15 * 1024 * 1024 &&
+    /\.(pdf|docx|png|jpe?g|webp)$/i.test(file.name));
+
+  async function submit() {
+    if (saving) return;
+    if (!titulo.trim() || !responsavelId || (!dealId && !resolvedLeadId) || !fileValid) {
+      toast({ title: "Informe cliente ou negócio, título, responsável e documento válido.", variant: "destructive" });
+      return;
+    }
+    if (duplicates.length) {
+      toast({ title: "Já existe uma execução vinculada.", description: "Abra o pedido existente antes de criar outro.", variant: "destructive" });
+      return;
+    }
+    setSaving(true);
+    let cardCreated = false;
+    try {
+      // O contrato original é anexado ao cartão após a criação. Não fazemos OCR ou
+      // inferência silenciosa: os campos são conferidos pelo operador.
+      const response = await fetch(`/api/tenants/${tenantId}/work-cards`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          tenantId,
+          pipeline: "execucao",
+          tipo: "pedido_direto",
+          etapa: "pedido_confirmado",
+          titulo: titulo.trim(),
+          descricao: notes.trim() || null,
+          leadId: resolvedLeadId,
+          dealId: dealId || null,
+          responsavelId,
+          metadata: { origem: "entrada_direta", sourceFileName: file?.name || null,
+            requiresDocumentReview: Boolean(file), clientName: selectedLead?.nome || selectedLead?.empresa || null },
+        }),
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok || !body.id) throw new Error(body.error || "Não foi possível criar o pedido.");
+      cardCreated = true;
+      if (file) {
+        const request = await fetch("/api/storage/uploads/request-url", {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+          body: JSON.stringify({ name: file.name, size: file.size, contentType: file.type || "application/octet-stream" }),
+        });
+        const metadata = await request.json().catch(() => ({}));
+        if (!request.ok || !metadata.uploadURL || !metadata.objectPath) throw new Error("Pedido criado, mas o upload do documento falhou.");
+        const uploaded = await fetch(metadata.uploadURL, { method: "PUT", body: file,
+          headers: { "Content-Type": file.type || "application/octet-stream" } });
+        if (!uploaded.ok) throw new Error("Pedido criado, mas o upload do documento falhou.");
+        const linked = await fetch(`/api/work-cards/${body.id}/attachments`, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+          body: JSON.stringify({ nome: file.name, url: `/api/storage${metadata.objectPath}`,
+            mimeType: file.type || "application/octet-stream", tamanho: file.size,
+            origem: "contrato_pedido_importado", descricao: "Documento original para conferência." }),
+        });
+        if (!linked.ok) throw new Error("Pedido criado, mas não foi possível vincular o documento.");
+      }
+      toast({ title: "Pedido criado em Execução.", description: "Documento e responsável vinculados quando informados." });
+      setLeadId(""); setDealId(""); setTitulo(""); setResponsavelId(""); setNotes(""); setFile(null);
+      await onCreated();
+    } catch (error) {
+      toast({ title: cardCreated ? "Pedido criado com pendência de anexo" : "Falha ao criar pedido",
+        description: error instanceof Error ? error.message : String(error), variant: "destructive" });
+      if (cardCreated) await onCreated();
+    } finally { setSaving(false); }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={(value) => { if (!saving) onOpenChange(value); }}>
+      <DialogContent className="max-h-[92vh] max-w-xl overflow-y-auto">
+        <DialogHeader><DialogTitle>Novo Pedido / Obra — entrada direta</DialogTitle></DialogHeader>
+        <div className="space-y-3">
+          <p className="text-sm text-muted-foreground">Importe um contrato ou pedido e confira os dados antes de criar a execução. O documento original ficará anexado.</p>
+          <div><label className="text-sm font-medium">Negócio existente (opcional)</label>
+            <Select value={dealId || "__none"} onValueChange={(value) => setDealId(value === "__none" ? "" : value)}>
+              <SelectTrigger><SelectValue placeholder="Selecionar negócio" /></SelectTrigger>
+              <SelectContent><SelectItem value="__none">Sem negócio existente</SelectItem>{deals.map((item) => <SelectItem key={item.id} value={item.id}>{item.titulo}</SelectItem>)}</SelectContent>
+            </Select>
+          </div>
+          <div><label className="text-sm font-medium">Cliente *</label>
+            <Select disabled={Boolean(selectedDeal?.leadId)} value={resolvedLeadId || "__none"} onValueChange={(value) => setLeadId(value === "__none" ? "" : value)}>
+              <SelectTrigger><SelectValue placeholder="Selecionar cliente" /></SelectTrigger>
+              <SelectContent><SelectItem value="__none">Selecionar cliente</SelectItem>{leads.map((item) => <SelectItem key={item.id} value={item.id}>{item.empresa || item.nome || item.id}</SelectItem>)}</SelectContent>
+            </Select>
+          </div>
+          <div><label className="text-sm font-medium">Título do pedido/obra *</label>
+            <Input value={titulo} onChange={(event) => setTitulo(event.target.value)} placeholder="Ex.: Reforma comercial — Contrato 025" />
+          </div>
+          <div><label className="text-sm font-medium">Responsável inicial *</label>
+            <Select value={responsavelId} onValueChange={setResponsavelId}>
+              <SelectTrigger><SelectValue placeholder="Selecionar responsável" /></SelectTrigger>
+              <SelectContent>{users.filter((user) => user.active !== false).map((user) => <SelectItem key={user.id} value={user.id}>{user.name || user.email || user.id}</SelectItem>)}</SelectContent>
+            </Select>
+          </div>
+          <div><label className="text-sm font-medium">Contrato ou pedido (PDF, DOCX, imagem; até 15 MB)</label>
+            <Input type="file" accept=".pdf,.docx,.png,.jpg,.jpeg,.webp" onChange={(event) => { setFile(event.target.files?.[0] || null); setExtracted(null); }}/>
+            {!fileValid && <p className="text-xs text-destructive">Formato ou tamanho do arquivo inválido.</p>}
+            {file && fileValid && <Button type="button" variant="outline" size="sm" disabled={extracting || saving} onClick={() => void extractDocument()}>
+              {extracting ? "Extraindo informações..." : "Ler dados com IA"}
+            </Button>}
+            {extracted && <div className="mt-2 rounded-md border p-3 text-sm space-y-1">
+              <p className="font-semibold">Prévia extraída — confira antes de salvar</p>
+              <p>Cliente: {extracted.cliente || "Não identificado"}</p>
+              <p>Valor: {extracted.valorTotal == null ? "Não identificado" : Number(extracted.valorTotal).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</p>
+              <p>Itens identificados: {extracted.itens?.length ?? 0}</p>
+              <p>Confiança informada: {extracted.confianca == null ? "Não informada" : Math.round(extracted.confianca * 100) + "%"}</p>
+              <p className="text-muted-foreground">O extrator atual foi desenvolvido para orçamentos. Contratos e pedidos devem ser conferidos manualmente.</p>
+            </div>}
+          </div>
+          <div><label className="text-sm font-medium">Observações / dados conferidos</label>
+            <Textarea value={notes} onChange={(event) => setNotes(event.target.value)} rows={3} placeholder="Número do contrato, prazos e informações verificadas" />
+          </div>
+          {duplicates.length > 0 && <div role="alert" className="rounded-md border border-amber-400/40 p-3 text-sm text-amber-700">Já existe um pedido direto vinculado. Verifique antes de duplicar.</div>}
+        </div>
+        <DialogFooter>
+          <Button variant="outline" type="button" disabled={saving} onClick={() => onOpenChange(false)}>Cancelar</Button>
+          <Button type="button" disabled={saving || duplicates.length > 0 || !fileValid || !titulo.trim() || !responsavelId || !resolvedLeadId} onClick={() => void submit()}>
+            {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} Criar em Execução
+          </Button>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   );

@@ -281,7 +281,8 @@ export function NewLeadDialog({
   objectivePlaceholder,
   onNavigate,
 }: Props) {
-  const [open, setOpen] = useState(false);
+  const returningToDeal = new URLSearchParams(window.location.search).get("newDealLead") === "1";
+  const [open, setOpen] = useState(returningToDeal);
   // Synchronous lock: prevents double-click submitting two lead creations before React rerenders.
   const submissionInFlight = useRef(false);
   const registrationRequestIdRef = useRef<string | null>(null);
@@ -317,7 +318,7 @@ export function NewLeadDialog({
 
   const form = useForm<NewLeadValues>({
     resolver: zodResolver(newLeadSchema),
-    defaultValues: DEFAULT_VALUES,
+    defaultValues: returningToDeal ? { ...DEFAULT_VALUES, createInitialDeal: false } : DEFAULT_VALUES,
   });
 
   const cadastroTipo = form.watch("cadastroTipo");
@@ -441,7 +442,7 @@ export function NewLeadDialog({
     setCoClient({ dataNascimento: "", nome: "", telefone: "", email: "", documento: "", profissao: "", funcao: "" });
     setServerDuplicate(null);
     resetCoupon();
-    form.reset(DEFAULT_VALUES);
+    form.reset(returningToDeal ? { ...DEFAULT_VALUES, createInitialDeal: false } : DEFAULT_VALUES);
   }
 
   async function validateCoupon(codeValue?: string): Promise<CouponValidation | null> {
@@ -1022,7 +1023,8 @@ export function NewLeadDialog({
 
       registrationRequestIdRef.current = null;
       closeAndReset();
-      if (dealId) onNavigate(`/trabalho/${leadId}?dealId=${encodeURIComponent(dealId)}`);
+      if (returningToDeal) onNavigate(`/deals?newDealLeadId=${encodeURIComponent(leadId)}`);
+      else if (dealId) onNavigate(`/trabalho/${leadId}?dealId=${encodeURIComponent(dealId)}`);
     } catch (error: any) {
       if (createdLeadId) {
         toast({
