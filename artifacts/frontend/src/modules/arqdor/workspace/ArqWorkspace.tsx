@@ -404,6 +404,8 @@ const CSS = `
 
   /* ─── Module content panel ─── */
   .phx-module-wrap {
+    min-height: 0;
+    overscroll-behavior: contain;
     animation: phx-shell-in 0.2s ease both;
   }
 `
@@ -1038,8 +1040,8 @@ function WorkspaceInner() {
             ══════════════════════════════════════════════════════════ */}
         <div style={{ flex:1, overflow:'hidden', display:'flex', flexDirection:'row', minHeight:0 }}>
           {/* ── module content ── */}
-          <div style={{ flex:1, overflow:'hidden', position:'relative', minWidth:0 }}>
-            <div key={activeModule} className="phx-module-wrap" style={{ height:'100%', overflow:'hidden' }}>
+          <div style={{ flex:1, overflow:'hidden', position:'relative', minWidth:0, minHeight:0 }}>
+            <div key={activeModule} className="phx-module-wrap" style={{ height:'100%', overflowX:'hidden', overflowY:'auto' }}>
               <Suspense fallback={
                 <div style={{
                   height:'100%', display:'flex', alignItems:'center', justifyContent:'center',
