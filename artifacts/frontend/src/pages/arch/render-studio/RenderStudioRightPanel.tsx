@@ -96,6 +96,24 @@ export function RenderStudioRightPanel({
 
           <div id="arqdor-render-tab-content" role="tabpanel" aria-labelledby={`arqdor-render-tab-${tab}`} className="arqdor-properties-scroll" style={{ flex: 1, overflowY: "auto", padding: 12, display: "flex", flexDirection: "column", gap: 10 }}>
 
+            {tab === "propriedades" && (
+              <section aria-label="Configurações rápidas do render" style={{ border: `1px solid ${D.border}`, background: D.card, borderRadius: 8, padding: 10, display: "flex", flexDirection: "column", gap: 8 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: D.text }}>Render · Configurações rápidas</div>
+                <label style={{ fontSize: 10, color: D.muted }} htmlFor="arqdor-render-scene-type">Tipo de cena</label>
+                <select id="arqdor-render-scene-type" value={sceneType} onChange={(event) => setSceneType(event.target.value as RenderStudioSceneType)} style={inputStyle}>
+                  <option value="interior">Interior</option><option value="facade">Fachada</option><option value="outdoor">Área externa</option><option value="gourmet">Área gourmet</option><option value="pool">Piscina</option>
+                </select>
+                <label style={{ fontSize: 10, color: D.muted }} htmlFor="arqdor-render-lighting">Iluminação</label>
+                <select id="arqdor-render-lighting" value={lightingProfile} onChange={(event) => setLightingProfile(event.target.value as RenderStudioLightingProfile)} style={inputStyle}>
+                  <option value="natural">Natural</option><option value="balanced">Equilibrada</option><option value="more_light">Mais luz</option><option value="warm">Quente</option><option value="editorial">Editorial</option><option value="night">Noturna</option>
+                </select>
+                <label style={{ fontSize: 10, color: D.muted }} htmlFor="arqdor-render-profile">Perfil de renderização</label>
+                <select id="arqdor-render-profile" value={renderProfile} onChange={(event) => setRenderProfile(event.target.value as RenderStudioProfile)} style={inputStyle}>
+                  <option value="technical">Técnico</option><option value="premium">Premium</option><option value="decorated">Decorado</option>
+                </select>
+                <div style={{ fontSize: 10, color: D.dim }}>Os parâmetros são aplicados pelo fluxo de renderização existente; controles de câmera 3D dependem da integração com o modelo.</div>
+              </section>
+
             {/* P2-15: Camadas — dados reais */}
             {tab === "camadas" && (
               <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
