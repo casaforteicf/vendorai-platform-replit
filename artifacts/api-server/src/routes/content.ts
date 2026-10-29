@@ -51,7 +51,7 @@ const PLAN_LIMITS: Record<string, number> = {
 
 const generateBodySchema = z.object({
   type: z.enum(["feed", "stories", "reels", "linkedin", "youtube", "tiktok"]),
-  theme: z.string().min(3, "Descreva o tema (mín. 3 caracteres)"),
+  theme: z.string().min(3, "Descreva o tema (m�n. 3 caracteres)"),
   productId: z.string().optional().nullable(),
   productSource: z.enum(["catalog", "varejo", "supermercado", "insumo"]).optional().default("catalog"),
   variations: z.coerce.number().int().min(1).max(3).default(1),
@@ -59,9 +59,9 @@ const generateBodySchema = z.object({
   imageUrls: z.array(z.string()).optional().default([]),
   contentFormat: z.enum(["feed_square", "feed_portrait", "stories", "reels"]).optional().nullable(),
   aspectRatio: z.string().optional().nullable(),
-  // Fotos do cliente marcadas como "Material" — vão direto como imageUrls do carrossel
+  // Fotos do cliente marcadas como "Material" — v�o direto como imageUrls do carrossel
   postMaterialUrls: z.array(z.string()).optional().default([]),
-  // Campos estratégicos — Passo 2
+  // Campos estrat�gicos — Passo 2
   customerPain: z.string().optional().nullable(),
   postObjective: z.string().optional().nullable(),
   voiceTone: z.string().optional().nullable(),
@@ -110,7 +110,7 @@ async function resolveValidatedPlannerContext(input: {
     ? ((plan?.conteudo as { campanhas?: ValidatedPlannerContext["campaign"][] }).campanhas ?? [])
     : [];
   const campaign = campaigns.find((entry) => entry.id === input.campaignId);
-  const calendarCampaignName = String(calendarItem?.pilar ?? "").split(" · ")[0]?.trim() ?? "";
+  const calendarCampaignName = String(calendarItem?.pilar ?? "").split(" � ")[0]?.trim() ?? "";
 
   if (
     !plan ||
@@ -195,14 +195,14 @@ router.post("/tenants/:tenantId/content/generate", async (req, res) => {
 
   if (hasPlannerContext) {
     if (!mediaPlanId || !campaignId || !calendarItemId) {
-      res.status(422).json({ error: "Contexto da campanha incompleto. A geração foi bloqueada." });
+      res.status(422).json({ error: "Contexto da campanha incompleto. A gera��o foi bloqueada." });
       return;
     }
 
     plannerContext = await resolveValidatedPlannerContext({ tenantId, mediaPlanId, campaignId, calendarItemId });
     if (!plannerContext) {
-      req.log.warn({ tenantId, mediaPlanId, campaignId, calendarItemId }, "content: contexto de campanha inválido");
-      res.status(409).json({ error: "A ação não pertence à campanha informada. A geração foi bloqueada." });
+      req.log.warn({ tenantId, mediaPlanId, campaignId, calendarItemId }, "content: contexto de campanha inv�lido");
+      res.status(409).json({ error: "A a��o n�o pertence � campanha informada. A gera��o foi bloqueada." });
       return;
     }
   }
@@ -235,7 +235,7 @@ router.post("/tenants/:tenantId/content/generate", async (req, res) => {
         productName = p.nome;
         const extras: string[] = [];
         if (p.categoria) extras.push(`Categoria: ${p.categoria}`);
-        if (p.genero) extras.push(`Gênero: ${p.genero}`);
+        if (p.genero) extras.push(`G�nero: ${p.genero}`);
         if (extras.length) productExtra = extras.join(" | ");
       }
     } else if (src === "supermercado") {
@@ -293,8 +293,8 @@ router.post("/tenants/:tenantId/content/generate", async (req, res) => {
     referencePatterns: plannerContext
       ? [
           `Campanha validada: ${plannerContext.campaign.nome}`,
-          `Produto/serviço validado: ${plannerContext.campaign.produtoServico}`,
-          `Público validado: ${plannerContext.campaign.publico}`,
+          `Produto/servi�o validado: ${plannerContext.campaign.produtoServico}`,
+          `P�blico validado: ${plannerContext.campaign.publico}`,
           `Mensagem central validada: ${plannerContext.campaign.mensagemCentral}`,
         ].join("\n")
       : [libraryContext.promptBlock, ownPerfBlock, refCreatorsBlock].filter(Boolean).join("\n\n"),
@@ -315,11 +315,11 @@ router.post("/tenants/:tenantId/content/generate", async (req, res) => {
     }
   } catch (err) {
     req.log.error({ err }, "content generation failed");
-    res.status(500).json({ error: "Falha na geração de conteúdo. Tente novamente." });
+    res.status(500).json({ error: "Falha na gera��o de conteúdo. Tente novamente." });
     return;
   }
 
-  // Se o cliente enviou fotos como "Material", injeta direto nas variações (sem gerar via IA)
+  // Se o cliente enviou fotos como "Material", injeta direto nas varia��es (sem gerar via IA)
   if (postMaterialUrls && postMaterialUrls.length > 0) {
     const varArray = result.result.variations as Array<Record<string, unknown>>;
     for (const v of varArray) {
@@ -380,7 +380,7 @@ router.post("/tenants/:tenantId/content/generate", async (req, res) => {
 });
 
 const strategyBodySchema = z.object({
-  command: z.string().min(3, "Descreva o comando (mín. 3 caracteres)"),
+  command: z.string().min(3, "Descreva o comando (m�n. 3 caracteres)"),
   contentType: z.enum(["feed", "stories", "reels", "linkedin", "youtube", "tiktok"]).default("feed"),
   variations: z.coerce.number().int().min(1).max(5).default(3),
 });
@@ -423,7 +423,7 @@ router.post("/tenants/:tenantId/content/strategy", async (req, res) => {
     res.json({ ...strategy, contextSources: libraryContext.sources });
   } catch (err) {
     req.log.error({ err }, "content strategy generation failed");
-    res.status(500).json({ error: "Falha na geração de estratégia. Tente novamente." });
+    res.status(500).json({ error: "Falha na gera��o de estrat�gia. Tente novamente." });
   }
 });
 
@@ -477,7 +477,7 @@ const feedCoverBodySchema = z.object({
   imageIndex: z.number().int().min(0).max(9),
 });
 
-// POST .../variations/:idx/generate-image — gera imagem via IA e salva na variação
+// POST .../variations/:idx/generate-image — gera imagem via IA e salva na varia��o
 router.post("/tenants/:tenantId/content/:contentId/variations/:idx/generate-image", async (req, res) => {
   const tenantId = String(req.params["tenantId"]);
   const contentId = String(req.params["contentId"]);
@@ -494,8 +494,8 @@ router.post("/tenants/:tenantId/content/:contentId/variations/:idx/generate-imag
     .where(and(eq(contentGenerationsTable.id, contentId), eq(contentGenerationsTable.tenantId, tenantId)))
     .limit(1);
 
-  if (!gen) { res.status(404).json({ error: "Conteúdo não encontrado" }); return; }
-  if (gen.type === "reels") { res.status(400).json({ error: "Reels não suportam geração de imagem" }); return; }
+  if (!gen) { res.status(404).json({ error: "Conte�do n�o encontrado" }); return; }
+  if (gen.type === "reels") { res.status(400).json({ error: "Reels n�o suportam gera��o de imagem" }); return; }
 
   const [profile] = await db
     .select()
@@ -531,12 +531,12 @@ router.post("/tenants/:tenantId/content/:contentId/variations/:idx/generate-imag
   }
 
   if (!imageUrl) {
-    res.status(502).json({ error: "DALL-E não retornou imagem. Tente novamente." });
+    res.status(502).json({ error: "DALL-E n�o retornou imagem. Tente novamente." });
     return;
   }
 
   const variations = [...gen.result.variations] as (typeof gen.result.variations[number] & { imageUrl?: string; imageUrls?: string[]; imageSource?: "ai" | "upload" })[];
-  if (!variations[idx]) { res.status(400).json({ error: "Variação inválida" }); return; }
+  if (!variations[idx]) { res.status(400).json({ error: "Varia��o inv�lida" }); return; }
   variations[idx] = { ...variations[idx], imageUrl, imageUrls: undefined, imageSource: "ai" } as typeof variations[number];
 
   await db
@@ -559,7 +559,7 @@ router.patch("/tenants/:tenantId/content/:contentId/variations/:idx/image", asyn
 
   const body = patchMediaBodySchema.safeParse(req.body);
   if (!body.success) {
-    res.status(400).json({ error: "objectPath é obrigatório" });
+    res.status(400).json({ error: "objectPath � obrigat�rio" });
     return;
   }
 
@@ -569,7 +569,7 @@ router.patch("/tenants/:tenantId/content/:contentId/variations/:idx/image", asyn
     .where(and(eq(contentGenerationsTable.id, contentId), eq(contentGenerationsTable.tenantId, tenantId)))
     .limit(1);
 
-  if (!gen) { res.status(404).json({ error: "Conteúdo não encontrado" }); return; }
+  if (!gen) { res.status(404).json({ error: "Conte�do n�o encontrado" }); return; }
 
   const variations = [...gen.result.variations] as (typeof gen.result.variations[number] & {
     imageUrl?: string | null;
@@ -583,7 +583,7 @@ router.patch("/tenants/:tenantId/content/:contentId/variations/:idx/image", asyn
     framed?: boolean;
     imageSource?: "ai" | "upload";
   })[];
-  if (!variations[idx]) { res.status(400).json({ error: "Variação inválida" }); return; }
+  if (!variations[idx]) { res.status(400).json({ error: "Varia��o inv�lida" }); return; }
 
   const mediaUrl = `/api/storage${body.data.objectPath}`;
   const variation = variations[idx]!;
@@ -594,7 +594,7 @@ router.patch("/tenants/:tenantId/content/:contentId/variations/:idx/image", asyn
       const currentUrls = variation.imageUrls ?? (variation.imageUrl ? [variation.imageUrl] : []);
       const nextUrls = Array.from(new Set([...currentUrls, mediaUrl]));
       if (nextUrls.length > 10) {
-        res.status(422).json({ error: "O Feed aceita no máximo 10 imagens por publicação." });
+        res.status(422).json({ error: "O Feed aceita no m�ximo 10 imagens por publica��o." });
         return;
       }
       responseImageUrls = nextUrls;
@@ -659,7 +659,7 @@ router.patch("/tenants/:tenantId/content/:contentId/variations/:idx/feed-cover",
 
   const body = feedCoverBodySchema.safeParse(req.body);
   if (!body.success) {
-    res.status(422).json({ error: "Selecione uma imagem válida para a capa." });
+    res.status(422).json({ error: "Selecione uma imagem v�lida para a capa." });
     return;
   }
 
@@ -669,19 +669,19 @@ router.patch("/tenants/:tenantId/content/:contentId/variations/:idx/feed-cover",
     .where(and(eq(contentGenerationsTable.id, contentId), eq(contentGenerationsTable.tenantId, tenantId)))
     .limit(1);
 
-  if (!gen) { res.status(404).json({ error: "Conteúdo não encontrado" }); return; }
-  if (gen.type !== "feed") { res.status(422).json({ error: "Capa por reordenação está disponível apenas para Feed/Carrossel." }); return; }
+  if (!gen) { res.status(404).json({ error: "Conte�do n�o encontrado" }); return; }
+  if (gen.type !== "feed") { res.status(422).json({ error: "Capa por reordena��o est� dispon�vel apenas para Feed/Carrossel." }); return; }
 
   const variations = [...gen.result.variations] as (typeof gen.result.variations[number] & {
     imageUrl?: string | null;
     imageUrls?: string[];
   })[];
   const variation = variations[idx];
-  if (!variation) { res.status(400).json({ error: "Variação inválida" }); return; }
+  if (!variation) { res.status(400).json({ error: "Varia��o inv�lida" }); return; }
 
   const currentUrls = variation.imageUrls ?? (variation.imageUrl ? [variation.imageUrl] : []);
   const selected = currentUrls[body.data.imageIndex];
-  if (!selected) { res.status(422).json({ error: "Essa imagem não existe mais no carrossel." }); return; }
+  if (!selected) { res.status(422).json({ error: "Essa imagem n�o existe mais no carrossel." }); return; }
 
   const nextUrls = [selected, ...currentUrls.filter((_, imageIndex) => imageIndex !== body.data.imageIndex)];
   variations[idx] = {
@@ -710,7 +710,7 @@ router.patch("/tenants/:tenantId/content/:contentId/variations/:idx/reel-cover",
 
   const body = reelCoverBodySchema.safeParse(req.body);
   if (!body.success) {
-    res.status(422).json({ error: "Informe um frame válido em milissegundos." });
+    res.status(422).json({ error: "Informe um frame v�lido em milissegundos." });
     return;
   }
 
@@ -720,8 +720,8 @@ router.patch("/tenants/:tenantId/content/:contentId/variations/:idx/reel-cover",
     .where(and(eq(contentGenerationsTable.id, contentId), eq(contentGenerationsTable.tenantId, tenantId)))
     .limit(1);
 
-  if (!gen) { res.status(404).json({ error: "Conteúdo não encontrado" }); return; }
-  if (gen.type !== "reels") { res.status(422).json({ error: "A seleção de capa por frame está disponível apenas para Reels." }); return; }
+  if (!gen) { res.status(404).json({ error: "Conte�do n�o encontrado" }); return; }
+  if (gen.type !== "reels") { res.status(422).json({ error: "A sele��o de capa por frame est� dispon�vel apenas para Reels." }); return; }
 
   const variations = [...gen.result.variations] as (typeof gen.result.variations[number] & {
     videoUrl?: string;
@@ -732,8 +732,8 @@ router.patch("/tenants/:tenantId/content/:contentId/variations/:idx/reel-cover",
     thumbOffsetMs?: number;
   })[];
   const variation = variations[idx];
-  if (!variation) { res.status(400).json({ error: "Variação inválida" }); return; }
-  if (!variation.videoUrl) { res.status(422).json({ error: "Adicione o vídeo antes de escolher um frame de capa." }); return; }
+  if (!variation) { res.status(400).json({ error: "Varia��o inv�lida" }); return; }
+  if (!variation.videoUrl) { res.status(422).json({ error: "Adicione o v�deo antes de escolher um frame de capa." }); return; }
 
   variations[idx] = {
     ...variation,
@@ -764,7 +764,7 @@ router.patch("/tenants/:tenantId/content/:contentId/variations/:idx/reel-cover/c
 
   const body = reelCoverCropBodySchema.safeParse(req.body);
   if (!body.success) {
-    res.status(422).json({ error: "Enquadramento inválido para a capa." });
+    res.status(422).json({ error: "Enquadramento inv�lido para a capa." });
     return;
   }
 
@@ -774,8 +774,8 @@ router.patch("/tenants/:tenantId/content/:contentId/variations/:idx/reel-cover/c
     .where(and(eq(contentGenerationsTable.id, contentId), eq(contentGenerationsTable.tenantId, tenantId)))
     .limit(1);
 
-  if (!gen) { res.status(404).json({ error: "Conteúdo não encontrado" }); return; }
-  if (gen.type !== "reels") { res.status(422).json({ error: "Enquadramento de capa disponível apenas para Reels." }); return; }
+  if (!gen) { res.status(404).json({ error: "Conte�do n�o encontrado" }); return; }
+  if (gen.type !== "reels") { res.status(422).json({ error: "Enquadramento de capa dispon�vel apenas para Reels." }); return; }
 
   const variations = [...gen.result.variations] as (typeof gen.result.variations[number] & {
     coverUrl?: string;
@@ -784,7 +784,7 @@ router.patch("/tenants/:tenantId/content/:contentId/variations/:idx/reel-cover/c
     coverCrop?: { zoom: number; x: number; y: number };
   })[];
   const variation = variations[idx];
-  if (!variation) { res.status(400).json({ error: "Variação inválida" }); return; }
+  if (!variation) { res.status(400).json({ error: "Varia��o inv�lida" }); return; }
   if (variation.coverSource === "frame") {
     res.status(422).json({ error: "Para crop/zoom, use uma imagem de capa enviada ou gerada por IA." });
     return;
@@ -815,7 +815,7 @@ router.patch("/tenants/:tenantId/content/:contentId/variations/:idx/reel-cover/c
     res.json({ success: true, coverUrl, coverCrop: rendered.crop });
   } catch (error) {
     req.log.error({ error }, "instagram-cover: falha ao aplicar crop");
-    const message = error instanceof Error ? error.message : "Não foi possível reenquadrar a capa.";
+    const message = error instanceof Error ? error.message : "N�o foi poss�vel reenquadrar a capa.";
     res.status(422).json({ error: message });
   }
 });
@@ -832,7 +832,7 @@ router.post("/tenants/:tenantId/content/:contentId/variations/:idx/reel-cover/ge
 
   const body = reelCoverGenerateBodySchema.safeParse(req.body ?? {});
   if (!body.success) {
-    res.status(422).json({ error: "Orientação inválida para geração da capa." });
+    res.status(422).json({ error: "Orienta��o inv�lida para gera��o da capa." });
     return;
   }
 
@@ -849,8 +849,8 @@ router.post("/tenants/:tenantId/content/:contentId/variations/:idx/reel-cover/ge
       .limit(1),
   ]);
 
-  if (!gen) { res.status(404).json({ error: "Conteúdo não encontrado" }); return; }
-  if (gen.type !== "reels") { res.status(422).json({ error: "Geração de capa disponível apenas para Reels." }); return; }
+  if (!gen) { res.status(404).json({ error: "Conte�do n�o encontrado" }); return; }
+  if (gen.type !== "reels") { res.status(422).json({ error: "Gera��o de capa dispon�vel apenas para Reels." }); return; }
 
   const variations = [...gen.result.variations] as (typeof gen.result.variations[number] & {
     title?: string;
@@ -861,15 +861,15 @@ router.post("/tenants/:tenantId/content/:contentId/variations/:idx/reel-cover/ge
     thumbOffsetMs?: number;
   })[];
   const variation = variations[idx];
-  if (!variation) { res.status(400).json({ error: "Variação inválida" }); return; }
+  if (!variation) { res.status(400).json({ error: "Varia��o inv�lida" }); return; }
 
-  const extra = body.data.instructions ? ` Orientação adicional: ${body.data.instructions}.` : "";
+  const extra = body.data.instructions ? ` Orienta��o adicional: ${body.data.instructions}.` : "";
   const observations = [
     "Crie uma capa premium para Reel do Instagram.",
-    "Mantenha o assunto principal claramente reconhecível e centralizado.",
+    "Mantenha o assunto principal claramente reconhec�vel e centralizado.",
     "Reserve margens visuais generosas para evitar cortes no perfil.",
-    "Composição fotográfica profissional, alto contraste e leitura imediata em tela pequena.",
-    "Sem texto, sem letras, sem marca d'água.",
+    "Composi��o fotogr�fica profissional, alto contraste e leitura imediata em tela pequena.",
+    "Sem texto, sem letras, sem marca d'�gua.",
     extra,
   ].join(" ");
 
@@ -887,7 +887,7 @@ router.post("/tenants/:tenantId/content/:contentId/variations/:idx/reel-cover/ge
       "4:5",
     );
     const generatedUrl = generated[0];
-    if (!generatedUrl) throw new Error("A IA não retornou uma imagem de capa.");
+    if (!generatedUrl) throw new Error("A IA n�o retornou uma imagem de capa.");
 
     const generatedBuffer = await fetchVariationImageBuffer(generatedUrl);
     const normalizedSource = await normalizeInstagramCoverSource(generatedBuffer);
@@ -918,7 +918,7 @@ router.post("/tenants/:tenantId/content/:contentId/variations/:idx/reel-cover/ge
     });
   } catch (error) {
     req.log.error({ error }, "instagram-cover: falha ao gerar capa com IA");
-    const message = error instanceof Error ? error.message : "Não foi possível gerar a capa.";
+    const message = error instanceof Error ? error.message : "N�o foi poss�vel gerar a capa.";
     res.status(502).json({ error: message });
   }
 });
@@ -974,15 +974,15 @@ router.post("/tenants/:tenantId/content/:contentId/variations/:idx/apply-brand-f
     .from(contentGenerationsTable)
     .where(and(eq(contentGenerationsTable.id, contentId), eq(contentGenerationsTable.tenantId, tenantId)))
     .limit(1);
-  if (!gen) { res.status(404).json({ error: "Conteúdo não encontrado" }); return; }
+  if (!gen) { res.status(404).json({ error: "Conte�do n�o encontrado" }); return; }
 
   const variations = [...gen.result.variations] as (typeof gen.result.variations[number] & { imageUrl?: string | null; imageUrls?: string[]; framed?: boolean; imageSource?: "ai" | "upload" })[];
   const variation = variations[idx];
-  if (!variation) { res.status(400).json({ error: "Variação inválida" }); return; }
+  if (!variation) { res.status(400).json({ error: "Varia��o inv�lida" }); return; }
 
   const currentUrls = variation.imageUrls ?? (variation.imageUrl ? [variation.imageUrl] : []);
   const sourceUrl = currentUrls[imageIndex];
-  if (!sourceUrl) { res.status(422).json({ error: "Essa variação não tem imagem nesse índice." }); return; }
+  if (!sourceUrl) { res.status(422).json({ error: "Essa varia��o n�o tem imagem nesse �ndice." }); return; }
 
   const [tenant] = await db
     .select({ corPrimaria: tenantsTable.corPrimaria, logoUrl: tenantsTable.logoUrl })
@@ -1014,7 +1014,7 @@ router.post("/tenants/:tenantId/content/:contentId/variations/:idx/apply-brand-f
   } catch (err) {
     req.log.error({ err }, "apply-brand-frame: falha ao gerar moldura");
     const msg = err instanceof Error ? err.message : "Erro desconhecido";
-    res.status(502).json({ error: `Não foi possível aplicar a moldura: ${msg}` });
+    res.status(502).json({ error: `N�o foi poss�vel aplicar a moldura: ${msg}` });
   }
 });
 
@@ -1033,13 +1033,13 @@ router.delete("/tenants/:tenantId/content/:contentId/variations/:idx/image", asy
     .where(and(eq(contentGenerationsTable.id, contentId), eq(contentGenerationsTable.tenantId, tenantId)))
     .limit(1);
 
-  if (!gen) { res.status(404).json({ error: "Conteúdo não encontrado" }); return; }
+  if (!gen) { res.status(404).json({ error: "Conte�do n�o encontrado" }); return; }
 
   const imageIndexRaw = req.query["imageIndex"];
   const imageIndex = imageIndexRaw !== undefined ? parseInt(String(imageIndexRaw), 10) : null;
 
   const variations = [...gen.result.variations] as (typeof gen.result.variations[number] & { imageUrl?: string | null; imageUrls?: string[] })[];
-  if (!variations[idx]) { res.status(400).json({ error: "Variação inválida" }); return; }
+  if (!variations[idx]) { res.status(400).json({ error: "Varia��o inv�lida" }); return; }
 
   const v = variations[idx] as typeof variations[number] & { imageUrl?: string | null; imageUrls?: string[] };
 
@@ -1070,7 +1070,7 @@ router.post("/tenants/:tenantId/content/:contentId/publish-instagram", async (re
 
   const body = publishBodySchema.safeParse(req.body);
   if (!body.success) {
-    res.status(400).json({ error: "variationIndex inválido" });
+    res.status(400).json({ error: "variationIndex inv�lido" });
     return;
   }
 
@@ -1125,24 +1125,24 @@ router.get("/tenants/:tenantId/content/instagram-grid", async (req, res) => {
     res.json({ connected: true, items });
   } catch (err) {
     if (err instanceof SocialPublicationError) {
-      // Não conectado/token expirado — não é erro de servidor, o frontend
+      // N�o conectado/token expirado — n�o � erro de servidor, o frontend
       // trata como "conecte o Instagram" em vez de mostrar falha.
       res.json({ connected: false, items: [] });
       return;
     }
-    req.log.error({ err }, "instagram-grid: falha ao listar mídia publicada");
-    res.status(502).json({ connected: false, items: [], error: "Não foi possível carregar a grade do Instagram agora." });
+    req.log.error({ err }, "instagram-grid: falha ao listar m�dia publicada");
+    res.status(502).json({ connected: false, items: [], error: "N�o foi poss�vel carregar a grade do Instagram agora." });
   }
 });
 
 /**
- * "Inteligência" de layout — motor de regras (não um agente autônomo):
- * 1. Olha o tipo dos últimos posts publicados de verdade (media_type da
- *    Graph API: IMAGE/CAROUSEL_ALBUM = Feed estático, VIDEO = Reels) e
+ * "Intelig�ncia" de layout — motor de regras (n�o um agente aut�nomo):
+ * 1. Olha o tipo dos �ltimos posts publicados de verdade (media_type da
+ *    Graph API: IMAGE/CAROUSEL_ALBUM = Feed est�tico, VIDEO = Reels) e
  *    recomenda alternar quando o mesmo tipo se repete demais em seguida.
  * 2. Vasculha a Biblioteca por rascunhos de Feed enviados manualmente
- *    (imageSource "upload") que ainda não passaram pela moldura de marca
- *    — provável print/screenshot cru que vai destoar da grade.
+ *    (imageSource "upload") que ainda n�o passaram pela moldura de marca
+ *    — prov�vel print/screenshot cru que vai destoar da grade.
  */
 router.get("/tenants/:tenantId/content/layout-recommendation", async (req, res) => {
   const tenantId = String(req.params["tenantId"]);
@@ -1169,18 +1169,18 @@ router.get("/tenants/:tenantId/content/layout-recommendation", async (req, res) 
       }
       if (streak >= 2) {
         recommendedType = lastType === "feed" ? "reels" : "feed";
-        reason = `Os últimos ${streak} posts publicados foram todos ${lastType === "feed" ? "Feed (foto)" : "Reels (vídeo)"} — publicar um ${recommendedType === "feed" ? "Feed" : "Reels"} agora quebra a repetição e dá mais variedade pra grade.`;
+        reason = `Os �ltimos ${streak} posts publicados foram todos ${lastType === "feed" ? "Feed (foto)" : "Reels (v�deo)"} — publicar um ${recommendedType === "feed" ? "Feed" : "Reels"} agora quebra a repeti��o e d� mais variedade pra grade.`;
       } else {
-        reason = "A grade já está alternando entre Feed e Reels — sem repetição pra corrigir agora.";
+        reason = "A grade j� est� alternando entre Feed e Reels — sem repeti��o pra corrigir agora.";
       }
     } else {
-      reason = "Ainda não há posts publicados suficientes pra recomendar um padrão.";
+      reason = "Ainda n�o h� posts publicados suficientes pra recomendar um padr�o.";
     }
   } catch (err) {
     if (!(err instanceof SocialPublicationError)) {
       req.log.error({ err }, "layout-recommendation: falha ao ler grade real");
     }
-    reason = "Instagram não conectado — conecte pra receber recomendação de padrão da grade.";
+    reason = "Instagram n�o conectado — conecte pra receber recomenda��o de padr�o da grade.";
   }
 
   const libraryRows = await db
@@ -1244,7 +1244,7 @@ router.post("/tenants/:tenantId/content/highlight-cover", async (req, res) => {
   } catch (err) {
     req.log.error({ err }, "highlight-cover: falha ao gerar capa");
     const msg = err instanceof Error ? err.message : "Erro desconhecido";
-    res.status(502).json({ error: `Não foi possível gerar a capa: ${msg}` });
+    res.status(502).json({ error: `N�o foi poss�vel gerar a capa: ${msg}` });
   }
 });
 
@@ -1323,8 +1323,8 @@ router.post("/tenants/:tenantId/content/:contentId/variations/:idx/regenerate-im
     .where(and(eq(contentGenerationsTable.id, contentId), eq(contentGenerationsTable.tenantId, tenantId)))
     .limit(1);
 
-  if (!gen) { res.status(404).json({ error: "Conteúdo não encontrado" }); return; }
-  if (gen.type === "reels") { res.status(400).json({ error: "Reels não suportam geração de imagem" }); return; }
+  if (!gen) { res.status(404).json({ error: "Conte�do n�o encontrado" }); return; }
+  if (gen.type === "reels") { res.status(400).json({ error: "Reels n�o suportam gera��o de imagem" }); return; }
 
   const [profile] = await db
     .select()
@@ -1356,7 +1356,7 @@ router.post("/tenants/:tenantId/content/:contentId/variations/:idx/regenerate-im
     }
 
     const variations = [...gen.result.variations] as (typeof gen.result.variations[number] & { imageUrl?: string; imageUrls?: string[]; imageSource?: "ai" | "upload" })[];
-    if (!variations[idx]) { res.status(400).json({ error: "Variação inválida" }); return; }
+    if (!variations[idx]) { res.status(400).json({ error: "Varia��o inv�lida" }); return; }
 
     variations[idx] = {
       ...variations[idx],
@@ -1377,7 +1377,7 @@ router.post("/tenants/:tenantId/content/:contentId/variations/:idx/regenerate-im
   }
 });
 
-// ── Melhorar texto ────────────────────────────────────────────────────────────
+//    Melhorar texto                                                             
 
 const improveBodySchema = z.object({
   type: z.enum(["feed", "stories", "reels", "linkedin", "youtube", "tiktok"]),
@@ -1395,7 +1395,7 @@ router.post("/tenants/:tenantId/content/improve", async (req, res) => {
   try {
     const { type, variation, theme } = parsed.data;
     if (type === "tiktok") {
-      res.status(422).json({ error: "Melhoria de texto para TikTok ainda não é suportada por este motor." });
+      res.status(422).json({ error: "Melhoria de texto para TikTok ainda n�o � suportada por este motor." });
       return;
     }
     const { variation: improved, tokensUsed } = await improveVariationText(
@@ -1408,7 +1408,7 @@ router.post("/tenants/:tenantId/content/improve", async (req, res) => {
   }
 });
 
-// ── Biblioteca de Conteúdo ─────────────────────────────────────────────────────
+//    Biblioteca de Conte�do                                                      
 
 const libraryBodySchema = z.object({
   type: z.enum(["feed", "stories", "reels", "linkedin", "youtube", "tiktok"]),
@@ -1494,7 +1494,7 @@ router.delete("/tenants/:tenantId/content/library/:id", async (req, res) => {
   res.json({ success: true });
 });
 
-// ── Content Studio Uploads (Passo 3) ─────────────────────────────────────────
+//    Content Studio Uploads (Passo 3)                                          
 
 const uploadRegisterSchema = z.object({
   sessionId: z.string().min(1),
@@ -1523,7 +1523,7 @@ router.get("/tenants/:tenantId/content/uploads", async (req, res) => {
     res.status(403).json({ error: "Acesso negado" }); return;
   }
   const sessionId = String(req.query["sessionId"] ?? "");
-  if (!sessionId) { res.status(422).json({ error: "sessionId obrigatório" }); return; }
+  if (!sessionId) { res.status(422).json({ error: "sessionId obrigat�rio" }); return; }
   const rows = await db
     .select()
     .from(contentStudioUploadsTable)
@@ -1545,7 +1545,7 @@ router.patch("/tenants/:tenantId/content/uploads/:id", async (req, res) => {
     .set({ purpose: parsed.data.purpose })
     .where(and(eq(contentStudioUploadsTable.id, id), eq(contentStudioUploadsTable.tenantId, tenantId)))
     .returning();
-  if (!row) { res.status(404).json({ error: "Upload não encontrado" }); return; }
+  if (!row) { res.status(404).json({ error: "Upload n�o encontrado" }); return; }
   res.json(row);
 });
 
