@@ -6,8 +6,8 @@
 // • Esconder complexidade — usuário pensa em objetivos, não em módulos
 // • Espaço em branco — menos elementos, mais impacto
 // • Verde tecnológico como destaque único — premium, comercial e arquitetônico
-// • Fluxo linear — Criar → Inspirar → Renderizar → Melhorar → Especificar → Apresentar → Entregar
-// • ✨ Gerar Render sempre visível — CTA principal nunca some
+// • Navegação aprovada — Projetos → Modelagem 2D/3D → Materiais → Render → Especificações → Orçamento → Entrega
+// • Render acessível uma vez no menu principal, sem CTA duplicado
 // • Linguagem humana — sem termos técnicos no UI
 
 import { useState, useEffect, useRef, useCallback, Suspense, lazy } from 'react'
@@ -869,8 +869,8 @@ function WorkspaceInner() {
       if (e.key === '?' && !editing && !e.ctrlKey) { setShortcutsVisible(p => !p); return }
       if (editing) return
 
-      // 1–5 → flow steps (mapped to primary modules)
-      if (['1','2','3','4','5'].includes(e.key) && !e.ctrlKey && !e.metaKey) {
+      // 1–7 → seven approved environments (mapped to primary modules)
+      if (['1','2','3','4','5','6','7'].includes(e.key) && !e.ctrlKey && !e.metaKey) {
         const step = FLOW_STEPS[parseInt(e.key) - 1]
         if (step) setActiveModule(step.primary)
         return
