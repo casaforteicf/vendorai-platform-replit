@@ -938,7 +938,7 @@ function WorkspaceInner() {
           {/* Marca oficial ARQDOR: sem SVG recriado nem duplicação de logotipo. */}
           <div style={{ width:136, flexShrink:0, display:'flex', alignItems:'center', padding:'0 10px', borderRight:`1px solid ${PHX.border}`, height:'100%' }}>
             <img
-              src="/branding/arqdor/logo-reduzida.png"
+              src="/brand/arqdor-logo.png"
               alt="ARQDOR"
               style={{ display:'block', width:'100%', height:34, objectFit:'contain' }}
               onError={event => { event.currentTarget.style.display='none' }}
