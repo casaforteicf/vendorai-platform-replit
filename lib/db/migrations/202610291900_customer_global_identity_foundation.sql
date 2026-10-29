@@ -67,3 +67,24 @@ ALTER TABLE public.customer_global_tenant_links FORCE ROW LEVEL SECURITY;
 -- Intentionally NO policies and NO GRANT to vendorai_app / anon / authenticated:
 -- default-deny until a vetted global identity service and consent flow are built.
 -- No existing table, policy, session or password is modified.
+
+-- Single-use account-link challenges, bound to the authenticated global identity
+-- AND a legacy user in its original tenant. Only an audited privileged backend
+-- service can issue/consume them; no direct client grants are created.
+CREATE TABLE IF NOT EXISTS public.customer_global_link_challenges (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  global_identity_id uuid NOT NULL REFERENCES public.customer_global_identities(id) ON DELETE CASCADE,
+  tenant_id text NOT NULL REFERENCES public.tenants(id) ON DELETE CASCADE,
+  legacy_portal_user_id text NOT NULL REFERENCES public.customer_portal_users(id) ON DELETE CASCADE,
+  token_hash text NOT NULL UNIQUE,
+  expires_at timestamptz NOT NULL,
+  consumed_at timestamptz,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT customer_global_challenge_hash_check CHECK (token_hash ~ '^[0-9a-f]{64}$'),
+  CONSTRAINT customer_global_challenge_expiry_check CHECK (expires_at > created_at)
+);
+CREATE INDEX IF NOT EXISTS idx_customer_global_challenge_target
+  ON public.customer_global_link_challenges(global_identity_id, tenant_id, legacy_portal_user_id, expires_at);
+ALTER TABLE public.customer_global_link_challenges ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.customer_global_link_challenges FORCE ROW LEVEL SECURITY;
+-- Intentionally zero RLS policies / zero GRANT to application role.
