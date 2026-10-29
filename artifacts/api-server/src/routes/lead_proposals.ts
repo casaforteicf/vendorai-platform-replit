@@ -266,6 +266,69 @@ function absolutifyStorageUrlsForDownload(html: string, req: any): string {
     .replace(/href="\/objects\//g, `href="${toAbsolute("/api/storage/objects/")}`);
 }
 
+/**
+ * Inline tenant-owned storage images into standalone proposal exports.
+ * Avoid server-side requests to arbitrary URLs (SSRF) and avoid exposing
+ * authenticated/private object paths in portable HTML.
+ */
+async function embedProposalStorageImages(html: string, tenantId: string, requestHost?: string): Promise<string> {
+  const references = new Set<string>();
+  const imageAttribute = /\b(?:src|poster)\s*=\s*(["'])(.*?)\1/gi;
+  const cssImage = /url\(\s*(["']?)(.*?)\1\s*\)/gi;
+  const identify = (raw: string): string | null => {
+    const value = raw.replace(/&amp;/g, "&").trim();
+    let path = value;
+    if (/^https?:\/\//i.test(value)) {
+      // Only process URLs belonging to this API. Never fetch arbitrary hosts.
+      try {
+        const url = new URL(value);
+        const allowed = [
+          process.env.PUBLIC_API_URL, process.env.API_PUBLIC_URL,
+          process.env.APP_URL, process.env.FRONTEND_URL,
+        ].filter(Boolean).map(v => { try { return new URL(String(v)).host; } catch { return ""; } });
+        if (!allowed.includes(url.host) && url.host !== requestHost) return null;
+        path = url.pathname;
+      } catch { return null; }
+    }
+    if (path.startsWith("/api/storage/public-objects/objects/")) path = path.replace("/api/storage/public-objects/objects/", "/objects/");
+    else if (path.startsWith("/api/storage/objects/")) path = path.replace("/api/storage/objects/", "/objects/");
+    else if (path.startsWith("/api/storage/public-objects/")) path = path.replace("/api/storage/public-objects/", "/objects/");
+    if (!path.startsWith("/objects/")) return null;
+    try { path = decodeURI(path.split("?")[0]); } catch { return null; }
+    if (path.includes("..") || path.includes("\\")) return null;
+    // Uploaded objects are normally stored under tenants/<tenantId>/.
+    // Reject references that explicitly name another tenant.
+    const owned = path.match(/\/tenants\/([^/]+)\//);
+    if (owned && owned[1] !== tenantId) return null;
+    return path;
+  };
+  for (const pattern of [imageAttribute, cssImage]) {
+    for (const match of html.matchAll(pattern)) {
+      const raw = match[2];
+      if (identify(raw)) references.add(raw);
+    }
+  }
+  const resolved = new Map<string, string>();
+  await Promise.all(Array.from(references).map(async raw => {
+    const path = identify(raw);
+    if (!path) return;
+    const file = await objectStorage.getObjectEntityFile(path);
+    const [metadata] = await file.getMetadata();
+    const mime = (metadata.contentType || "").split(";")[0].trim().toLowerCase();
+    const allowedMime = ["image/png", "image/jpeg", "image/webp", "image/gif", "image/svg+xml", "image/avif"];
+    if (!allowedMime.includes(mime)) throw new Error("Unsupported image format in proposal export");
+    if (metadata.size && metadata.size > 12 * 1024 * 1024) throw new Error("Proposal image exceeds export size limit");
+    const [buffer] = await file.download();
+    if (buffer.length > 12 * 1024 * 1024) throw new Error("Proposal image exceeds export size limit");
+    resolved.set(raw, `data:${mime};base64,${buffer.toString("base64")}`);
+  }));
+  return html.replace(imageAttribute, (full, quote, raw) =>
+    resolved.has(raw) ? full.replace(raw, resolved.get(raw)!) : full
+  ).replace(cssImage, (full, quote, raw) =>
+    resolved.has(raw) ? full.replace(raw, resolved.get(raw)!) : full
+  );
+}
+
 // ── GET /leads/:leadId/proposals ─────────────────────────────────────────────────
 router.get("/leads/:leadId/proposals", async (req, res) => {
   const leadId = String(req.params.leadId);
@@ -335,7 +398,7 @@ router.get("/leads/:leadId/proposals/:version/download", async (req, res) => {
   const filename = `Proposta_${clientName.replace(/\s+/g, "_")}_v${version}.html`;
   res.setHeader("Content-Type", "text/html; charset=utf-8");
   res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
-  res.send(absolutifyStorageUrlsForDownload(row.htmlContent, req));
+  res.send(absolutifyStorageUrlsForDownload(await embedProposalStorageImages(row.htmlContent, lead.tenantId, req.get("host")), req));
 });
 
 // ── GET /leads/:leadId/proposals/:version/pdf
@@ -361,7 +424,7 @@ router.get("/leads/:leadId/proposals/:version/pdf", async (req, res) => {
   }
   const clientName = lead.empresa || lead.nome || "Cliente";
   const filename = `Proposta_${clientName.replace(/\s+/g, "_")}_v${version}.pdf`;
-  const pdfBuffer = await generateProposalPDF(absolutifyStorageUrls(row.htmlContent));
+  const pdfBuffer = await generateProposalPDF(absolutifyStorageUrls(await embedProposalStorageImages(row.htmlContent, lead.tenantId, req.get("host"))));
   const isPdf = pdfBuffer.length > 0 && pdfBuffer[0] === 0x25 && pdfBuffer[1] === 0x50 && pdfBuffer[2] === 0x44 && pdfBuffer[3] === 0x46; // %PDF
   if (isPdf) {
     res.setHeader("Content-Type", "application/pdf");

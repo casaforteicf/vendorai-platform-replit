@@ -26,6 +26,7 @@ import { startVieIntelligenceCycle } from "./services/vie-intelligence-cycle.js"
 import { startContinuousAuditAgent } from "./services/continuous-audit-agent.js";
 import { startProductionSentinel } from "./routes/dev_agent_operational_context.js";
 import { applyPendingMigrations, pool } from "@workspace/db";
+import { shouldStartBackgroundJobs } from "./lib/background-jobs.js";
 
 const rawPort = process.env["PORT"];
 
@@ -163,6 +164,13 @@ async function start() {
     }
 
     logger.info({ port, databaseReady }, "Server listening");
+
+    if (!shouldStartBackgroundJobs()) {
+      logger.warn(
+        "Background jobs disabled by VENDORAI_DISABLE_BACKGROUND_JOBS; HTTP API remains available.",
+      );
+      return;
+    }
 
     startProductionSentinel(logger);
     startMainGovernanceGuard(logger);

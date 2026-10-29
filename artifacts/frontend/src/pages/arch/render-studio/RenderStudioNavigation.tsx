@@ -1,4 +1,5 @@
 import type { RenderStudioStep } from "./renderStudioModel";
+import { StudioToolButton } from "../../../modules/arqdor/theme/ArqdorStudioComponents";
 import { RENDER_STUDIO_COLORS as C, RENDER_STUDIO_STEPS, renderStudioStepIndex } from "./renderStudioModel";
 
 export function RenderStudioTopbar({
@@ -54,24 +55,24 @@ export function RenderStudioTopbar({
       <div style={{ flex: 1 }} />
 
       {(step === "versao" || step === "aprovar") && (
-        <button
+        <StudioToolButton
           onClick={onOpenStudio}
           aria-label="Melhorar render"
           title="Materiais, iluminação, ajustes e versões"
-          style={{ background: C.card, color: C.accentText, border: `1px solid ${C.accent}55`, borderRadius: 8, padding: "7px 14px", fontSize: 11, fontWeight: 700, cursor: "pointer", marginRight: 8 }}
+          className="arqdor-render-improve-action"
         >
           ✦ Melhorar render
-        </button>
+        </StudioToolButton>
       )}
 
       {step !== "aprovar" && (
-        <button
+        <StudioToolButton
           onClick={onNextStep}
           aria-label={nextLabels[step] ?? "Próxima Etapa"}
-          style={{ background: `linear-gradient(135deg, ${C.accent}, ${C.accentHover})`, color: "#fff", border: "none", borderRadius: 8, padding: "7px 18px", fontSize: 12, fontWeight: 700, cursor: "pointer", letterSpacing: "0.02em", boxShadow: `0 0 16px ${C.accentGlow}`, marginRight: 12 }}
+          className="arqdor-render-next-action"
         >
           {nextLabels[step] ?? "Próxima Etapa"}
-        </button>
+        </StudioToolButton>
       )}
 
       <button type="button" onClick={_onHelp} aria-label="Ajuda da etapa" title="Ajuda da etapa" style={{ width: 30, height: 30, borderRadius: 8, border: `1px solid ${C.border}`, background: C.card, color: C.muted, cursor: "pointer", marginRight: 6 }}>?</button>
@@ -120,20 +121,21 @@ export function RenderStudioSidebar({
           const done = index < currentIndex;
           const clickable = index <= currentIndex;
           return (
-            <button
-              className="arqdor-studio-step"
+            <StudioToolButton
+              className="arqdor-studio-step arqdor-render-step"
               data-step-number={String(index + 1).padStart(2, "0")}
               key={item.id}
               onClick={() => { if (clickable) onStepClick(item.id); }}
+              active={active}
               aria-current={active ? "step" : undefined}
               disabled={!clickable}
               title={!clickable ? "Complete as etapas anteriores primeiro" : done ? `Voltar para ${item.label}` : undefined}
-              style={{ width: "100%", textAlign: "left", background: active ? `${C.accent}18` : "none", border: "none", borderLeft: active ? `2px solid ${C.accent}` : "2px solid transparent", padding: "7px 14px 7px 12px", cursor: clickable ? "pointer" : "default", display: "flex", alignItems: "center", gap: 8, borderRadius: "0 6px 6px 0", transition: "background 0.12s", opacity: clickable ? 1 : 0.35 }}
+              data-completed={done ? "true" : undefined}
             >
               <span style={{ fontSize: 12, color: active ? C.accent : done ? C.green : C.dim, width: 14, flexShrink: 0, textAlign: "center" }}>{done ? "✓" : item.icon}</span>
               <span style={{ fontSize: 11, fontWeight: active ? 700 : 400, color: active ? C.accentText : done ? C.text : C.muted }}>{item.label}</span>
               {active && <span style={{ marginLeft: "auto", width: 5, height: 5, borderRadius: "50%", background: C.accent }} />}
-            </button>
+            </StudioToolButton>
           );
         })}
       </div>

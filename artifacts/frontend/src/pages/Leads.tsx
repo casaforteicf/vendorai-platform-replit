@@ -456,7 +456,7 @@ export default function Leads() {
     },
   });
 
-  const { data: excludedLeads, isLoading: excludedLoading } = useListTenantLeads(
+  const { data: excludedLeads, isLoading: excludedLoading, isError: excludedError, error: excludedLoadError, refetch: refetchExcluded } = useListTenantLeads(
     tenantId,
     { incluirExcluidos: "apenas" },
     {
@@ -727,6 +727,25 @@ export default function Leads() {
 
   return (
     <div className="vendor-product-page vendor-page-canvas vendor-leads-page space-y-5">
+      <div className="rounded-xl border bg-card p-3" aria-label="Navegação entre pipelines do CRM">
+        <div className="mb-2 text-sm font-semibold">Pipelines do CRM</div>
+        <nav className="flex flex-wrap gap-2" aria-label="Acessar pipelines">
+          {[
+            { label: "Aquecimento", href: "/pipeline-relacionamento/aquecimento" },
+            { label: "Comercial", href: "/deals" },
+            { label: "Execução / Pedidos", href: "/pipeline-operacional/execucao" },
+            { label: "Suporte / Assistência", href: "/pipeline-operacional/suporte" },
+            { label: "Parceiros", href: "/pipeline-relacionamento/parceiros" },
+            { label: "Scout", href: "/scout/pipeline" },
+          ].map((pipeline) => (
+            <Button key={pipeline.href} type="button" variant="outline" size="sm"
+              className="min-h-10 max-w-full whitespace-normal text-left"
+              onClick={() => setLocation(pipeline.href)}>
+              {pipeline.label}
+            </Button>
+          ))}
+        </nav>
+      </div>
       <div className="vendor-product-hero flex flex-col sm:flex-row justify-between items-start sm:items-end gap-4">
         <div>
           <h1 className="vendor-product-title">Leads</h1>
@@ -887,6 +906,8 @@ export default function Leads() {
           <CardContent className="p-0 divide-y">
             {excludedLoading ? (
               <div className="p-6 text-center text-sm text-muted-foreground">Carregando...</div>
+            ) : excludedError ? (
+              <div className="p-6 text-center text-sm text-destructive">Não foi possível carregar os leads excluídos. {excludedLoadError instanceof Error ? excludedLoadError.message : ""} <Button variant="outline" size="sm" onClick={() => refetchExcluded()}>Tentar novamente</Button></div>
             ) : !excludedLeads || excludedLeads.length === 0 ? (
               <div className="p-8 text-center text-sm text-muted-foreground">Nenhum lead excluído.</div>
             ) : (

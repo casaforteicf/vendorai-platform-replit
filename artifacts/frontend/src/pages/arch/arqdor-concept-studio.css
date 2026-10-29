@@ -1,0 +1,234 @@
+/* ARQDOR-UI-03 — Concept Studio 2.0 workspace shell.
+   Deliberately scoped: do not recolor technical drawings, photos or project material swatches. */
+.arqdor-concept-studio {
+  --arq-bg: #171F22;
+  --arq-surface: #20282A;
+  --arq-panel: #263034;
+  --arq-border: #3A4649;
+  --arq-text: #EEF2EF;
+  --arq-muted: #AAB8B5;
+  --arq-accent: #176D59;
+  font-family: Inter, "IBM Plex Sans", "Segoe UI", sans-serif;
+  font-size: 12px;
+}
+.arqdor-concept-studio :where(button,input,select,textarea) {
+  font-family: inherit;
+}
+.arqdor-concept-studio :where(button,input,select,textarea):focus-visible {
+  outline: 2px solid #4AC59A;
+  outline-offset: 2px;
+}
+.arqdor-concept-studio :where(button[aria-pressed="true"],button[data-state="active"],[role="tab"][aria-selected="true"]) {
+  border-color: #176D59;
+}
+@media (prefers-reduced-motion: reduce) {
+  .arqdor-concept-studio *, .arqdor-concept-studio *::before, .arqdor-concept-studio *::after {
+    transition-duration: .01ms !important;
+    animation-duration: .01ms !important;
+  }
+}
+
+
+/* UI-04: compact architectural editor chrome; keep project canvas and modal legibility intact. */
+@media (min-width: 1024px) {
+  .arqdor-concept-studio > main > section > div:first-child {
+    min-height: 52px;
+    gap: 8px;
+    padding: 8px 12px;
+    background: var(--arq-surface);
+    border-color: var(--arq-border);
+  }
+  .arqdor-concept-studio > main > section > div:first-child > div:first-child .text-slate-950 {
+    color: var(--arq-text);
+    font-size: 12px;
+  }
+  .arqdor-concept-studio > main > section > div:first-child > div:first-child .text-slate-500 {
+    color: var(--arq-muted);
+    font-size: 11px;
+  }
+  .arqdor-concept-studio > main > section > div:first-child .bg-orange-500 {
+    background-color: var(--arq-accent);
+    box-shadow: none;
+  }
+}
+.arqdor-concept-studio :where(button):disabled {
+  cursor: not-allowed;
+}
+.arqdor-concept-studio :where([role="tab"], button)[aria-selected="true"] {
+  outline-color: #4AC59A;
+}
+
+/* ARQDOR Projeto — Studio 2.0 chrome escopado ao editor, sem alterar geometria,
+   render, modais ou projetos compartilhados. */
+.arqdor-concept-studio .arq-workspace-stage > .arq-app-bar {
+  background: var(--arq-surface);
+  border-color: var(--arq-border);
+  color: var(--arq-text);
+  min-height: 52px;
+}
+.arqdor-concept-studio .arq-workspace-stage > .arq-app-bar .text-slate-950,
+.arqdor-concept-studio .arq-workspace-stage > .arq-app-bar .text-slate-900 {
+  color: var(--arq-text);
+}
+.arqdor-concept-studio .arq-workspace-stage > .arq-app-bar .text-slate-400,
+.arqdor-concept-studio .arq-workspace-stage > .arq-app-bar .text-slate-500 {
+  color: var(--arq-muted);
+}
+@media (min-width: 768px) {
+  .arqdor-concept-studio .arq-workspace-stage .arq-tool-rail {
+    background: var(--arq-surface);
+    border-color: var(--arq-border);
+  }
+  .arqdor-concept-studio .arq-workspace-stage .arq-tool-rail button {
+    color: var(--arq-muted);
+  }
+  .arqdor-concept-studio .arq-workspace-stage .arq-tool-rail button:hover {
+    background: var(--arq-panel);
+    color: var(--arq-text);
+  }
+  .arqdor-concept-studio .arq-workspace-stage .arq-tool-rail button.bg-orange-50 {
+    background: var(--arq-accent);
+    color: white;
+  }
+}
+
+
+/* ARQDOR-MOBILE-3517: first responsive stabilization pass.
+   Scoped to the Concept workspace; desktop and project geometry remain untouched. */
+@media (max-width: 767px) {
+  .arqdor-concept-studio .arq-workspace-stage {
+    max-width: 100%;
+    min-width: 0;
+    overflow-x: clip;
+  }
+
+  /* Controls may scroll, but must never increase the document's width. */
+  .arqdor-concept-studio .arq-workspace-stage > .arq-app-bar {
+    display: flex;
+    flex-wrap: nowrap;
+    justify-content: flex-start;
+    gap: 8px;
+    width: 100%;
+    max-width: 100vw;
+    min-height: 56px;
+    height: auto;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+    padding-inline: 8px;
+  }
+
+  .arqdor-concept-studio .arq-workspace-stage > .arq-app-bar > * {
+    flex-shrink: 0;
+  }
+
+  /* The journey controls use their own scroll region instead of piling up rows. */
+  .arqdor-concept-studio .arq-workspace-stage .arq-journey-row {
+    position: relative;
+    top: auto;
+    z-index: 20;
+    display: flex;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    max-width: 100vw;
+    gap: 8px;
+    padding: 8px;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+  }
+
+  .arqdor-concept-studio .arq-journey-row > .min-w-0.flex-1 {
+    flex: 0 0 auto;
+    min-width: 100px;
+    max-width: 150px;
+  }
+
+  .arqdor-concept-studio .arq-journey-row > .min-w-0.flex-1 > div:last-child {
+    display: none;
+  }
+
+  .arqdor-concept-studio .arq-journey-row .arq-journey-continue {
+    min-height: 38px;
+    white-space: nowrap;
+    background: var(--arq-accent);
+    box-shadow: none;
+  }
+
+  /* Retain a real canvas viewport. Floating panels stay within dynamic viewport bounds. */
+  .arqdor-concept-studio .arq-workspace-shell,
+  .arqdor-concept-studio .arq-workspace-center {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .arqdor-concept-studio .arq-workspace-sidebar {
+    max-width: 100vw;
+  }
+
+  .arqdor-concept-studio .arq-workspace-sidebar > .flex > div:last-child {
+    box-sizing: border-box;
+    max-width: calc(100vw - 16px);
+    max-height: min(68dvh, calc(100dvh - 110px));
+    overscroll-behavior: contain;
+  }
+
+  .arqdor-concept-studio .arq-workspace-inspector {
+    max-height: min(60dvh, calc(100dvh - 128px));
+    bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+    overscroll-behavior: contain;
+  }
+
+  .arqdor-concept-studio .arq-workspace-stage .arq-tool-rail {
+    max-width: 56px;
+    overflow-x: hidden;
+    overflow-y: auto;
+    flex-direction: column;
+    scrollbar-width: thin;
+  }
+
+  .arqdor-concept-studio .arq-workspace-stage .arq-tool-rail button.bg-orange-50 {
+    background: #e0f5eb;
+    color: #176d59;
+  }
+}
+
+/* Mobile presentation and safe-area handling — issue #3517. */
+@media (max-width: 767px) {
+  .arqdor-concept-studio .arq-mobile-stage-nav {
+    max-width: calc(100vw - 16px);
+    box-sizing: border-box;
+    gap: 2px;
+    padding-bottom: max(4px, env(safe-area-inset-bottom, 0px));
+  }
+
+  .arqdor-concept-studio .arq-mobile-stage-nav > button {
+    min-width: 0;
+    overflow: hidden;
+    line-height: 1.15;
+  }
+
+  .arqdor-concept-studio .arq-project-result {
+    scroll-padding-bottom: 110px;
+  }
+
+  .arqdor-concept-studio .arq-project-result :where(.bg-card) {
+    background-color: #fff;
+    color: #172025;
+  }
+
+  .arqdor-concept-studio .arq-project-result :where(.text-muted-foreground) {
+    color: #475569;
+  }
+
+  .arqdor-concept-studio .arq-project-result :where(button) {
+    max-width: 100%;
+    overflow-wrap: anywhere;
+  }
+
+  .arqdor-concept-studio .arq-result-send {
+    background-color: #176d59;
+    bottom: max(12px, env(safe-area-inset-bottom, 0px));
+  }
+}

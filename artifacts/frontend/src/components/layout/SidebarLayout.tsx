@@ -4,7 +4,6 @@ import { useLocation } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
 import { loadVerifiedContexts } from "@/lib/unifiedContextsApi";
 import { ContextSwitcher } from "./ContextSwitcher";
-import { ServiceTabsBar } from "./ServiceTabsBar";
 import { PwaInstallPrompt } from "./PwaInstallPrompt";
 
 import {
@@ -22,9 +21,7 @@ const MessagingMediaPlanBridge = lazy(() => import("@/components/marketing/Messa
 
 // UI-01 is opt-in and remains off in all existing deployments unless explicitly enabled.
 const UI01_CONTEXT_NAV_ENABLED = import.meta.env.VITE_UI01_CONTEXT_NAV === "true";
-// Disabled by default: the global service tabs overlay was not part of the approved layout.
-// Enable only for isolated preview after explicit UI approval.
-const UI20_SERVICE_TABS_ENABLED = import.meta.env.VITE_UI20_SERVICE_TABS === "true";
+// The module selector bar was retired: navigation now lives in the contextual sidebar.
 // Install prompt: default ON after device QA. Kill-switch: set VITE_MULTI02_PWA_INSTALL=false to disable.
 const MULTI02_PWA_INSTALL_ENABLED = import.meta.env.VITE_MULTI02_PWA_INSTALL !== "false";
 
@@ -624,9 +621,6 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
 
   const shellContent = (
     <>
-      {UI20_SERVICE_TABS_ENABLED && !isPureSuperAdmin ? (
-        <ServiceTabsBar arqdorVisible={arqdorVisible} erpVisible={erpEntitled} modules={tenantNavModules} loading={!tenantNavModulesReady} isAdmin={user?.platformRole === "super_admin" || user?.userFunction === "administrador"} />
-      ) : null}
       <Suspense fallback={null}>
         {adsContext ? <AdsMediaPlanContextBanner pathname={location} /> : null}
         {messagingContext ? <MessagingMediaPlanBridge pathname={location} /> : null}

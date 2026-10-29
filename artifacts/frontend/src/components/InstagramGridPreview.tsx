@@ -26,7 +26,7 @@ export type DraftOption = {
 export function InstagramGridPreview({ tenantId, draftOptions }: { tenantId: string; draftOptions: DraftOption[] }) {
   const [previewDraftId, setPreviewDraftId] = useState<string>("none");
 
-  const { data, isLoading } = useQuery<{ connected: boolean; items: InstagramGridItem[] }>({
+  const { data, isLoading, isError, refetch, isFetching } = useQuery<{ connected: boolean; items: InstagramGridItem[] }>({
     queryKey: ["instagram-grid", tenantId],
     queryFn: async () => {
       const res = await fetch(`/api/tenants/${tenantId}/content/instagram-grid`, {
@@ -106,6 +106,11 @@ export function InstagramGridPreview({ tenantId, draftOptions }: { tenantId: str
         {isLoading ? (
           <div className="py-8 flex justify-center">
             <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+          </div>
+        ) : isError ? (
+          <div role="alert" className="space-y-2 py-4 text-center">
+            <p className="text-sm text-muted-foreground">Não foi possível consultar a grade do Instagram. Isso não significa que a conta esteja desconectada.</p>
+            <button type="button" className="rounded-md border px-3 py-2 text-sm font-medium hover:bg-muted disabled:opacity-50" disabled={isFetching} onClick={() => void refetch()}>{isFetching ? "Consultando..." : "Tentar novamente"}</button>
           </div>
         ) : !data?.connected ? (
           <p className="text-sm text-muted-foreground py-4 text-center">

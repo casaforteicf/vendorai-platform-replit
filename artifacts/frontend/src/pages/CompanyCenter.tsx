@@ -104,17 +104,17 @@ const fmtDate = (value: unknown) => {
 };
 
 function Empty({ text }: { text: string }) {
-  return <div className="rounded-xl border border-dashed p-8 text-center text-sm text-muted-foreground">{text}</div>;
+  return <div className="vendor-empty-state p-8 text-center text-sm text-muted-foreground">{text}</div>;
 }
 
 function StatCard({ icon: Icon, label, value }: { icon: any; label: string; value: number }) {
   return (
-    <Card>
+    <Card className="vendor-kpi-card">
       <CardContent className="flex items-center gap-3 p-4">
-        <div className="rounded-lg border bg-muted/40 p-2"><Icon className="h-4 w-4" /></div>
+        <div className="vendor-kpi-icon"><Icon className="h-4 w-4" /></div>
         <div>
-          <p className="text-xs text-muted-foreground">{label}</p>
-          <p className="text-xl font-semibold">{value}</p>
+          <p className="vendor-kpi-value">{value}</p>
+          <p className="vendor-kpi-label">{label}</p>
         </div>
       </CardContent>
     </Card>
@@ -284,7 +284,7 @@ export default function CompanyCenter() {
   }
   if (error || !data) {
     return (
-      <div className="mx-auto max-w-3xl p-6">
+      <div className="vendor-page-canvas vendor-companies-page mx-auto w-full max-w-3xl space-y-4 p-4 md:p-6">
         <Button variant="ghost" onClick={() => history.back()}><ArrowLeft className="mr-2 h-4 w-4" />Voltar</Button>
         <Card className="mt-4"><CardContent className="p-6 text-sm text-destructive">{error ?? "Empresa não encontrada."}</CardContent></Card>
       </div>
@@ -292,7 +292,7 @@ export default function CompanyCenter() {
   }
 
   return (
-    <div className="mx-auto w-full max-w-[1500px] space-y-5 p-4 md:p-6">
+    <div className="vendor-product-page vendor-page-canvas vendor-companies-page space-y-5">
       <div className="flex flex-col gap-4 rounded-2xl border bg-card p-5 shadow-sm lg:flex-row lg:items-center lg:justify-between">
         <div className="flex gap-3">
           <Button variant="ghost" size="icon" onClick={() => history.back()} aria-label="Voltar"><ArrowLeft className="h-4 w-4" /></Button>
@@ -301,11 +301,11 @@ export default function CompanyCenter() {
           </div>
           <div>
             <div className="flex flex-wrap items-center gap-2">
-              <h1 className="text-xl font-semibold md:text-2xl">{companyName}</h1>
+              <h1 className="vendor-product-title">{companyName}</h1>
               {data.company.situacaoCadastral && <Badge variant="outline">{data.company.situacaoCadastral}</Badge>}
               {data.company.porte && <Badge variant="secondary">{data.company.porte}</Badge>}
             </div>
-            <p className="mt-1 text-sm text-muted-foreground">{data.company.razaoSocial}</p>
+            <p className="vendor-product-subtitle">{data.company.razaoSocial}</p>
             <p className="text-xs font-mono text-muted-foreground">CNPJ {data.company.cnpj}</p>
           </div>
         </div>
@@ -319,7 +319,7 @@ export default function CompanyCenter() {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-8">
+      <div className="vendor-kpi-grid grid-cols-2 md:grid-cols-4 xl:grid-cols-8">
         <StatCard icon={Users} label="Pessoas" value={data.counts.people ?? 0} />
         <StatCard icon={Handshake} label="Oportunidades" value={data.counts.opportunities ?? 0} />
         <StatCard icon={MessageSquare} label="Conversas" value={data.counts.conversations ?? 0} />
@@ -331,7 +331,7 @@ export default function CompanyCenter() {
       </div>
 
       <Tabs defaultValue="overview" className="space-y-4">
-        <TabsList className="h-auto w-full justify-start gap-1 overflow-x-auto rounded-xl border bg-card p-1">
+        <TabsList className="vendor-product-tabs h-auto justify-start gap-1 overflow-x-auto">
           <TabsTrigger value="overview">Visão geral</TabsTrigger>
           <TabsTrigger value="people">Pessoas</TabsTrigger>
           <TabsTrigger value="leads">Leads</TabsTrigger>

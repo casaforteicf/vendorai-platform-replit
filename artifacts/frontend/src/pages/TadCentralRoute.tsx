@@ -1,25 +1,57 @@
 import { useEffect, useState } from "react";
+import {
+  getGetTenantQueryKey,
+  getGetBusinessProfileByTenantQueryKey,
+  useGetBusinessProfileByTenant,
+  useGetTenant,
+} from "@workspace/api-client-react";
 import { useAuth } from "@/contexts/AuthContext";
 import TadCentral from "./TadCentral";
 import type { LauncherModule } from "@/lib/adaptiveModuleLauncher";
 
 type NavItem = { moduleKey?: string; key?: string; isEnabled?: boolean };
 const MAPPING: Record<string, LauncherModule> = {
-  leads: "crm", campaigns: "marketing", content: "marketing", scheduler: "agenda", arch: "arqdor",
+  leads: "crm", prospector: "prospector", campaigns: "marketing", content: "marketing", scheduler: "agenda", arch: "arqdor",
   obras: "obras", financeiro: "erp", praca_ai: "marketplace_casa", settings: "configuracoes", analytics: "inteligencia",
   sdr: "agentes_ia",
   dashboard: "suporte",
 };
 /**
- * TAD central: require both tenant entitlement and verified user permission.
- * Failed authorization checks must never expose a clickable module.
+ * TAD central: tenant users require both commercial entitlement and verified
+ * permission. Platform Superadmin sees the entire launcher inventory through
+ * the presentation-only policy in TadCentral; backend guards remain unchanged.
  */
 export default function TadCentralRoute() {
-  const { user, token } = useAuth();
+  const { user, token, tenantOverride } = useAuth();
   const [enabled, setEnabled] = useState<LauncherModule[]>([]);
   const [failed, setFailed] = useState(false);
   const [permitted, setPermitted] = useState<LauncherModule[]>([]);
+  const tenantId = user?.tenantId ?? "";
+
+  // Nome da empresa para o seletor de tenant — mesma fonte do SidebarLayout.
+  const tenantQuery = useGetTenant(tenantId, {
+    query: { queryKey: getGetTenantQueryKey(tenantId), enabled: !!tenantId && !!token, staleTime: 5 * 60_000 },
+  });
+  const businessProfileQuery = useGetBusinessProfileByTenant(tenantId, {
+    query: { queryKey: getGetBusinessProfileByTenantQueryKey(tenantId), enabled: !!tenantId && !!token, staleTime: 5 * 60_000 },
+  });
+  const companyName =
+    businessProfileQuery.data?.nomeFantasia?.trim() ||
+    businessProfileQuery.data?.razaoSocial?.trim() ||
+    tenantQuery.data?.name?.trim() ||
+    tenantOverride?.name ||
+    (user as { tenantName?: string | null } | null)?.tenantName?.trim() ||
+    undefined;
+
   useEffect(() => {
+    // Superadmin inventories every environment, even without a selected tenant.
+    // Authorization to access data remains with the destination API/routes.
+    if (user?.platformRole === "super_admin") {
+      setFailed(false);
+      setEnabled([]);
+      setPermitted([]);
+      return;
+    }
     if (!user?.tenantId || !token) return;
     const controller = new AbortController();
     setFailed(false);
@@ -59,14 +91,15 @@ export default function TadCentralRoute() {
       }
     });
     return () => controller.abort();
-  }, [user?.tenantId, token]);
+  }, [user?.tenantId, user?.platformRole, token]);
   return (
     <>
       {failed && <div role="alert" className="mx-auto max-w-7xl px-4 pt-4 text-sm text-destructive">
         Não foi possível conferir os serviços habilitados. Nenhum acesso adicional foi liberado.
       </div>}
       <TadCentral audience="business" enabledModules={enabled}
-        permittedModules={permitted} previewModules={enabled} companyName={undefined} />
+        permittedModules={permitted}
+        companyName={companyName} />
     </>
   );
 }

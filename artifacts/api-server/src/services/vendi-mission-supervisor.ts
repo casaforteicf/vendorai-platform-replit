@@ -71,7 +71,7 @@ export async function planVendiMission(input: {
   const tools = listVendiTools();
   const result = await callOpenAI(
     input.tenantId,
-    "agent_runtime" as any,
+    "agent_runtime",
     [
       {
         role: "system",

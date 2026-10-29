@@ -2847,6 +2847,8 @@ function newFreeItem(): FreeItem {
   }) {
     const { toast } = useToast();
     const qc = useQueryClient();
+    const [, navigateToPrint] = useLocation();
+    const printAfterSaveRef = useRef(false);
     const { data: businessProfile, isLoading: businessProfileLoading } = useGetBusinessProfileByTenant(tenantId, {
       query: {
         queryKey: getGetBusinessProfileByTenantQueryKey(tenantId),
@@ -4116,6 +4118,12 @@ function newFreeItem(): FreeItem {
           if (lockedLeadId) {
             await qc.invalidateQueries({ queryKey: getListPropostasQueryKey(tenantId, { leadId: lockedLeadId }) });
           }
+          if (printAfterSaveRef.current) {
+            printAfterSaveRef.current = false;
+            handleClose();
+            navigateToPrint(`/propostas/${encodeURIComponent(editingProposta.id)}/print`);
+            return;
+          }
           onSuccess?.();
           if (!stayOpen) handleClose();
         },
@@ -4680,7 +4688,8 @@ function newFreeItem(): FreeItem {
   }, [open, mode, integrityPreviewPayloadJson]);
 
   // ── submit ────────────────────────────────────────────────────────────────
-  function onSubmit(vals: PropostaFormValues, stayOpen = false) {
+  function onSubmit(vals: PropostaFormValues, stayOpen = false, openPrint = false) {
+    printAfterSaveRef.current = openPrint;
     if (!stayOpen && integrityReport?.blockers) {
       const firstBlocker = integrityReport.issues.find((issue) => issue.severity === "blocker");
       toast({
@@ -5049,7 +5058,8 @@ function newFreeItem(): FreeItem {
     <Dialog open={open} onOpenChange={(o) => !o && handleClose()}>
       <DialogContent
         data-vendorai-refresh-protected="true"
-        className="max-w-[96vw] xl:max-w-[1600px] max-h-[95vh] overflow-y-auto"
+        className="!w-[96vw] !max-w-[1600px] max-h-[95vh] overflow-y-auto overflow-x-hidden"
+        style={{ minWidth: 0 }}
         onPointerDownOutside={(event) => event.preventDefault()}
         onInteractOutside={(event) => event.preventDefault()}
         onEscapeKeyDown={(event) => {
@@ -6805,8 +6815,15 @@ function newFreeItem(): FreeItem {
                 )}
               </div>
             )}
-            <div className="flex flex-col gap-2 sm:flex-row">
+            <div className="sticky bottom-0 z-10 grid grid-cols-1 gap-2 border-t bg-background py-3 sm:grid-cols-2 xl:grid-cols-4">
               <Button type="button" variant="outline" className="sm:flex-1" onClick={handleClose}>Fechar</Button>
+              {editingProposta && (
+                <Button type="button" variant="outline" disabled={isPending || integrityLoading || Boolean(integrityReport?.blockers)}
+                  onClick={() => void form.handleSubmit((vals) => onSubmit(vals, false, true))()}>
+                  <Printer className="mr-2 h-4 w-4 shrink-0" />
+                  Salvar e abrir PDF
+                </Button>
+              )}
               <Button type="button" variant="secondary" className="sm:flex-1" onClick={saveDraftAndContinue} disabled={isPending}>
                 Salvar e continuar
               </Button>

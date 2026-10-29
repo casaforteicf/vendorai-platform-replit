@@ -47,6 +47,14 @@ type ProjetoArquivo = {
 };
 
 type ProjetoDossie = {
+  projectSetup?: {
+    disciplina: "Arquitetura" | "Interiores" | "Área Externa";
+    situacaoImovel: "novo" | "existente" | "em_obra";
+    abrangencia: "completo" | "ambientes" | "area";
+    disciplinasExtras: string[];
+    ambientesSelecionados?: string[];
+    areaEspecifica?: string;
+  };
   briefing?: string;
   medidas?: Array<{
     id?: string;
@@ -297,7 +305,7 @@ export default function ProjetoDetalhe() {
   const [ambientes, setAmbientes] = useState<Ambiente[]>([]);
   const [renders, setRenders]     = useState<ProjetoRender[]>([]);
   const [loading, setLoading]     = useState(true);
-  const [projectTab, setProjectTab] = useState("orcamento");
+  const [projectTab, setProjectTab] = useState("ambientes");
 
   // ── Orçamento data
   const [grupos, setGrupos]         = useState<OrcamentoGrupo[]>([]);
@@ -1323,10 +1331,45 @@ export default function ProjetoDetalhe() {
         <StatusBadge status={projeto.status} />
       </div>
 
+      {projeto.dossieProjeto?.projectSetup && (
+        <section className="rounded-xl border bg-muted/20 p-3" aria-label="Definição do projeto">
+          <p className="text-sm font-semibold">Definição do projeto</p>
+          <div className="mt-2 flex flex-wrap gap-2 text-xs text-muted-foreground">
+            <span>Disciplina: {projeto.dossieProjeto.projectSetup.disciplina}</span>
+            <span>· Situação: {projeto.dossieProjeto.projectSetup.situacaoImovel === "novo" ? "Novo" : projeto.dossieProjeto.projectSetup.situacaoImovel === "existente" ? "Existente" : "Em obra"}</span>
+            <span>· Abrangência: {projeto.dossieProjeto.projectSetup.abrangencia === "completo" ? "Completo" : projeto.dossieProjeto.projectSetup.abrangencia === "ambientes" ? "Alguns ambientes" : "Área específica"}</span>
+          </div>
+          {Boolean(projeto.dossieProjeto.projectSetup.disciplinasExtras?.length) && (
+            <p className="mt-1 text-xs text-muted-foreground">Complementares: {projeto.dossieProjeto.projectSetup.disciplinasExtras.join(", ")}</p>
+          )}
+          {Boolean(projeto.dossieProjeto.projectSetup.ambientesSelecionados?.length) && (
+            <p className="mt-1 text-xs text-muted-foreground">Ambientes previstos: {projeto.dossieProjeto.projectSetup.ambientesSelecionados?.join(", ")}</p>
+          )}
+          {projeto.dossieProjeto.projectSetup.areaEspecifica && (
+            <p className="mt-1 text-xs text-muted-foreground">Área: {projeto.dossieProjeto.projectSetup.areaEspecifica}</p>
+          )}
+        </section>
+      )}
+
+      <div className="flex flex-wrap items-center gap-2">
+        <input ref={dossierFileInputRef} type="file" multiple className="hidden"
+          aria-label="Importar arquivos para o projeto"
+          accept=".skp,.dxf,.dwg,.ifc,.pdf,.jpg,.jpeg,.png,.webp,.doc,.docx,.xls,.xlsx,.txt"
+          onChange={(event) => { void handleDossierUpload(event.target.files); event.currentTarget.value = ""; }} />
+        <Button type="button" variant="outline" disabled={uploadingDossier}
+          onClick={() => dossierFileInputRef.current?.click()}>
+          {uploadingDossier ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Upload className="mr-2 h-4 w-4" />}
+          Importar arquivos
+        </Button>
+      </div>
+
       {/* Atalhos principais do projeto — mantém o usuário dentro do mesmo contexto */}
       <div className="flex flex-wrap items-center gap-2 rounded-xl border bg-muted/20 p-3">
-        <span className="mr-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Continuar projeto</span>
-        <Button type="button" size="sm" onClick={() => abrirRenderStudio(null)}>
+        <Button type="button" size="sm"
+          onClick={() => navigate(`/arch/studio?project_id=${encodeURIComponent(projetoId)}`)}>
+          <FolderOpen className="mr-1.5 h-4 w-4" /> Continuar no Studio
+        </Button>
+        <Button type="button" size="sm" variant="outline" onClick={() => abrirRenderStudio(null)}>
           <Sparkles className="mr-1.5 h-4 w-4" /> Render
         </Button>
         <Button
@@ -1464,9 +1507,9 @@ export default function ProjetoDetalhe() {
 
       {/* ── Tabs ─────────────────────────────────────────────────────── */}
       <Tabs value={projectTab} onValueChange={setProjectTab}>
-        <TabsList>
+        <TabsList className="flex h-auto flex-wrap justify-start gap-1">
+          <TabsTrigger value="ambientes">Projeto / Ambientes</TabsTrigger>
           <TabsTrigger value="orcamento">Orçamento</TabsTrigger>
-          <TabsTrigger value="ambientes">Ambientes</TabsTrigger>
           <TabsTrigger value="renders">Renders ({renders.filter((render) => render.status === "concluido").length})</TabsTrigger>
           <TabsTrigger value="cenas">Cenas 3D</TabsTrigger>
           <TabsTrigger value="portal">Portal</TabsTrigger>
@@ -2417,14 +2460,14 @@ export default function ProjetoDetalhe() {
                         </div>
                         <div>
                           <input
-                            ref={dossierFileInputRef}
+                            id="arqdor-ambiente-upload"
                             type="file"
                             multiple
                             className="hidden"
                             accept=".skp,.dxf,.dwg,.ifc,.pdf,.jpg,.jpeg,.png,.webp,.doc,.docx,.xls,.xlsx,.txt"
-                            onChange={(event) => void handleDossierUpload(event.target.files, viewingAmbiente.id)}
+                            onChange={(event) => { void handleDossierUpload(event.target.files, viewingAmbiente.id); event.currentTarget.value = ""; }}
                           />
-                          <Button size="sm" variant="outline" disabled={uploadingDossier} onClick={() => dossierFileInputRef.current?.click()}>
+                          <Button size="sm" variant="outline" disabled={uploadingDossier} onClick={() => document.getElementById("arqdor-ambiente-upload")?.click()}>
                             {uploadingDossier ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Upload className="mr-2 h-4 w-4" />}
                             Adicionar arquivos
                           </Button>

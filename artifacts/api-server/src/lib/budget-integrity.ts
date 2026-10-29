@@ -184,6 +184,40 @@ export function auditProposalBudget(input: AuditInput): BudgetIntegrityReport {
     }
   });
 
+  // Verificação documental opt-in: não penaliza orçamentos legados sem metadados.
+  // Os vínculos são referências declaradas; aprovação efetiva precisa ser conferida
+  // pelo serviço autenticado contra a versão congelada antes da emissão.
+  items.forEach((item, index) => {
+    const doc = item.contratual;
+    if (!doc) return;
+    const label = item.nome || `item ${index + 1}`;
+    if (doc.classificacao === "condicionado" || doc.exigeValidacaoTecnica) {
+      issues.push({ code: "CONTRACTUAL_VALIDATION_PENDING", severity: "warning",
+        field: "itens.contratual", itemIndex: index,
+        message: `O item "${label}" depende de validação técnica ou contratual.` });
+    }
+    if ((doc.arqdorSpecObjectId || doc.arqdorProjectId) && !doc.fonte) {
+      issues.push({ code: "UNVERIFIED_ARQDOR_ORIGIN", severity: "warning",
+        field: "itens.contratual.fonte", itemIndex: index,
+        message: `O vínculo Arqdor do item "${label}" não possui proveniência registrada.` });
+    }
+    if (doc.fonte && !doc.fonte.aprovado) {
+      issues.push({ code: "UNAPPROVED_CONTRACTUAL_SOURCE", severity: "warning",
+        field: "itens.contratual.fonte", itemIndex: index,
+        message: `A fonte documental do item "${label}" ainda não está indicada como aprovada.` });
+    }
+    if (doc.fonte?.tipo === "documento_assinado" && !doc.fonte.revisao) {
+      issues.push({ code: "SIGNED_DOCUMENT_REVISION_MISSING", severity: "blocker",
+        field: "itens.contratual.fonte.revisao", itemIndex: index,
+        message: `O item "${label}" referencia documento assinado sem revisão.` });
+    }
+    if (doc.classificacao === "excluido" && Number(item.valorUnitario) * Number(item.quantidade) > 0) {
+      issues.push({ code: "EXCLUDED_ITEM_WITH_PRICE", severity: "blocker",
+        field: "itens.contratual.classificacao", itemIndex: index,
+        message: `O item "${label}" está marcado como excluído, mas ainda compõe o valor do orçamento.` });
+    }
+  });
+
   if (items.length && Math.abs(calculatedTotal - storedTotal) > 0.01) {
     issues.push({
       code: "TOTAL_MISMATCH",

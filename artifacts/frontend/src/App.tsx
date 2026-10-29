@@ -3,6 +3,7 @@ import "./dev-agent-mobile.css";
 import "./video-studio-modern.css";
 
 const AppLegacy = React.lazy(() => import("./AppLegacy"));
+const AtlasPage = React.lazy(() => import("./pages/AtlasPage"));
 const AppRuntimeShell = React.lazy(() => import("@/pages/app-runtime/AppRuntimeShell"));
 const DevAgentOverlay = React.lazy(() => import("@/components/admin/DevAgentOverlay"));
 
@@ -401,6 +402,10 @@ export default function App() {
     }, 100);
     return () => window.clearInterval(timer);
   }, [devRequested, devFailed]);
+
+  if (currentPath === "/atlas" || currentPath === "/atlas/") {
+    return <React.Suspense fallback={<AppShellFallback />}><AtlasPage /></React.Suspense>;
+  }
 
   if (appId) {
     return (

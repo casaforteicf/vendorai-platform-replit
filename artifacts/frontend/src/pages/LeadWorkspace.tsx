@@ -20,6 +20,7 @@ import { ArrowLeft, ArrowRight, AlertTriangle, BrainCircuit, Building2, Clock3, 
 const LeadDetail = lazy(() => import("@/pages/LeadDetail"));
 const DealParticipantsCard = lazy(() => import("@/components/DealParticipantsCard").then((m) => ({ default: m.DealParticipantsCard })));
 const StageQuestionsPanel = lazy(() => import("@/components/StageQuestionsPanel").then((m) => ({ default: m.StageQuestionsPanel })));
+const LeadIntelligenceDialog = lazy(() => import("./LeadIntelligenceDialog"));
 
 const fallbackStages = [
   { key: "em_aquecimento", label: "Em aquecimento", ordem: 0 },
@@ -322,6 +323,20 @@ export default function LeadWorkspace() {
   const [due, setDue] = useState(tomorrow());
   const [description, setDescription] = useState("");
   const [note, setNote] = useState("");
+  // O formulário pode abrir pela pipeline antes das etapas, do negócio e dos
+  // usuários terminarem de carregar. Sincronize o destino e o responsável.
+  useEffect(() => {
+    if (!requestedStage || !deal || !stages.some((stage) => stage.key === requestedStage)) return;
+    setNextStage(requestedStage);
+    const stage = stages.find((candidate) => candidate.key === requestedStage) as ResponsibilityStage | undefined;
+    const eligible = users.filter((candidate) => userCanOwnStage(candidate as ResponsibilityUser, stage));
+    setOwner((previous) => {
+      if (eligible.some((candidate) => candidate.id === previous)) return previous;
+      return [deal.assignedTo, user?.id].find((candidate) =>
+        Boolean(candidate) && eligible.some((person) => person.id === candidate)
+      ) ?? eligible[0]?.id ?? "";
+    });
+  }, [requestedStage, deal?.id, deal?.assignedTo, stages, users, user?.id]);
   const [saving, setSaving] = useState(false);
   const [savingAnswers, setSavingAnswers] = useState(false);
   const [ownerEditorOpen, setOwnerEditorOpen] = useState(false);
@@ -331,6 +346,11 @@ export default function LeadWorkspace() {
   const [intelligenceOpen, setIntelligenceOpen] = useState(false);
   const [advancedHandoffOpen, setAdvancedHandoffOpen] = useState(false);
   const [selectedPartnershipId, setSelectedPartnershipId] = useState("");
+  const [forwardPartnershipId, setForwardPartnershipId] = useState("");
+  const [forwardNote, setForwardNote] = useState("");
+  const [forwardStage, setForwardStage] = useState("");
+  const [forwardBusy, setForwardBusy] = useState(false);
+
   const [selectedPartnerUserId, setSelectedPartnerUserId] = useState("");
   const [partnerCommissionPercent, setPartnerCommissionPercent] = useState("15");
   const [commissionEditorOpen, setCommissionEditorOpen] = useState(false);
@@ -473,21 +493,45 @@ export default function LeadWorkspace() {
     if (partnership) setPartnerCommissionPercent(String(partnership.defaultCommissionPercent ?? "15"));
   }, [selectedPartnershipId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  function startAttendance() {
-    if (!lead) return;
-    createDeal.mutate(
-      { data: { tenantId, leadId: id, titulo: "Atendimento - " + lead.nome, etapa: "novo" } },
-      {
-        onSuccess: async () => {
-          await Promise.all([
-            qc.invalidateQueries({ queryKey: getListDealsQueryKey(tenantId, { leadId: id }) }),
-            qc.invalidateQueries({ queryKey: getListDealsQueryKey(tenantId) }),
-          ]);
-          toast({ title: "Atendimento iniciado", description: "Defina agora o responsável e a próxima atividade." });
-        },
-        onError: () => toast({ title: "Erro ao iniciar atendimento", variant: "destructive" }),
-      },
-    );
+  async function startAttendance() {
+    if (!lead || !tenantId || createDeal.isPending) return;
+    // Reaproveita o negócio persistido no Aquecimento e seus vínculos,
+    // sem criar um segundo negócio nem perder envolvidos do cadastro.
+    const warmingDeal = deals.find((item) => item.etapa === "em_aquecimento");
+    try {
+      if (warmingDeal) {
+        const response = await fetch(`/api/deals/${warmingDeal.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json", Authorization: "Bearer " + token },
+          body: JSON.stringify({ etapa: "novo", assignedTo: warmingDeal.assignedTo ?? lead.assignedTo ?? undefined }),
+        });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(payload.error ?? payload.message ?? "Falha ao iniciar atendimento");
+      } else {
+        // Leads antigos ou isentos de pipeline ainda podem iniciar um negócio.
+        await createDeal.mutateAsync({
+          data: {
+            tenantId,
+            leadId: id,
+            titulo: "Atendimento - " + lead.nome,
+            etapa: "novo",
+            assignedTo: lead.assignedTo ?? undefined,
+          },
+        });
+      }
+      await Promise.all([
+        qc.invalidateQueries({ queryKey: getListDealsQueryKey(tenantId, { leadId: id }) }),
+        qc.invalidateQueries({ queryKey: getListDealsQueryKey(tenantId) }),
+        qc.invalidateQueries({ queryKey: getGetLeadQueryKey(id) }),
+      ]);
+      toast({ title: "Atendimento iniciado", description: "Cadastro e histórico do lead preservados no negócio." });
+    } catch (error) {
+      toast({
+        title: "Erro ao iniciar atendimento",
+        description: error instanceof Error ? error.message : "Não foi possível iniciar o negócio.",
+        variant: "destructive",
+      });
+    }
   }
 
   async function saveStageAnswers(next: Record<string, string>) {
@@ -508,27 +552,52 @@ export default function LeadWorkspace() {
   }
 
   function showAdvance() {
-    const stage = deal?.etapa === "em_aquecimento"
-      ? "novo"
-      : (requestedStage ?? stages[currentIndex + 1]?.key ?? "");
-    const aiAction = fullIntelligence?.health?.nextBestAction ?? fullIntelligence?.profile?.nextBestAction;
-    const aiReason = fullIntelligence?.health?.nextBestActionReason ?? fullIntelligence?.profile?.nextBestActionReason;
+    try {
+      if (!deal) {
+        toast({ title: "Negócio não carregado", description: "Atualize a página e tente novamente.", variant: "destructive" });
+        return;
+      }
+      // Open immediately on click; preparing stage/owner suggestions must not block the dialog.
+      // This also makes backend/permission issues visible in the confirmation UI.
+      if (deal.etapa !== "em_aquecimento" && currentIndex < 0) {
+        toast({ title: "Etapa atual não encontrada", description: "Atualize a configuração da pipeline antes de avançar o atendimento.", variant: "destructive" });
+        return;
+      }
+      const nextConfigured = stages.slice(currentIndex + 1).find((stage) => !hiddenFromCommercialFlow.has(stage.key));
+      const requestedIndex = requestedStage ? stages.findIndex((stage) => stage.key === requestedStage) : -1;
+      const requested = requestedIndex > currentIndex && !hiddenFromCommercialFlow.has(requestedStage ?? "")
+        ? requestedStage : null;
+      const stage = deal.etapa === "em_aquecimento" ? "novo" : (requested ?? nextConfigured?.key ?? "");
+      setOpen(true);
+      if (!stage) {
+        setOpen(false);
+        toast({ title: "Sem próxima etapa", description: "Verifique a configuração da pipeline.", variant: "destructive" });
+        return;
+      }
 
-    const nextStageConfig = stages.find((candidate) => candidate.key === stage) as ResponsibilityStage | undefined;
-    const stageEligibleUsers = users.filter((candidate) => userCanOwnStage(candidate as ResponsibilityUser, nextStageConfig));
-    const preferredOwner = [deal?.assignedTo, user?.id].find((candidateId) =>
-      Boolean(candidateId) && stageEligibleUsers.some((candidate) => candidate.id === candidateId)
-    );
-
-    setNextStage(stage);
-    setOwner(preferredOwner ?? stageEligibleUsers[0]?.id ?? "");
-    setTitle(aiAction?.trim() || guidance[stage]?.[1] || "Dar continuidade ao atendimento");
-    setDescription(aiReason?.trim() || "");
-    setNote("");
-    setDue(tomorrow());
-    setEditEligible(false);
-    setAdvancedHandoffOpen(false);
-    setOpen(true);
+      const nextStageConfig = stages.find((candidate) => candidate.key === stage) as ResponsibilityStage | undefined;
+      const stageEligibleUsers = users.filter((candidate) => {
+        try { return userCanOwnStage(candidate as ResponsibilityUser, nextStageConfig); }
+        catch { return false; }
+      });
+      const preferredOwner = [deal.assignedTo, lead?.assignedTo, user?.id].find((candidateId) =>
+        Boolean(candidateId) && stageEligibleUsers.some((candidate) => candidate.id === candidateId)
+      );
+      // The confirmation dialog is already opened before optional calculations.
+      setNextStage(stage);
+      setOwner(preferredOwner ?? stageEligibleUsers[0]?.id ?? "");
+      setTitle(guidance[stage]?.[1] || "Dar continuidade ao atendimento");
+      setDescription("");
+      setNote("");
+      setDue(tomorrow());
+      setAdvancedHandoffOpen(false);
+    } catch (error) {
+      toast({
+        title: "Falha ao abrir avanço",
+        description: error instanceof Error ? error.message : "Não foi possível preparar a próxima etapa.",
+        variant: "destructive",
+      });
+    }
   }
 
   async function saveCurrentOwner() {
@@ -568,6 +637,36 @@ export default function LeadWorkspace() {
       toast({ title: "Erro ao atualizar responsável", description: e instanceof Error ? e.message : "Tente novamente.", variant: "destructive" });
     } finally {
       setSavingOwner(false);
+    }
+  }
+
+  async function forwardToCompany() {
+    if (!deal || !forwardPartnershipId || forwardNote.trim().length < 3) {
+      toast({ title: "Selecione a empresa e informe o motivo do encaminhamento.", variant: "destructive" });
+      return;
+    }
+    setForwardBusy(true);
+    try {
+      const response = await fetch(`/api/deals/${deal.id}/forward-to-company`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: "Bearer " + token },
+        body: JSON.stringify({
+          partnershipId: forwardPartnershipId,
+          targetPipeline: "comercial",
+          ...(forwardStage.trim() ? { targetStage: forwardStage.trim() } : {}),
+          note: forwardNote.trim(),
+        }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.message ?? payload.error ?? "Encaminhamento recusado.");
+      await qc.invalidateQueries({ queryKey: ["deal-participations", tenantId] });
+      setForwardNote("");
+      setForwardStage("");
+      toast({ title: "Negócio encaminhado", description: "A empresa de destino recebeu uma participação vinculada ao negócio original." });
+    } catch (error) {
+      toast({ title: "Erro ao encaminhar", description: error instanceof Error ? error.message : "Tente novamente.", variant: "destructive" });
+    } finally {
+      setForwardBusy(false);
     }
   }
 
@@ -762,6 +861,7 @@ export default function LeadWorkspace() {
       ]);
       setOpen(false);
       toast({ title: "Etapa avançada", description: "Próxima atividade atribuída a " + displayUser(owner) + "." });
+      if (search.get("from") === "pipeline") navigate("/deals");
     } catch (e) {
       toast({ title: "Erro ao avançar", description: e instanceof Error ? e.message : "Tente novamente.", variant: "destructive" });
     } finally {
@@ -830,7 +930,7 @@ export default function LeadWorkspace() {
           </div>
           <div className="flex shrink-0 items-center gap-2">
             {deal
-              ? <Button className="shrink-0" onClick={showAdvance}>Avançar atendimento <ArrowRight className="ml-2 h-4 w-4" /></Button>
+              ? <Button className="shrink-0" type="button" onClick={showAdvance} data-testid="advance-attendance-button">Avançar atendimento <ArrowRight className="ml-2 h-4 w-4" /></Button>
               : <Button className="shrink-0" disabled={createDeal.isPending} onClick={startAttendance}>{createDeal.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Iniciar atendimento</Button>}
             <AdminDeleteLeadButton leadId={lead.id} leadName={lead.nome} redirectTo="/leads" compact={false} />
           </div>
@@ -889,6 +989,27 @@ export default function LeadWorkspace() {
                     </div>
                   </div>
         
+                  <div className="rounded-lg border border-border/70 p-3 space-y-3 mb-3">
+                    <p className="text-sm font-semibold">Encaminhar para outra empresa</p>
+                    <p className="text-xs text-muted-foreground">Compartilhe com empresa parceira sem criar outro lead. A origem permanece vinculada.</p>
+                    <Select value={forwardPartnershipId} onValueChange={setForwardPartnershipId}>
+                      <SelectTrigger aria-label="Empresa de destino"><SelectValue placeholder="Selecione uma empresa parceira" /></SelectTrigger>
+                      <SelectContent>
+                        {ownerPartnerships.map((partnership) => (
+                          <SelectItem key={partnership.id} value={partnership.id}>
+                            {partnership.partnerName || partnership.partnerTenantCode || partnership.partnerTenantId}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <Input aria-label="Etapa no destino" placeholder="Etapa no destino (opcional, chave configurada)" value={forwardStage} onChange={(event) => setForwardStage(event.target.value)} />
+                    <Textarea aria-label="Motivo do encaminhamento" placeholder="O que a empresa deverá fazer? Ex.: elaborar orçamento de esquadrias" value={forwardNote} onChange={(event) => setForwardNote(event.target.value)} />
+                    <Button type="button" variant="outline" disabled={forwardBusy || !forwardPartnershipId || forwardNote.trim().length < 3} onClick={() => void forwardToCompany()}>
+                      {forwardBusy && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                      Encaminhar para empresa
+                    </Button>
+                  </div>
+
                   {ownerPartnerships.length === 0 ? (
                     <p className="text-sm text-muted-foreground">Nenhuma empresa representante ativa foi vinculada a este tenant.</p>
                   ) : (
@@ -1139,102 +1260,16 @@ export default function LeadWorkspace() {
       </Suspense>
     </div>
 
-    <Dialog open={intelligenceOpen} onOpenChange={setIntelligenceOpen}>
-      <DialogContent className="max-h-[88vh] max-w-5xl overflow-hidden p-0">
-        <DialogHeader className="border-b px-6 py-4">
-          <DialogTitle className="flex items-center gap-2"><BrainCircuit className="h-5 w-5 text-primary" />Inteligência completa do cliente</DialogTitle>
-          <DialogDescription>Histórico, perfil, saúde, oportunidades e fontes que sustentam as análises do Vendi.</DialogDescription>
-        </DialogHeader>
-        <div className="max-h-[74vh] overflow-y-auto px-6 pb-6">
-          <Tabs defaultValue="resumo" className="pt-4">
-            <TabsList className="grid h-auto w-full grid-cols-3 gap-1 sm:grid-cols-6">
-              <TabsTrigger value="resumo">Resumo</TabsTrigger>
-              <TabsTrigger value="historico">Histórico</TabsTrigger>
-              <TabsTrigger value="perfil">Perfil</TabsTrigger>
-              <TabsTrigger value="saude">Saúde</TabsTrigger>
-              <TabsTrigger value="oportunidades">Oportunidades</TabsTrigger>
-              <TabsTrigger value="fontes">Fontes</TabsTrigger>
-            </TabsList>
-
-            <TabsContent value="resumo" className="mt-4 space-y-4">
-              <div className="grid gap-3 md:grid-cols-3">
-                <Card><CardContent className="p-4"><p className="text-[11px] uppercase tracking-wide text-muted-foreground">Saúde</p><p className="mt-1 text-2xl font-semibold">{fullIntelligence?.health?.score ?? "—"}{fullIntelligence?.health?.score != null ? "/100" : ""}</p><p className="text-xs text-muted-foreground">{fullIntelligence?.health?.status?.replace(/_/g, " ") ?? "Sem análise"}</p></CardContent></Card>
-                <Card><CardContent className="p-4"><p className="text-[11px] uppercase tracking-wide text-muted-foreground">Risco principal</p><p className="mt-1 text-sm font-semibold">{fullIntelligence?.health?.riskType?.replace(/_/g, " ") ?? "Nenhum identificado"}</p><p className="text-xs text-muted-foreground">{fullIntelligence?.health?.riskLevel ? "Nível " + fullIntelligence.health.riskLevel : "Sem nível calculado"}</p></CardContent></Card>
-                <Card><CardContent className="p-4"><p className="text-[11px] uppercase tracking-wide text-muted-foreground">Confiança</p><p className="mt-1 text-2xl font-semibold">{fullIntelligence?.health?.confidence ?? "—"}{fullIntelligence?.health?.confidence != null ? "%" : ""}</p><p className="text-xs text-muted-foreground">{fullIntelligence?.health?.trend ? "Tendência: " + fullIntelligence.health.trend : "Tendência não calculada"}</p></CardContent></Card>
-              </div>
-              <Card><CardContent className="p-4"><p className="text-xs font-semibold">Próxima melhor ação</p><p className="mt-2 text-sm">{fullIntelligence?.health?.nextBestAction ?? "Ainda não há uma ação recomendada."}</p>{fullIntelligence?.health?.nextBestActionReason && <p className="mt-1 text-xs text-muted-foreground">{fullIntelligence.health.nextBestActionReason}</p>}</CardContent></Card>
-              <div className="grid gap-3 md:grid-cols-2">
-                <Card><CardContent className="p-4"><p className="text-xs font-semibold">Intenção atual</p><p className="mt-2 text-sm text-muted-foreground">{fullIntelligence?.profile?.intentAnalysis ?? "Ainda não identificada."}</p></CardContent></Card>
-                <Card><CardContent className="p-4"><p className="text-xs font-semibold">Objetivo identificado</p><p className="mt-2 text-sm text-muted-foreground">{fullIntelligence?.profile?.goalAnalysis ?? "Ainda não identificado."}</p></CardContent></Card>
-              </div>
-            </TabsContent>
-
-            <TabsContent value="historico" className="mt-4">
-              <div className="space-y-2">
-                {(fullIntelligence?.events ?? []).length === 0 && <p className="py-8 text-center text-sm text-muted-foreground">Ainda não há eventos no Histórico Inteligente.</p>}
-                {(fullIntelligence?.events ?? []).map((event) => (
-                  <div key={event.id} className="rounded-lg border p-3">
-                    <div className="flex flex-wrap items-start justify-between gap-2">
-                      <div><p className="text-sm font-medium">{event.title ?? event.eventType ?? "Evento"}</p>{event.summary && <p className="mt-1 text-xs text-muted-foreground">{event.summary}</p>}</div>
-                      <span className="text-[11px] text-muted-foreground">{formatIntelligenceDate(event.occurredAt ?? event.createdAt)}</span>
-                    </div>
-                    {event.sourceModule && <p className="mt-2 text-[10px] uppercase tracking-wide text-muted-foreground">Fonte: {event.sourceModule}</p>}
-                  </div>
-                ))}
-              </div>
-            </TabsContent>
-
-            <TabsContent value="perfil" className="mt-4 space-y-4">
-              <div className="grid gap-3 md:grid-cols-2">
-                <Card><CardContent className="p-4"><p className="text-xs font-semibold">Jornada</p><p className="mt-2 text-sm text-muted-foreground">{fullIntelligence?.profile?.journeyStage ?? currentStage?.label ?? "Não identificada"}</p></CardContent></Card>
-                <Card><CardContent className="p-4"><p className="text-xs font-semibold">Última análise</p><p className="mt-2 text-sm text-muted-foreground">{formatIntelligenceDate(fullIntelligence?.profile?.lastAnalyzedAt)}</p></CardContent></Card>
-              </div>
-              <div className="space-y-2">
-                {(fullIntelligence?.facts ?? []).length === 0 && <p className="py-8 text-center text-sm text-muted-foreground">Ainda não há conhecimentos estruturados.</p>}
-                {(fullIntelligence?.facts ?? []).map((fact) => (
-                  <div key={fact.id} className="rounded-lg border p-3">
-                    <div className="flex flex-wrap items-center gap-2"><Badge variant="outline" className="text-[10px]">{fact.kind?.replace(/_/g, " ") ?? "informação"}</Badge><p className="text-xs font-semibold">{fact.factKey?.replace(/[._]/g, " ") ?? "Conhecimento"}</p>{fact.confidence != null && <span className="text-[10px] text-muted-foreground">Confiança {fact.confidence}%</span>}</div>
-                    <p className="mt-2 break-words text-sm text-muted-foreground">{displayFactValue(fact.value)}</p>
-                  </div>
-                ))}
-              </div>
-            </TabsContent>
-
-            <TabsContent value="saude" className="mt-4 space-y-4">
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                {Object.entries(fullIntelligence?.health?.dimensions ?? {}).map(([key, value]) => (
-                  <Card key={key}><CardContent className="p-4"><p className="text-[11px] uppercase tracking-wide text-muted-foreground">{key.replace(/_/g, " ")}</p><p className="mt-1 text-xl font-semibold">{value}/100</p></CardContent></Card>
-                ))}
-              </div>
-              <div className="grid gap-3 md:grid-cols-2">
-                <Card><CardContent className="p-4"><p className="text-xs font-semibold">Sinais positivos</p><div className="mt-2 space-y-2">{(fullIntelligence?.health?.positiveSignals ?? []).map((item, index) => <p key={index} className="text-sm text-muted-foreground">• {String(item.sinal ?? item.evidencia ?? "Sinal positivo")}</p>)}</div></CardContent></Card>
-                <Card><CardContent className="p-4"><p className="text-xs font-semibold">Fatores de risco</p><div className="mt-2 space-y-2">{(fullIntelligence?.health?.riskFactors ?? []).map((item, index) => <p key={index} className="text-sm text-muted-foreground">• {String(item.fator ?? item.motivo ?? "Fator de risco")}</p>)}</div></CardContent></Card>
-              </div>
-              <Card><CardContent className="p-4"><p className="text-xs font-semibold">Evolução das análises</p><div className="mt-3 space-y-2">{(fullIntelligence?.snapshots ?? []).slice(0, 12).map((snapshot) => <div key={snapshot.id} className="flex flex-wrap items-center justify-between gap-2 border-b py-2 last:border-0"><span className="text-xs">{formatIntelligenceDate(snapshot.createdAt)}</span><span className="text-xs text-muted-foreground">Saúde {snapshot.healthScore ?? "—"} · {snapshot.riskType?.replace(/_/g, " ") ?? "sem risco"} · {snapshot.riskTrend ?? "estável"}</span></div>)}</div></CardContent></Card>
-            </TabsContent>
-
-            <TabsContent value="oportunidades" className="mt-4">
-              <div className="space-y-2">
-                {(fullIntelligence?.profile?.opportunities ?? []).length === 0 && <p className="py-8 text-center text-sm text-muted-foreground">Nenhuma oportunidade adicional identificada até agora.</p>}
-                {(fullIntelligence?.profile?.opportunities ?? []).map((opportunity, index) => <div key={index} className="flex items-start gap-2 rounded-lg border p-3"><Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-primary" /><p className="text-sm">{opportunity}</p></div>)}
-              </div>
-            </TabsContent>
-
-            <TabsContent value="fontes" className="mt-4">
-              <div className="space-y-2">
-                {(fullIntelligence?.sources ?? []).length === 0 && <p className="py-8 text-center text-sm text-muted-foreground">Ainda não há fontes registradas.</p>}
-                {(fullIntelligence?.sources ?? []).map((source) => (
-                  <div key={source.id} className="rounded-lg border p-3">
-                    <div className="flex flex-wrap items-start justify-between gap-2"><div><p className="text-sm font-medium">{source.title ?? source.sourceType ?? "Fonte"}</p><p className="mt-1 text-xs text-muted-foreground">{source.sourceModule ?? "origem não informada"} · {source.sourceType ?? "tipo não informado"}</p></div><span className="text-[11px] text-muted-foreground">{formatIntelligenceDate(source.capturedAt)}</span></div>
-                    {source.sourceUrl && <p className="mt-2 break-all text-xs text-primary">{source.sourceUrl}</p>}
-                  </div>
-                ))}
-              </div>
-            </TabsContent>
-          </Tabs>
-        </div>
-      </DialogContent>
-    </Dialog>
+    <Suspense fallback={null}>
+      {intelligenceOpen && (
+        <LeadIntelligenceDialog
+          open={intelligenceOpen}
+          onOpenChange={setIntelligenceOpen}
+          fullIntelligence={fullIntelligence}
+          currentStageLabel={currentStage?.label}
+        />
+      )}
+    </Suspense>
 
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogContent className="sm:max-w-xl">

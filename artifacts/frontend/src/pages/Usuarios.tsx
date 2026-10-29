@@ -1242,15 +1242,20 @@ export default function Usuarios() {
                 Empresas/tenants que podem receber responsabilidade por leads e negócios. Os usuários continuam pertencendo ao tenant de origem.
               </p>
             </div>
-            <Button type="button" variant="outline" onClick={() => { resetPartnershipForm(); setPartnershipDialogOpen(true); }}>
-              <Plus className="mr-2 h-4 w-4" /> Vincular empresa
-            </Button>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button type="button" variant="outline" onClick={() => { resetPartnershipForm(); setPartnershipDialogOpen(true); }}>
+                <Plus className="mr-2 h-4 w-4" /> Vincular empresa existente
+              </Button>
+              <Button type="button" variant="outline" onClick={() => { window.location.assign("/ecosystem-hub/new"); }}>
+                <Plus className="mr-2 h-4 w-4" /> Cadastrar nova empresa
+              </Button>
+            </div>
           </div>
         </CardHeader>
         <CardContent>
           {commercialPartnerships.filter((item) => item.ownerTenantId === tenantId && item.status === "active").length === 0 ? (
             <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
-              Nenhuma empresa representante vinculada. Vincule a empresa e depois escolha-a como responsável em cada negócio.
+              Nenhuma empresa representante vinculada. Se a empresa já utiliza o Vendor.ai, use "Vincular empresa existente". Para uma empresa ainda não cadastrada, inicie o registro no Ecosystem Hub; esse registro não cria um tenant nem concede acesso automaticamente. A vinculação poderá ocorrer quando o tenant estiver ativo.
             </div>
           ) : (
             <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">

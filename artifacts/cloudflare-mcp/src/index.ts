@@ -7,6 +7,7 @@ import { createMcpHandler, McpServer } from "@modelcontextprotocol/server";
 import { toNodeHandler } from "@modelcontextprotocol/node";
 import * as z from "zod/v4";
 import { authorized, challenge, handleOAuth, verifiedOperatorClient } from "./oauth.js";
+import { authorizeReleaseOperation, type ReleaseOperation } from "./release-operator-policy.js";
 
 const API_BASE = "https://api.cloudflare.com/client/v4";
 const DEFAULT_GITHUB_OWNER = "casaforteicf";
@@ -255,6 +256,15 @@ async function contaboReadOnly(action: keyof typeof CONTABO_READ_ONLY_COMMANDS) 
   return { action, readOnly: true, server: "contabo", output: stdout.slice(0, 16000), warnings: stderr.slice(0, 600) };
 }
 
+function releaseOperatorGrant(operation: ReleaseOperation, lot: string): string {
+  return authorizeReleaseOperation({
+    client: testOperatorSession.getStore(),
+    policyText: process.env["VENDI_RELEASE_OPERATOR_POLICY"],
+    operation,
+    lot,
+  });
+}
+
 // Structured operations only: fixed script on the host, no arbitrary shell from the model.
 // Host-side operator enforces its own action allowlist and audit trail.
 async function contaboOperate(action: "build" | "homologate" | "rollback" | "releaseStatus" | "preflight" | "publish", lot: string) {
@@ -493,14 +503,22 @@ function createCloudflareMcpServer() {
   server.registerTool(
     "vendi_contabo_operate",
     {
-      description: "Executa operações predefinidas do operador Vendi na Contabo: build de lote homologado, homologação, rollback ou consulta de estágio. Não aceita comandos livres. Produção depende dos gates implementados no host.",
+      description: "Executa operações fixas do Vendi na Contabo. Ações que alteram o host exigem grant OAuth por operador, lote e ação, além dos gates do operador host.",
       inputSchema: z.object({
         action: z.enum(["build", "homologate", "rollback", "releaseStatus", "preflight", "publish"]),
         lot: z.string().regex(/^[A-Z][A-Z0-9]{1,15}-[0-9]{1,6}$/),
       }),
-      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+      annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false },
     },
-    async ({ action, lot }) => toolText(await contaboOperate(action, lot)),
+    async ({ action, lot }) => {
+      if (action === "releaseStatus") {
+        return toolText(await contaboOperate(action, lot));
+      }
+      releaseOperatorGrant(action, lot);
+      const result = await contaboOperate(action, lot);
+      console.info(JSON.stringify({ type: "vendi_release_operation", action, lot, status: "completed", timestamp: new Date().toISOString() }));
+      return toolText(result);
+    },
   );
 
   server.registerTool(

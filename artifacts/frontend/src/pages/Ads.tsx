@@ -249,7 +249,7 @@ const EMPTY_FORM = {
   tipoAnuncio: "rsa_pmax" as TipoAnuncio,
   modo: "unico" as Modo,
   categoriaFiltro: "",
-  destinoClique: "produto" as DestinoClique,
+  destinoClique: "whatsapp" as DestinoClique,
   orcamentoDiario: "",
   vertical: "",
   locais: "", tipoPresenca: "presenca" as "presenca" | "interesse" | "ambos", raioKm: "",
@@ -1298,6 +1298,11 @@ export default function Ads() {
                   <SelectItem value="formulario_lead">Formulário de lead nativo</SelectItem>
                 </SelectContent>
               </Select>
+              {form.destinoClique === "whatsapp" && (
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Padrão Vendor.ai: o anúncio abre o número de entrada e exibe a autorização em texto discreto; a mensagem preenchida precisa ser enviada pelo lead.
+                </p>
+              )}
             </div>
 
             <div>

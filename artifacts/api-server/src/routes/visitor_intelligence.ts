@@ -1,7 +1,7 @@
 import { Router, type IRouter, type Request } from "express";
 import { z } from "zod/v4";
 import { db, webBehaviorEventsTable } from "@workspace/db";
-import { and, desc, eq, gte, lt } from "drizzle-orm";
+import { and, desc, eq, gte, lt, sql } from "drizzle-orm";
 import { getVisitorIntelligence } from "../services/visitorIntelligence.js";
 import { resolveRequestGeo } from "../lib/requestGeo.js";
 import {
@@ -220,7 +220,9 @@ router.post("/visitor-intelligence/event", async (req, res) => {
   const geo = await resolveRequestGeo(req);
 
   try {
-    await db.insert(webBehaviorEventsTable).values({
+    await db.transaction(async (tx) => {
+      await tx.execute(sql`SELECT set_config('app.tenant_id', ${tenantId}, true)`);
+      await tx.insert(webBehaviorEventsTable).values({
       anonymousSessionId: d.anonymousSessionId,
       tenantId,
       eventType: d.eventType,
@@ -239,6 +241,7 @@ router.post("/visitor-intelligence/event", async (req, res) => {
         longitude: geo.longitude,
         geoSource: geo.source,
       },
+      });
     });
     return res.status(202).json({ accepted: true });
   } catch (error) {

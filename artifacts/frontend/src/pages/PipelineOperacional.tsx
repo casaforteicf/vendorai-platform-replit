@@ -536,8 +536,12 @@ export default function PipelineOperacional() {
   const cards = cardsQuery.data ?? [];
   const isAdmin = (user as any)?.platformRole === "super_admin" || (user as any)?.platformRole === "tenant_admin" || (user as any)?.userFunction === "administrador";
   const stageIndex = (stage: string) => stages.findIndex(([key]) => key === stage);
-  const canMoveForward = (card: WorkCard, target: string) =>
-    target === card.etapa || stageIndex(target) >= stageIndex(card.etapa) || (card.pipeline === "execucao" && isAdmin);
+  const canMoveForward = (card: WorkCard, target: string) => {
+    const currentIndex = stageIndex(card.etapa);
+    const targetIndex = stageIndex(target);
+    if (currentIndex < 0 || targetIndex < 0) return false;
+    return targetIndex >= currentIndex || (card.pipeline === "execucao" && isAdmin);
+  };
   const nextExecutionStage = (stage: string) => {
     const index = EXECUTION_STAGES.findIndex(([key]) => key === stage);
     return index >= 0 && index < EXECUTION_STAGES.length - 1 ? EXECUTION_STAGES[index + 1] : null;
@@ -600,11 +604,11 @@ export default function PipelineOperacional() {
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-col gap-4 p-4 md:p-8">
-      <div className="flex flex-wrap items-center justify-between gap-3">
+    <div className="vendor-product-page vendor-page-canvas vendor-pipeline-page flex h-full min-h-0 flex-col gap-4">
+      <div className="vendor-product-hero flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Pipeline</h1>
-          <p className="text-sm text-muted-foreground">Comercial, execução, suporte, aquecimento e parceiros ligados à mesma base de clientes.</p>
+          <h1 className="vendor-product-title">Pipeline</h1>
+          <p className="vendor-product-subtitle">Comercial, execução, suporte, aquecimento e parceiros ligados à mesma base de clientes.</p>
         </div>
         <div className="flex flex-wrap gap-2">
           {pipeline === "execucao" ? (
@@ -633,9 +637,9 @@ export default function PipelineOperacional() {
               onDrop={() => {
                 const dragged = cards.find((card) => card.id === draggedId);
                 if (dragged && !canMoveForward(dragged, key)) {
-                  toast({ title: "Movimento não permitido", description: "O card só pode avançar. Etapas já concluídas ficam no histórico.", variant: "destructive" });
-                } else if (draggedId && !patchCard.isPending) {
-                  patchCard.mutate({ id: draggedId, data: { etapa: key } });
+                  toast({ title: "Movimento não permitido", description: "Confira a configuração das etapas. O card não pode retroceder.", variant: "destructive" });
+                } else if (dragged && dragged.etapa !== key && !patchCard.isPending) {
+                  patchCard.mutate({ id: dragged.id, data: { etapa: key } });
                 }
                 setDraggedId(null);
               }}
@@ -1488,6 +1492,11 @@ function SupportDialog({ open, onOpenChange, tenantId, token, leads, deals, prop
   const { toast } = useToast();
   const [leadId, setLeadId] = useState("");
   const [leadSearch, setLeadSearch] = useState("");
+  const [createdClient, setCreatedClient] = useState<Lead | null>(null);
+  const [showNewClient, setShowNewClient] = useState(false);
+  const [clientName, setClientName] = useState("");
+  const [clientPhone, setClientPhone] = useState("");
+  const [creatingClient, setCreatingClient] = useState(false);
   const [dealId, setDealId] = useState("");
   const [categoria, setCategoria] = useState("defeito");
   const [titulo, setTitulo] = useState("");
@@ -1503,7 +1512,8 @@ function SupportDialog({ open, onOpenChange, tenantId, token, leads, deals, prop
   const legacyOrderFileRef = useRef<HTMLInputElement>(null);
 
   const leadDeals = deals.filter((d) => d.leadId === leadId);
-  const selectedLead = leads.find((lead) => lead.id === leadId) ?? null;
+  const availableLeads = createdClient && !leads.some((lead) => lead.id === createdClient.id) ? [...leads, createdClient] : leads;
+  const selectedLead = availableLeads.find((lead) => lead.id === leadId) ?? null;
   // Etapa de abertura do chamado = primeira etapa (menor ordem) do pipeline de suporte.
   // Usada para filtrar os responsáveis elegíveis pelas funções responsáveis da etapa.
   const openingStage = [...stages].sort((a, b) => a.ordem - b.ordem)[0] ?? null;
@@ -1511,7 +1521,7 @@ function SupportDialog({ open, onOpenChange, tenantId, token, leads, deals, prop
   const leadGroups = useMemo(() => {
     const normalize = (value: string) => value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("pt-BR").trim();
     const query = normalize(leadSearch);
-    const ordered = [...leads]
+    const ordered = [...availableLeads]
       .filter((lead) => {
         if (!query) return true;
         return [lead.nome, lead.empresa, lead.telefone, lead.email, lead.endereco]
@@ -1532,7 +1542,7 @@ function SupportDialog({ open, onOpenChange, tenantId, token, leads, deals, prop
       else groups.push({ letter, leads: [lead] });
       return groups;
     }, []);
-  }, [leads, leadSearch]);
+  }, [availableLeads, leadSearch]);
   const proposal = proposals.find((p) => p.dealId === dealId) ?? null;
 
   function legacyItemLabel(item: Record<string, unknown>, index: number) {
@@ -1605,9 +1615,41 @@ function SupportDialog({ open, onOpenChange, tenantId, token, leads, deals, prop
     });
   }
 
+  async function createClient() {
+    if (!clientName.trim()) return;
+    setCreatingClient(true);
+    try {
+      const response = await fetch("/api/leads", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ tenantId, nome: clientName.trim(), telefone: clientPhone.trim() || undefined, source: "manual" }),
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok || !body.id) throw new Error(body.error || "Falha ao salvar cliente");
+      setCreatedClient(body as Lead);
+      setLeadId(String(body.id));
+      setLeadSearch("");
+      setDealId("");
+      setShowNewClient(false);
+      toast({ title: "Cliente cadastrado e selecionado" });
+    } catch (error) {
+      toast({ title: "Erro ao salvar cliente", description: error instanceof Error ? error.message : String(error), variant: "destructive" });
+    } finally { setCreatingClient(false); }
+  }
+
   async function submit() {
-    if (!leadId || !responsavelId || !titulo.trim() || relato.trim().length < 10) {
-      toast({ title: "Preencha cliente, responsável, título e um relato claro do problema.", variant: "destructive" });
+    const missing = [
+      !selectedLead && "cliente (selecione um resultado da lista)",
+      !titulo.trim() && "título",
+      relato.trim().length < 10 && "relato do problema (mínimo de 10 caracteres)",
+      !responsavelId && "responsável (selecione na lista)",
+    ].filter(Boolean);
+    if (missing.length) {
+      toast({
+        title: "Confira os campos obrigatórios",
+        description: `Falta preencher: ${missing.join(", ")}.`,
+        variant: "destructive",
+      });
       return;
     }
     setSaving(true);
@@ -1635,7 +1677,7 @@ function SupportDialog({ open, onOpenChange, tenantId, token, leads, deals, prop
         }),
       });
       const body = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(body.error || "Falha ao abrir assistência");
+      if (!response.ok) throw new Error(body.message || body.error || "Falha ao abrir assistência");
       const cardId = body.card.id as string;
       if (legacyOrder?.sourceFileUrl) {
         const result = await fetch(`/api/work-cards/${cardId}/attachments`, {
@@ -1698,6 +1740,12 @@ function SupportDialog({ open, onOpenChange, tenantId, token, leads, deals, prop
               onChange={(event) => setLeadSearch(event.target.value)}
               placeholder="Buscar por nome, empresa, telefone, e-mail ou endereço..."
             />
+            <Button type="button" variant="outline" size="sm" onClick={() => setShowNewClient(!showNewClient)}>{showNewClient ? "Cancelar cadastro" : "+ Cadastrar cliente"}</Button>
+            {showNewClient && <div className="space-y-2 rounded-md border p-3">
+              <Input value={clientName} onChange={(e) => setClientName(e.target.value)} placeholder="Nome do cliente *" />
+              <Input value={clientPhone} onChange={(e) => setClientPhone(e.target.value)} placeholder="Telefone" />
+              <Button type="button" disabled={creatingClient || !clientName.trim()} onClick={() => void createClient()}>{creatingClient ? "Salvando..." : "Salvar e selecionar cliente"}</Button>
+            </div>}
             <Select value={leadId} onValueChange={(v) => { setLeadId(v); setDealId(""); }}>
               <SelectTrigger><SelectValue placeholder="Selecionar cliente" /></SelectTrigger>
               <SelectContent>
@@ -1715,6 +1763,7 @@ function SupportDialog({ open, onOpenChange, tenantId, token, leads, deals, prop
                 )}
               </SelectContent>
             </Select>
+            {!selectedLead && leadSearch.trim() && <p className="text-xs text-muted-foreground">Selecione um cliente na lista. A busca não confirma a seleção.</p>}
             {selectedLead && (
               <div className="rounded-md border bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
                 <strong className="text-foreground">{selectedLead.nome || selectedLead.empresa || "Cliente"}</strong>

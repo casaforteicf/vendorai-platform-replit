@@ -190,10 +190,12 @@ export default function PipelineRelacionamento() {
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-col gap-4 p-4 md:p-8">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight">Pipeline</h1>
-        <p className="text-sm text-muted-foreground">Comercial, execução, suporte, aquecimento e parceiros sem misturar processos.</p>
+    <div className="vendor-product-page vendor-page-canvas vendor-pipeline-page flex h-full min-h-0 flex-col gap-4">
+      <div className="vendor-product-hero">
+        <div>
+          <h1 className="vendor-product-title">Pipeline</h1>
+          <p className="vendor-product-subtitle">Comercial, execução, suporte, aquecimento e parceiros sem misturar processos.</p>
+        </div>
       </div>
       <PipelineNav active={tab} />
 

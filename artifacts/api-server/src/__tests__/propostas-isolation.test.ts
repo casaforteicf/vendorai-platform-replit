@@ -30,11 +30,17 @@ vi.mock("../lib/proposal-accepted.js", () => ({
   proposalAccepted: vi.fn().mockResolvedValue({ ok: true, dealId: "deal-1", alreadyProcessed: false }),
 }));
 
+vi.mock("../lib/proposal-engine.js", () => ({
+  renderOrcamentoPdf: vi.fn(() => "<!DOCTYPE html><html><body>Orçamento completo</body></html>"),
+  generateProposalPDF: vi.fn(async () => Buffer.from("%PDF-1.7 test")),
+}));
+
 vi.mock("../services/erp-webhook.js", () => ({
   dispatchVendaWebhook: vi.fn().mockResolvedValue(undefined),
 }));
 
-vi.mock("@workspace/db", () => ({
+vi.mock("@workspace/db", async () => ({
+  propostaApresentacaoSchema: (await import("zod")).z.any(),
   db: {
     select: mockDbSelect,
     update: mockDbUpdate,
@@ -128,6 +134,7 @@ describe("GET /api/propostas/:id — cross-tenant isolation", () => {
 
     expect(res.status).toBe(200);
     expect(res.body.id).toBe(RECORD_ID);
+    expect(mockDbUpdate).not.toHaveBeenCalled();
   });
 
   it("returns 200 when super_admin requests a cross-tenant record", async () => {
@@ -419,5 +426,36 @@ describe("Unauthenticated access — propostas", () => {
   it("returns 401 for DELETE without a token", async () => {
     const res = await request(app).delete(`/api/propostas/${RECORD_ID}`);
     expect(res.status).toBe(401);
+  });
+});
+
+describe("GET documento completo — isolamento e formato", () => {
+  beforeEach(() => vi.clearAllMocks());
+  it.each(["print-document", "pdf"])("bloqueia tenant diferente em %s", async (suffix) => {
+    setupSelectReturning([recordOwnedByTenantB]);
+    const res = await request(app).get(`/api/propostas/${RECORD_ID}/${suffix}`).set("Authorization", `Bearer ${tokenA}`);
+    expect(res.status).toBe(403);
+  });
+  it.each(["print-document", "pdf"])("bloqueia outro responsável em %s", async (suffix) => {
+    const proposal = { ...recordOwnedByTenantB, tenantId: TENANT_A, leadId: "lead-other", dealId: null };
+    mockDbSelect
+      .mockReturnValueOnce({ from: vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue([proposal]) }) })
+      .mockReturnValueOnce({ from: vi.fn().mockReturnValue({ where: vi.fn().mockReturnValue({ limit: vi.fn().mockResolvedValue([{ assignedTo: "another-user" }]) }) }) });
+    const res = await request(app).get(`/api/propostas/${RECORD_ID}/${suffix}`).set("Authorization", `Bearer ${makeToken(TENANT_A, "member")}`);
+    expect(res.status).toBe(403);
+  });
+  it("retorna HTML autorizado sem depender de Chromium e sem gravar dados", async () => {
+    const proposal = { ...recordOwnedByTenantB, itens: [], leadId: null };
+    mockDbSelect.mockReturnValue({
+      from: () => ({
+        where: () => Object.assign(Promise.resolve([proposal]), { limit: async () => [] }),
+        leftJoin: () => ({ where: () => ({ limit: async () => [] }) }),
+      }),
+    });
+    const res = await request(app).get(`/api/propostas/${RECORD_ID}/print-document`).set("Authorization", `Bearer ${tokenB}`);
+    expect(res.status).toBe(200);
+    expect(res.headers["cache-control"]).toBe("no-store");
+    expect(res.body.html).toContain("Orçamento completo");
+    expect(mockDbUpdate).not.toHaveBeenCalled();
   });
 });

@@ -1,0 +1,62 @@
+/* ARQDOR-UI-05: construction operations/physical measurement screen.
+   Scoped to this workspace; does not affect Concept or the photo-based Measure tool. */
+.arqdor-construction-studio {
+  --arq-bg:#171F22; --arq-surface:#20282A; --arq-panel:#263034;
+  --arq-border:#3A4649; --arq-text:#EEF2EF; --arq-muted:#AAB8B5;
+  --arq-accent:#176D59;
+  background:var(--arq-bg) !important;
+  color:var(--arq-text) !important;
+  font-family:Inter,"IBM Plex Sans","Segoe UI",sans-serif;
+  font-size:12px;
+  color-scheme:dark;
+}
+.arqdor-construction-studio :is(header,section,article,div).bg-white {
+  background-color:var(--arq-surface) !important;
+  border-color:var(--arq-border) !important;
+  box-shadow:none !important;
+}
+.arqdor-construction-studio .border-slate-100,
+.arqdor-construction-studio .border-slate-200 {
+  border-color:var(--arq-border) !important;
+}
+.arqdor-construction-studio .bg-slate-50 {
+  background-color:var(--arq-panel) !important;
+}
+.arqdor-construction-studio .text-violet-600 {
+  color:#4AC59A !important;
+}
+.arqdor-construction-studio .text-slate-950,
+.arqdor-construction-studio .text-slate-900,
+.arqdor-construction-studio .text-slate-800 {
+  color:var(--arq-text) !important;
+}
+.arqdor-construction-studio .text-slate-500,
+.arqdor-construction-studio .text-slate-600,
+.arqdor-construction-studio .text-slate-400 {
+  color:var(--arq-muted) !important;
+}
+.arqdor-construction-studio h1 {font-size:18px !important;line-height:1.45;}
+.arqdor-construction-studio h2 {font-size:14px !important;line-height:1.5;}
+.arqdor-construction-studio h3 {font-size:13px !important;}
+.arqdor-construction-studio :is(button,input,select,textarea) {
+  font-family:inherit;
+  font-size:12px;
+  border-radius:7px;
+}
+.arqdor-construction-studio input {
+  background:var(--arq-panel);
+  color:var(--arq-text);
+  border-color:var(--arq-border);
+}
+.arqdor-construction-studio :is(button,input,select,textarea):focus-visible {
+  outline:2px solid #4AC59A;
+  outline-offset:2px;
+}
+.arqdor-construction-studio button.bg-slate-950 {
+  background:var(--arq-accent) !important;
+  color:#fff !important;
+}
+.arqdor-construction-studio button.bg-slate-950:hover {background:#21856C !important;}
+@media(prefers-reduced-motion:reduce){
+  .arqdor-construction-studio * {transition-duration:.01ms !important;animation-duration:.01ms !important;}
+}

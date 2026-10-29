@@ -6,6 +6,7 @@ import { tenantsTable } from "./tenants";
 export const aiProviderEnum = pgEnum("ai_provider", ["openai", "anthropic"]);
 
 export const AI_FEATURES = [
+  "agent_runtime",
   "agent_sdr",
   "agent_closer",
   "agent_followup",

@@ -187,7 +187,8 @@ router.patch("/tenants/:tenantId/whatsapp-connections/:connectionId", authentica
   const before = (await listWhatsappConnections(tenantId)).find((connection) => connection.id === connectionId) ?? null;
   const assignedUserId = typeof req.body?.assignedUserId === "string" ? req.body.assignedUserId : req.body?.assignedUserId === null ? null : undefined;
   const isDefault = typeof req.body?.isDefault === "boolean" ? req.body.isDefault : undefined;
-  const updated = await updateWhatsappConnectionRouting(tenantId, connectionId, { assignedUserId, isDefault });
+  const label = typeof req.body?.label === "string" ? req.body.label.trim().slice(0, 80) : req.body?.label === null ? null : undefined;
+  const updated = await updateWhatsappConnectionRouting(tenantId, connectionId, { assignedUserId, isDefault, label });
   if (!updated) return res.status(404).json({ error: "Connection not found" });
   await auditIntegrationChange({ tenantId, provider: "whatsapp", action: "atualizar", before, after: updated, actor: auditActor(req) });
   const { accessToken: _accessToken, ...safe } = updated;

@@ -222,6 +222,9 @@ export const tenantsTable = pgTable(
     instagramProvider: varchar("instagram_provider", { length: 20 }).default(
       "meta",
     ),
+    // Localidade usada pelo Praça.ai para separar lojas de municípios homônimos.
+    cidade: varchar("cidade", { length: 120 }),
+    estado: varchar("estado", { length: 2 }),
     nomeEmpresa: varchar("nome_empresa", { length: 255 }),
     segmento: varchar("segmento", { length: 100 }),
     logoUrl: varchar("logo_url", { length: 500 }),
@@ -362,6 +365,8 @@ const supportedCurrenciesSchema = z.array(tenantCurrencySchema).min(1);
 const nullableTimestampInput = z.coerce.date().nullable().optional();
 const paymentMethodInput = z.enum(["pix", "boleto", "cartao", "transferencia", "outro"]).nullable().optional();
 const paymentStatusInput = z.enum(["pago", "pendente", "atrasado", "isento"]).nullable().optional();
+const pracaCityInput = z.string().trim().min(2).max(120).nullable().optional();
+const pracaStateInput = z.string().trim().toUpperCase().regex(/^[A-Z]{2}$/, "Informe uma UF com duas letras.").nullable().optional();
 
 export const insertTenantSchema = createInsertSchema(tenantsTable)
   .omit({
@@ -384,6 +389,8 @@ export const insertTenantSchema = createInsertSchema(tenantsTable)
     defaultLocale: tenantLocaleSchema.optional(),
     defaultCurrency: tenantCurrencySchema.optional(),
     supportedCurrencies: supportedCurrenciesSchema.optional(),
+    cidade: pracaCityInput,
+    estado: pracaStateInput,
   });
 
 export const updateTenantSchema = createSelectSchema(tenantsTable)
@@ -415,6 +422,8 @@ export const updateTenantSchema = createSelectSchema(tenantsTable)
     contratoFimEm: nullableTimestampInput,
     cancelamentoSolicitadoEm: nullableTimestampInput,
     canceladoEm: nullableTimestampInput,
+    cidade: pracaCityInput,
+    estado: pracaStateInput,
   })
   .partial();
 

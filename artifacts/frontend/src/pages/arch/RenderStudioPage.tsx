@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import "./planner5d-reference.css";
+import "../../modules/arqdor/theme/arqdor-studio-primitives.css";
 import { useLocation } from "wouter";
 import RenderStudioCore from "./RenderStudioCore";
 import { useRenderStudioPersistentBootstrap } from "@/modules/arqdor/hooks/useRenderStudioPersistentBootstrap";
@@ -68,9 +69,9 @@ const SHELL_STYLES = `
 
   .arqdor-studio-v3 .arqdor-back-btn:hover,
   .arqdor-studio-v3 .arqdor-market-btn:hover {
-    border-color: #fb923c;
-    background: #fff7ed;
-    color: #c2410c;
+    border-color: #4AC59A;
+    background: #263934;
+    color: #A6DBCB;
     transform: translateY(-1px);
   }
 
@@ -85,9 +86,9 @@ const SHELL_STYLES = `
     align-items: center;
     gap: 7px;
     border-radius: 10px;
-    border: 1px solid #fed7aa;
-    background: #fff7ed;
-    color: #c2410c;
+    border: 1px solid #3A6154;
+    background: #263934;
+    color: #A6DBCB;
     font-size: 12px;
     font-weight: 800;
     cursor: pointer;
@@ -128,16 +129,16 @@ const SHELL_STYLES = `
     min-height: 38px !important;
     padding: 0 18px !important;
     border-radius: 10px !important;
-    background: #f97316 !important;
+    background: #176D59 !important;
     color: #ffffff !important;
-    border: 1px solid #ea580c !important;
+    border: 1px solid #21856C !important;
     box-shadow: 0 5px 14px rgba(249,115,22,.18) !important;
     font-size: 12px !important;
     font-weight: 800 !important;
   }
 
   .arqdor-studio-v3 .arqdor-legacy-topbar .arqdor-primary-action:hover {
-    background: #ea580c !important;
+    background: #21856C !important;
   }
 
   .arqdor-studio-v3 .arqdor-legacy-sidebar {
@@ -190,14 +191,14 @@ const SHELL_STYLES = `
   }
 
   .arqdor-studio-v3 .arqdor-studio-step:hover:not(:disabled) {
-    background: #fff7ed !important;
-    color: #c2410c !important;
+    background: #263934 !important;
+    color: #A6DBCB !important;
   }
 
   .arqdor-studio-v3 .arqdor-studio-step[aria-current="step"] {
     background: linear-gradient(90deg, #fff3e8 0%, #fff9f4 100%) !important;
-    color: #c2410c !important;
-    box-shadow: inset 3px 0 0 #f97316 !important;
+    color: #A6DBCB !important;
+    box-shadow: inset 3px 0 0 #176D59 !important;
   }
 
   .arqdor-studio-v3 .arqdor-studio-step::after {
@@ -217,7 +218,7 @@ const SHELL_STYLES = `
   }
 
   .arqdor-studio-v3 .arqdor-studio-step[aria-current="step"]::after {
-    color: #c2410c;
+    color: #A6DBCB;
     border-color: #fdba74;
     background: #ffedd5;
   }
@@ -261,15 +262,15 @@ const SHELL_STYLES = `
   }
 
   .arqdor-studio-v3 .arqdor-upload-card:hover {
-    border-color: #f97316 !important;
+    border-color: #176D59 !important;
     background: #fffaf5 !important;
     transform: translateY(-1px);
   }
 
   .arqdor-studio-v3 .arqdor-upload-card > div:first-child {
-    background: #fff1e8 !important;
-    color: #f97316 !important;
-    border: 1px solid #fed7aa !important;
+    background: #30423D !important;
+    color: #176D59 !important;
+    border: 1px solid #3A6154 !important;
   }
 
   .arqdor-studio-v3 .arqdor-legacy-root[data-arqdor-step="Projeto"] .arqdor-upload-card,
@@ -297,8 +298,8 @@ const SHELL_STYLES = `
   }
 
   .arqdor-studio-v3 .arqdor-canvas-toolbar button[aria-pressed="true"] {
-    background: #fff1e8 !important;
-    color: #c2410c !important;
+    background: #30423D !important;
+    color: #A6DBCB !important;
     border-color: #fdba74 !important;
   }
 
@@ -361,7 +362,7 @@ const SHELL_STYLES = `
   .arqdor-studio-v3 .arqdor-legacy-right-panel input:focus,
   .arqdor-studio-v3 .arqdor-legacy-right-panel select:focus,
   .arqdor-studio-v3 .arqdor-legacy-right-panel textarea:focus {
-    border-color: #fb923c !important;
+    border-color: #4AC59A !important;
     box-shadow: 0 0 0 3px rgba(249,115,22,.11) !important;
     outline: none !important;
   }
@@ -391,32 +392,32 @@ const SHELL_STYLES = `
   }
 
   .arqdor-studio-v3 .arqdor-environment-picker > button:not(.arqdor-env-cta):hover {
-    background: #fff7ed !important;
-    color: #c2410c !important;
+    background: #263934 !important;
+    color: #A6DBCB !important;
     border-color: #fdba74 !important;
   }
 
   .arqdor-studio-v3 .arqdor-environment-picker > button:not(.arqdor-env-cta)[style*="249, 115, 22"],
-  .arqdor-studio-v3 .arqdor-environment-picker > button:not(.arqdor-env-cta)[style*="#F97316"] {
-    background: #fff1e8 !important;
-    color: #c2410c !important;
-    border-color: #fb923c !important;
+  .arqdor-studio-v3 .arqdor-environment-picker > button:not(.arqdor-env-cta)[style*="#176D59"] {
+    background: #30423D !important;
+    color: #A6DBCB !important;
+    border-color: #4AC59A !important;
   }
 
   .arqdor-studio-v3 .arqdor-env-cta,
   .arqdor-studio-v3 .arqdor-primary-action {
     min-height: 40px !important;
     border-radius: 10px !important;
-    background: #f97316 !important;
+    background: #176D59 !important;
     color: #ffffff !important;
-    border-color: #ea580c !important;
+    border-color: #21856C !important;
     box-shadow: 0 5px 14px rgba(249,115,22,.16) !important;
     font-weight: 800 !important;
   }
 
   .arqdor-studio-v3 .arqdor-env-cta:hover,
   .arqdor-studio-v3 .arqdor-primary-action:hover {
-    background: #ea580c !important;
+    background: #21856C !important;
   }
 
   .arqdor-studio-v3 .arqdor-copilot-strip {
@@ -463,8 +464,8 @@ const SHELL_STYLES = `
     flex: 0 0 auto;
     border-radius: 10px;
     border: 1px solid #fdba74;
-    background: #fff7ed;
-    color: #c2410c;
+    background: #263934;
+    color: #A6DBCB;
     font-size: 12px;
     font-weight: 800;
     line-height: 1;
@@ -476,7 +477,7 @@ const SHELL_STYLES = `
 
   .arqdor-studio-v3 .arqdor-studio-entry-btn:hover {
     background: #ffedd5;
-    border-color: #fb923c;
+    border-color: #4AC59A;
     color: #9a3412;
   }
 
@@ -521,6 +522,94 @@ const SHELL_STYLES = `
       display: none;
     }
   }
+
+  /* ARQDOR-UI-02: official Studio 2.0 visual layer.
+     Scoped to Render only: preserve workflow handlers, persistence and navigation. */
+  .arqdor-studio-v3 {
+    --arq-studio-bg: #171F22;
+    --arq-studio-surface: #20282A;
+    --arq-studio-panel: #263034;
+    --arq-studio-border: #3A4649;
+    --arq-studio-text: #EEF2EF;
+    --arq-studio-muted: #AAB8B5;
+    --arq-studio-accent: #176D59;
+    background: var(--arq-studio-bg);
+    color: var(--arq-studio-text);
+    color-scheme: dark;
+    font-family: Inter, "IBM Plex Sans", "Segoe UI", sans-serif;
+    font-size: 12px;
+  }
+  .arqdor-studio-v3 .arqdor-legacy-root,
+  .arqdor-studio-v3 .arqdor-legacy-workspace {
+    background: var(--arq-studio-bg) !important;
+    color: var(--arq-studio-text) !important;
+  }
+  .arqdor-studio-v3 .arqdor-legacy-topbar {
+    height: 52px !important;
+    min-height: 52px !important;
+    background: var(--arq-studio-surface) !important;
+    border-bottom: 1px solid var(--arq-studio-border) !important;
+    color: var(--arq-studio-text) !important;
+    box-shadow: none !important;
+  }
+  .arqdor-studio-v3 .arqdor-legacy-topbar span {
+    font-size: 12px !important;
+    color: var(--arq-studio-text) !important;
+  }
+  .arqdor-studio-v3 .arqdor-legacy-sidebar {
+    background: var(--arq-studio-surface) !important;
+    border-right: 1px solid var(--arq-studio-border) !important;
+    box-shadow: none !important;
+  }
+  .arqdor-studio-v3 .arqdor-legacy-right-panel,
+  .arqdor-studio-v3 .arqdor-legacy-right-panel > div {
+    background: var(--arq-studio-panel) !important;
+    color: var(--arq-studio-text) !important;
+    border-color: var(--arq-studio-border) !important;
+  }
+  .arqdor-studio-v3 .arqdor-legacy-topbar .arqdor-primary-action {
+    min-height: 32px !important;
+    padding: 0 12px !important;
+    border-radius: 6px !important;
+    background: var(--arq-studio-accent) !important;
+    border-color: var(--arq-studio-accent) !important;
+    color: #fff !important;
+    box-shadow: none !important;
+    font-size: 11px !important;
+    font-weight: 600 !important;
+  }
+  .arqdor-studio-v3 .arqdor-legacy-topbar .arqdor-primary-action:hover {
+    background: #21856C !important;
+  }
+  .arqdor-studio-v3 .arqdor-back-btn,
+  .arqdor-studio-v3 .arqdor-market-btn {
+    height: 32px;
+    background: var(--arq-studio-panel);
+    color: var(--arq-studio-text);
+    border-color: var(--arq-studio-border);
+    box-shadow: none;
+    border-radius: 6px;
+    font-size: 11px;
+    font-weight: 600;
+  }
+  .arqdor-studio-v3 .arqdor-back-btn:hover,
+  .arqdor-studio-v3 .arqdor-market-btn:hover {
+    border-color: #4AC59A;
+    background: #30423D;
+    color: #EEF2EF;
+    transform: none;
+  }
+  .arqdor-studio-v3 :where(button, input, select, textarea):focus-visible {
+    outline: 2px solid #4AC59A;
+    outline-offset: 2px;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .arqdor-studio-v3 *, .arqdor-studio-v3 *::before, .arqdor-studio-v3 *::after {
+      scroll-behavior: auto !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+
 `;
 
 function clearRenderDraftSession() {
@@ -633,7 +722,9 @@ export default function RenderStudioPage() {
   });
   const [projectId, setProjectId] = useState<string | null>(() => {
     const requested = new URLSearchParams(window.location.search).get("project_id")?.trim();
-    return requested || localStorage.getItem("arq_last_project_id");
+    // Never reuse a project identifier from a different sign-in on shared browsers.
+    // Project selection or explicit navigation must establish the current context.
+    return requested || null;
   });
   const [ambiente, setAmbiente] = useState(() => {
     const params = new URLSearchParams(window.location.search);
@@ -655,7 +746,7 @@ export default function RenderStudioPage() {
   const targetKey = `${projectId ?? "no-project"}:${ambiente}`;
 
   const recoveryCache = useMemo(() => {
-    if (freshStart) return { versions: [], renderId: null, renderUrl: null, imageUrl: null };
+    if (freshStart || !projectId) return { versions: [], renderId: null, renderUrl: null, imageUrl: null };
     const cachedContext = sessionStorage.getItem(SK.context);
     if (cachedContext !== targetKey) {
       return { versions: [], renderId: null, renderUrl: null, imageUrl: null };
@@ -666,7 +757,7 @@ export default function RenderStudioPage() {
       renderUrl: sessionStorage.getItem(SK.renderUrl),
       imageUrl: sessionStorage.getItem(SK.imageUrl),
     };
-  }, [targetKey, freshStart]);
+  }, [targetKey, freshStart, projectId]);
 
   const bootstrap = useRenderStudioPersistentBootstrap(projectId, ambiente, recoveryCache);
 
@@ -762,7 +853,7 @@ export default function RenderStudioPage() {
   }
 
   return (
-    <div ref={shellRef} className="arqdor-reference-ui arqdor-studio-v3">
+    <div ref={shellRef} className="arqdor-reference-ui arqdor-studio-ui arqdor-studio-v3">
       <style>{SHELL_STYLES}</style>
       <button className="arqdor-back-btn" onClick={handleBack} aria-label="Voltar para a tela anterior" title="Voltar para a tela anterior">
         <span aria-hidden="true">←</span>

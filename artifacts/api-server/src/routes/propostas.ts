@@ -12,10 +12,17 @@ import {
   insertPropostaSchema,
   updatePropostaSchema,
   propostaApresentacaoSchema,
+  propostaItemContratualSchema,
   tenantsTable,
   dealsTable,
   leadsTable,
   leadBriefingsTable,
+  obrasTable,
+  obraFinanceiroTitulosTable,
+  obraEtapasTable,
+  obraEtapaFasesTable,
+  obraEtapaFaseMedicoesTable,
+  obraOrcamentosTable,
   type PropostaItem,
 } from "@workspace/db";
 import { dispatchVendaWebhook } from "../services/erp-webhook.js";
@@ -33,6 +40,9 @@ import {
   roundOrcamentoNumber,
 } from "../lib/orcamento-numbers.js";
 import { auditProposalBudget, calculateBudgetItemsTotal } from "../lib/budget-integrity.js";
+import { buildContractualAnnexPreview } from "../lib/contractual-annex-preview.js";
+import { reconcileAnnexTotals, reconcileAnnexMeasurements } from "../lib/annex-financial-reconciliation.js";
+import { checkMeasurementArithmetic } from "../lib/annex-financial-check.js";
 import { matchesApprovedBudget } from "../lib/budget-import-integrity.js";
 import { recordIntelligenceEvent } from "../services/customer-intelligence-history.js";
 import {
@@ -1205,25 +1215,6 @@ router.get("/propostas/:id", async (req, res) => {
     }
   }
 
-  void recordIntelligenceEvent({
-    tenantId: proposta.tenantId,
-    leadId: proposta.leadId,
-    eventType: parsed.data.status && parsed.data.status !== existing.status ? "proposal_status_changed" : "proposal_updated",
-    title: parsed.data.status && parsed.data.status !== existing.status
-      ? `Proposta ${proposta.numero ?? proposta.titulo}: ${existing.status} → ${proposta.status}`
-      : `Proposta atualizada: ${proposta.titulo}`,
-    summary: proposta.observacoes?.slice(0, 500) ?? null,
-    sourceModule: "propostas",
-    sourceId: proposta.id,
-    metadata: {
-      previousStatus: existing.status,
-      status: proposta.status,
-      valorTotal: proposta.valorTotal ?? null,
-      dealId: proposta.dealId ?? null,
-    },
-    log: req.log,
-  });
-
   res.json(proposta);
 });
 
@@ -1324,7 +1315,7 @@ router.get("/propostas/:id/sources", async (req, res) => {
 });
 
 // ── GET /propostas/:id/pdf — capa + tabela A4 ─────────────────────────────
-router.get("/propostas/:id/pdf", async (req, res) => {
+router.get(["/propostas/:id/pdf", "/propostas/:id/print-document"], async (req, res) => {
   const propostaId = String(req.params.id);
   try {
     const [proposta] = await db.select().from(propostasTable).where(eq(propostasTable.id, propostaId));
@@ -1334,6 +1325,11 @@ router.get("/propostas/:id/pdf", async (req, res) => {
     }
     if (req.user?.platformRole !== "super_admin" && proposta.tenantId !== req.user?.tenantId) {
       res.status(403).json({ error: "Access denied to this tenant" });
+      return;
+    }
+
+    if (!(await canAccessProposalOwnership(req, proposta))) {
+      res.status(403).json({ error: "Access denied to this proposal" });
       return;
     }
 
@@ -1411,6 +1407,11 @@ router.get("/propostas/:id/pdf", async (req, res) => {
       lead,
     });
 
+    if (req.path.endsWith("/print-document")) {
+      res.setHeader("Cache-Control", "no-store");
+      res.json({ html });
+      return;
+    }
     const pdfBuffer = await generateProposalPDF(html);
     const isPdf = pdfBuffer.length >= 4 && pdfBuffer[0] === 0x25 && pdfBuffer[1] === 0x50;
     if (!isPdf) {
@@ -1427,6 +1428,179 @@ router.get("/propostas/:id/pdf", async (req, res) => {
     logger.error({ err: error, propostaId }, "propostas: failed to generate PDF");
     res.status(500).json({ error: "Não foi possível gerar o PDF do orçamento." });
   }
+});
+
+// Sources are strictly resolved by proposal->obra foreign-key relation, never by
+// fuzzy customer/project names. Titles are operational records, not contract terms.
+router.get("/propostas/:id/anexos/fontes-financeiras", async (req, res) => {
+  const [proposta] = await db.select().from(propostasTable)
+    .where(eq(propostasTable.id, String(req.params.id))).limit(1);
+  if (!proposta) { res.status(404).json({ error: "Proposta não encontrada." }); return; }
+  if (req.user?.platformRole !== "super_admin" && proposta.tenantId !== req.user?.tenantId) {
+    res.status(403).json({ error: "Acesso negado." }); return;
+  }
+  if (!(await canAccessProposalOwnership(req, proposta))) {
+    res.status(403).json({ error: "Acesso negado à proposta." }); return;
+  }
+  const obras = await db.select({
+    id: obrasTable.id, nome: obrasTable.nome, propostaOrigemId: obrasTable.propostaOrigemId,
+  }).from(obrasTable).where(and(
+    eq(obrasTable.propostaOrigemId, proposta.id),
+    eq(obrasTable.tenantId, proposta.tenantId),
+  )).limit(2);
+  res.setHeader("Cache-Control", "no-store");
+  if (obras.length !== 1) {
+    res.json({ propostaId: proposta.id, obraId: null, titulos: [],
+      pendencias: [{ code: "OBRA_CANONICA_NAO_LOCALIZADA", message: "Nenhuma obra com vínculo canônico exclusivo para esta revisão. Não usar correspondência por nome." }],
+      emitivel: false });
+    return;
+  }
+  const obra = obras[0];
+  const titulos = await db.select({
+    id: obraFinanceiroTitulosTable.id,
+    origem: obraFinanceiroTitulosTable.origem,
+    origemId: obraFinanceiroTitulosTable.origemId,
+    descricao: obraFinanceiroTitulosTable.descricao,
+    status: obraFinanceiroTitulosTable.status,
+    tipo: obraFinanceiroTitulosTable.tipo,
+    competencia: obraFinanceiroTitulosTable.competencia,
+    vencimento: obraFinanceiroTitulosTable.dataVencimento,
+    valorOriginal: obraFinanceiroTitulosTable.valorOriginal,
+    valorLiquidado: obraFinanceiroTitulosTable.valorLiquidado,
+  }).from(obraFinanceiroTitulosTable).where(and(
+    eq(obraFinanceiroTitulosTable.obraId, obra.id),
+    eq(obraFinanceiroTitulosTable.tenantId, proposta.tenantId),
+  ));
+  const etapas = await db.select({
+    id: obraEtapasTable.id, nome: obraEtapasTable.nome,
+    origemEtapaId: obraEtapasTable.origemEtapaId,
+  }).from(obraEtapasTable).where(eq(obraEtapasTable.obraId, obra.id));
+  const fases = etapas.length ? await db.select({
+    id: obraEtapaFasesTable.id, etapaId: obraEtapaFasesTable.etapaId,
+  }).from(obraEtapaFasesTable).where(inArray(obraEtapaFasesTable.etapaId, etapas.map((e) => e.id))) : [];
+  const medicoes = fases.length ? await db.select({
+    id: obraEtapaFaseMedicoesTable.id,
+    faseId: obraEtapaFaseMedicoesTable.faseId,
+    data: obraEtapaFaseMedicoesTable.data,
+    valorBruto: obraEtapaFaseMedicoesTable.valorBruto,
+    amortizacaoEntrada: obraEtapaFaseMedicoesTable.amortizacaoEntrada,
+    valorLiquido: obraEtapaFaseMedicoesTable.valorLiquido,
+    saldoEntradaApos: obraEtapaFaseMedicoesTable.saldoEntradaApos,
+  }).from(obraEtapaFaseMedicoesTable).where(inArray(obraEtapaFaseMedicoesTable.faseId, fases.map((p) => p.id))) : [];
+  const faseEtapa = new Map(fases.map((fase) => [fase.id, fase.etapaId]));
+  const etapasPorId = new Map(etapas.map((etapa) => [etapa.id, etapa]));
+  const medicoesIdentificadas = medicoes.map((medicao) => {
+    const etapa = etapasPorId.get(faseEtapa.get(medicao.faseId) ?? "");
+    return { ...medicao, etapaId: etapa?.id ?? null,
+      origemEtapaId: etapa?.origemEtapaId ?? null, etapaNome: etapa?.nome ?? null };
+  });
+  const linhasBase = await db.select({
+    id: obraOrcamentosTable.id, versao: obraOrcamentosTable.versao,
+    status: obraOrcamentosTable.status, linhaBaseSnapshot: obraOrcamentosTable.linhaBaseSnapshot,
+  }).from(obraOrcamentosTable).where(and(
+    eq(obraOrcamentosTable.obraId, obra.id),
+    eq(obraOrcamentosTable.tenantId, proposta.tenantId),
+    eq(obraOrcamentosTable.propostaOrigemId, proposta.id),
+  ));
+  const receivables = titulos.filter((t) => t.tipo === "receber" && t.status !== "cancelado");
+  const amountsValid = receivables.every((t) => Number.isFinite(Number(t.valorOriginal)) && Number(t.valorOriginal) >= 0);
+  const reconciliation = amountsValid && proposta.valorTotal != null && Number.isFinite(Number(proposta.valorTotal))
+    ? reconcileAnnexTotals(Number(proposta.valorTotal), receivables.map((t) => Number(t.valorOriginal)))
+    : null;
+  // Always order before presenting a financial sequence; never infer the
+  // contractual entry amount from the first operational balance.
+  medicoesIdentificadas.sort((a, b) => String(a.data ?? "").localeCompare(String(b.data ?? "")) || a.id.localeCompare(b.id));
+  const measurementReconciliation = reconcileAnnexMeasurements(medicoesIdentificadas);
+  const amortizacaoPendente = {
+    saldoDeEntradaVerificado: false,
+    motivo: "O valor original da entrada precisa ser extraído de uma revisão contratual assinada, não do saldo operacional.",
+    valorAmortizadoObservado: measurementReconciliation.amortizedEntryTotal,
+    totalMedicoesConsultadas: measurementReconciliation.measurementsCount,
+    emissaoAutorizada: false,
+  };
+  res.json({ propostaId: proposta.id, obraId: obra.id,
+    reconciliation, measurementReconciliation, amortizacaoPendente, titulos, medicoes: medicoesIdentificadas, linhasBase,
+    pendencias: [...checkMeasurementArithmetic(medicoesIdentificadas), {
+      code: "CONCILIACAO_CONTRATUAL_PENDENTE",
+      message: "Títulos e medições são dados operacionais, não parcelas contratuais comprovadas. A revisão assinada e o fechamento financeiro ainda precisam de conciliação.",
+    }], emitivel: false });
+
+});
+
+// Read-only dossiê PRELIMINAR; contract approval/issue requires separate verified workflow.
+router.get("/propostas/:id/anexos/previa", async (req, res) => {
+  const [proposta] = await db.select().from(propostasTable)
+    .where(eq(propostasTable.id, String(req.params.id))).limit(1);
+  if (!proposta) { res.status(404).json({ error: "Proposta não encontrada." }); return; }
+  if (req.user?.platformRole !== "super_admin" && proposta.tenantId !== req.user?.tenantId) {
+    res.status(403).json({ error: "Acesso negado." }); return;
+  }
+  if (!(await canAccessProposalOwnership(req, proposta))) {
+    res.status(403).json({ error: "Acesso negado à proposta." }); return;
+  }
+  res.setHeader("Cache-Control", "no-store");
+  res.json(buildContractualAnnexPreview({
+    id: proposta.id, numero: proposta.numero, status: proposta.status,
+    acceptedAt: proposta.acceptedAt,
+    valorTotal: proposta.valorTotal, itens: proposta.itens as PropostaItem[],
+    apresentacao: proposta.apresentacao,
+  }));
+});
+
+// Only edit documentary metadata of an unissued budget. Optimistic JSONB
+// compare-and-swap prevents overwriting items changed in another session.
+const contractualItemsBodySchema = z.object({
+  expectedItems: z.array(z.any()).min(1),
+  changes: z.array(z.object({
+    index: z.number().int().nonnegative(),
+    contratual: propostaItemContratualSchema,
+  })).min(1),
+});
+router.patch("/propostas/:id/itens/contratual", async (req, res) => {
+  const parsed = contractualItemsBodySchema.safeParse(req.body);
+  if (!parsed.success) { res.status(422).json({ error: parsed.error.message }); return; }
+  const [existing] = await db.select().from(propostasTable)
+    .where(eq(propostasTable.id, String(req.params.id))).limit(1);
+  if (!existing) { res.status(404).json({ error: "Orçamento não encontrado." }); return; }
+  if (req.user?.platformRole !== "super_admin" && existing.tenantId !== req.user?.tenantId) {
+    res.status(403).json({ error: "Acesso negado ao tenant." }); return;
+  }
+  if (!(await canAccessProposalOwnership(req, existing))) {
+    res.status(403).json({ error: "Acesso negado ao orçamento." }); return;
+  }
+  if (existing.status !== "rascunho") {
+    res.status(409).json({ code: "BUDGET_VERSION_IMMUTABLE",
+      error: "Orçamento emitido. Crie uma revisão antes de modificar especificações." }); return;
+  }
+  const previous = existing.itens as PropostaItem[];
+  const expected = parsed.data.expectedItems;
+  if (JSON.stringify(previous) !== JSON.stringify(expected)) {
+    res.status(409).json({ code: "BUDGET_CHANGED",
+      error: "Itens alterados em outra sessão. Recarregue o orçamento." }); return;
+  }
+  const used = new Set<number>();
+  const next = previous.map((item) => ({ ...item }));
+  for (const change of parsed.data.changes) {
+    if (change.index >= next.length || used.has(change.index)) {
+      res.status(422).json({ error: "Índice do item inválido ou duplicado." }); return;
+    }
+    used.add(change.index);
+    next[change.index].contratual = change.contratual;
+  }
+  const [updated] = await db.update(propostasTable)
+    .set({ itens: next, updatedAt: new Date() })
+    .where(and(
+      eq(propostasTable.id, existing.id),
+      eq(propostasTable.tenantId, existing.tenantId),
+      eq(propostasTable.status, "rascunho"),
+      eq(propostasTable.itens, previous),
+    )).returning();
+  if (!updated) {
+    res.status(409).json({ code: "BUDGET_CHANGED",
+      error: "Orçamento alterado simultaneamente. Recarregue." }); return;
+  }
+  res.setHeader("Cache-Control", "no-store");
+  res.json(updated);
 });
 
 router.patch("/propostas/:id", async (req, res) => {

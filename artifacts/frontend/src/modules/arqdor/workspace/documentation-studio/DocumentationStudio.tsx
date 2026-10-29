@@ -5,7 +5,7 @@ type DocumentationStudioProps = {
   onNavigate?: (module: string) => void;
 };
 
-type ViewId = "memorial" | "materiais" | "compras";
+type ViewId = "memorial" | "materiais" | "compras" | "conferencia";
 
 type SpecObject = {
   id: string;
@@ -170,6 +170,25 @@ export default function DocumentationStudio({ arqState, onNavigate }: Documentat
   const specifiedCount = specs.filter((s) => s.material_name || s.product_name).length;
   const pendingCount = specs.length - specifiedCount;
 
+  // Conferência por identificador persistido, sem correspondência por nome aproximado.
+  // Documentos contratuais só podem ser emitidos após conferência da revisão aprovada no backend.
+  const conference = useMemo(() => {
+    const budgetsByCatalog = new Map<string, BudgetItem[]>();
+    budget.items.forEach((item) => {
+      const key = String(item.catalog_code ?? "").trim();
+      if (!key) return;
+      budgetsByCatalog.set(key, [...(budgetsByCatalog.get(key) ?? []), item]);
+    });
+    return specs.map((spec) => {
+      const code = String(spec.catalog_code ?? "").trim();
+      const matches = code ? (budgetsByCatalog.get(code) ?? []) : [];
+      return {
+        spec, matches,
+        status: !code ? "sem_codigo" : matches.length === 0 ? "sem_orcamento" : matches.length > 1 ? "ambiguo" : "vinculo_catalogo",
+      };
+    });
+  }, [specs, budget.items]);
+
   const materialRows = useMemo(() => specs.filter((s) => s.material_name || s.product_name || s.manufacturer_name || s.supplier_name), [specs]);
 
   const exportMaterials = () => downloadCsv(
@@ -232,6 +251,7 @@ export default function DocumentationStudio({ arqState, onNavigate }: Documentat
               ["memorial", "Memorial"],
               ["materiais", "Caderno de materiais"],
               ["compras", "Lista de compras"],
+              ["conferencia", "Conferência documental"],
             ] as Array<[ViewId, string]>).map(([id, label]) => (
               <button
                 key={id}
@@ -265,6 +285,32 @@ export default function DocumentationStudio({ arqState, onNavigate }: Documentat
 
         {loading && <div className="rounded-3xl bg-white p-8 text-sm text-slate-500">Carregando dados reais do projeto…</div>}
         {error && <div className="rounded-3xl border border-red-200 bg-red-50 p-5 text-sm text-red-700">{error}</div>}
+
+        {!loading && !error && view === "conferencia" && (
+          <section className="rounded-[32px] border border-slate-100 bg-white p-6 shadow-sm">
+            <p className="text-xs font-semibold uppercase tracking-wide text-violet-600">Rastreabilidade • Anexos A, B e C</p>
+            <h2 className="mt-1 text-xl font-semibold text-slate-950">Conferência de especificações e orçamento</h2>
+            <p className="mt-2 text-sm text-slate-600">Dados consultados no projeto atual. A correspondência por código de catálogo é apenas indicativa e não comprova contrato, revisão assinada ou aprovação do cliente.</p>
+            <div className="mt-5 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+              Emissão contratual bloqueada nesta tela: a validação da proposta aprovada, do tenant, da revisão e dos vínculos oficiais deverá ocorrer no servidor. Dados ausentes não são preenchidos pela IA.
+            </div>
+            {conference.length === 0 ? <EmptyState>Nenhuma especificação persistida encontrada para conferir.</EmptyState> : (
+              <div className="mt-5 overflow-x-auto">
+                <table className="w-full text-left text-sm">
+                  <thead><tr className="border-b text-xs uppercase text-slate-400"><th className="p-3">Especificação</th><th className="p-3">Código</th><th className="p-3">Orçamento</th><th className="p-3">Conferência</th></tr></thead>
+                  <tbody>{conference.map(({ spec, matches, status }) => (
+                    <tr key={spec.id} className="border-b border-slate-100">
+                      <td className="p-3 font-medium">{spec.name}</td>
+                      <td className="p-3">{spec.catalog_code || "Pendente"}</td>
+                      <td className="p-3">{matches.length === 1 ? matches[0].item : matches.length ? `${matches.length} itens candidatos` : "Não localizado"}</td>
+                      <td className="p-3">{status === "vinculo_catalogo" ? "Código correspondente — confirmar vínculo e revisão" : status === "ambiguo" ? "Código duplicado — revisar" : status === "sem_codigo" ? "Código ausente" : "Sem correspondência no orçamento"}</td>
+                    </tr>
+                  ))}</tbody>
+                </table>
+              </div>
+            )}
+          </section>
+        )}
 
         {!loading && !error && view === "memorial" && (
           <section className="rounded-[32px] border border-slate-100 bg-white p-6 shadow-sm">

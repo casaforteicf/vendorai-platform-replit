@@ -1,9 +1,12 @@
+import { CompleteBudgetPrint } from "@/components/CompleteBudgetPrint";
 import { useEffect, useState } from "react";
 import { useParams, useLocation } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   useGetProposta,
+  getProposta,
+  getLead,
   getGetPropostaQueryKey,
   useGetLead,
   getGetLeadQueryKey,
@@ -112,6 +115,7 @@ export default function PropostaPrint() {
   const { toast } = useToast();
   const qc = useQueryClient();
   const [markingVendido, setMarkingVendido] = useState(false);
+  const [completePrintOpen, setCompletePrintOpen] = useState(true);
   const [updatingExecutionIndex, setUpdatingExecutionIndex] = useState<number | null>(null);
   const [creatingRevision, setCreatingRevision] = useState(false);
 
@@ -132,12 +136,26 @@ export default function PropostaPrint() {
   const [eItens, setEItens] = useState<ItemEdit[]>([]);
 
   // ── Queries ───────────────────────────────────────────────────────────────
-  const { data: proposta, isLoading: propostaLoading } = useGetProposta(id ?? "", {
-    query: { enabled: !!id, queryKey: getGetPropostaQueryKey(id ?? "") },
+  const { data: proposta, isLoading: propostaLoading, isError: propostaError, refetch: retryProposta } = useGetProposta(id ?? "", {
+    query: {
+      enabled: !!id,
+      queryKey: getGetPropostaQueryKey(id ?? ""),
+      retry: false,
+      queryFn: ({ signal }) => getProposta(id ?? "", {
+        signal: AbortSignal.any([signal, AbortSignal.timeout(20_000)]),
+      }),
+    },
   });
 
-  const { data: lead, isLoading: leadLoading } = useGetLead(proposta?.leadId ?? "", {
-    query: { enabled: !!proposta?.leadId, queryKey: getGetLeadQueryKey(proposta?.leadId ?? "") },
+  const { data: lead, isLoading: leadLoading, isError: leadError, refetch: retryLead } = useGetLead(proposta?.leadId ?? "", {
+    query: {
+      enabled: !!proposta?.leadId,
+      queryKey: getGetLeadQueryKey(proposta?.leadId ?? ""),
+      retry: false,
+      queryFn: ({ signal }) => getLead(proposta?.leadId ?? "", {
+        signal: AbortSignal.any([signal, AbortSignal.timeout(20_000)]),
+      }),
+    },
   });
 
   const { data: bp } = useGetBusinessProfileByTenant(user?.tenantId ?? "", {
@@ -149,7 +167,7 @@ export default function PropostaPrint() {
   const updateProposta = useUpdateProposta();
 
   useEffect(() => {
-    if (proposta && lead && !propostaLoading && !leadLoading) {
+    if (proposta) {
       document.title = `Orçamento ${proposta.numero ?? proposta.id.slice(0, 8)} — ${proposta.titulo}`;
     }
   }, [proposta, lead, propostaLoading, leadLoading]);
@@ -358,10 +376,20 @@ export default function PropostaPrint() {
   }
 
   // ── Loading / not found ───────────────────────────────────────────────────
-  if (propostaLoading || leadLoading) {
+  if (id && propostaLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  if (propostaError) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center gap-4 p-6" role="alert">
+        <p>Não foi possível carregar o orçamento. Verifique sua conexão e tente novamente.</p>
+        <Button onClick={() => void retryProposta()}>Tentar novamente</Button>
+        <Button variant="outline" onClick={() => navigate("/propostas")}>Voltar aos orçamentos</Button>
       </div>
     );
   }
@@ -422,6 +450,7 @@ export default function PropostaPrint() {
 
   return (
     <div className="min-h-screen bg-gray-50">
+      <CompleteBudgetPrint id={proposta.id} open={completePrintOpen} onOpenChange={setCompletePrintOpen} />
 
       {/* ── Action bar (hidden on print) ── */}
       <div className="no-print fixed top-0 left-0 right-0 z-50 bg-white border-b px-3 sm:px-6 py-2.5 flex items-center gap-2 shadow-sm flex-wrap">
@@ -496,7 +525,7 @@ export default function PropostaPrint() {
           <span className="hidden xs:inline">WhatsApp</span>
         </Button>
 
-        <Button size="sm" className="gap-1.5" onClick={() => window.print()}>
+        <Button size="sm" className="gap-1.5" onClick={() => setCompletePrintOpen(true)}>
           <Printer className="h-4 w-4" />
           <span className="hidden sm:inline">Imprimir / PDF</span>
         </Button>
@@ -584,6 +613,12 @@ export default function PropostaPrint() {
             </div>
           </div>
 
+          {proposta.leadId && (leadLoading || leadError) && (
+            <div className="no-print mb-4 rounded border p-4" role="status">
+              {leadLoading ? "Carregando dados do cliente…" : "Não foi possível carregar os dados do cliente. Recarregue antes de imprimir."}
+              {leadError && <Button variant="outline" className="ml-3" onClick={() => void retryLead()}>Tentar novamente</Button>}
+            </div>
+          )}
           {/* ── Cliente ── */}
           <div className="mb-8">
             <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
@@ -1185,8 +1220,9 @@ export default function PropostaPrint() {
           #proposta-print,
           #proposta-print * { visibility: visible !important; }
           #proposta-print {
-            position: fixed !important;
-            inset: 0 !important;
+            position: absolute !important;
+            top: 0 !important;
+            left: 0 !important;
             width: 100% !important;
             max-width: 100% !important;
             height: auto !important;
