@@ -638,7 +638,7 @@ export function MediaPlanAutoProductionBridge() {
         itemTipo: "livre",
         itemLabel: item.temaSugerido.slice(0, 180),
         modo: "unico",
-        destinoClique: "formulario_lead",
+        destinoClique: "whatsapp",
         orcamentoDiario: "0.00",
         segmentacao: {
           marketingContext: context,

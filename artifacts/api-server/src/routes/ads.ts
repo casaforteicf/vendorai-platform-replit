@@ -361,7 +361,7 @@ router.post("/tenants/:tenantId/ads/campaigns", async (req, res) => {
   const tenantId = req.params.tenantId as string;
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
-  const parsed = insertAdCampaignSchema.safeParse({ ...req.body, tenantId });
+  const parsed = insertAdCampaignSchema.safeParse({ destinoClique: "whatsapp", ...req.body, tenantId });
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
 
   const creativeDraft = req.body?.creativeDraft
