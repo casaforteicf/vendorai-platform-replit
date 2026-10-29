@@ -456,7 +456,7 @@ export default function Leads() {
     },
   });
 
-  const { data: excludedLeads, isLoading: excludedLoading } = useListTenantLeads(
+  const { data: excludedLeads, isLoading: excludedLoading, isError: excludedError, error: excludedLoadError, refetch: refetchExcluded } = useListTenantLeads(
     tenantId,
     { incluirExcluidos: "apenas" },
     {
@@ -906,6 +906,8 @@ export default function Leads() {
           <CardContent className="p-0 divide-y">
             {excludedLoading ? (
               <div className="p-6 text-center text-sm text-muted-foreground">Carregando...</div>
+            ) : excludedError ? (
+              <div className="p-6 text-center text-sm text-destructive">Não foi possível carregar os leads excluídos. {excludedLoadError instanceof Error ? excludedLoadError.message : ""} <Button variant="outline" size="sm" onClick={() => refetchExcluded()}>Tentar novamente</Button></div>
             ) : !excludedLeads || excludedLeads.length === 0 ? (
               <div className="p-8 text-center text-sm text-muted-foreground">Nenhum lead excluído.</div>
             ) : (
