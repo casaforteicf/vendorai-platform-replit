@@ -26,3 +26,13 @@ Este arquivo registra a decisão; **não inclui ainda os bytes da prancha aprova
 
 ## Processo seguinte
 Detalhar uma tela de cada vez preservando a baseline; inventariar componentes e testar funções reais antes de propor implementação.
+
+## Regra adicional aprovada — ZERO REDUNDÂNCIA (29/10/2026)
+**Nenhuma tela do ARQDOR (profissional ou cliente) pode apresentar repetição desnecessária de menus, navegação, botões, atalhos, painéis, indicadores ou informações.**
+- Uma única navegação principal por experiência: não repetir as mesmas opções na lateral e no topo.
+- Uma única ação primária por contexto: não repetir `Novo projeto`, `Orçamento`, `Cotações`, `Contratações` ou outra ação em diferentes regiões da mesma tela.
+- Uma única instância visível do assistente Vendi; abertura contextual, preferencialmente recolhível.
+- Não criar painel de ações rápidas que apenas replique o menu principal ou botões já exibidos.
+- Informações resumidas não devem repetir dados sem valor adicional. Ações dentro de cartões são admitidas **apenas se forem específicas daquele item**, não cópias genéricas dos mesmos controles.
+- Exceções justificadas por acessibilidade, responsividade ou contexto precisam ser documentadas e aprovadas expressamente antes de alterar a baseline.
+- Antes de gerar mockup ou implementar, executar revisão de redundâncias e confrontar com esta regra; mockup que a viole **não deve ser apresentado como aprovado**.
