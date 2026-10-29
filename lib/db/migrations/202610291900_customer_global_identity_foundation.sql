@@ -103,3 +103,16 @@ CREATE INDEX IF NOT EXISTS idx_customer_global_sessions_identity ON public.custo
 ALTER TABLE public.customer_global_sessions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.customer_global_sessions FORCE ROW LEVEL SECURITY;
 -- No RLS policy or public application grants; dedicated reviewed backend only.
+
+-- Dormant credentials for verified global customer identities.
+-- No HTTP registration or app grants. Never copy legacy tenant password hashes.
+CREATE TABLE IF NOT EXISTS public.customer_global_credentials (
+  global_identity_id uuid PRIMARY KEY REFERENCES public.customer_global_identities(id) ON DELETE CASCADE,
+  password_hash text NOT NULL,
+  disabled_at timestamptz,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+ALTER TABLE public.customer_global_credentials ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.customer_global_credentials FORCE ROW LEVEL SECURITY;
+-- No RLS policy and no vendorai_app/anon/authenticated grants.
