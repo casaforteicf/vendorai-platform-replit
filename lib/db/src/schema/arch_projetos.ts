@@ -46,6 +46,14 @@ export const archProjetosTable = pgTable("arch_projetos", {
   // Dossiê central do projeto. É exibido dentro de cada ambiente para que o
   // usuário encontre briefing, medidas e todos os arquivos sem duplicar dados.
   dossieProjeto: jsonb("dossie_projeto").$type<{
+    projectSetup?: {
+      disciplina: "Arquitetura" | "Interiores" | "Área Externa";
+      situacaoImovel: "novo" | "existente" | "em_obra";
+      abrangencia: "completo" | "ambientes" | "area";
+      disciplinasExtras: Array<"Arquitetura" | "Interiores" | "Área Externa">;
+      ambientesSelecionados?: string[];
+      areaEspecifica?: string;
+    };
     briefing?: string;
     medidas?: Array<{
       id?: string;

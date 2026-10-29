@@ -1,0 +1,12 @@
+import * as React from "react";
+type Entry={sequence:string;operation:string;entity_type:string;occurred_at:string;status?:string|null};
+type History={masterNsu:string;movementNsu:string;events:Entry[];nextCursor:string|null};
+const LABELS:Record<string,string>={orders:"Pedido",quote_requests:"Cotação",buying_round_orders:"Pedido da rodada",praca_marketplace_fulfillments:"Entrega",praca_marketplace_fulfillment_events:"Movimentação da entrega",praca_delivery_acceptances:"Aceite do comprador",praca_order_disputes:"Disputa",praca_order_cancellations:"Cancelamento"};
+export default function NegotiationHistory({url}:{url:string}){
+ const [data,setData]=React.useState<History|null>(null),[busy,setBusy]=React.useState(false),[error,setError]=React.useState(""),[open,setOpen]=React.useState(false);
+ async function load(more=false){setBusy(true);setError("");try{const r=await fetch(url+(more&&data?.nextCursor?"?after="+encodeURIComponent(data.nextCursor):""),{credentials:"include",cache:"no-store"});const b=await r.json();if(!r.ok)throw Error(b.error??"Não foi possível carregar o histórico.");setData(prev=>more&&prev?{...b,events:[...prev.events,...b.events]}:b)}catch(e){setError(e instanceof Error?e.message:"Falha ao carregar.")}finally{setBusy(false)}}
+ return <section className="my-3 rounded-xl border bg-white p-3 text-sm"><button type="button" onClick={()=>{setOpen(v=>!v);if(!data&&!busy)void load()}} className="font-bold" aria-expanded={open}>{data?.masterNsu??"NSU e histórico da negociação"} · {open?"Fechar":"Consultar"}</button>{open&&<>
+ {busy&&<p role="status" className="mt-2">Carregando histórico…</p>}{error&&<p role="alert" className="mt-2 text-red-700">{error}<button type="button" disabled={busy} onClick={()=>void load()} className="ml-2 underline">Tentar novamente</button></p>}
+ {data&&<><p className="mt-2 text-xs">NSU mestre: <strong>{data.masterNsu}</strong> · Registro: {data.movementNsu}</p><ol className="mt-3 space-y-2">{data.events.map(e=><li key={e.sequence} className="border-l-2 pl-3"><p className="font-semibold">{e.operation==="SNAPSHOT"?"Estado registrado na migração":LABELS[e.entity_type]??"Movimentação"}{e.status?" · "+e.status:""}</p><p className="text-xs text-slate-500">{new Date(e.occurred_at).toLocaleString("pt-BR")} · evento {e.sequence}</p></li>)}</ol>{!data.events.length&&<p className="mt-2">Nenhuma movimentação neste escopo.</p>}{data.nextCursor&&<button disabled={busy} onClick={()=>void load(true)} className="mt-3 font-bold underline">Carregar mais</button>}</>}
+ </>}</section>
+}

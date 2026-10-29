@@ -1045,6 +1045,15 @@ export default function Configuracoes({ embedded = false, forcedTab }: { embedde
   // ── Tenant Thresholds ──────────────────────────────────────────────────────
   const tenantQuery  = useGetTenant(tenantId, { query: { queryKey: getGetTenantQueryKey(tenantId), enabled: !!tenantId } });
   const updateTenant = useUpdateTenant();
+  const [pracaCidade, setPracaCidade] = useState("");
+  const [pracaUf, setPracaUf] = useState("");
+
+  useEffect(() => {
+    if (tenantQuery.data !== undefined) {
+      setPracaCidade((tenantQuery.data as any).cidade ?? "");
+      setPracaUf((tenantQuery.data as any).estado ?? "");
+    }
+  }, [(tenantQuery.data as any)?.cidade, (tenantQuery.data as any)?.estado]);
 
   const thresholdForm = useForm<ThresholdForm>({
     resolver: zodResolver(thresholdSchema),
@@ -2557,6 +2566,43 @@ export default function Configuracoes({ embedded = false, forcedTab }: { embedde
                   />
                 </div>
               )}
+            </div>
+          </div>
+
+          <div className="rounded-xl border bg-card p-6 space-y-4 mb-4">
+            <div>
+              <h2 className="font-semibold text-base">Localização no Praça.ai</h2>
+              <p className="text-sm text-muted-foreground mt-0.5">
+                Informe a cidade e o estado da loja. O Praça.ai usa os dois dados para mostrar produtos e enviar cotações somente a fornecedores do mesmo município.
+              </p>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-[1fr_120px] gap-3">
+              <div className="space-y-2">
+                <Label htmlFor="praca-cidade">Cidade</Label>
+                <Input id="praca-cidade" placeholder="Ex.: Chapecó" value={pracaCidade} onChange={(e) => setPracaCidade(e.target.value)} disabled={tenantQuery.isLoading || updateTenant.isPending} />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="praca-uf">UF</Label>
+                <Input id="praca-uf" placeholder="SC" maxLength={2} value={pracaUf} onChange={(e) => setPracaUf(e.target.value.toUpperCase().replace(/[^A-Z]/g, ""))} disabled={tenantQuery.isLoading || updateTenant.isPending} />
+              </div>
+            </div>
+            <div>
+              <Button
+                type="button"
+                disabled={tenantQuery.isLoading || updateTenant.isPending || pracaCidade.trim().length < 2 || !/^[A-Z]{2}$/.test(pracaUf.trim().toUpperCase())}
+                onClick={() => updateTenant.mutate(
+                  { id: tenantId, data: { cidade: pracaCidade.trim(), estado: pracaUf.trim().toUpperCase() } as any },
+                  {
+                    onSuccess: () => {
+                      queryClient.invalidateQueries({ queryKey: getGetTenantQueryKey(tenantId) });
+                      toast({ title: "Localização do Praça.ai salva." });
+                    },
+                    onError: () => toast({ title: "Erro ao salvar a localização.", variant: "destructive" }),
+                  }
+                )}
+              >
+                {updateTenant.isPending ? "Salvando..." : "Salvar localização"}
+              </Button>
             </div>
           </div>
 
@@ -6882,6 +6928,7 @@ type WhatsappConnectionItem = {
   businessName: string | null;
   assignedUserId: string | null;
   isDefault: boolean;
+  label: string | null;
   status: string;
 };
 
@@ -6916,7 +6963,7 @@ function WhatsappNumbersManager({
 
   useEffect(() => { void loadConnections(); }, [tenantId]);
 
-  async function updateConnection(connectionId: string, data: { assignedUserId?: string | null; isDefault?: boolean }) {
+  async function updateConnection(connectionId: string, data: { assignedUserId?: string | null; isDefault?: boolean; label?: string | null }) {
     const response = await fetch("/api/tenants/" + tenantId + "/whatsapp-connections/" + connectionId, {
       method: "PATCH",
       headers: headers(),
@@ -6930,7 +6977,30 @@ function WhatsappNumbersManager({
     setConnections((current) => current.map((item) =>
       item.id === updated.id ? updated : data.isDefault ? { ...item, isDefault: false } : item
     ));
-    toast({ title: data.isDefault ? "Número padrão atualizado." : "Responsável atualizado." });
+    toast({ title: data.label !== undefined ? "Uso do número atualizado." : data.isDefault ? "Número padrão atualizado." : "Responsável atualizado." });
+  }
+
+  function whatsappLink(connection: WhatsappConnectionItem): string | null {
+    const phone = (connection.displayPhoneNumber ?? "").replace(/\D/g, "");
+    if (!phone || connection.status !== "active" || !connection.label) return null;
+    const message = connection.label === "ads_inbound"
+      ? "Olá! Vim pelo anúncio e gostaria de saber mais."
+      : connection.label === "qualified_handoff"
+        ? "Olá! Quero continuar meu atendimento por aqui."
+        : "";
+    if (!message) return null;
+    return `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
+  }
+
+  async function copyWhatsappLink(connection: WhatsappConnectionItem) {
+    const link = whatsappLink(connection);
+    if (!link) return;
+    try {
+      await navigator.clipboard.writeText(link);
+      toast({ title: connection.label === "ads_inbound" ? "Link para anúncios copiado." : "Link de continuidade copiado." });
+    } catch {
+      toast({ title: "Não foi possível copiar o link.", variant: "destructive" });
+    }
   }
 
   return (
@@ -6939,7 +7009,10 @@ function WhatsappNumbersManager({
         <div>
           <h2 className="font-semibold text-base">Números e responsáveis</h2>
           <p className="text-sm text-muted-foreground mt-1">
-            Cada número recebe suas próprias conversas e direciona os leads ao usuário escolhido.
+            Separe o número que recebe leads de anúncios do número usado para continuar o atendimento após a qualificação.
+          </p>
+          <p className="text-xs text-muted-foreground mt-1">
+            Cada link abre uma conversa nova no WhatsApp do lead. Quando o lead enviar a mensagem, o Vendor.ai associa o contato ao lead pelo telefone.
           </p>
         </div>
         <Button
@@ -6957,13 +7030,24 @@ function WhatsappNumbersManager({
       ) : (
         <div className="space-y-3">
           {connections.map((connection) => (
-            <div key={connection.id} className="grid gap-3 rounded-lg border p-4 md:grid-cols-[1fr_240px_auto] md:items-center">
+            <div key={connection.id} className="grid gap-3 rounded-lg border p-4 md:grid-cols-[1fr_220px_220px_auto] md:items-center">
               <div>
                 <div className="font-medium">{connection.displayPhoneNumber || connection.businessName || "Aguardando leitura do QR Code"}</div>
                 <div className="text-xs text-muted-foreground">
                   {connection.provider === "meta" ? "Meta legado" : "QR Code / Evolution"} · {connection.status}
                 </div>
               </div>
+              <Select
+                value={connection.label ?? "unlabeled"}
+                onValueChange={(value) => void updateConnection(connection.id, { label: value === "unlabeled" ? null : value })}
+              >
+                <SelectTrigger aria-label="Uso do número"><SelectValue placeholder="Uso do número" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="unlabeled">Sem finalidade</SelectItem>
+                  <SelectItem value="ads_inbound">Anúncios / entrada</SelectItem>
+                  <SelectItem value="qualified_handoff">Continuidade qualificada</SelectItem>
+                </SelectContent>
+              </Select>
               <Select
                 value={connection.assignedUserId ?? "unassigned"}
                 onValueChange={(value) => void updateConnection(connection.id, { assignedUserId: value === "unassigned" ? null : value })}
@@ -6976,14 +7060,27 @@ function WhatsappNumbersManager({
                   ))}
                 </SelectContent>
               </Select>
-              <Button
-                type="button"
-                variant={connection.isDefault ? "default" : "outline"}
-                disabled={connection.isDefault}
-                onClick={() => void updateConnection(connection.id, { isDefault: true })}
-              >
-                {connection.isDefault ? "Padrão" : "Definir padrão"}
-              </Button>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={!whatsappLink(connection)}
+                  onClick={() => void copyWhatsappLink(connection)}
+                >
+                  <Copy className="h-4 w-4 mr-1.5" />
+                  {connection.label === "ads_inbound" ? "Copiar link anúncio" : "Copiar link"}
+                </Button>
+                <Button
+                  type="button"
+                  variant={connection.isDefault ? "default" : "outline"}
+                  size="sm"
+                  disabled={connection.isDefault}
+                  onClick={() => void updateConnection(connection.id, { isDefault: true })}
+                >
+                  {connection.isDefault ? "Padrão" : "Definir padrão"}
+                </Button>
+              </div>
             </div>
           ))}
         </div>

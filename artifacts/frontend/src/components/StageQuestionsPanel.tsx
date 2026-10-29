@@ -72,10 +72,19 @@ export function StageQuestionsPanel({
 
   const [editing, setEditing] = useState(false);
   const [editList, setEditList] = useState<Pergunta[]>(stage?.perguntas ?? []);
-  useEffect(() => { setEditList(stage?.perguntas ?? []); }, [stage?.id]); // eslint-disable-line react-hooks/exhaustive-deps
   const [newQuestion, setNewQuestion] = useState("");
   const [followupConfig, setFollowupConfig] = useState<FollowupConfig>(stage?.acompanhamentoConfig ?? {});
-  useEffect(() => { setFollowupConfig(stage?.acompanhamentoConfig ?? {}); }, [stage?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    setEditing(false);
+    setNewQuestion("");
+  }, [tenantId, stage?.id]);
+
+  function beginEditing() {
+    setEditList(stage?.perguntas ?? []);
+    setFollowupConfig(stage?.acompanhamentoConfig ?? {});
+    setNewQuestion("");
+    setEditing(true);
+  }
 
   useEffect(() => {
     if (!isEffectiveAdmin && editing) setEditing(false);
@@ -86,11 +95,13 @@ export function StageQuestionsPanel({
   const answeredCount = perguntas.filter((p) => draft[p.id]?.trim()).length;
 
   function saveQuestionSet() {
+    if (!stage || !isEffectiveAdmin || updateStage.isPending) return;
     updateStage.mutate(
       { tenantId, id: stage.id, data: { perguntas: editList, acompanhamentoConfig: followupConfig } as any },
       {
         onSuccess: () => {
           qc.invalidateQueries({ queryKey: getListPipelineStagesQueryKey(tenantId) });
+          qc.invalidateQueries({ queryKey: ["pipeline-stages", tenantId] });
           toast({ title: "Padrão de perguntas da etapa salvo." });
           setEditing(false);
         },
@@ -111,7 +122,7 @@ export function StageQuestionsPanel({
             </div>
           </div>
           {isEffectiveAdmin && (
-            <Button size="sm" variant="ghost" className="h-7 w-fit shrink-0 gap-1 px-2 text-xs text-muted-foreground" onClick={() => setEditing(true)}>
+            <Button size="sm" variant="ghost" className="h-7 w-fit shrink-0 gap-1 px-2 text-xs text-muted-foreground" onClick={beginEditing}>
               <Settings2 className="h-3.5 w-3.5" />
               Configurar perguntas
             </Button>
@@ -140,7 +151,7 @@ export function StageQuestionsPanel({
             </p>
           </div>
           {isEffectiveAdmin && (
-            <Button size="sm" variant="ghost" className="h-7 shrink-0 gap-1 px-2 text-xs text-muted-foreground" onClick={() => setEditing((v) => !v)}>
+            <Button size="sm" variant="ghost" className="h-7 shrink-0 gap-1 px-2 text-xs text-muted-foreground" onClick={() => editing ? setEditing(false) : beginEditing()}>
               <Settings2 className="h-3.5 w-3.5" />
               Editar perguntas
             </Button>
@@ -282,7 +293,7 @@ export function StageQuestionsPanel({
                 {updateStage.isPending && <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />}
                 Salvar perguntas
               </Button>
-              <Button size="sm" variant="ghost" onClick={() => { setEditing(false); setEditList(stage.perguntas ?? []); }}>Cancelar</Button>
+              <Button size="sm" variant="ghost" onClick={() => setEditing(false)}>Cancelar</Button>
             </div>
           </div>
         ) : (

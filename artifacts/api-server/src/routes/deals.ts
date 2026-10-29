@@ -972,11 +972,13 @@ router.get("/tenants/:tenantId/deals", async (req, res) => {
     ));
   }
 
-  const deals = await db
-    .select()
-    .from(dealsTable)
-    .where(and(...conditions))
-    .orderBy(dealsTable.createdAt);
+  // A consulta e os subselects notExists compartilham a mesma transacao
+  // com contexto de tenant; nao concede BYPASSRLS nem altera grants.
+  const deals = await db.transaction(async (tx) => {
+    await tx.execute(sql`select set_config('app.tenant_id', ${tenantId}, true)`);
+    return tx.select().from(dealsTable)
+      .where(and(...conditions)).orderBy(dealsTable.createdAt);
+  });
 
   res.json(deals);
 });
@@ -1467,6 +1469,9 @@ router.post("/deals/:id/return-to-qualified", async (req, res) => {
 });
 
 router.patch("/deals/:id", async (req, res) => {
+  if (!req.body || typeof req.body !== "object" || Array.isArray(req.body)) {
+    return res.status(400).json({ error: "Informe os dados do negócio em um objeto JSON válido.", code: "INVALID_DEAL_PAYLOAD" });
+  }
   const body = req.body as Record<string, unknown>;
   const { handoff: rawHandoff, ...dealBody } = body;
   const parsed = updateDealSchema.safeParse(dealBody);
@@ -1835,10 +1840,19 @@ router.patch("/deals/:id", async (req, res) => {
       eq(usersTable.tenantId, existing.tenantId),
     )).limit(1);
 
-    if (!targetStageConfig || !userMatchesStageResponsibleFunctions(nextOwner ?? { active: false, userFunction: null, customFunctionId: null }, targetStageConfig.responsaveisFuncoes)) {
+    // Ao avançar na mesma pipeline, preserve o responsável atual. A função
+    // da etapa só restringe uma atribuição explícita a outro usuário.
+    if (!nextOwner || nextOwner.active !== true) {
       res.status(422).json({
         error: "STAGE_RESPONSIBLE_REQUIRED",
-        message: "O responsável precisa estar ativo e ter uma função configurada como responsável pela etapa de destino.",
+        message: "O responsável atual precisa estar ativo para avançar a etapa.",
+      });
+      return;
+    }
+    if (assignedToChanged && targetStageConfig && !userMatchesStageResponsibleFunctions(nextOwner, targetStageConfig.responsaveisFuncoes)) {
+      res.status(422).json({
+        error: "STAGE_RESPONSIBLE_REQUIRED",
+        message: "O novo responsável não possui uma função autorizada para a etapa de destino.",
       });
       return;
     }

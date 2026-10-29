@@ -222,18 +222,6 @@ function MetricCard({
     warning: "text-amber-600",
     danger: "text-red-600",
   }[tone];
-  const refreshMetrics = async () => {
-    setRefreshing(true);
-    try {
-      const jobs: Promise<unknown>[] = [agentsQuery.refetch(), operationalQuery.refetch()];
-      if (activeTab === "channels") jobs.push(channelsQuery.refetch());
-      if (activeTab === "intelligence") jobs.push(intelQuery.refetch());
-      if (activeTab === "flow") jobs.push(flowQuery.refetch());
-      await Promise.all(jobs);
-    } finally {
-      setRefreshing(false);
-    }
-  };
 
   return (
     <Card className="shadow-sm">
@@ -299,6 +287,19 @@ export default function Analytics() {
   });
   const flowQuery = useFlowMetrics(tenantId, activeTab === "flow");
   const operationalQuery = useOperationalActions(tenantId, activeTab === "agents");
+
+  const refreshMetrics = async () => {
+    setRefreshing(true);
+    try {
+      const jobs: Promise<unknown>[] = [agentsQuery.refetch(), operationalQuery.refetch()];
+      if (activeTab === "channels") jobs.push(channelsQuery.refetch());
+      if (activeTab === "intelligence") jobs.push(intelQuery.refetch());
+      if (activeTab === "flow") jobs.push(flowQuery.refetch());
+      await Promise.all(jobs);
+    } finally {
+      setRefreshing(false);
+    }
+  };
 
   const agents = agentsQuery.data;
   const channels = channelsQuery.data;

@@ -30,7 +30,7 @@ export default function Dashboard() {
   const [official, setOfficial] = useState<OfficialMetrics>(null);
   const ui20NavQuery = useQuery<Ui20Module[]>({
     queryKey: ["tenant-nav-modules", tenantId],
-    enabled: import.meta.env.VITE_UI20_SERVICE_TABS !== "false" && Boolean(tenantId && token),
+    enabled: import.meta.env.VITE_UI20_SERVICE_HOME !== "false" && Boolean(tenantId && token),
     staleTime: 60_000,
     queryFn: async () => {
       const response = await fetch(`/api/tenants/${tenantId}/nav-modules`, { headers: { Authorization: `Bearer ${token}` } });
@@ -126,7 +126,7 @@ export default function Dashboard() {
 
   return (
     <div className="w-full vendor-dashboard-v2">
-      {import.meta.env.VITE_UI20_SERVICE_TABS !== "false" ? (
+      {import.meta.env.VITE_UI20_SERVICE_HOME !== "false" ? (
         <ServiceHome
           name={user?.name ?? ""}
           tenantId={tenantId}
@@ -140,7 +140,7 @@ export default function Dashboard() {
           recentActivity={executive?.atividade?.ultimas20}
           loading={!ui20NavQuery.isSuccess}
           erpVisible={ui20NavQuery.data?.some((module) => module.moduleKey === "financeiro" && module.isEnabled) ?? false}
-          arqdorVisible={Boolean(user?.tenantVertical && /constr|arquit|obra|marcen|m[oó]ve|design/i.test(user.tenantVertical))}
+          arqdorVisible={user?.platformRole === "super_admin" || Boolean(user?.tenantVertical && /constr|arquit|obra|marcen|m[oó]ve|design/i.test(user.tenantVertical))}
         />
       ) : null}
       <Tabs defaultValue="overview" className="w-full">

@@ -2,7 +2,7 @@ import { Router, type IRouter } from "express";
 import { z } from "zod/v4";
 import { db } from "@workspace/db";
 import { siteVerticaisTable, siteContatosTable, leadsTable, dealsTable, webBehaviorEventsTable } from "@workspace/db";
-import { eq, and, asc, desc, isNull, isNotNull } from "drizzle-orm";
+import { eq, and, asc, desc, isNull, isNotNull, sql } from "drizzle-orm";
 import { Resend } from "resend";
 import { logger } from "../lib/logger.js";
 import { storePhone, findLeadByDedup } from "../lib/dedup.js";
@@ -182,7 +182,11 @@ router.post("/site/behavior-event", async (req, res) => {
       logger,
     );
 
-    const [identifiedSession] = await db
+    const geo = await resolveRequestGeo(req);
+
+    const identifiedSession = await db.transaction(async (tx) => {
+      await tx.execute(sql`SELECT set_config('app.tenant_id', ${INSTITUTIONAL_TENANT_ID}, true)`);
+      const [session] = await tx
       .select({ leadId: webBehaviorEventsTable.leadId })
       .from(webBehaviorEventsTable)
       .where(and(
@@ -193,12 +197,10 @@ router.post("/site/behavior-event", async (req, res) => {
       .orderBy(desc(webBehaviorEventsTable.createdAt))
       .limit(1);
 
-    const geo = await resolveRequestGeo(req);
-
-    await db.insert(webBehaviorEventsTable).values({
+    await tx.insert(webBehaviorEventsTable).values({
       anonymousSessionId: d.anonymousSessionId,
       tenantId: INSTITUTIONAL_TENANT_ID,
-      leadId: identifiedSession?.leadId ?? null,
+      leadId: session?.leadId ?? null,
       adCampaignId,
       eventType: d.eventType,
       pageUrl: d.pageUrl ?? null,
@@ -217,6 +219,8 @@ router.post("/site/behavior-event", async (req, res) => {
         longitude: geo.longitude,
         geoSource: geo.source,
       },
+      });
+      return session;
     });
 
     void notifyVisitorOnline({

@@ -368,7 +368,11 @@ export default {
       url.hostname = "appvendorai.com";
       return Response.redirect(url.toString(), 301);
     }
-    if (url.pathname !== "/" && url.pathname.endsWith("/")) {
+    // Cloudflare Pages serves pre-rendered /path/index.html at /path/ and
+    // redirects /path -> /path/ (308). Stripping the slash here created
+    // a redirect loop (Pages 308 <-> Worker 301) on public SEO routes.
+    // Preserve slash normalization only for API requests.
+    if (url.pathname.startsWith("/api/") && url.pathname.endsWith("/")) {
       url.pathname = url.pathname.slice(0, -1);
       return Response.redirect(url.toString(), 301);
     }

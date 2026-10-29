@@ -6,8 +6,12 @@
  * Authenticated screens use the Brand System scale. The public website can
  * keep larger marketing headlines, while operational pages stay compact.
  */
-main.vendor-scrollbar .vendor-page-canvas h1,
-main.vendor-scrollbar .vendor-page-canvas header h1.text-2xl {
+/* `.vendor-product-title` is an explicit opt-in to the responsive product-hero
+   scale, so it has to keep its own size. Without the :not() guard this rule
+   wins on specificity (both are !important) and pins every CRM hero title to
+   24px, which silently disables the clamp in ui-standard's product language. */
+main.vendor-scrollbar .vendor-page-canvas h1:not(.vendor-product-title),
+main.vendor-scrollbar .vendor-page-canvas header h1.text-2xl:not(.vendor-product-title) {
   font-family: var(--vendor-font-interface) !important;
   font-size: var(--vendor-text-h1) !important;
   line-height: 1.2 !important;
@@ -20,8 +24,8 @@ main.vendor-scrollbar .vendor-page-canvas h2 {
 }
 
 @media (max-width: 767px) {
-  main.vendor-scrollbar .vendor-page-canvas h1,
-  main.vendor-scrollbar .vendor-page-canvas header h1.text-2xl {
+  main.vendor-scrollbar .vendor-page-canvas h1:not(.vendor-product-title),
+  main.vendor-scrollbar .vendor-page-canvas header h1.text-2xl:not(.vendor-product-title) {
     font-size: 1.25rem !important; /* 20px mobile */
     line-height: 1.25 !important;
   }

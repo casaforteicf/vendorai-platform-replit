@@ -2,9 +2,10 @@ import { flushSync } from "react-dom";
 import { conceptReferenceSize } from "./conceptReferenceImage";
 import { compareArqdorSnapshots } from "@/lib/arqdorConflictCompare";
 import { conceptAutosaveIfMatchHeader, isConceptAutosaveConflict } from "@/lib/conceptAutosaveRevisionGate";
-import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useId, useMemo, useRef, useState } from "react";
 import "./planner5d-reference.css";
 import "./arqdor-concept-studio.css";
+import "./arqdor-concept-studio2-final.css";
 import "../../modules/arqdor/theme/arqdor-studio-primitives.css";
 import {
   ArrowLeft,
@@ -76,6 +77,7 @@ import { autoRepairConceptLayout } from "./conceptAutoRepair";
 import { buildExplainableFindings } from "./conceptExplainableEvaluation";
 import { clampObjectToLot, clampRoomToLot, clampWallToLot, normalizeOpeningDimensions } from "./conceptParametricEditing";
 import { buildConceptWallDiagnostics } from "./conceptWallDiagnostics";
+import { validateConceptWalls } from "./conceptWallPreflight";
 
 const ConceptPlan2D = lazy(() => import("./ConceptPlan2D"));
 const ConceptTypologyPreview = lazy(() => import("./ConceptTypologyPreview"));
@@ -1061,6 +1063,9 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
   const [activeFloor, setActiveFloor] = useState(0);
   const [editorView, setEditorView] = useState<"plan" | "model3d" | "facade" | "render">("plan");
   const [editorExperienceMode, setEditorExperienceMode] = useState<EditorExperienceMode>(guestMode ? "guided" : "professional");
+  // Build-time rollout: enable only in the isolated Studio homologation build.
+  const studio2Enabled = import.meta.env.VITE_ARQDOR_STUDIO2_CONCEPT === "true" && !guestMode && editorExperienceMode === "professional";
+  const studioLibraryPanelId = useId();
 
   useEffect(() => {
     // O projeto tem só duas telas: o workspace (2D/3D/Fachada/Render) e o Resultado,
@@ -1832,6 +1837,20 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
     }
 
     const sendRequest = async () => {
+      // Validação da geometria no fluxo real de POST/PATCH do editor.
+      // Não corrige silenciosamente paredes nem altera o controle de revisão.
+      const wallIssues = validateConceptWalls(
+        nextCustomWalls.map((wall) => ({
+          id: wall.id, floor: wall.floor, x1: wall.x1, y1: wall.y1,
+          x2: wall.x2, y2: wall.y2, thickness: wall.thickness,
+        })),
+        lotWidth,
+        lotDepth,
+      );
+      if (wallIssues.length > 0) {
+        throw new Error("Revise as paredes antes de salvar: " +
+          [...new Set(wallIssues.map((issue) => issue.code))].join(", "));
+      }
       if (revisionAutosaveEnabled && revisionConflictRef.current) throw new Error("Conflito pendente. Gravação bloqueada até revisar o projeto.");
       if (revisionAutosaveEnabled && targetId && !conceptRevisionRef.current) throw new Error("Revisão do projeto indisponível.");
       const response = await fetch(
@@ -6277,7 +6296,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
   ]);
 
   return (
-    <div className="arqdor-reference-ui arqdor-studio-ui arqdor-concept-studio min-h-screen bg-muted/30">
+    <div className={`arqdor-reference-ui arqdor-studio-ui arqdor-concept-studio min-h-screen bg-muted/30 ${studio2Enabled ? "arq-studio-active" : ""}`}>
       {projectMaster && step !== RESULT_STEP && (
         <div className="fixed inset-0 z-[250] grid place-items-center bg-slate-950/55 p-4 backdrop-blur-sm">
           <div className="w-full max-w-lg rounded-3xl border border-emerald-200 bg-white p-6 shadow-2xl">
@@ -7823,7 +7842,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
             {/* ARQ-UI: a barra horizontal duplicada foi removida.
                 Ferramentas de desenho permanecem no rail/painel contextual, liberando área do canvas. */}
 
-            <div className="arq-workspace-shell relative min-h-[calc(100dvh-112px)] overflow-hidden bg-[#f6f7f8]">
+            <div className={`arq-workspace-shell relative min-h-[calc(100dvh-112px)] overflow-hidden bg-[#f6f7f8] ${studio2Enabled ? "arq-studio-professional-layout" : ""}`} data-arqdor-workspace={studio2Enabled ? "studio" : "legacy"}>
               <aside className={editorView !== "plan"
                   ? "arq-workspace-sidebar hidden"
                   : (selected || selectedCustomWall || selectedOpening || selectedClosedSpace || selectedWall)
@@ -7858,6 +7877,10 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                             setLibraryOpen((open) => sameTab ? !open : true);
                           }}
                           title={label}
+                          aria-label={label}
+                          aria-controls={studioLibraryPanelId}
+                          aria-expanded={libraryOpen && editorLibraryTab === value}
+                          aria-pressed={libraryOpen && editorLibraryTab === value}
                           className={editorLibraryTab === value
                             ? "grid h-11 w-11 place-items-center rounded-xl bg-orange-50 text-orange-600 shadow-sm"
                             : "grid h-11 w-11 place-items-center rounded-xl text-slate-500 transition hover:bg-slate-100 hover:text-slate-900"}
@@ -7868,7 +7891,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                       <div className="my-1 h-px w-8 bg-slate-200" />
                     </div>
                   </div>
-                  <div className={libraryOpen
+                  <div id={studioLibraryPanelId} aria-label="Ferramentas do projeto" className={libraryOpen
                     ? `fixed inset-x-2 bottom-20 z-40 max-h-[68vh] overflow-y-auto rounded-3xl border bg-white shadow-2xl md:static md:inset-auto md:z-auto md:max-h-none md:overflow-visible md:rounded-none md:border-0 md:shadow-none ${editorLibraryTab === "furniture" || editorLibraryTab === "materials" ? "md:w-[340px]" : "md:w-[260px]"}`
                     : "hidden"}>
                 <div className="sticky top-0 z-10 rounded-t-3xl border-b bg-white px-4 py-3 md:rounded-none md:px-5 md:py-4">
@@ -9077,7 +9100,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                   )}
 
                   {editorView === "plan" && !terrainOnly && (
-                      <div className={`absolute top-3 z-30 flex snap-x items-center gap-1.5 overflow-x-auto rounded-2xl border border-slate-200 bg-white/96 p-1.5 shadow-md backdrop-blur [scrollbar-width:none] [&::-webkit-scrollbar]:hidden
+                      <div className={`arq-canvas-toolbar absolute top-3 z-30 flex snap-x items-center gap-1.5 overflow-x-auto rounded-2xl border border-slate-200 bg-white/96 p-1.5 shadow-md backdrop-blur [scrollbar-width:none] [&::-webkit-scrollbar]:hidden
                         left-16 right-3 md:right-auto
                         ${libraryOpen ? (editorLibraryTab === "furniture" || editorLibraryTab === "materials" ? "md:left-[460px]" : "md:left-[380px]") : "md:left-20"}
                       `}>
@@ -9811,21 +9834,21 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
                 </div>
               </div>
 
-              <div className="fixed inset-x-3 bottom-[max(0.75rem,env(safe-area-inset-bottom))] z-30 flex items-center justify-between rounded-2xl border bg-white/95 p-1.5 shadow-xl backdrop-blur md:hidden">
+              <nav aria-label="Etapas do projeto" className="arq-mobile-stage-nav fixed inset-x-2 bottom-[max(0.5rem,env(safe-area-inset-bottom))] z-30 flex items-center justify-between rounded-xl border bg-white/95 p-1 shadow-lg backdrop-blur md:hidden">
                 {journeyStages.map((stage, index) => (
                   <button
                     key={stage.id}
                     type="button"
                     onClick={() => goToJourneyStage(index)}
                     className={journeyIndex === index
-                      ? "flex min-h-11 flex-1 flex-col items-center justify-center rounded-xl bg-slate-950 px-1 py-1.5 text-[11px] font-bold text-white"
-                      : "flex min-h-11 flex-1 flex-col items-center justify-center rounded-xl px-1 py-1.5 text-[11px] font-semibold text-slate-500"}
+                      ? "flex min-h-11 min-w-0 flex-1 flex-col items-center justify-center rounded-lg bg-slate-950 px-1 py-1 text-[10px] font-bold text-white"
+                       : "flex min-h-11 min-w-0 flex-1 flex-col items-center justify-center rounded-lg px-1 py-1 text-[10px] font-semibold text-slate-500"}
                   >
                     <span className={index < journeyIndex && journeyIndex !== index ? "text-emerald-600" : ""}>{index < journeyIndex ? "✓" : index + 1}</span>
-                    {stage.label}
+                    <span className="block w-full truncate text-center">{stage.label}</span>
                   </button>
                 ))}
-              </div>
+              </nav>
 
               {hasEditorSelection && (editorView === "plan" || editorView === "model3d") && (
               <aside className="arq-workspace-inspector arq-inspector fixed inset-x-3 bottom-[calc(5rem+env(safe-area-inset-bottom))] z-[70] max-h-[64vh] overflow-y-auto rounded-3xl border bg-white/98 px-4 py-4 shadow-2xl backdrop-blur md:inset-y-3 md:left-auto md:right-3 md:bottom-auto md:w-[340px] md:max-h-[calc(100dvh-24px)] md:rounded-2xl md:border-slate-200 md:px-4 md:py-4 md:shadow-[0_18px_50px_rgba(15,23,42,0.16)]">
@@ -10547,7 +10570,7 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
         )}
 
         {step === 6 && (
-          <section className="mx-auto max-w-6xl space-y-5 px-3 pt-4 print:max-w-none sm:px-6">
+          <section className="arq-project-result mx-auto max-w-6xl space-y-5 px-3 pt-4 pb-28 print:max-w-none sm:px-6 md:pb-6">
             <button
               type="button"
               onClick={() => { setStep(WORKSPACE_STEP); setEditorView("render"); }}
@@ -10559,12 +10582,12 @@ export default function ConceptPlanner({ guestMode = false, guestBrand }: {
               <button
                 type="button"
                 onClick={() => document.getElementById(startContactValid ? "enviar-profissional" : "dados-cliente")?.scrollIntoView({ behavior: "smooth", block: "start" })}
-                className="fixed inset-x-3 bottom-[max(0.75rem,env(safe-area-inset-bottom))] z-30 inline-flex min-h-12 items-center justify-center gap-2 rounded-2xl bg-orange-500 px-4 text-sm font-semibold text-white shadow-xl md:hidden print:hidden"
+                className="arq-result-send fixed inset-x-3 bottom-[max(0.75rem,env(safe-area-inset-bottom))] z-30 inline-flex min-h-12 items-center justify-center gap-2 rounded-xl bg-emerald-800 px-4 text-sm font-semibold text-white shadow-xl md:hidden print:hidden"
               >
                 <Send className="h-4 w-4" /> {startContactValid ? "Enviar ao profissional" : "Informar contato e enviar"}
               </button>
             )}
-            <div className="rounded-3xl border bg-card p-6 shadow-sm sm:p-8">
+            <div className="rounded-3xl border border-slate-200 bg-white p-6 text-slate-900 shadow-sm sm:p-8">
               <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                 <div>
                   <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-orange-500">

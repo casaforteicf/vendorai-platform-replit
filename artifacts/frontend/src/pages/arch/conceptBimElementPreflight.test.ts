@@ -23,6 +23,23 @@ describe("Arqdor parametric BIM preflight", () => {
     ] });
     expect(r.issues.map(x => x.code)).toEqual(["OPENING_OUTSIDE_SLAB", "OPENING_COLLISION"]);
   });
+  it("does not report a fake collision for zero-area slab openings", () => {
+    const result = validateSlab({ floor: 1, width: 5, depth: 5, thickness: 0.16, openings: [
+      { x: 2, y: 2, width: 0, depth: 2 },
+      { x: 1, y: 1, width: 3, depth: 3 },
+      { x: 2, y: 2, width: 2, depth: -1 },
+    ] });
+    expect(result.valid).toBe(false);
+    expect(result.issues.filter(issue => issue.code === "OPENING_OUTSIDE_SLAB")).toHaveLength(2);
+    expect(result.issues.some(issue => issue.code === "OPENING_COLLISION")).toBe(false);
+  });
+  it("still reports overlap between valid positive-area openings", () => {
+    const result = validateSlab({ floor: 0, width: 8, depth: 8, thickness: 0.15, openings: [
+      { x: 1, y: 1, width: 2, depth: 2 },
+      { x: 2, y: 2, width: 3, depth: 3 },
+    ] });
+    expect(result.issues).toContainEqual({ path: "openings[1]", code: "OPENING_COLLISION" });
+  });
   it("rejects non-finite roof pitches and unsupported kinds", () => {
     expect(validateRoof({ kind: "flat", width: 8, depth: 10, pitchDegrees: Number.NaN, eave: 0 }).valid).toBe(false);
     expect(validateRoof({ kind: "unknown" as "flat", width: 8, depth: 10, pitchDegrees: 0, eave: 0 }).valid).toBe(false);

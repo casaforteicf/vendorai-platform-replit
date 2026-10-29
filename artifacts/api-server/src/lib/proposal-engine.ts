@@ -2702,19 +2702,21 @@ function renderStudioOrderedProposal(args: {
 
   const monthlyFinancialPageBodies = () => {
     if (!monthlyPeriods.length) return ['<p class="studio-muted">Cronograma físico-financeiro não configurado para esta proposta.</p>'];
-    return chunk(monthlyPeriods, 10).map((periods) =>
-      '<table class="studio-table studio-monthly"><thead><tr><th>Mês</th><th>Etapas ativas</th><th class="r">Avanço físico</th><th class="r">Medição bruta</th>' +
-      (presentation.entradaPercentual > 0 && presentation.mostrarAmortizacaoEntrada ? '<th class="r">Amortização</th><th class="r">Valor líquido</th>' : '') +
-      '</tr></thead><tbody>' +
+    return chunk(monthlyPeriods, 3).map((periods) =>
+      '<p class="studio-monthly-help">Previsão de execução e pagamento por mês. O desconto da entrada reduz o valor a pagar na medição.</p>' +
       periods.map((period) => {
-        const activeStages = period.stages.filter((stage) => stage.share > 0).map((stage) => stage.nome).slice(0, 4);
-        return '<tr><td><strong>' + esc(period.label) + '</strong></td><td>' + esc(activeStages.join(" · ") || "—") +
-          '</td><td class="r">' + Number(period.physical || 0).toFixed(2) + '%</td><td class="r">' + fmtMoney(period.amount) + '</td>' +
-          (presentation.entradaPercentual > 0 && presentation.mostrarAmortizacaoEntrada
-            ? '<td class="r">-' + fmtMoney(period.amortization) + '</td><td class="r"><strong>' + fmtMoney(period.netAmount) + '</strong></td>'
-            : '') +
-          '</tr>';
-      }).join("") + '</tbody></table>'
+        const hasAdvance = presentation.entradaPercentual > 0 && presentation.mostrarAmortizacaoEntrada;
+        const activeStages = period.stages.filter((stage) => stage.share > 0).map((stage) => stage.nome);
+        return '<section class="studio-month-card"><div class="studio-month-head"><strong>' + esc(period.label) +
+          '</strong><span>Avanço físico no mês: ' + Number(period.physical || 0).toFixed(2) +
+          '% · Acumulado: ' + Number(period.accumulatedPhysical || 0).toFixed(2) + '%</span></div>' +
+          '<div class="studio-month-stages"><b>Etapas / fases previstas</b><p>' + esc(activeStages.join(" · ") || "—") + '</p></div>' +
+          '<div class="studio-month-money"><div><span>Serviços previstos no mês</span><strong>' + fmtMoney(period.amount) + '</strong></div>' +
+          (hasAdvance ? '<div><span>Desconto da entrada</span><strong>−' + fmtMoney(period.amortization) + '</strong></div>' : '') +
+          '<div class="studio-month-pay"><span>Valor a pagar no mês</span><strong>' + fmtMoney(period.netAmount) + '</strong></div></div>' +
+          (hasAdvance ? '<p class="studio-month-balance">Saldo da entrada a descontar nas próximas medições: <strong>' + fmtMoney(period.remainingAdvance) + '</strong></p>' : '') +
+          '</section>';
+      }).join("")
     );
   };
 
@@ -2859,7 +2861,9 @@ function renderStudioOrderedProposal(args: {
       const conditions = [
         presentation.mostrarTotalGeral && total > 0 ? ['Valor da proposta', fmtMoney(total)] : null,
         !presentation.condicoesPagamentoDetalhadas && orcamento?.condPagamento ? ['Condição de pagamento', orcamento.condPagamento] : null,
-        orcamento?.formaPagamento ? ['Forma de pagamento', orcamento.formaPagamento] : null,
+        presentation.entradaPercentual > 0 ? ['Entrada · ' + presentation.entradaPercentual.toLocaleString("pt-BR") + '%', fmtMoney(total * presentation.entradaPercentual / 100)] : null,
+        presentation.entradaPercentual > 0 ? ['Saldo após a entrada · conforme medições', fmtMoney(total * (1 - presentation.entradaPercentual / 100))] : null,
+        orcamento?.formaPagamento ? ['Forma de pagamento', ({ pix: "PIX", boleto: "Boleto", transferencia: "Transferência", dinheiro: "Dinheiro", cartao_credito: "Cartão de crédito", cartao_debito: "Cartão de débito", a_combinar: "A combinar" } as Record<string, string>)[orcamento.formaPagamento] ?? orcamento.formaPagamento] : null,
         ['Prazo / entrega', effectiveDeadlineLabel],
       ].filter(Boolean) as Array<[string, string]>;
       const list = '<div class="studio-conditions">' + conditions.map(([label, value]) =>
@@ -2884,7 +2888,7 @@ function renderStudioOrderedProposal(args: {
       return genericPage(module, index, list +
         commercialDetails +
         (orcamento?.observacoes ? '<p class="studio-copy">' + esc(orcamento.observacoes) + '</p>' : '') +
-        exclusions, 0, 1, { includeVisual: true });
+        exclusions, 0, 1, { includeVisual: false });
     }
 
     if (key === "validade_inicio") {
@@ -2992,6 +2996,7 @@ function renderStudioOrderedProposal(args: {
     '.studio-metrics{display:grid;grid-template-columns:repeat(2,1fr);gap:4mm;margin:4mm 0}.studio-metrics>div{background:' + theme.cream2 + ';border-left:1.5mm solid ' + theme.accent + ';padding:5mm}.studio-metrics span,.studio-conditions span{display:block;font-size:6pt;text-transform:uppercase;letter-spacing:.08em;color:#777083;margin-bottom:1.5mm}.studio-metrics strong{font-size:16pt;color:' + theme.navyDeep + '}' +
     '.studio-table{width:100%;border-collapse:collapse;margin-top:4mm;font-size:7.2pt}.studio-table th{background:' + theme.navyDeep + ';color:#fff;text-align:left;padding:2.6mm;border:1px solid ' + theme.navyDeep + '}.studio-table td{padding:2.5mm;border:1px solid ' + theme.concreteLine + ';vertical-align:top}.studio-table td small{display:block;color:#777083;margin-top:.8mm}.r{text-align:right!important}' +
     '.studio-stage-grid,.studio-card-grid{display:grid;grid-template-columns:1fr 1fr;gap:3mm;margin-top:5mm}.studio-stage-card,.studio-card-grid>div{border:1px solid ' + theme.concreteLine + ';border-radius:2.5mm;padding:4mm;background:#fff}.studio-stage-card span{display:block;font-size:6pt;color:' + theme.accent + ';text-transform:uppercase;letter-spacing:.08em}.studio-stage-card strong{display:block;font-size:9pt;margin:1.3mm 0}.studio-stage-card b{font-size:11pt;color:' + theme.navyDeep + '}.studio-stage-card small{display:block;font-size:6pt;color:#777083;margin-top:1.2mm}.studio-card-grid p{font-size:7.5pt;line-height:1.45;color:#5d566d}' +
+    '.studio-monthly-help{font-size:9pt;line-height:1.5;margin:0 0 5mm;color:#514a61}.studio-month-card{margin:0 0 5mm;border:1px solid #d8d6df;border-radius:2mm;break-inside:avoid;overflow:hidden}.studio-month-head{display:flex;justify-content:space-between;align-items:center;gap:3mm;padding:3mm 4mm;background:#f2f1f5}.studio-month-head strong{font-size:11pt}.studio-month-head span{font-size:8pt}.studio-month-stages{padding:3mm 4mm}.studio-month-stages b{font-size:8pt}.studio-month-stages p{font-size:9pt;line-height:1.5;white-space:normal;overflow-wrap:anywhere;margin:1mm 0}.studio-month-money{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:3mm;padding:3mm 4mm;border-top:1px solid #e2e0e7}.studio-month-money span{display:block;font-size:8pt;color:#514a61}.studio-month-money strong{display:block;font-size:11pt;white-space:normal;margin-top:1.5mm}.studio-month-pay{background:#f2f1f5;padding:2mm;border-radius:1mm}.studio-month-balance{padding:2mm 4mm 3mm;font-size:8pt;color:#514a61}.studio-page[data-studio-key="condicoes_comerciais"] .studio-conditions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4mm;margin:4mm 0}.studio-page[data-studio-key="condicoes_comerciais"] .studio-conditions>div{padding:3mm;border:1px solid #e2e0e7;border-radius:2mm}.studio-page[data-studio-key="condicoes_comerciais"] .studio-conditions span{font-size:8pt;line-height:1.4}.studio-page[data-studio-key="condicoes_comerciais"] .studio-conditions strong{font-size:12pt;line-height:1.4}.studio-page[data-studio-key="condicoes_comerciais"] .studio-callout{padding:4mm;margin:3mm 0}.studio-page[data-studio-key="condicoes_comerciais"] .studio-callout strong{font-size:10pt}.studio-page[data-studio-key="condicoes_comerciais"] .studio-callout p,.studio-page[data-studio-key="condicoes_comerciais"] .studio-exclusions ul{font-size:9pt;line-height:1.5}.studio-page[data-studio-key="condicoes_comerciais"] .studio-exclusions{padding:4mm;margin-top:3mm}' +
     '.studio-stage-title{display:flex;justify-content:space-between;align-items:flex-start;gap:5mm;border-bottom:2px solid ' + theme.navyDeep + ';padding:2mm 0 3mm;margin:3mm 0}.studio-stage-title span{font-size:9pt;font-weight:700;color:' + theme.navyDeep + '}.studio-stage-title small{font-size:6pt;color:#777083;font-weight:400}.studio-stage-title strong{font-size:10pt;color:' + theme.navyDeep + '}.studio-stage-value{display:flex;flex-direction:column;align-items:flex-end;gap:.6mm}.studio-stage-value small{font-size:5.8pt;text-transform:uppercase;letter-spacing:.06em;color:#777083}.studio-commercial-note{margin:2mm 0 4mm;padding:3.5mm 4mm;border-left:1.3mm solid ' + theme.accent + ';background:' + theme.cream2 + ';border-radius:1.5mm}.studio-commercial-note p{font-size:7.2pt;line-height:1.45;color:#514a61;margin:.7mm 0}.studio-stage-summary-list{display:grid;gap:3mm;margin-top:4mm}.studio-stage-summary{display:flex;justify-content:space-between;gap:5mm;padding:4mm;border:1px solid ' + theme.concreteLine + ';border-radius:2mm;background:#fff;font-size:8.5pt}.studio-scope-list{display:grid;gap:2.5mm}.studio-scope-list>div{border-bottom:1px solid ' + theme.concreteLine + ';padding:2.5mm 0}.studio-scope-list strong{display:block;font-size:8pt;color:' + theme.navyDeep + '}.studio-scope-list span{display:block;font-size:7pt;line-height:1.4;color:#625b70;margin-top:.7mm}.studio-scope-hidden{padding:5mm;border:1px dashed ' + theme.concreteLine + ';border-radius:2mm}.studio-scope-hidden strong,.studio-scope-hidden span{display:block}.studio-scope-hidden span{font-size:7pt;color:#777083;margin-top:1mm}.studio-exclusions{margin-top:5mm;padding:5mm;border:1px solid ' + theme.concreteLine + ';border-left:1.5mm solid ' + theme.warn + ';border-radius:2mm}.studio-exclusions h2{font-size:11pt;margin:0 0 2mm}.studio-exclusions ul{margin:0;padding-left:5mm;font-size:7.5pt;line-height:1.5}.studio-monthly td:nth-child(2){max-width:62mm;font-size:6.6pt}' +
     '.studio-gallery{display:grid;grid-template-columns:1fr 1fr;gap:4mm;margin-top:4mm}.studio-gallery figure{margin:0}.studio-gallery img{width:100%;height:55mm;object-fit:cover;border-radius:2.5mm}.studio-gallery figcaption{font-size:6.5pt;color:#686176;margin-top:1.5mm}' +
     '.studio-conditions{border-top:2px solid ' + theme.navyDeep + ';margin-top:5mm}.studio-conditions>div{display:grid;grid-template-columns:55mm 1fr;gap:5mm;padding:4.5mm 0;border-bottom:1px solid ' + theme.concreteLine + '}.studio-conditions strong{font-size:9pt;color:' + theme.navyDeep + '}' +
@@ -3887,7 +3892,7 @@ ${orcamento && (builderModuleEnabled("etapas_orcamento") || builderModuleEnabled
         <tbody>${physicalFinancialRows}</tbody>
       </table>
       <div class="commercial-title" style="margin-top:4mm;">Modelo por colunas · cobrança mensal</div>
-      ${renderProposalMonthlyMatrix(scheduleRows, fmtBRL)}
+      ${renderProposalMonthlyMatrix(scheduleRows, presentation, totalExibido, fmtBRL)}
     </div>` : ""}
   ${docFooter()}
 </div>`
@@ -4093,11 +4098,68 @@ export function renderOrcamentoPdf(args: {
     .join("");
 
   const scheduleRows = buildProposalScheduleRows(groupedItems, presentation, totalExibido);
-  const executionScheduleRows = scheduleRows.map((row) => `<tr>
+  const showExecutionSchedule = presentation.mostrarCronogramaExecucao;
+  const showPhysicalFinancial = presentation.mostrarFisicoFinanceiro;
+  const monthlyPeriods = buildProposalMonthlyMatrix(scheduleRows, presentation, totalExibido);
+  const monthlyLedgerHtml = monthlyPeriods.length ? `
+    <div class="commercial-section">
+      <div class="commercial-title">Previsão mensal · físico-financeiro</div>
+      <p>Valor contratado: ${fmtBRL(totalExibido)} · Entrada: ${presentation.entradaPercentual.toFixed(2)}%
+        (${fmtBRL(totalExibido * presentation.entradaPercentual / 100)}) · Amortização: ${presentation.amortizacaoEntradaPercentual.toFixed(2)}% por medição.</p>
+      <table class="schedule-table monthly-ledger">
+        <thead><tr><th>Mês</th><th>Etapas / fases previstas</th><th class="r">% físico</th><th class="r">% acum.</th><th class="r">Bruto previsto</th><th class="r">Amortização</th><th class="r">Líquido previsto</th><th class="r">Saldo entrada</th></tr></thead>
+        <tbody>${monthlyPeriods.map((period) => `<tr>
+          <td>${escapeProposalText(period.label)}</td>
+          <td>${period.stages.filter((stage) => stage.share > 0).map((stage) => escapeProposalText(stage.nome)).join(" + ")}</td>
+          <td class="r">${period.physical.toFixed(2)}%</td>
+          <td class="r">${period.accumulatedPhysical.toFixed(2)}%</td>
+          <td class="r">${fmtBRL(period.amount)}</td>
+          <td class="r">-${fmtBRL(period.amortization)}</td>
+          <td class="r fw">${fmtBRL(period.netAmount)}</td>
+          <td class="r">${fmtBRL(period.remainingAdvance)}</td>
+        </tr>`).join("")}</tbody>
+      </table>
+    </div>` : "";
+  const generatedTextSections: Array<[string, string | string[]]> = [
+    ["Descrição do projeto", presentation.descricaoProjeto],
+    ["Premissas da obra", presentation.premissasObra],
+    ["Memorial descritivo", presentation.memorialDescritivo],
+    ["Condições detalhadas de pagamento", presentation.condicoesPagamentoDetalhadas],
+    ["Política de reajuste", presentation.politicaReajuste],
+    ["Garantias contratuais", presentation.garantiasContratuais],
+    ["Itens não inclusos", presentation.itensNaoInclusos],
+  ];
+  const generatedDetailsHtml = generatedTextSections.map(([title, value]) => {
+    if (Array.isArray(value)) {
+      if (!value.length) return "";
+      return `<section class="commercial-section"><h2 class="commercial-title">${title}</h2><ul>${value.map((line) => `<li>${escapeProposalText(line)}</li>`).join("")}</ul></section>`;
+    }
+    return value ? `<section class="commercial-section"><h2 class="commercial-title">${title}</h2><p style="white-space:pre-wrap">${escapeProposalText(value)}</p></section>` : "";
+  }).join("");
+
+  function scheduleDependencyLabel(rowId: string): string {
+    const [stageId, phaseId] = rowId.split("::");
+    const stage = presentation.cronogramaEtapas[stageId];
+    const config = phaseId ? stage?.fases?.find((phase) => phase.id === phaseId) : stage;
+    const predecessorId = phaseId ? (config as ProposalStagePhase | undefined)?.dependeDeFaseId : (config as ProposalStageSchedule | undefined)?.dependeDeEtapaId;
+    const predecessor = phaseId
+      ? stage?.fases?.find((phase) => phase.id === predecessorId)?.nome
+      : groupedItems.find((group) => group.id === predecessorId)?.nome;
+    return predecessorId
+      ? `${escapeProposalText(predecessor || predecessorId)} · ${config?.tipoDependencia ?? "FS"} · ${Number(config?.defasagemDias ?? 0)} dias`
+      : "Sequência automática / início cadastrado";
+  }
+  const datedRows = proposalExpandedScheduleRows(scheduleRows).filter((row) => row.start && row.end);
+  const effectiveDays = datedRows.length ? proposalDiffDays(
+    new Date(Math.min(...datedRows.map((row) => row.start!.getTime()))),
+    new Date(Math.max(...datedRows.map((row) => row.end!.getTime()))),
+  ) : null;
+  const executionScheduleRows = scheduleRows.flatMap((row) => [row, ...(row.phases ?? [])]).map((row) => `<tr>
     <td><strong>Etapa ${row.ordem}</strong> · ${escapeProposalText(row.nome || "Execução")}</td>
     <td>${row.start ? proposalFormatDate(row.start) : "A definir"}</td>
     <td>${row.duration ? `${row.duration} dias` : "A definir"}</td>
     <td>${row.end ? proposalFormatDate(row.end) : "A definir"}</td>
+    <td>${scheduleDependencyLabel(row.id)}</td>
   </tr>`).join("");
   const physicalFinancialRows = scheduleRows.map((row) => `<tr>
     <td><strong>Etapa ${row.ordem}</strong> · ${escapeProposalText(row.nome || "Execução")}</td>
@@ -4129,6 +4191,16 @@ export function renderOrcamentoPdf(args: {
     print-color-adjust: exact;
   }
 
+  thead { display: table-header-group; }
+  tr { break-inside: avoid; }
+  .monthly-ledger { table-layout: fixed; width: 100%; font-size: 6pt; }
+  .monthly-ledger th, .monthly-ledger td { overflow-wrap: anywhere; padding: 2mm 1mm; }
+  .monthly-ledger th:nth-child(2) { width: 26%; }
+  .commercial-section ul { padding-left: 5mm; }
+  @media print {
+    .page.orc-page { height: auto !important; max-height: none !important; overflow: visible !important; }
+    .commercial-section, .stage-block { break-inside: auto; }
+  }
   /* ── pages ── */
   .page {
     width: 210mm;
@@ -4481,6 +4553,8 @@ export function renderOrcamentoPdf(args: {
     </div>
   </div>` : ""}` : ""}
 
+  ${presentation.areaTotalConstruida > 0 ? `<div class="commercial-section"><strong>Área total construída:</strong> ${presentation.areaTotalConstruida.toLocaleString("pt-BR")} m²</div>` : ""}
+  ${generatedDetailsHtml}
   ${metaRows ? `<div class="commercial-section"><div class="commercial-title">Condições comerciais</div><div class="meta-grid">${metaRows}</div></div>` : ""}
   ${paymentRowsHtml ? `
     <div class="commercial-section">
@@ -4505,6 +4579,7 @@ ${scheduleRows.length && (presentation.mostrarCronogramaExecucao || presentation
   </div>
 
   <div class="orc-title">Cronograma de execução e físico-financeiro</div>
+  <p>Avanço físico total: ${scheduleRows.reduce((sum, row) => sum + row.physicalPercent, 0).toFixed(2)}% · Peso financeiro total: ${scheduleRows.reduce((sum, row) => sum + Number(row.financialPercent ?? 0), 0).toFixed(2)}%${effectiveDays ? ` · Prazo efetivo: ${effectiveDays} dias` : ""}</p>
   <div class="schedule-intro">
     ${presentation.previsaoInicio ? `<strong>Previsão de início:</strong> ${proposalFormatDate(presentation.previsaoInicio)}.` : "<strong>Previsão de início:</strong> a definir."}
     Cada etapa possui sua própria data de início e duração. Etapas simultâneas aparecem na mesma coluna mensal e suas cobranças são somadas no período.
@@ -4514,7 +4589,7 @@ ${scheduleRows.length && (presentation.mostrarCronogramaExecucao || presentation
     <div class="commercial-section">
       <div class="commercial-title">Cronograma de execução</div>
       <table class="schedule-table">
-        <thead><tr><th>Etapa</th><th>Início</th><th>Duração</th><th>Término</th></tr></thead>
+        <thead><tr><th>Etapa / fase</th><th>Início</th><th>Duração</th><th>Término</th><th>Dependência / defasagem</th></tr></thead>
         <tbody>${executionScheduleRows}</tbody>
       </table>
     </div>` : ""}
@@ -4527,7 +4602,8 @@ ${scheduleRows.length && (presentation.mostrarCronogramaExecucao || presentation
         <tbody>${physicalFinancialRows}</tbody>
       </table>
       <div class="commercial-title" style="margin-top:4mm;">Modelo por colunas · cobrança mensal</div>
-      ${renderProposalMonthlyMatrix(scheduleRows, fmtBRL)}
+      ${monthlyLedgerHtml}
+      ${renderProposalMonthlyMatrix(scheduleRows, presentation, totalExibido, fmtBRL)}
     </div>` : ""}
 </div>` : ""}
 

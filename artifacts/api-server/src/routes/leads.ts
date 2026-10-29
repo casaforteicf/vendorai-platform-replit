@@ -7,6 +7,7 @@ import { z } from "zod/v4";
 import {
   db,
   leadsTable,
+  notificationsTable,
   insertLeadSchema,
   updateLeadSchema,
   conversationsTable,
@@ -449,6 +450,34 @@ router.post("/leads", async (req, res) => {
     leadSimilarId: null,
   } as any).returning();
 
+  // Aviso transacional, gerado apenas na primeira criação (não em replay).
+  // O destinatário é exclusivamente o responsável interno autorizado no tenant.
+  if (resolvedAssignedTo) {
+    const [creator] = registrationActorId
+      ? await tx.select({ name: usersTable.name }).from(usersTable)
+          .where(and(eq(usersTable.id, registrationActorId), eq(usersTable.tenantId, lead.tenantId)))
+          .limit(1)
+      : [];
+    const origem = lead.source?.trim() || "Cadastro manual";
+    const necessidade = lead.objetivo?.trim() || "Qualificar necessidade do cliente";
+    const cadastradoPor = creator?.name || "Integração / formulário";
+    await tx.insert(notificationsTable).values({
+      tenantId: lead.tenantId,
+      recipientUserId: resolvedAssignedTo,
+      leadId: lead.id,
+      type: "info",
+      category: "lead_entry",
+      title: `Novo lead recebido: ${lead.nome}`,
+      message: [
+        `Empresa: ${lead.empresa || "Não informada"}`,
+        `Origem: ${origem}`,
+        `Cadastrado por: ${cadastradoPor}`,
+        `Necessidade: ${necessidade}`,
+        "Próxima ação: confirmar dados, entrar em contato e definir a atividade com prazo.",
+      ].join("\\n"),
+    });
+  }
+
   // Auto-create deal in pipeline (aquecimento) unless lead is pipeline-exempt
   if (!lead.pipelineExempt) {
     await tx.insert(dealsTable).values({
@@ -730,8 +759,7 @@ router.get("/tenants/:tenantId/leads", async (req, res) => {
 
   const conditions = [
     eq(leadsTable.tenantId, tenantId),
-    eq(leadsTable.possivelDuplicata, false),
-  ];
+    ];
   if (representativeAccess) {
     conditions.push(eq(leadsTable.representativeFunctionId, representativeAccess.id));
   }
@@ -752,19 +780,23 @@ router.get("/tenants/:tenantId/leads", async (req, res) => {
   }
   if (incluirExcluidos === "apenas") {
     conditions.push(isNotNull(leadsTable.excluidoEm));
+    // A lixeira administrativa inclui duplicatas e contatos classificados como Não Lead.
   } else if (incluirExcluidos !== "incluir") {
     conditions.push(isNull(leadsTable.excluidoEm));
   }
+  if (incluirExcluidos !== "apenas") conditions.push(eq(leadsTable.possivelDuplicata, false));
   // Mesmo padrão pra contato classificado como não-lead (D-003) -- sai
   // da pipeline/dashboard/campanhas por padrão, sem precisar filtrar em
   // cada tela que consome esse endpoint.
   const incluirNaoLeads = req.query["incluirNaoLeads"];
-  if (incluirNaoLeads === "apenas") {
+  if (incluirExcluidos === "apenas") {
+    // Excluídos não são filtrados por classificação comercial.
+  } else if (incluirNaoLeads === "apenas") {
     conditions.push(isNotNull(leadsTable.naoLeadTipo));
   } else if (incluirNaoLeads !== "incluir") {
     conditions.push(isNull(leadsTable.naoLeadTipo));
   }
-  if (!representativeAccess) {
+  if (!representativeAccess && incluirExcluidos !== "apenas") {
     conditions.push(...buildUserFunctionFilter(req, leadsTable));
   }
 
@@ -788,11 +820,13 @@ router.get("/tenants/:tenantId/leads", async (req, res) => {
     )!);
   }
 
-  const leads = await db
-    .select()
-    .from(leadsTable)
-    .where(and(...conditions))
-    .orderBy(leadsTable.createdAt);
+  // RLS Contabo: set_config local e SELECT devem usar a MESMA conexao.
+  // tenantId ja foi validado acima com o JWT ou autorizacao de representante.
+  const leads = await db.transaction(async (tx) => {
+    await tx.execute(sql`select set_config('app.tenant_id', ${tenantId}, true)`);
+    return tx.select().from(leadsTable)
+      .where(and(...conditions)).orderBy(leadsTable.createdAt);
+  });
 
   if (isOwnTenant) {
     const sharedRows = await db.select({
@@ -807,9 +841,8 @@ router.get("/tenants/:tenantId/leads", async (req, res) => {
       .where(and(
         eq(dealTenantParticipationsTable.partnerTenantId, tenantId),
         eq(dealTenantParticipationsTable.status, "active"),
-        eq(leadsTable.possivelDuplicata, false),
         incluirExcluidos === "apenas" ? isNotNull(leadsTable.excluidoEm) : incluirExcluidos === "incluir" ? sql`true` : isNull(leadsTable.excluidoEm),
-        incluirNaoLeads === "apenas" ? isNotNull(leadsTable.naoLeadTipo) : incluirNaoLeads === "incluir" ? sql`true` : isNull(leadsTable.naoLeadTipo),
+        incluirExcluidos === "apenas" ? sql`true` : incluirNaoLeads === "apenas" ? isNotNull(leadsTable.naoLeadTipo) : incluirNaoLeads === "incluir" ? sql`true` : isNull(leadsTable.naoLeadTipo),
       ));
 
     const isAdmin = req.user?.platformRole === "super_admin" || req.user?.platformRole === "tenant_admin";

@@ -95,22 +95,21 @@ export default function Companies() {
   }, [items]);
 
   return (
-    <div className="mx-auto w-full max-w-[1500px] space-y-5 p-4 md:p-6">
-      <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+    <div className="vendor-product-page vendor-page-canvas vendor-companies-page space-y-5">
+      <div className="vendor-product-hero flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
         <div>
           <div className="flex items-center gap-2">
             <Building2 className="h-5 w-5" />
-            <h1 className="text-2xl font-semibold">Empresas</h1>
+            <h1 className="vendor-product-title">Empresas</h1>
           </div>
-          <p className="mt-1 text-sm text-muted-foreground">
+          <p className="vendor-product-subtitle">
             Cadastro empresarial mestre do tenant, independente da pipeline de leads.
           </p>
         </div>
         <Badge variant="secondary" className="w-fit">{items.length} empresas</Badge>
       </div>
 
-      <Card>
-        <CardContent className="grid gap-3 p-4 lg:grid-cols-[1fr_220px_180px]">
+      <div className="vendor-filter-strip lg:grid-cols-[1fr_220px_180px]">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
@@ -137,15 +136,14 @@ export default function Companies() {
               <SelectItem value="inativo">Inativo</SelectItem>
             </SelectContent>
           </Select>
-        </CardContent>
-      </Card>
+      </div>
 
       {loading ? (
         <div className="flex min-h-[35vh] items-center justify-center"><Loader2 className="h-7 w-7 animate-spin" /></div>
       ) : error ? (
-        <Card><CardContent className="p-6 text-sm text-destructive">{error}</CardContent></Card>
+        <div className="vendor-empty-state p-6 text-sm text-destructive">{error}</div>
       ) : items.length === 0 ? (
-        <Card><CardContent className="p-10 text-center text-sm text-muted-foreground">Nenhuma empresa encontrada com os filtros atuais.</CardContent></Card>
+        <div className="vendor-empty-state p-10 text-center text-sm text-muted-foreground">Nenhuma empresa encontrada com os filtros atuais.</div>
       ) : (
         <div className="grid gap-3">
           {items.map((item) => {
@@ -154,7 +152,7 @@ export default function Companies() {
               ? [item.endereco.municipio, item.endereco.uf].filter(Boolean).join(" / ")
               : "";
             return (
-              <Card key={item.tenantCompanyId} className="transition-shadow hover:shadow-sm">
+              <Card key={item.tenantCompanyId} className="vendor-work-item">
                 <CardContent className="flex flex-col gap-4 p-4 lg:flex-row lg:items-center lg:justify-between">
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2">

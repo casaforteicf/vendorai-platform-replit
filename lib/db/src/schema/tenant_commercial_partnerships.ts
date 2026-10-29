@@ -90,6 +90,7 @@ export const intercompanyCommissionsTable = pgTable("intercompany_commissions", 
 export const intercompanyCommissionPaymentsTable = pgTable("intercompany_commission_payments", {
   id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
   commissionId: text("commission_id").notNull().references(() => intercompanyCommissionsTable.id, { onDelete: "cascade" }),
+  idempotencyKey: text("idempotency_key"),
   payerTenantId: text("payer_tenant_id").notNull().references(() => tenantsTable.id, { onDelete: "cascade" }),
   beneficiaryTenantId: text("beneficiary_tenant_id").notNull().references(() => tenantsTable.id, { onDelete: "cascade" }),
   amount: numeric("amount", { precision: 14, scale: 2 }).notNull(),

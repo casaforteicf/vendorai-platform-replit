@@ -34,3 +34,48 @@
   --vendor-display-font: 'Rigter', 'Inter', sans-serif;
   --vendor-editorial-font: 'Malibu Sunday Serif', Georgia, serif;
 }
+
+/* Luxury families are enabled only when their verified WOFF2 assets are served.
+   Confirm web-embedding licenses before merging this branch. */
+@font-face {
+  font-family: 'Awaking';
+  src: url('/fonts/vendorai/awaking-light.woff2') format('woff2');
+  font-style: normal;
+  font-weight: 300;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Awaking';
+  src: url('/fonts/vendorai/awaking.woff2') format('woff2');
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Awaking';
+  src: url('/fonts/vendorai/awaking-bold.woff2') format('woff2');
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Clarissa';
+  src: url('/fonts/vendorai/clarissa.woff2') format('woff2');
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Manage';
+  src: url('/fonts/vendorai/manage.woff2') format('woff2');
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Qualli';
+  src: url('/fonts/vendorai/qualli.woff2') format('woff2');
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+}
