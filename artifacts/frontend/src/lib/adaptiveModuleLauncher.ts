@@ -21,7 +21,7 @@ export const LAUNCHER_MODULES: readonly LauncherModuleInfo[] = [
   { key: "marketing", title: "Marketing", route: "/content", audiences: ["business"] },
   { key: "omnichannel", title: "Omnichannel", route: "/conversations", audiences: ["professional", "business"] },
   { key: "agenda", title: "Agenda", route: "/agenda", audiences: ["professional", "business"] },
-  { key: "arqdor", title: "Arqdor", route: "/arch", audiences: ["professional", "business"] },
+  { key: "arqdor", title: "Arqdor", route: "/arch/studio", audiences: ["professional", "business"] },
   { key: "obras", title: "Operações", route: "/obras", audiences: ["professional", "business"] },
   { key: "pdv", title: "PDV", route: null, audiences: ["business"] },
   { key: "erp", title: "ERP", route: "/erp", audiences: ["business"] },
