@@ -4137,14 +4137,37 @@ router.post("/arch/projetos", authenticate, async (req, res) => {
     return res.status(400).json({ error: parsed.error.flatten() });
   }
 
-  const [projeto] = await db
-    .insert(archProjetosTable)
-    .values({
-      ...parsed.data,
-      portalToken: crypto.randomUUID(),
-      portalAtivo: false,
-    } as any)
-    .returning();
+  // Rooms selected in the project wizard become actual project rooms in the
+  // same transaction. Never create a second project or partial room set.
+  const setup = parsed.data.dossieProjeto?.projectSetup;
+  const nomes = setup?.abrangencia === "ambientes"
+    ? [...new Set((setup.ambientesSelecionados ?? []).map((name) => name.trim()).filter(Boolean))]
+    : [];
+  if (nomes.length > 40 || nomes.some((name) => name.length > 100)) {
+    return res.status(400).json({ error: "Selecione até 40 ambientes, com nomes de até 100 caracteres." });
+  }
+  if (setup?.abrangencia === "ambientes" && nomes.length === 0) {
+    return res.status(400).json({ error: "Selecione ao menos um ambiente." });
+  }
+
+  const projeto = await db.transaction(async (tx) => {
+    const [created] = await tx
+      .insert(archProjetosTable)
+      .values({
+        ...parsed.data,
+        portalToken: crypto.randomUUID(),
+        portalAtivo: false,
+      } as any)
+      .returning();
+    if (nomes.length > 0) {
+      await tx.insert(archAmbientesTable).values(nomes.map((nome, ordem) => ({
+        projetoId: created.id,
+        nome,
+        ordem,
+      })));
+    }
+    return created;
+  });
 
   return res.status(201).json(projeto);
 });
