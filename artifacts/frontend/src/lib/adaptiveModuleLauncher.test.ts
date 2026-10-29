@@ -134,7 +134,7 @@ describe("Central de Ambientes: regressões de acesso e preferência", () => {
       permittedModules: ["arqdor"],
     });
     expect(modules.map(module => ({key: module.key, route: module.route})))
-      .toEqual([{key: "arqdor", route: "/arch"}]);
+      .toEqual([{key: "arqdor", route: "/arch/studio"}]);
   });
 
   it("não navega automaticamente quando nenhum ambiente está autorizado", () => {
