@@ -88,3 +88,18 @@ CREATE INDEX IF NOT EXISTS idx_customer_global_challenge_target
 ALTER TABLE public.customer_global_link_challenges ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.customer_global_link_challenges FORCE ROW LEVEL SECURITY;
 -- Intentionally zero RLS policies / zero GRANT to application role.
+
+-- Global login tokens: never reusable as a tenant resource grant.
+CREATE TABLE IF NOT EXISTS public.customer_global_sessions (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  global_identity_id uuid NOT NULL REFERENCES public.customer_global_identities(id) ON DELETE CASCADE,
+  token_hash text NOT NULL UNIQUE CHECK (token_hash ~ '^[a-f0-9]{64}$'),
+  created_at timestamptz NOT NULL DEFAULT now(),
+  expires_at timestamptz NOT NULL,
+  revoked_at timestamptz,
+  CHECK (expires_at > created_at)
+);
+CREATE INDEX IF NOT EXISTS idx_customer_global_sessions_identity ON public.customer_global_sessions(global_identity_id,expires_at);
+ALTER TABLE public.customer_global_sessions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.customer_global_sessions FORCE ROW LEVEL SECURITY;
+-- No RLS policy or public application grants; dedicated reviewed backend only.
