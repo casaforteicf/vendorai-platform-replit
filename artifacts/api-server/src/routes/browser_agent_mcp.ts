@@ -74,8 +74,19 @@ router.post("/internal/browser-mcp/homolog-bootstrap", async (req, res) => {
     return;
   }
 
+  // Fail closed: enabling the bootstrap alone must never authorize arbitrary tenants.
+  // Configure exact homolog tenant IDs in the homolog API container only.
+  const allowedTenantIds = new Set(
+    (process.env["HOMOLOGATION_AUTH_BOOTSTRAP_TENANT_IDS"] ?? "")
+      .split(",").map((id) => id.trim()).filter(Boolean),
+  );
+  if (allowedTenantIds.size === 0) {
+    res.status(404).json({ error: "not_found" });
+    return;
+  }
+
   const tenantId = await resolveTenantId(parsed.data.tenantKey);
-  if (!tenantId) {
+  if (!tenantId || !allowedTenantIds.has(tenantId)) {
     res.status(404).json({ error: "tenant_not_found" });
     return;
   }
