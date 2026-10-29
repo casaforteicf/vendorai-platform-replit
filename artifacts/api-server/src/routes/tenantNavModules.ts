@@ -27,6 +27,7 @@ const SUPERADMIN_ONLY_MODULE_KEYS = new Set<NavModuleKey>([
 const EFFECTIVE_DEFAULT_OFF_MODULE_KEYS = new Set<NavModuleKey>([
   ERP_MODULE_KEY,
   PRACA_AI_MODULE_KEY,
+  "vendi_studio",
 ]);
 
 function normalizeVertical(value: string | null | undefined) {
@@ -310,6 +311,11 @@ router.get("/tenants/:tenantId/tad-effective-modules", async (req, res) => {
     row.platform_role === "tenant_admin" || row.user_function === "administrador";
   const grants = row.permissions;
   const keys = NAV_MODULE_CATALOG.map(m => m.moduleKey).filter(key => {
+    // Keep TAD visibility aligned with the Vendi Studio API pilot policy.
+    // User-function "administrador" alone is NOT a Vendi Studio grant.
+    if (key === "vendi_studio") {
+      return current.platformRole === "super_admin" || current.platformRole === "tenant_admin";
+    }
     if (admin) return true;
     const accepted = TAD_USER_PERMISSION_MAP[key];
     return !!accepted && Array.isArray(grants) && accepted.some(permission => grants.includes(permission));

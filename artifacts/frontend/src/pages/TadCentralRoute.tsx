@@ -13,6 +13,7 @@ type NavItem = { moduleKey?: string; key?: string; isEnabled?: boolean };
 const MAPPING: Record<string, LauncherModule> = {
   leads: "crm", prospector: "prospector", campaigns: "marketing", content: "marketing", scheduler: "agenda", arch: "arqdor",
   obras: "obras", financeiro: "erp", praca_ai: "marketplace_casa", settings: "configuracoes", analytics: "inteligencia",
+  vendi_studio: "vendi_studio",
   sdr: "agentes_ia",
   dashboard: "suporte",
 };

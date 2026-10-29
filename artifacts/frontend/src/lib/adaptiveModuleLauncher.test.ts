@@ -2,6 +2,16 @@ import { describe, expect, it } from "vitest";
 import { authorizedLauncherModules, resolveLauncherStart, resolveTadLauncherModules, LAUNCHER_MODULES } from "./adaptiveModuleLauncher";
 
 describe("TAD module launcher access", () => {
+  it("keeps Vendi Studio hidden without BOTH tenant enablement and user permission", () => {
+    const query = (enabledModules: Array<"vendi_studio">, permittedModules: Array<"vendi_studio">) =>
+      authorizedLauncherModules({ audience: "business", enabledModules, permittedModules });
+    expect(query([], ["vendi_studio"])).toEqual([]);
+    expect(query(["vendi_studio"], [])).toEqual([]);
+    expect(query(["vendi_studio"], ["vendi_studio"]).map(m => m.route)).toEqual(["/vendi-studio"]);
+    expect(authorizedLauncherModules({
+      audience: "consumer", enabledModules: ["vendi_studio"], permittedModules: ["vendi_studio"],
+    })).toEqual([]);
+  });
   it("only authorizes the intersection of tenant entitlement and user permission", () => {
     const modules = authorizedLauncherModules({
       audience: "business",
