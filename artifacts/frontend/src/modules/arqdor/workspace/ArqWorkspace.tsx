@@ -135,14 +135,13 @@ interface FlowStep {
 }
 
 const FLOW_STEPS: FlowStep[] = [
-  { id:'criar',       icon:'✦',  label:'Projeto',      sublabel:'Cliente e projeto', primary:'home',          extras:['projeto'],                          color: PHX.purple },
-  { id:'inspirar',    icon:'🖼️', label:'Inspirar',    sublabel:'Biblioteca',        primary:'biblioteca',    extras:[],                                   color: PHX.blue   },
-  { id:'renderizar',  icon:'✨', label:'Renderizar',   sublabel:'Criar e editar render', primary:'renders', extras:['prompt'], color: PHX.purple },
-  { id:'melhorar',    icon:'🔄', label:'Melhorar',    sublabel:'Galeria, versões e aprovação', primary:'real-render-gallery', extras:['correcoes','ai-review','render-gallery','post-render'], color: PHX.amber  },
-  { id:'especificar', icon:'📋', label:'Especificar', sublabel:'Memorial técnico',  primary:'especificacao', extras:[],                                   color: '#16a34a'  },
-  { id:'orcamento',   icon:'💰', label:'Orçamento',   sublabel:'Budget executivo',  primary:'orcamento',     extras:['orcamento-pro'],                    color: '#0369a1'  },
-  { id:'apresentar',  icon:'👤', label:'Proposta',    sublabel:'Apresentar ao cliente',primary:'cliente',     extras:[],                                   color: PHX.cyan   },
-  { id:'entregar',    icon:'📦', label:'Entregar',    sublabel:'Obra e entrega',    primary:'office',        extras:[],                                   color: '#0d9488'  },
+  { id:'projetos', icon:'📁', label:'Projetos', sublabel:'Projetos e clientes', primary:'home', extras:['projeto'], color:PHX.purple },
+  { id:'modelagem', icon:'📐', label:'Modelagem 2D/3D', sublabel:'Modelagem e BIM', primary:'bim', extras:['digital-twin','twin'], color:PHX.blue },
+  { id:'materiais', icon:'🎨', label:'Materiais', sublabel:'Catálogo e biblioteca', primary:'biblioteca', extras:['arqhub','knowledge'], color:PHX.cyan },
+  { id:'render', icon:'✨', label:'Render', sublabel:'Criar, aprimorar e revisar renders', primary:'renders', extras:['prompt','render','correcoes','ai-review','real-render-gallery','render-gallery','post-render'], color:PHX.purple },
+  { id:'especificacoes', icon:'📋', label:'Especificações', sublabel:'Memorial técnico e documentação', primary:'especificacao', extras:['specification','especificacao-produto','real-specification','spec-catalog','spec-objects'], color:'#16a34a' },
+  { id:'orcamento', icon:'💰', label:'Orçamento', sublabel:'Quantitativos e custos', primary:'orcamento', extras:['orcamento-pro','real-budget','orcamento-real','budget-engine','budget'], color:'#0369a1' },
+  { id:'entrega', icon:'📦', label:'Entrega', sublabel:'Proposta, apresentação e entrega', primary:'office', extras:['cliente','client','portal-cliente','client-portal-approval','proposal-delivery','portal-aprovacao','delivery-success'], color:'#0d9488' },
 ]
 
 // Legado — mantido para keyboard shortcuts e command palette
@@ -1012,16 +1011,6 @@ function WorkspaceInner() {
               }}
             >
               🤖 {copilotCollapsed ? 'Vendi · posso ajudar aqui' : 'Vendi ▸'}
-            </button>
-
-            {/* ✨ Gerar Render — CTA principal */}
-            <button
-              className="phx-cta"
-              onClick={() => setActiveModule('renders')}
-              title="Abrir o fluxo oficial de Render IA"
-            >
-              <span style={{ fontSize:15 }}>✨</span>
-              Gerar Render
             </button>
 
             {/* Shortcuts hint */}
