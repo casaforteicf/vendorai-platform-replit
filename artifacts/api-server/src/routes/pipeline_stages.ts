@@ -453,8 +453,24 @@ router.get("/tenants/:tenantId/pipeline-stages", async (req, res) => {
   if (!hasAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
   const pipeline = parsePipeline(req.query.pipeline);
-  const stages = await ensureSystemStages(tenantId, pipeline);
-  return res.json(stages);
+  try {
+    const stages = await ensureSystemStages(tenantId, pipeline);
+    res.setHeader("Cache-Control", "no-store");
+    return res.json(stages);
+  } catch (error) {
+    // Preserve the real failure: do not hide a database/migration problem by
+    // returning an empty pipeline. Correlate client failures with server logs.
+    const requestId = String(req.headers["x-request-id"] ?? req.id ?? "unavailable");
+    (req.log ?? logger).error(
+      { err: error, tenantId, pipeline, requestId },
+      "pipeline-stages: failed to list or seed stages",
+    );
+    return res.status(500).json({
+      error: "Não foi possível carregar as etapas do pipeline.",
+      code: "PIPELINE_STAGES_LOAD_FAILED",
+      requestId,
+    });
+  }
 });
 
 router.post("/tenants/:tenantId/pipeline-stages", async (req, res) => {
@@ -535,6 +551,26 @@ router.patch("/tenants/:tenantId/pipeline-stages/:id", async (req, res) => {
 
   const parsed = updatePipelineStageSchema.safeParse(req.body);
   if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+  // Evita gravar uma etapa sem nome ou uma ordem inválida. A edição deve
+  // manter as chaves internas, mas precisa validar os campos visíveis.
+  if (parsed.data.label !== undefined && !parsed.data.label.trim()) {
+    return res.status(422).json({ error: "O nome da etapa não pode ficar vazio." });
+  }
+  if (parsed.data.ordem !== undefined && (!Number.isInteger(parsed.data.ordem) || parsed.data.ordem < 0)) {
+    return res.status(422).json({ error: "A ordem da etapa deve ser um número inteiro não negativo." });
+  }
+  if (parsed.data.label !== undefined) parsed.data.label = parsed.data.label.trim();
+
+
+  // Edits may not erase the visible stage label; a blank label makes the
+  // pipeline appear broken even though its underlying key still exists.
+  if (parsed.data.label !== undefined) {
+    const label = parsed.data.label.trim();
+    if (!label || label.length > 120) {
+      return res.status(422).json({ error: "O nome da etapa deve ter entre 1 e 120 caracteres." });
+    }
+    parsed.data.label = label;
+  }
 
   if (parsed.data.atividadesPadrao !== undefined) {
     const templates = z.array(activityTemplateSchema).max(30).safeParse(parsed.data.atividadesPadrao);

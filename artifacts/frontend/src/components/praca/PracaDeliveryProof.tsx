@@ -1,0 +1,19 @@
+import * as React from "react";
+export default function PracaDeliveryProof({orderType,orderId,reportedAt,eligible,onSaved}:{orderType:"quote"|"round";orderId:string;reportedAt?:string|null;eligible:boolean;onSaved:()=>void}){
+ const [photo,setPhoto]=React.useState(""),[receiver,setReceiver]=React.useState(""),[all,setAll]=React.useState(false),[busy,setBusy]=React.useState(false),[error,setError]=React.useState("");
+ async function select(file?:File){setError("");setPhoto("");if(!file)return;if(!["image/jpeg","image/png"].includes(file.type)||file.size>15000000){setError("Selecione uma foto JPG ou PNG de até 15 MB.");return;}
+ const url=URL.createObjectURL(file);setBusy(true);
+ try{const img=new Image();await new Promise<void>((resolve,reject)=>{img.onload=()=>resolve();img.onerror=()=>reject(Error("Não foi possível ler a foto."));img.src=url});const scale=Math.min(1,1280/Math.max(img.naturalWidth,img.naturalHeight));const canvas=document.createElement("canvas");canvas.width=Math.max(1,Math.round(img.naturalWidth*scale));canvas.height=Math.max(1,Math.round(img.naturalHeight*scale));const ctx=canvas.getContext("2d");if(!ctx)throw Error("Não foi possível preparar a foto.");ctx.drawImage(img,0,0,canvas.width,canvas.height);const value=canvas.toDataURL("image/jpeg",0.72);if(value.length>930000)throw Error("A foto ficou muito grande. Escolha outra ou reduza a resolução.");setPhoto(value)}catch(e){setError(e instanceof Error?e.message:"Falha ao preparar foto.")}finally{URL.revokeObjectURL(url);setBusy(false)}}
+ async function save(){setBusy(true);setError("");try{const r=await fetch("/api/praca-pedidos/"+orderType+"/"+encodeURIComponent(orderId)+"/comprovante",{method:"POST",credentials:"include",headers:{"Content-Type":"application/json"},body:JSON.stringify({photo,receivedBy:receiver,allItemsDelivered:all})});const b=await r.json();if(!r.ok)throw Error(b.error??"Falha ao enviar comprovante.");setPhoto("");onSaved()}catch(e){setError(e instanceof Error?e.message:"Falha ao enviar.")}finally{setBusy(false)}}
+ if(reportedAt)return <p role="status" className="mt-4 rounded-xl bg-amber-50 p-3 text-sm font-bold">Entrega informada em {new Date(reportedAt).toLocaleString("pt-BR")}. Aguardando aceite do comprador.</p>;
+ if(!eligible)return null;
+ return <section className="mt-4 space-y-3 rounded-xl border p-4"><h3 className="font-bold">Registrar entrega ou retirada</h3><p className="text-xs">Envie a foto do comprovante e identifique quem recebeu. O cliente deverá confirmar o recebimento no Praça.ai.</p>
+ <label className="block text-xs font-bold">Foto do comprovante<input type="file" accept="image/jpeg,image/png" capture="environment" disabled={busy} onChange={e=>void select(e.target.files?.[0])} className="mt-1 block w-full"/></label>
+ {photo&&<img alt="Prévia do comprovante" src={photo} className="max-h-56 w-full rounded-lg object-contain"/>}
+ <label className="block text-xs font-bold">Quem recebeu<input value={receiver} maxLength={120} disabled={busy} onChange={e=>setReceiver(e.target.value)} className="mt-1 w-full rounded-lg border px-3 py-2" placeholder="Nome de quem recebeu"/></label>
+ <label className="flex gap-2 text-sm"><input type="checkbox" checked={all} disabled={busy} onChange={e=>setAll(e.target.checked)}/>Todos os itens deste pedido foram entregues ou retirados.</label>
+ {error&&<p role="alert" className="text-sm text-red-700">{error}</p>}
+ <button type="button" onClick={()=>void save()} disabled={busy||!photo||receiver.trim().length<2||!all} className="rounded-lg bg-[#0B2240] px-4 py-2 text-sm font-bold text-white disabled:opacity-50">{busy?"Preparando ou enviando…":"Enviar comprovante de entrega"}</button>
+ <p className="text-xs">O envio não libera dinheiro. A liberação depende do aceite do cliente e da integração financeira habilitada.</p>
+ </section>
+}

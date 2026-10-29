@@ -25,6 +25,7 @@ import {
   type AdCampaign,
 } from "@workspace/db";
 import { logger } from "../lib/logger.js";
+import { resolveWhatsappAdCtaCopy, resolveWhatsappAdCtaUrl } from "./whatsapp-ad-cta.js";
 import { buildResumoItem } from "../lib/adItemSummary.js";
 import {
   getGoogleAdsConnectionByTenantId,
@@ -151,18 +152,7 @@ async function resolveFinalUrl(tenantId: string, campanha: AdCampaign): Promise<
   }
 
   if (campanha.destinoClique === "whatsapp") {
-    const [profile] = await db
-      .select({ telefone: businessProfilesTable.telefone })
-      .from(businessProfilesTable)
-      .where(eq(businessProfilesTable.tenantId, tenantId));
-    const numero = profile?.telefone?.replace(/\D/g, "");
-    if (!numero) {
-      throw new GoogleAdsPublishError(
-        "Tenant sem telefone de WhatsApp cadastrado (Configurações → Perfil do Negócio) — necessário pra destino de clique WhatsApp.",
-      );
-    }
-    const ref = campanha.utmCode ? `?text=${encodeURIComponent(`Olá, vim do anúncio ${campanha.utmCode}`)}` : "";
-    return `https://wa.me/${numero}${ref}`;
+    return resolveWhatsappAdCtaUrl(tenantId, campanha);
   }
 
   if (campanha.itemTipo === "landing_page") {
@@ -288,6 +278,7 @@ export async function publishCampaignToGoogleAds(tenantId: string, campaignId: s
   }
 
   const finalUrl = await resolveFinalUrl(tenantId, campanha);
+  const whatsappCta = campanha.destinoClique === "whatsapp" ? await resolveWhatsappAdCtaCopy(tenantId) : null;
   const { accessToken, customerId } = await getValidAccessToken(tenantId);
   const requestedLocations = campanha.segmentacao?.localizacao?.locais ?? [];
   const geoTargetResources = await resolveGoogleGeoTargets(accessToken, requestedLocations);
@@ -408,7 +399,9 @@ export async function publishCampaignToGoogleAds(tenantId: string, campaignId: s
           finalUrls: [finalUrl],
           responsiveSearchAd: {
             headlines: creative.headlines.slice(0, 15).map((text) => ({ text })),
-            descriptions: creative.descriptions.slice(0, 4).map((text) => ({ text })),
+            descriptions: whatsappCta
+              ? [...creative.descriptions.slice(0, 3), whatsappCta].map((text) => ({ text }))
+              : creative.descriptions.slice(0, 4).map((text) => ({ text })),
           },
         },
       },

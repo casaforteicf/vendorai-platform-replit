@@ -15,7 +15,7 @@ import {
   Handshake, Shield, Cpu, Bug, Coins, Wrench, Pill, Home, Car, HelpCircle, WalletCards, Camera, KanbanSquare, ClipboardCheck, FileCheck, UserCog, Instagram,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { ui20ServiceForPath } from "@/lib/ui20ServiceRoutes";
+import { ui20SidebarServiceForPath } from "@/lib/ui20ServiceRoutes";
 import { getUi20VisibleServices } from "@/lib/ui20ServiceVisibility";
 import { Button } from "@/components/ui/button";
 import logoFull from "/logo-full-light.svg";
@@ -459,6 +459,9 @@ export function SidebarLayout({ children, arqdorVisible = false }: { children: R
     { name: "Monitor Praça.ai", href: "/logistica-praca", icon: Navigation, sellerHidden: false, section: "crm", fn: ["suporte", "administrador"] as UserFunction[] },
     { name: "Orçamentos",    href: "/propostas",     icon: FileText,        sellerHidden: false, section: "crm", fn: ["vendedor", "financeiro", "entrega", "administrador", "outro"] as UserFunction[] },
     { name: "Catálogo",      href: "/catalogo",      icon: BookOpen,        sellerHidden: false, section: "crm", fn: ["vendedor", "financeiro", "administrador", "outro"] as UserFunction[] },
+    { name: "Rodadas Praça.ai", href: "/praca/rodadas", icon: ShoppingCart, sellerHidden: false, section: "crm", fn: ["vendedor", "administrador", "outro"] as UserFunction[] },
+    { name: "Cotações Praça.ai", href: "/praca/cotacoes", icon: FileCheck, sellerHidden: false, section: "crm", fn: ["vendedor", "administrador", "outro"] as UserFunction[] },
+    { name: "Pedidos Praça.ai", href: "/praca/pedidos", icon: Package, sellerHidden: false, section: "crm", fn: ["vendedor", "financeiro", "entrega", "administrador", "outro"] as UserFunction[] },
     { name: "Marketplace FB", href: "/marketing/facebook-marketplace", icon: Store, sellerHidden: false, section: "crm", fn: ["vendedor", "financeiro", "administrador", "outro"] as UserFunction[] },
     { name: "Pacotes",       href: "/pacotes",       icon: PackagePlus,     sellerHidden: false, section: "crm", fn: ["vendedor", "financeiro", "administrador", "outro"] as UserFunction[] },
     { name: "Gestão ERP",    href: "/erp",           icon: WalletCards,     sellerHidden: false, section: "crm", fn: ["vendedor", "financeiro", "administrador", "outro"] as UserFunction[] },
@@ -641,7 +644,7 @@ export function SidebarLayout({ children, arqdorVisible = false }: { children: R
         { name: "Segmentos",   href: "/admin/verticais",  icon: Building2,    sellerHidden: false, section: "admin", badge: undefined },
         { name: "App Builder", href: "/admin/app-builder", icon: Cpu,          sellerHidden: false, section: "admin", badge: undefined },
         { name: "Produtos",    href: "/admin/produtos-internos", icon: Package, sellerHidden: false, section: "admin", badge: undefined },
-        { name: "Marketplace", href: "/marketplace",      icon: Store,        sellerHidden: false, section: "admin", badge: undefined },
+        { name: "Central de Soluções", href: "/admin/solucoes", icon: Store, sellerHidden: false, section: "admin", badge: undefined },
         { name: "AI Usage",    href: "/admin/ai-usage",   icon: BrainCircuit, sellerHidden: false, section: "admin", badge: undefined },
         { name: "Financeiro",  href: "/admin/financeiro", icon: BarChart3,    sellerHidden: false, section: "admin", badge: undefined },
         { name: "Parceiros",   href: "/admin/partners",   icon: Users,        sellerHidden: false, section: "admin", badge: undefined },
@@ -835,29 +838,36 @@ export function SidebarLayout({ children, arqdorVisible = false }: { children: R
 
     const groupActive = (items: Array<{ href: string }>) =>
       items.some((item) => location === item.href || (item.href !== "/" && location.startsWith(item.href)));
-    if (import.meta.env.VITE_UI20_SERVICE_TABS !== "false") {
+    if (!isSuperAdmin) {
       const path = location.split("?")[0];
       const serviceGroups = [
-        { name: "Início", match: ["/dashboard", "/trabalho", "/"], links: homeNav },
-        { name: "CRM", match: ["/leads", "/deals", "/pipeline", "/conversations", "/agenda", "/propostas", "/empresas", "/app/prospector"], links: [...crmAtendimentoNav, ...commercialNav] },
-        { name: "Marketing", match: ["/marketing", "/content", "/ads", "/analytics"], links: navigation.filter((item) => ui20ServiceForPath(item.href) === "marketing") },
-        { name: "ERP", match: ["/erp", "/estoque", "/obras", "/entregas", "/insumos", "/composicoes"], links: [...financeNav, ...verticalOperationNav] },
-        { name: "IA", match: ["/agents", "/vendi", "/base-conhecimento", "/brain"], links: aiKnowledgeNav },
-        { name: "Marketplace", match: ["/marketplace"], links: navigation.filter((item) => item.href === "/marketplace") },
-        { name: "Arqdor", match: ["/arch"], links: arqdorVisible ? navigation.filter((item) => item.href === "/arch" || item.href.startsWith("/arch/")) : [] },
-        { name: "Configurações", match: ["/configuracoes", "/usuarios", "/organizacao"], links: administrationNav },
-        { name: "Suporte", match: ["/faq", "/suporte"], links: [{ href: "/faq", name: "Central de ajuda", icon: HelpCircle }] },
+        { id: "home", name: "Início", links: homeNav },
+        { id: "crm", name: "CRM", links: crmAtendimentoNav.filter(item => !["/conversations", "/app/prospector"].includes(item.href)) },
+        { id: "omnichannel", name: "Omnichannel", links: crmNav.filter(item => item.href === "/conversations") },
+        { id: "prospecting", name: "Prospecção", links: crmNav.filter(item => item.href === "/app/prospector") },
+        { id: "agenda", name: "Agenda", links: [...agendaNav, ...verticalNav.filter(item => item.href.endsWith("/agenda"))] },
+        { id: "commercial", name: "Comercial", links: commercialNav },
+        { id: "marketing", name: "Marketing", links: [...navigation.filter(item => ui20ServiceForPath(item.href) === "marketing"), { href: "/midias", name: "Biblioteca de Mídias", icon: FolderOpen }] },
+        { id: "erp", name: "ERP", links: [...financeNav, ...verticalOperationNav.filter(item => !["/obras", "/insumos", "/composicoes"].includes(item.href))] },
+        { id: "ia", name: "IA Hub", links: aiKnowledgeNav },
+        { id: "intelligence", name: "Inteligência", links: inteligenciaNav },
+        { id: "works", name: "Obras", links: verticalOperationNav.filter(item => ["/obras", "/insumos", "/composicoes"].includes(item.href)) },
+        { id: "library", name: "Biblioteca", links: [{ href: "/midias", name: "Biblioteca de Mídias", icon: FolderOpen }] },
+        { id: "marketplace", name: "Marketplace", links: navigation.filter(item => item.href === "/marketplace") },
+        { id: "arqdor", name: "Arqdor", links: arqdorVisible ? navigation.filter(item => item.href === "/arch" || item.href.startsWith("/arch/")) : [] },
+        { id: "settings", name: "Configurações", links: administrationNav },
+        { id: "support", name: "Suporte", links: [{ href: "/faq", name: "Central de ajuda", icon: HelpCircle }] },
       ];
       const permittedServices = getUi20VisibleServices({ modules: tenantNavModules, isAdmin: isTenantAdmin, arqdorEligible: arqdorVisible, loading: !tenantNavModules });
-      const detected = ui20ServiceForPath(path);
-      const selected = serviceGroups.find((group) => group.name === ({home:"Início",crm:"CRM",marketing:"Marketing",erp:"ERP",ia:"IA",marketplace:"Marketplace",arqdor:"Arqdor",settings:"Configurações",support:"Suporte"} as Record<string,string>)[detected ?? "home"]) ?? serviceGroups[0];
-      const canShowService = permittedServices.has(detected ?? "home");
+      const selected = serviceGroups.find(group => group.id === ui20SidebarServiceForPath(path)) ?? serviceGroups[0];
+      const canShowService = permittedServices.has(selected.id as Parameters<typeof permittedServices.has>[0]);
       const unique = (canShowService ? selected.links : []).filter((item, index, all) => all.findIndex((other) => other.href === item.href) === index);
       return (
         <nav aria-label={`Menu interno de ${selected.name}`} className="space-y-1" data-ui20-context-menu={selected.name}>
-          <div className="px-3 pb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">{selected.name}</div>
+          <NavItem item={{ name: "← Voltar ao Início", href: "/tad", icon: LayoutDashboard }} onNavigate={onNavigate} />
+          <div className="px-3 pb-2 pt-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">{selected.name}</div>
           {unique.map((item) => <NavItem key={item.href} item={item} onNavigate={onNavigate} />)}
-          {unique.length === 0 && <p className="px-3 text-xs text-muted-foreground">Use a aba superior para acessar este serviço.</p>}
+          {unique.length === 0 && <p className="px-3 text-xs text-muted-foreground">Volte ao Início para escolher um módulo disponível.</p>}
         </nav>
       );
     }

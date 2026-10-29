@@ -42,15 +42,6 @@ export type ArchConceptConfiguration = {
       points: Array<{ x: number; y: number }>;
     } | null;
   };
-  /** Experimental parametric BIM collection; geometry is not yet rendered by the legacy editor. */
-  bimElements?: {
-    schemaVersion: 1;
-    elements: Array<
-      | { id: string; kind: "stair"; x: number; y: number; parameters: { floor: number; rise: number; run: number; stepCount: number; width: number } }
-      | { id: string; kind: "slab"; x: number; y: number; parameters: { floor: number; width: number; depth: number; thickness: number; openings: Array<{ x: number; y: number; width: number; depth: number }> } }
-      | { id: string; kind: "roof"; x: number; y: number; floor: number; parameters: { kind: "flat" | "pitched"; width: number; depth: number; pitchDegrees: number; eave: number } }
-    >;
-  };
   customWalls?: Array<{
     id: string;
     floor: number;

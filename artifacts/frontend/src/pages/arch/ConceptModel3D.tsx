@@ -11,7 +11,6 @@ import type { OpeningMarker, WallSegment } from "./conceptGeometry";
 import type { ClosedSpace } from "./conceptWallNetwork";
 import { getFacadeMaterial, type FacadeDesignState } from "./conceptFacadeDesign";
 import type { ConceptPlanObject } from "./ConceptPlan2D";
-import type { BimModel } from "./conceptBimElementModel";
 import ConceptWebGLScene from "./ConceptWebGLScene";
 import { buildRoofPlan } from "./conceptRoofPlan";
 import { CONCEPT_PBR_MATERIALS } from "./catalogs/conceptMaterialCatalog";
@@ -45,9 +44,6 @@ export type ConceptModelLevel = {
 
 type Props = {
   arqdorProjectId?: string;
-  experimentalBimModel?: BimModel;
-  selectedBimElementId?: string | null;
-  onSelectBimElement?: (id: string | null) => void;
   /** Restricted laboratory feature; host must supply both opt-in and explicit permission. */
   experimentalCpuRenderEnabled?: boolean;
   experimentalCpuRenderAuthorized?: boolean;
@@ -591,9 +587,6 @@ function roofBounds(level: ConceptModelLevel | undefined) {
 
 export default function ConceptModel3D({
   arqdorProjectId,
-  experimentalBimModel,
-  selectedBimElementId,
-  onSelectBimElement,
   experimentalCpuRenderEnabled = false,
   experimentalCpuRenderAuthorized = false,
   renderCaptureToken,
@@ -1705,9 +1698,6 @@ export default function ConceptModel3D({
         </div>
       )}
       <ConceptWebGLScene
-        experimentalBimModel={experimentalBimModel}
-        selectedBimElementId={selectedBimElementId}
-        onSelectBimElement={onSelectBimElement}
         renderSceneSnapshotToken={allowExperimentalCpu ? experimentalCapture.renderCaptureToken : renderCaptureToken}
         renderGeometryExportToken={allowExperimentalCpu ? experimentalCapture.renderCaptureToken : renderCaptureToken}
         onRenderSceneSnapshot={allowExperimentalCpu ? experimentalCapture.onRenderSceneSnapshot : onRenderSceneSnapshot}

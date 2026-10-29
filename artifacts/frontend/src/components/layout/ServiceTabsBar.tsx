@@ -9,7 +9,7 @@ import { Bot, BriefcaseBusiness, Building2, CircleHelp, House, Megaphone, Ruler,
  * The existing sidebar and server permissions remain the source of truth.
  */
 const services = [
-  { id: "home", label: "Início", href: "/dashboard", icon: House, paths: ["/", "/dashboard", "/trabalho"] },
+  { id: "home", label: "Início", href: "/tad", icon: House, paths: ["/", "/tad", "/dashboard", "/trabalho"] },
   { id: "crm", label: "CRM", href: "/leads", icon: Users, paths: ["/leads", "/deals", "/pipeline-operacional", "/conversations", "/agenda", "/propostas", "/empresas"] },
   { id: "marketing", label: "Marketing", href: "/analytics", icon: Megaphone, paths: ["/marketing", "/analytics", "/ads", "/content", "/campanhas"] },
   { id: "erp", label: "ERP", href: "/erp", icon: Building2, paths: ["/erp", "/estoque", "/obras", "/insumos", "/composicoes"] },

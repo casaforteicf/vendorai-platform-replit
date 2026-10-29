@@ -86,7 +86,12 @@ async function api<T>(url: string, init?: RequestInit): Promise<T> {
     headers: { ...headers(), ...(init?.headers ?? {}) },
   });
   const body = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(body?.error || `Erro ${res.status}`);
+  if (!res.ok) {
+    const message = typeof body?.error === "string"
+      ? body.error
+      : `Não foi possível concluir a operação (HTTP ${res.status}).`;
+    throw new Error(message);
+  }
   return body as T;
 }
 
@@ -150,6 +155,21 @@ export default function VendiOperations() {
       const status = (query.state.data as MissionDetail | undefined)?.mission.status;
       return status === "running" || status === "planning" || status === "paused_approval" ? 2000 : false;
     },
+  });
+
+  const [customizationRequest, setCustomizationRequest] = useState("");
+  const submitCustomization = useMutation({
+    mutationFn: () => api<{ mission: Mission }>("/api/vendi/customization-requests", {
+      method: "POST",
+      body: JSON.stringify({ objective: customizationRequest.trim() }),
+    }),
+    onSuccess: ({ mission }) => {
+      setCustomizationRequest("");
+      setSelectedMissionId(mission.id);
+      void queryClient.invalidateQueries({ queryKey: ["vendi-missions"] });
+      toast({ title: "Solicitação registrada", description: "Pedido salvo no seu tenant para análise. Nenhuma alteração foi executada." });
+    },
+    onError: (error: Error) => toast({ title: "Erro ao registrar solicitação", description: error.message, variant: "destructive" }),
   });
 
   const createMission = useMutation({
@@ -243,6 +263,35 @@ export default function VendiOperations() {
             <RefreshCw className="mr-2 h-4 w-4" />Atualizar
           </Button>
         </div>
+      </Card>
+
+      <Card className="space-y-3 border-primary/20 p-5">
+        <div className="flex items-center gap-2">
+          <Sparkles className="h-5 w-5 text-primary" />
+          <h2 className="font-semibold">Meu Sistema · Personalizar com Vendi</h2>
+          <Badge variant="outline">Solicitações</Badge>
+        </div>
+        <p className="text-sm text-muted-foreground">
+          Descreva a melhoria desejada para o seu ambiente. Nesta primeira etapa, o pedido é apenas registrado
+          no tenant autenticado: não altera telas, código, dados ou produção automaticamente.
+        </p>
+        <Label htmlFor="vendi-customization-request">O que você quer modificar?</Label>
+        <Textarea
+          id="vendi-customization-request"
+          value={customizationRequest}
+          onChange={(e) => setCustomizationRequest(e.target.value)}
+          maxLength={3800}
+          rows={3}
+          placeholder="Ex.: Quero um painel de acompanhamento de obras personalizado para minha empresa."
+        />
+        <Button
+          variant="outline"
+          disabled={customizationRequest.trim().length < 3 || submitCustomization.isPending}
+          onClick={() => submitCustomization.mutate()}
+        >
+          {submitCustomization.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />}
+          Registrar solicitação
+        </Button>
       </Card>
 
       <div className="grid gap-5 xl:grid-cols-[360px_minmax(0,1fr)]">

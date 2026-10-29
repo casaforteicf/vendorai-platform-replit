@@ -47,6 +47,7 @@ export async function autoCreateAdCampaignIfNeeded(
       itemTipo,
       itemId,
       modo: "unico",
+      destinoClique: "whatsapp",
       orcamentoDiario: ORCAMENTO_DIARIO_PADRAO,
       utmCode,
     }).returning();

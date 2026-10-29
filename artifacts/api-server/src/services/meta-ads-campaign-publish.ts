@@ -35,6 +35,7 @@ import {
   type AdCampaign,
 } from "@workspace/db";
 import { logger } from "../lib/logger.js";
+import { resolveWhatsappAdCtaCopy, resolveWhatsappAdCtaUrl } from "./whatsapp-ad-cta.js";
 import {
   getMetaAdsConnectionByTenantId,
   refreshMetaAdsToken,
@@ -188,22 +189,7 @@ async function resolveFinalUrl(tenantId: string, campanha: AdCampaign): Promise<
   }
 
   if (campanha.destinoClique === "whatsapp") {
-    const [profile] = await db
-      .select({ telefone: businessProfilesTable.telefone })
-      .from(businessProfilesTable)
-      .where(eq(businessProfilesTable.tenantId, tenantId));
-    const numero = profile?.telefone?.replace(/\D/g, "");
-    if (!numero) {
-      throw new MetaAdsPublishError(
-        "Tenant sem telefone de WhatsApp cadastrado (Configurações → Perfil do Negócio) — necessário pra destino de clique WhatsApp.",
-      );
-    }
-    // Simplificação assumida: link comum pro wa.me, não o formato nativo
-    // "click-to-WhatsApp" da Meta (que exigiria destination_type=WHATSAPP
-    // no ad set + estrutura de creative diferente). Funciona (abre o
-    // WhatsApp ao clicar), só não é o objetivo de campanha nativo.
-    const ref = campanha.utmCode ? `?text=${encodeURIComponent(`Olá, vim do anúncio ${campanha.utmCode}`)}` : "";
-    return `https://wa.me/${numero}${ref}`;
+    return resolveWhatsappAdCtaUrl(tenantId, campanha);
   }
 
   if (campanha.itemTipo === "landing_page") {
@@ -434,7 +420,8 @@ export async function publishCampaignToMetaAds(tenantId: string, campaignId: str
   }
   const headline = creative.headlines[0] ?? campanha.vertical;
   const primaryText = creative.headlines[1] ?? headline;
-  const description = creative.descriptions[0] ?? "";
+  const whatsappCta = campanha.destinoClique === "whatsapp" ? await resolveWhatsappAdCtaCopy(tenantId) : null;
+  const description = [creative.descriptions[0] ?? "", whatsappCta].filter(Boolean).join(" · ");
 
   const finalUrl = origemInstagram ? null : await resolveFinalUrl(tenantId, campanha);
   const { accessToken, adAccountId } = await getValidAccessToken(tenantId);
@@ -542,7 +529,7 @@ export async function publishCampaignToMetaAds(tenantId: string, campaignId: str
         name: headline,
         description,
         picture: creative.imagens[0],
-        call_to_action: { type: "LEARN_MORE", value: { link: finalUrl! } },
+        call_to_action: { type: campanha.destinoClique === "whatsapp" ? "CONTACT_US" : "LEARN_MORE", value: { link: finalUrl! } },
       },
     };
     creativeRes = await metaApi<{ id: string }>(`act_${adAccountId}/adcreatives`, accessToken, "POST", {

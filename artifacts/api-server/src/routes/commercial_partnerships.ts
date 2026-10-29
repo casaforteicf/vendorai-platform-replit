@@ -1,10 +1,11 @@
 import { Router } from "express";
-import { and, eq, or } from "drizzle-orm";
+import { and, eq, or, sql } from "drizzle-orm";
 import { z } from "zod/v4";
 import { requireSameTenanOrSuperAdmin } from "../middlewares/auth.js";
 import {
   db,
   dealsTable,
+  notificationsTable,
   leadsTable,
   usersTable,
   tenantsTable,
@@ -522,6 +523,136 @@ router.post("/deals/:dealId/share-with-partner", async (req, res) => {
   return res.status(201).json(result);
 });
 
+// Encaminhamento em cadeia: empresa de origem ou participante com permissão
+// pode solicitar trabalho a uma terceira empresa com parceria ativa direta.
+// Não altera a origem canônica nem transfere comissões automaticamente.
+const downstreamHandoffSchema = z.object({
+  partnershipId: z.string().min(1),
+  targetPipeline: z.enum(SHARED_PIPELINES).default("comercial"),
+  targetStage: z.string().trim().min(1).max(120).optional(),
+  operationalUserId: z.string().min(1).optional(),
+  note: z.string().trim().min(3).max(2000),
+});
+
+router.post("/deals/:dealId/forward-to-company", async (req, res) => {
+  const parsed = downstreamHandoffSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+  const senderTenantId = currentTenantId(req);
+  if (!senderTenantId) return res.status(403).json({ error: "Empresa atual não identificada." });
+  const [deal] = await db.select().from(dealsTable)
+    .where(eq(dealsTable.id, String(req.params.dealId))).limit(1);
+  if (!deal) return res.status(404).json({ error: "Negócio não encontrado." });
+
+  const senderIsOrigin = senderTenantId === deal.tenantId;
+  let senderParticipation: typeof dealTenantParticipationsTable.$inferSelect | undefined;
+  if (!senderIsOrigin) {
+    [senderParticipation] = await db.select().from(dealTenantParticipationsTable)
+      .where(and(
+        eq(dealTenantParticipationsTable.dealId, deal.id),
+        eq(dealTenantParticipationsTable.partnerTenantId, senderTenantId),
+        eq(dealTenantParticipationsTable.status, "active"),
+      )).limit(1);
+    if (!senderParticipation) return res.status(403).json({ error: "Empresa sem participação ativa neste negócio." });
+    const access = await assertParticipationAccess(req, senderParticipation.id);
+    if (access.error) return res.status(403).json({ error: "Usuário sem acesso ao negócio compartilhado." });
+    if (!senderParticipation.permissions?.includes("move_pipeline"))
+      return res.status(403).json({ error: "Encaminhamento não permitido para esta participação." });
+  } else if (!canManageOwnerTenant(req, deal.tenantId)) {
+    return res.status(403).json({ error: "Somente administradores da origem podem encaminhar por este fluxo." });
+  }
+
+  const [partnership] = await db.select().from(tenantCommercialPartnershipsTable)
+    .where(and(
+      eq(tenantCommercialPartnershipsTable.id, parsed.data.partnershipId),
+      eq(tenantCommercialPartnershipsTable.ownerTenantId, senderTenantId),
+      eq(tenantCommercialPartnershipsTable.status, "active"),
+    )).limit(1);
+  if (!partnership || partnership.partnerTenantId === senderTenantId || partnership.partnerTenantId === deal.tenantId)
+    return res.status(422).json({ error: "Selecione parceria ativa de saída para uma terceira empresa." });
+
+  const destinationTenantId = partnership.partnerTenantId;
+  const sourceStage = senderParticipation?.stage ?? deal.etapa;
+  const stage = await resolveStageForTenant({
+    tenantId: destinationTenantId,
+    pipeline: parsed.data.targetPipeline,
+    requestedStage: parsed.data.targetStage,
+    sourceStage,
+  });
+  if (!stage) return res.status(409).json({
+    error: "STAGE_MAPPING_REQUIRED",
+    message: "Defina uma etapa existente na pipeline da empresa de destino.",
+  });
+  const operationalUserId = await resolveOperationalUser({
+    tenantId: destinationTenantId,
+    requestedUserId: parsed.data.operationalUserId,
+    responsibleFunctions: stage.responsaveisFuncoes,
+  });
+  if (!operationalUserId) return res.status(422).json({ error: "STAGE_RESPONSIBLE_REQUIRED" });
+  if (partnership.authorizedUserIds?.length && !partnership.authorizedUserIds.includes(operationalUserId))
+    return res.status(403).json({ error: "Responsável não autorizado na parceria." });
+
+  const [existing] = await db.select().from(dealTenantParticipationsTable)
+    .where(and(
+      eq(dealTenantParticipationsTable.dealId, deal.id),
+      eq(dealTenantParticipationsTable.partnerTenantId, destinationTenantId),
+    )).limit(1);
+  if (existing) return res.status(409).json({
+    error: "PARTICIPATION_EXISTS",
+    message: "A empresa de destino já participou deste negócio. Use o fluxo de devolução/reativação para preservar o histórico.",
+  });
+
+  const now = new Date();
+  const stageDueAt = stage.slaMinutos ? new Date(now.getTime() + stage.slaMinutos * 60000) : null;
+  const created = await db.transaction(async (tx) => {
+    const [participation] = await tx.insert(dealTenantParticipationsTable).values({
+    dealId: deal.id,
+    ownerTenantId: deal.tenantId,
+    partnerTenantId: destinationTenantId,
+    partnershipId: partnership.id,
+    role: "participant",
+    status: "active",
+    operationalUserId,
+    pipeline: parsed.data.targetPipeline,
+    stage: stage.key,
+    stageEnteredAt: now,
+    stageDueAt,
+    permissions: (partnership.defaultPermissions ?? DEFAULT_PARTNER_PERMISSIONS)
+      .filter((permission) => permission !== "close_deal"),
+    sharedByUserId: req.user?.sub ?? null,
+    lastHandoffFromTenantId: senderTenantId,
+    lastHandoffAt: now,
+  }).returning();
+    if (!participation) throw new Error("Falha ao registrar participação.");
+    const [senderCompany] = await tx.select({ name: tenantsTable.name }).from(tenantsTable)
+      .where(eq(tenantsTable.id, senderTenantId)).limit(1);
+    await tx.insert(notificationsTable).values({
+      tenantId: destinationTenantId,
+      recipientUserId: operationalUserId,
+      leadId: null,
+      type: "info",
+      category: "intercompany_handoff",
+      title: "Nova solicitação de empresa parceira",
+      message: [
+        `Enviado por: ${senderCompany?.name ?? "Empresa parceira"}`,
+        `Negócio: ${deal.titulo}`,
+        `Solicitação: ${parsed.data.note}`,
+        `Etapa: ${stage.label}`,
+        "Próxima ação: conferir os dados compartilhados e registrar o atendimento.",
+      ].join("\\n"),
+    });
+    return participation;
+  });
+  return res.status(201).json({
+    dealId: deal.id,
+    originTenantId: deal.tenantId,
+    senderTenantId,
+    destinationTenantId,
+    participation: created,
+    note: parsed.data.note,
+    message: "Encaminhado sem alterar a origem do negócio.",
+  });
+});
+
 const handoffCompanySchema = z.object({
   partnershipId: z.string().min(1),
   targetPipeline: z.enum(SHARED_PIPELINES).optional(),
@@ -575,6 +706,23 @@ router.post("/deals/:dealId/handoff-company", async (req, res) => {
   // Se quem está enviando não é a origem, precisa existir participação ativa.
   if (!isSuperAdmin(req) && senderTenantId === participantTenantId && (!participation || participation.status !== "active")) {
     return res.status(403).json({ error: "Este negócio ainda não foi compartilhado com esta empresa." });
+  }
+
+  // A participação da empresa não autoriza automaticamente todos os seus usuários.
+  // Reutilizar as regras de usuários autorizados e responsável operacional antes do handoff.
+  if (!isSuperAdmin(req) && senderTenantId === participantTenantId && participation) {
+    // O vínculo apresentado deve ser exatamente o vínculo ativo da participação:
+    // outra parceria entre as mesmas empresas não concede acesso a este negócio.
+    if (participation.partnershipId !== partnership.id) {
+      return res.status(403).json({ error: "FORBIDDEN" });
+    }
+    const access = await assertParticipationAccess(req, participation.id);
+    if (access.error) {
+      return res.status(access.error === "NOT_FOUND" ? 404 : 403).json({ error: access.error });
+    }
+    if (!access.participation?.permissions?.includes("move_pipeline")) {
+      return res.status(403).json({ error: "FORBIDDEN" });
+    }
   }
 
   const destinationTenantId = senderTenantId === participantTenantId
@@ -823,6 +971,12 @@ router.patch("/representation-work/:participationId/stage", async (req, res) => 
   const access = await assertParticipationAccess(req, participationId);
   if ("error" in access) return res.status(access.error === "NOT_FOUND" ? 404 : 403).json({ error: access.error });
 
+  // A etapa da participação pertence ao tenant executor, não à empresa de origem.
+  // O tenant de origem pode acompanhar o andamento, mas não movimentar o card externo.
+  if (!isSuperAdmin(req) && currentTenantId(req) !== access.participation.partnerTenantId) {
+    return res.status(403).json({ error: "FORBIDDEN" });
+  }
+
   const parsed = stageSchema.safeParse(req.body);
   if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
   if (!access.participation.permissions.includes("move_pipeline")) {
@@ -1020,7 +1174,7 @@ router.patch("/intercompany-commissions/:commissionId", async (req, res) => {
       vencimento: parsed.data.dueAt ?? commission.dueAt ?? new Date(),
       status: titleStatus,
       updatedAt: new Date(),
-    }).where(eq(erpTitulosTable.id, commission.payerTitleId));
+    }).where(and(eq(erpTitulosTable.id, commission.payerTitleId), eq(erpTitulosTable.tenantId, commission.payerTenantId)));
   }
   if (commission.beneficiaryTitleId) {
     await db.update(erpTitulosTable).set({
@@ -1029,13 +1183,14 @@ router.patch("/intercompany-commissions/:commissionId", async (req, res) => {
       vencimento: parsed.data.dueAt ?? commission.dueAt ?? new Date(),
       status: titleStatus,
       updatedAt: new Date(),
-    }).where(eq(erpTitulosTable.id, commission.beneficiaryTitleId));
+    }).where(and(eq(erpTitulosTable.id, commission.beneficiaryTitleId), eq(erpTitulosTable.tenantId, commission.beneficiaryTenantId)));
   }
 
   return res.json(updated);
 });
 
 const paymentSchema = z.object({
+  idempotencyKey: z.string().trim().min(8).max(128).optional(),
   amount: z.coerce.number().positive(),
   payerAccount: z.string().trim().min(1).max(200),
   beneficiaryAccount: z.string().trim().min(1).max(200),
@@ -1055,13 +1210,6 @@ router.post("/intercompany-commissions/:commissionId/payments", async (req, res)
   const parsed = paymentSchema.safeParse(req.body);
   if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
 
-  const total = money(commission.amount);
-  const alreadyPaid = money(commission.paidAmount);
-  const remaining = Math.max(0, total - alreadyPaid);
-  if (parsed.data.amount > remaining + 0.0001) {
-    return res.status(422).json({ error: `Pagamento excede o saldo da comissão. Saldo atual: R$ ${remaining.toFixed(2)}.` });
-  }
-
   const [payerTenant] = await db.select({ name: tenantsTable.name }).from(tenantsTable)
     .where(eq(tenantsTable.id, commission.payerTenantId)).limit(1);
   const [beneficiaryTenant] = await db.select({ name: tenantsTable.name }).from(tenantsTable)
@@ -1069,9 +1217,43 @@ router.post("/intercompany-commissions/:commissionId/payments", async (req, res)
 
   const paidAt = parsed.data.paidAt ?? new Date();
   const result = await db.transaction(async (tx) => {
-    let payerTitleId = commission.payerTitleId;
-    let beneficiaryTitleId = commission.beneficiaryTitleId;
-    const dueAt = commission.dueAt ?? paidAt;
+    // Serializa pagamentos da mesma comissão; saldo e IDs devem ser relidos
+    // dentro da transação após adquirir o lock da linha.
+    await tx.execute(sql`SELECT id FROM intercompany_commissions WHERE id = ${commissionId} FOR UPDATE`);
+    const [lockedCommission] = await tx.select().from(intercompanyCommissionsTable)
+      .where(eq(intercompanyCommissionsTable.id, commissionId)).limit(1);
+    if (!lockedCommission) return { error: "Comissão não encontrada.", status: 404 as const };
+
+    if (parsed.data.idempotencyKey) {
+      const [previous] = await tx.select().from(intercompanyCommissionPaymentsTable).where(and(
+        eq(intercompanyCommissionPaymentsTable.commissionId, commissionId),
+        eq(intercompanyCommissionPaymentsTable.idempotencyKey, parsed.data.idempotencyKey),
+      )).limit(1);
+      if (previous) {
+        // Uma chave reutilizada com parâmetros diferentes não pode confirmar outro pagamento.
+        if (
+          Math.round(money(previous.amount) * 100) !== Math.round(parsed.data.amount * 100) ||
+          previous.payerAccount !== parsed.data.payerAccount ||
+          previous.beneficiaryAccount !== parsed.data.beneficiaryAccount ||
+          (previous.paymentMethod ?? null) !== (parsed.data.paymentMethod ?? null) ||
+          (previous.proofUrl ?? null) !== (parsed.data.proofUrl ?? null) ||
+          (previous.notes ?? null) !== (parsed.data.notes ?? null) ||
+          (parsed.data.paidAt !== undefined && previous.paidAt.getTime() !== parsed.data.paidAt.getTime())
+        ) return { error: "IDEMPOTENCY_KEY_CONFLICT", status: 409 as const };
+        return { replay: true as const, payment: previous, commission: lockedCommission };
+      }
+    }
+
+    const total = money(lockedCommission.amount);
+    const alreadyPaid = money(lockedCommission.paidAmount);
+    const remaining = Math.max(0, total - alreadyPaid);
+    if (parsed.data.amount > remaining + 0.0001) {
+      return { error: `Pagamento excede o saldo da comissão. Saldo atual: R$ ${remaining.toFixed(2)}.`, status: 422 as const };
+    }
+
+    let payerTitleId = lockedCommission.payerTitleId;
+    let beneficiaryTitleId = lockedCommission.beneficiaryTitleId;
+    const dueAt = lockedCommission.dueAt ?? paidAt;
 
     if (!payerTitleId) {
       const [title] = await tx.insert(erpTitulosTable).values({
@@ -1111,6 +1293,18 @@ router.post("/intercompany-commissions/:commissionId/payments", async (req, res)
 
     if (!payerTitleId || !beneficiaryTitleId) throw new Error("Failed to create ERP titles for intercompany commission");
 
+    // Nunca lançar pagamentos em títulos de tenant diferente, mesmo se um ID
+    // incorreto tiver sido gravado anteriormente na comissão.
+    const [payerTitle] = await tx.select({ id: erpTitulosTable.id }).from(erpTitulosTable)
+      .where(and(eq(erpTitulosTable.id, payerTitleId), eq(erpTitulosTable.tenantId, commission.payerTenantId), eq(erpTitulosTable.tipo, "pagar")))
+      .limit(1);
+    const [beneficiaryTitle] = await tx.select({ id: erpTitulosTable.id }).from(erpTitulosTable)
+      .where(and(eq(erpTitulosTable.id, beneficiaryTitleId), eq(erpTitulosTable.tenantId, commission.beneficiaryTenantId), eq(erpTitulosTable.tipo, "receber")))
+      .limit(1);
+    if (!payerTitle || !beneficiaryTitle) {
+      throw new Error("INTERCOMPANY_ERP_TITLE_TENANT_MISMATCH");
+    }
+
     const [payerPayment] = await tx.insert(erpPagamentosTable).values({
       tenantId: commission.payerTenantId,
       tituloId: payerTitleId,
@@ -1139,7 +1333,7 @@ router.post("/intercompany-commissions/:commissionId/payments", async (req, res)
       pagoEm: fullyPaid ? paidAt : null,
       contaBancaria: parsed.data.payerAccount,
       updatedAt: new Date(),
-    }).where(eq(erpTitulosTable.id, payerTitleId));
+    }).where(and(eq(erpTitulosTable.id, payerTitleId), eq(erpTitulosTable.tenantId, commission.payerTenantId)));
 
     await tx.update(erpTitulosTable).set({
       valorPago: String(newPaid.toFixed(2)),
@@ -1147,10 +1341,11 @@ router.post("/intercompany-commissions/:commissionId/payments", async (req, res)
       pagoEm: fullyPaid ? paidAt : null,
       contaBancaria: parsed.data.beneficiaryAccount,
       updatedAt: new Date(),
-    }).where(eq(erpTitulosTable.id, beneficiaryTitleId));
+    }).where(and(eq(erpTitulosTable.id, beneficiaryTitleId), eq(erpTitulosTable.tenantId, commission.beneficiaryTenantId)));
 
     const [payment] = await tx.insert(intercompanyCommissionPaymentsTable).values({
       commissionId: commission.id,
+      idempotencyKey: parsed.data.idempotencyKey ?? null,
       payerTenantId: commission.payerTenantId,
       beneficiaryTenantId: commission.beneficiaryTenantId,
       amount: String(parsed.data.amount.toFixed(2)),
@@ -1176,7 +1371,8 @@ router.post("/intercompany-commissions/:commissionId/payments", async (req, res)
     return { commission: updatedCommission, payment, payerTitleId, beneficiaryTitleId };
   });
 
-  return res.status(201).json(result);
+  if ("error" in result) return res.status(result.status).json({ error: result.error });
+  return res.status("replay" in result ? 200 : 201).json(result);
 });
 
 router.get("/tenants/:tenantId/intercompany-commissions", requireSameTenanOrSuperAdmin(), async (req, res) => {
@@ -1237,6 +1433,14 @@ router.get("/commercial-partnerships/:partnershipId/users", async (req, res) => 
   const tenantId = currentTenantId(req);
   if (!isSuperAdmin(req) && tenantId !== partnership.ownerTenantId && tenantId !== partnership.partnerTenantId) {
     return res.status(403).json({ error: "FORBIDDEN" });
+  }
+
+  // A lista contém dados pessoais de usuários de outro tenant. Participar da
+  // parceria não autoriza enumerar toda a equipe da empresa representante.
+  if (!isSuperAdmin(req) && !canManageOwnerTenant(req, partnership.ownerTenantId)) {
+    const isPartnerAdmin = tenantId === partnership.partnerTenantId &&
+      (req.user?.platformRole === "tenant_admin" || req.user?.userFunction === "administrador");
+    if (!isPartnerAdmin) return res.status(403).json({ error: "FORBIDDEN" });
   }
 
   const rows = await db.select({

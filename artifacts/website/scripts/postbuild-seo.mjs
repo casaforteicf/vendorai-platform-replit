@@ -75,6 +75,11 @@ for (const match of verticalSource.matchAll(/v\(\{\s*id:'[^']+',\s*macrosegment:
 }
 
 const staticPages = {
+  "/blog/crm-integrado-com-whatsapp-o-que-e-e-como-funciona": {
+    title: "CRM integrado ao WhatsApp: o que é e como funciona | VendorAI",
+    description: "Entenda como conectar WhatsApp ao CRM para organizar leads, conversas, responsáveis, histórico, tarefas, follow-up e métricas de conversão.",
+    type: "article",
+  },
   "/": {
     title: "VendorAI — Plataforma de Vendas, CRM, Marketing e Agentes de IA",
     description: "VendorAI conecta marketing, prospecção, atendimento, CRM, follow-up, pós-venda e inteligência para transformar oportunidades em receita contínua.",

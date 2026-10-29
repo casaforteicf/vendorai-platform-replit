@@ -70,6 +70,11 @@ export const VENDORAI_FONT_CATALOG: FontCatalogItem[] = [
   { id: "adobo", family: "Adobo", sourceFile: "adobo.ttf", category: "decorative", tags: ["food", "casual", "local"], recommendedChannels: ["instagram", "tiktok", "facebook", "whatsapp"], recommendedUse: ["headline"], priority: 65 },
   { id: "mageline", family: "Mageline", sourceFile: "mageline.otf", category: "script", tags: ["elegant", "beauty", "premium"], recommendedChannels: ["instagram", "facebook", "website", "landing-page"], recommendedUse: ["brand", "headline"], priority: 84 },
   { id: "wisteriano", family: "Wisteriano", sourceFile: "Wisteriano.otf", category: "script", tags: ["signature", "luxury", "personal"], recommendedChannels: ["instagram", "facebook", "website"], recommendedUse: ["brand", "headline"], priority: 80 },
+  // Luxury font set provided by the user. Publish only after the corresponding WOFF2 assets and web licenses are verified.
+  { id: "awaking", family: "Awaking", sourceFile: "awaking.otf", category: "luxury", tags: ["luxury", "architecture", "modern", "premium"], recommendedChannels: ALL_SOCIAL, recommendedUse: ["brand", "headline", "subheadline"], priority: 95 },
+  { id: "clarissa", family: "Clarissa", sourceFile: "clarissa.otf", category: "script", tags: ["elegant", "beauty", "luxury", "signature"], recommendedChannels: ["instagram", "facebook", "website", "landing-page"], recommendedUse: ["brand", "headline"], priority: 85 },
+  { id: "manage", family: "Manage", sourceFile: "manage.otf", category: "display", tags: ["modern", "branding", "architecture", "premium"], recommendedChannels: ALL_SOCIAL, recommendedUse: ["brand", "headline", "subheadline", "cta"], priority: 90 },
+  { id: "qualli", family: "Qualli", sourceFile: "qualli.otf", category: "luxury", tags: ["luxury", "architecture", "editorial", "elegant"], recommendedChannels: ["instagram", "facebook", "linkedin", "website", "landing-page"], recommendedUse: ["brand", "headline", "subheadline"], priority: 93 },
   { id: "orcish", family: "Orcish", sourceFile: "OrcishPersonalUse-lxm0y-BF6a9f92cf1fe43.ttf", category: "decorative", tags: ["gaming", "fantasy", "entertainment"], recommendedChannels: ["instagram", "tiktok", "youtube"], recommendedUse: ["headline", "video-overlay"], priority: 55 },
 ];
 
@@ -78,6 +83,7 @@ export const VENDORAI_PUBLISHED_FONT_IDS = [
   "malibu-serif",
   "type-ultimate-swashes",
   "adobo",
+  // Luxury families remain catalog candidates until licensed WOFF2 assets are committed.
 ] as const;
 
 const PUBLISHED_FONT_SET = new Set<string>(VENDORAI_PUBLISHED_FONT_IDS);

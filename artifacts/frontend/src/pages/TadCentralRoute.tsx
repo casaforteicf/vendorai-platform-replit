@@ -1,5 +1,4 @@
 import { useEffect, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
 import {
   getGetTenantQueryKey,
   getGetBusinessProfileByTenantQueryKey,
@@ -12,14 +11,15 @@ import type { LauncherModule } from "@/lib/adaptiveModuleLauncher";
 
 type NavItem = { moduleKey?: string; key?: string; isEnabled?: boolean };
 const MAPPING: Record<string, LauncherModule> = {
-  leads: "crm", campaigns: "marketing", content: "marketing", scheduler: "agenda", arch: "arqdor",
+  leads: "crm", prospector: "prospector", campaigns: "marketing", content: "marketing", scheduler: "agenda", arch: "arqdor",
   obras: "obras", financeiro: "erp", praca_ai: "marketplace_casa", settings: "configuracoes", analytics: "inteligencia",
   sdr: "agentes_ia",
   dashboard: "suporte",
 };
 /**
- * TAD central: require both tenant entitlement and verified user permission.
- * Failed authorization checks must never expose a clickable module.
+ * TAD central: tenant users require both commercial entitlement and verified
+ * permission. Platform Superadmin sees the entire launcher inventory through
+ * the presentation-only policy in TadCentral; backend guards remain unchanged.
  */
 export default function TadCentralRoute() {
   const { user, token, tenantOverride } = useAuth();
@@ -43,19 +43,15 @@ export default function TadCentralRoute() {
     (user as { tenantName?: string | null } | null)?.tenantName?.trim() ||
     undefined;
 
-  // Contagem de novidades não lidas — mesmo endpoint do sino de novidades.
-  const unreadQuery = useQuery<{ count: number }>({
-    queryKey: ["changelog-unread"],
-    enabled: !!token,
-    staleTime: 60_000,
-    queryFn: async () => {
-      const r = await fetch("/api/changelog/unread-count", { headers: { Authorization: `Bearer ${token}` } });
-      if (!r.ok) throw new Error("unread-count failed");
-      return r.json();
-    },
-  });
-  const notificationCount = unreadQuery.data?.count ?? 0;
   useEffect(() => {
+    // Superadmin inventories every environment, even without a selected tenant.
+    // Authorization to access data remains with the destination API/routes.
+    if (user?.platformRole === "super_admin") {
+      setFailed(false);
+      setEnabled([]);
+      setPermitted([]);
+      return;
+    }
     if (!user?.tenantId || !token) return;
     const controller = new AbortController();
     setFailed(false);
@@ -95,15 +91,15 @@ export default function TadCentralRoute() {
       }
     });
     return () => controller.abort();
-  }, [user?.tenantId, token]);
+  }, [user?.tenantId, user?.platformRole, token]);
   return (
     <>
       {failed && <div role="alert" className="mx-auto max-w-7xl px-4 pt-4 text-sm text-destructive">
         Não foi possível conferir os serviços habilitados. Nenhum acesso adicional foi liberado.
       </div>}
       <TadCentral audience="business" enabledModules={enabled}
-        permittedModules={permitted} previewModules={enabled}
-        companyName={companyName} notificationCount={notificationCount} />
+        permittedModules={permitted}
+        companyName={companyName} />
     </>
   );
 }

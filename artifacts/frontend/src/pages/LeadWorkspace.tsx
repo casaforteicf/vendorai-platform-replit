@@ -323,6 +323,20 @@ export default function LeadWorkspace() {
   const [due, setDue] = useState(tomorrow());
   const [description, setDescription] = useState("");
   const [note, setNote] = useState("");
+  // O formulário pode abrir pela pipeline antes das etapas, do negócio e dos
+  // usuários terminarem de carregar. Sincronize o destino e o responsável.
+  useEffect(() => {
+    if (!requestedStage || !deal || !stages.some((stage) => stage.key === requestedStage)) return;
+    setNextStage(requestedStage);
+    const stage = stages.find((candidate) => candidate.key === requestedStage) as ResponsibilityStage | undefined;
+    const eligible = users.filter((candidate) => userCanOwnStage(candidate as ResponsibilityUser, stage));
+    setOwner((previous) => {
+      if (eligible.some((candidate) => candidate.id === previous)) return previous;
+      return [deal.assignedTo, user?.id].find((candidate) =>
+        Boolean(candidate) && eligible.some((person) => person.id === candidate)
+      ) ?? eligible[0]?.id ?? "";
+    });
+  }, [requestedStage, deal?.id, deal?.assignedTo, stages, users, user?.id]);
   const [saving, setSaving] = useState(false);
   const [savingAnswers, setSavingAnswers] = useState(false);
   const [ownerEditorOpen, setOwnerEditorOpen] = useState(false);
@@ -332,6 +346,11 @@ export default function LeadWorkspace() {
   const [intelligenceOpen, setIntelligenceOpen] = useState(false);
   const [advancedHandoffOpen, setAdvancedHandoffOpen] = useState(false);
   const [selectedPartnershipId, setSelectedPartnershipId] = useState("");
+  const [forwardPartnershipId, setForwardPartnershipId] = useState("");
+  const [forwardNote, setForwardNote] = useState("");
+  const [forwardStage, setForwardStage] = useState("");
+  const [forwardBusy, setForwardBusy] = useState(false);
+
   const [selectedPartnerUserId, setSelectedPartnerUserId] = useState("");
   const [partnerCommissionPercent, setPartnerCommissionPercent] = useState("15");
   const [commissionEditorOpen, setCommissionEditorOpen] = useState(false);
@@ -474,21 +493,45 @@ export default function LeadWorkspace() {
     if (partnership) setPartnerCommissionPercent(String(partnership.defaultCommissionPercent ?? "15"));
   }, [selectedPartnershipId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  function startAttendance() {
-    if (!lead) return;
-    createDeal.mutate(
-      { data: { tenantId, leadId: id, titulo: "Atendimento - " + lead.nome, etapa: "novo" } },
-      {
-        onSuccess: async () => {
-          await Promise.all([
-            qc.invalidateQueries({ queryKey: getListDealsQueryKey(tenantId, { leadId: id }) }),
-            qc.invalidateQueries({ queryKey: getListDealsQueryKey(tenantId) }),
-          ]);
-          toast({ title: "Atendimento iniciado", description: "Defina agora o responsável e a próxima atividade." });
-        },
-        onError: () => toast({ title: "Erro ao iniciar atendimento", variant: "destructive" }),
-      },
-    );
+  async function startAttendance() {
+    if (!lead || !tenantId || createDeal.isPending) return;
+    // Reaproveita o negócio persistido no Aquecimento e seus vínculos,
+    // sem criar um segundo negócio nem perder envolvidos do cadastro.
+    const warmingDeal = deals.find((item) => item.etapa === "em_aquecimento");
+    try {
+      if (warmingDeal) {
+        const response = await fetch(`/api/deals/${warmingDeal.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json", Authorization: "Bearer " + token },
+          body: JSON.stringify({ etapa: "novo", assignedTo: warmingDeal.assignedTo ?? lead.assignedTo ?? undefined }),
+        });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(payload.error ?? payload.message ?? "Falha ao iniciar atendimento");
+      } else {
+        // Leads antigos ou isentos de pipeline ainda podem iniciar um negócio.
+        await createDeal.mutateAsync({
+          data: {
+            tenantId,
+            leadId: id,
+            titulo: "Atendimento - " + lead.nome,
+            etapa: "novo",
+            assignedTo: lead.assignedTo ?? undefined,
+          },
+        });
+      }
+      await Promise.all([
+        qc.invalidateQueries({ queryKey: getListDealsQueryKey(tenantId, { leadId: id }) }),
+        qc.invalidateQueries({ queryKey: getListDealsQueryKey(tenantId) }),
+        qc.invalidateQueries({ queryKey: getGetLeadQueryKey(id) }),
+      ]);
+      toast({ title: "Atendimento iniciado", description: "Cadastro e histórico do lead preservados no negócio." });
+    } catch (error) {
+      toast({
+        title: "Erro ao iniciar atendimento",
+        description: error instanceof Error ? error.message : "Não foi possível iniciar o negócio.",
+        variant: "destructive",
+      });
+    }
   }
 
   async function saveStageAnswers(next: Record<string, string>) {
@@ -509,27 +552,52 @@ export default function LeadWorkspace() {
   }
 
   function showAdvance() {
-    const stage = deal?.etapa === "em_aquecimento"
-      ? "novo"
-      : (requestedStage ?? stages[currentIndex + 1]?.key ?? "");
-    const aiAction = fullIntelligence?.health?.nextBestAction ?? fullIntelligence?.profile?.nextBestAction;
-    const aiReason = fullIntelligence?.health?.nextBestActionReason ?? fullIntelligence?.profile?.nextBestActionReason;
+    try {
+      if (!deal) {
+        toast({ title: "Negócio não carregado", description: "Atualize a página e tente novamente.", variant: "destructive" });
+        return;
+      }
+      // Open immediately on click; preparing stage/owner suggestions must not block the dialog.
+      // This also makes backend/permission issues visible in the confirmation UI.
+      if (deal.etapa !== "em_aquecimento" && currentIndex < 0) {
+        toast({ title: "Etapa atual não encontrada", description: "Atualize a configuração da pipeline antes de avançar o atendimento.", variant: "destructive" });
+        return;
+      }
+      const nextConfigured = stages.slice(currentIndex + 1).find((stage) => !hiddenFromCommercialFlow.has(stage.key));
+      const requestedIndex = requestedStage ? stages.findIndex((stage) => stage.key === requestedStage) : -1;
+      const requested = requestedIndex > currentIndex && !hiddenFromCommercialFlow.has(requestedStage ?? "")
+        ? requestedStage : null;
+      const stage = deal.etapa === "em_aquecimento" ? "novo" : (requested ?? nextConfigured?.key ?? "");
+      setOpen(true);
+      if (!stage) {
+        setOpen(false);
+        toast({ title: "Sem próxima etapa", description: "Verifique a configuração da pipeline.", variant: "destructive" });
+        return;
+      }
 
-    const nextStageConfig = stages.find((candidate) => candidate.key === stage) as ResponsibilityStage | undefined;
-    const stageEligibleUsers = users.filter((candidate) => userCanOwnStage(candidate as ResponsibilityUser, nextStageConfig));
-    const preferredOwner = [deal?.assignedTo, user?.id].find((candidateId) =>
-      Boolean(candidateId) && stageEligibleUsers.some((candidate) => candidate.id === candidateId)
-    );
-
-    setNextStage(stage);
-    setOwner(preferredOwner ?? stageEligibleUsers[0]?.id ?? "");
-    setTitle(aiAction?.trim() || guidance[stage]?.[1] || "Dar continuidade ao atendimento");
-    setDescription(aiReason?.trim() || "");
-    setNote("");
-    setDue(tomorrow());
-    setEditEligible(false);
-    setAdvancedHandoffOpen(false);
-    setOpen(true);
+      const nextStageConfig = stages.find((candidate) => candidate.key === stage) as ResponsibilityStage | undefined;
+      const stageEligibleUsers = users.filter((candidate) => {
+        try { return userCanOwnStage(candidate as ResponsibilityUser, nextStageConfig); }
+        catch { return false; }
+      });
+      const preferredOwner = [deal.assignedTo, lead?.assignedTo, user?.id].find((candidateId) =>
+        Boolean(candidateId) && stageEligibleUsers.some((candidate) => candidate.id === candidateId)
+      );
+      // The confirmation dialog is already opened before optional calculations.
+      setNextStage(stage);
+      setOwner(preferredOwner ?? stageEligibleUsers[0]?.id ?? "");
+      setTitle(guidance[stage]?.[1] || "Dar continuidade ao atendimento");
+      setDescription("");
+      setNote("");
+      setDue(tomorrow());
+      setAdvancedHandoffOpen(false);
+    } catch (error) {
+      toast({
+        title: "Falha ao abrir avanço",
+        description: error instanceof Error ? error.message : "Não foi possível preparar a próxima etapa.",
+        variant: "destructive",
+      });
+    }
   }
 
   async function saveCurrentOwner() {
@@ -569,6 +637,36 @@ export default function LeadWorkspace() {
       toast({ title: "Erro ao atualizar responsável", description: e instanceof Error ? e.message : "Tente novamente.", variant: "destructive" });
     } finally {
       setSavingOwner(false);
+    }
+  }
+
+  async function forwardToCompany() {
+    if (!deal || !forwardPartnershipId || forwardNote.trim().length < 3) {
+      toast({ title: "Selecione a empresa e informe o motivo do encaminhamento.", variant: "destructive" });
+      return;
+    }
+    setForwardBusy(true);
+    try {
+      const response = await fetch(`/api/deals/${deal.id}/forward-to-company`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: "Bearer " + token },
+        body: JSON.stringify({
+          partnershipId: forwardPartnershipId,
+          targetPipeline: "comercial",
+          ...(forwardStage.trim() ? { targetStage: forwardStage.trim() } : {}),
+          note: forwardNote.trim(),
+        }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.message ?? payload.error ?? "Encaminhamento recusado.");
+      await qc.invalidateQueries({ queryKey: ["deal-participations", tenantId] });
+      setForwardNote("");
+      setForwardStage("");
+      toast({ title: "Negócio encaminhado", description: "A empresa de destino recebeu uma participação vinculada ao negócio original." });
+    } catch (error) {
+      toast({ title: "Erro ao encaminhar", description: error instanceof Error ? error.message : "Tente novamente.", variant: "destructive" });
+    } finally {
+      setForwardBusy(false);
     }
   }
 
@@ -763,6 +861,7 @@ export default function LeadWorkspace() {
       ]);
       setOpen(false);
       toast({ title: "Etapa avançada", description: "Próxima atividade atribuída a " + displayUser(owner) + "." });
+      if (search.get("from") === "pipeline") navigate("/deals");
     } catch (e) {
       toast({ title: "Erro ao avançar", description: e instanceof Error ? e.message : "Tente novamente.", variant: "destructive" });
     } finally {
@@ -831,7 +930,7 @@ export default function LeadWorkspace() {
           </div>
           <div className="flex shrink-0 items-center gap-2">
             {deal
-              ? <Button className="shrink-0" onClick={showAdvance}>Avançar atendimento <ArrowRight className="ml-2 h-4 w-4" /></Button>
+              ? <Button className="shrink-0" type="button" onClick={showAdvance} data-testid="advance-attendance-button">Avançar atendimento <ArrowRight className="ml-2 h-4 w-4" /></Button>
               : <Button className="shrink-0" disabled={createDeal.isPending} onClick={startAttendance}>{createDeal.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Iniciar atendimento</Button>}
             <AdminDeleteLeadButton leadId={lead.id} leadName={lead.nome} redirectTo="/leads" compact={false} />
           </div>
@@ -890,6 +989,27 @@ export default function LeadWorkspace() {
                     </div>
                   </div>
         
+                  <div className="rounded-lg border border-border/70 p-3 space-y-3 mb-3">
+                    <p className="text-sm font-semibold">Encaminhar para outra empresa</p>
+                    <p className="text-xs text-muted-foreground">Compartilhe com empresa parceira sem criar outro lead. A origem permanece vinculada.</p>
+                    <Select value={forwardPartnershipId} onValueChange={setForwardPartnershipId}>
+                      <SelectTrigger aria-label="Empresa de destino"><SelectValue placeholder="Selecione uma empresa parceira" /></SelectTrigger>
+                      <SelectContent>
+                        {ownerPartnerships.map((partnership) => (
+                          <SelectItem key={partnership.id} value={partnership.id}>
+                            {partnership.partnerName || partnership.partnerTenantCode || partnership.partnerTenantId}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <Input aria-label="Etapa no destino" placeholder="Etapa no destino (opcional, chave configurada)" value={forwardStage} onChange={(event) => setForwardStage(event.target.value)} />
+                    <Textarea aria-label="Motivo do encaminhamento" placeholder="O que a empresa deverá fazer? Ex.: elaborar orçamento de esquadrias" value={forwardNote} onChange={(event) => setForwardNote(event.target.value)} />
+                    <Button type="button" variant="outline" disabled={forwardBusy || !forwardPartnershipId || forwardNote.trim().length < 3} onClick={() => void forwardToCompany()}>
+                      {forwardBusy && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                      Encaminhar para empresa
+                    </Button>
+                  </div>
+
                   {ownerPartnerships.length === 0 ? (
                     <p className="text-sm text-muted-foreground">Nenhuma empresa representante ativa foi vinculada a este tenant.</p>
                   ) : (

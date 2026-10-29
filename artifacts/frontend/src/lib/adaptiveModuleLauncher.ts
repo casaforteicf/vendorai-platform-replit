@@ -3,7 +3,7 @@
  * The caller MUST supply server-verified entitlements and record permissions.
  * No role implicitly unlocks an entitlement; no grant is stored client-side.
  */
-export type LauncherModule = "crm" | "marketing" | "omnichannel" | "agenda" |
+export type LauncherModule = "crm" | "prospector" | "marketing" | "omnichannel" | "agenda" |
   "arqdor" | "obras" | "pdv" | "erp" | "marketplace_casa" |
   "parceiros" | "portal_cliente" | "inteligencia" | "agentes_ia" | "configuracoes" | "suporte";
 
@@ -17,11 +17,12 @@ export interface LauncherModuleInfo {
 
 export const LAUNCHER_MODULES: readonly LauncherModuleInfo[] = [
   { key: "crm", title: "CRM", route: "/leads", audiences: ["professional", "business"] },
+  { key: "prospector", title: "Prospector IA", route: "/prospector", audiences: ["professional", "business"] },
   { key: "marketing", title: "Marketing", route: "/content", audiences: ["business"] },
   { key: "omnichannel", title: "Omnichannel", route: "/conversations", audiences: ["professional", "business"] },
   { key: "agenda", title: "Agenda", route: "/agenda", audiences: ["professional", "business"] },
   { key: "arqdor", title: "Arqdor", route: "/arch", audiences: ["professional", "business"] },
-  { key: "obras", title: "Obras e Serviços", route: "/obras", audiences: ["professional", "business"] },
+  { key: "obras", title: "Operações", route: "/obras", audiences: ["professional", "business"] },
   { key: "pdv", title: "PDV", route: null, audiences: ["business"] },
   { key: "erp", title: "ERP", route: "/erp", audiences: ["business"] },
   { key: "marketplace_casa", title: "Praça.ai · Operações", route: "/praca-executivo", audiences: ["consumer", "professional", "business"] },
@@ -43,6 +44,40 @@ export function authorizedLauncherModules(input: {
   return LAUNCHER_MODULES.filter(module =>
     module.audiences.includes(input.audience) &&
     enabled.has(module.key) && permitted.has(module.key));
+}
+
+/**
+ * UI-only module inventory for the TAD. The platform Superadmin can see
+ * all environment cards, including those without a ready route. This never
+ * changes API authorization or grants tenant entitlements.
+ */
+export function resolveTadLauncherModules(input: {
+  audience: LauncherAudience;
+  enabledModules: readonly LauncherModule[];
+  permittedModules: readonly LauncherModule[];
+  previewModules?: readonly LauncherModule[];
+  isPlatformSuperAdmin?: boolean;
+}): { authorized: LauncherModuleInfo[]; listed: LauncherModuleInfo[] } {
+  if (input.isPlatformSuperAdmin) {
+    return {
+      authorized: LAUNCHER_MODULES.filter(module => module.route !== null),
+      listed: [...LAUNCHER_MODULES],
+    };
+  }
+
+  const authorized = authorizedLauncherModules(input);
+  const available = new Set(authorized.map(module => module.key));
+  const preview = new Set(input.previewModules ?? []);
+  const enabled = new Set(input.enabledModules);
+  const listed = [
+    ...authorized,
+    ...LAUNCHER_MODULES.filter(module =>
+      !available.has(module.key) &&
+      preview.has(module.key) &&
+      enabled.has(module.key) &&
+      module.audiences.includes(input.audience)),
+  ];
+  return { authorized, listed };
 }
 
 /**

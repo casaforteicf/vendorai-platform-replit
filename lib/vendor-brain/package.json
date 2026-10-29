@@ -9,6 +9,8 @@
     "./marketing-verticals": "./src/marketing-verticals.ts",
     "./marketing-verticals-localization": "./src/marketing-verticals-localization.ts",
     "./platform-foundation": "./src/platform-foundation.ts",
+    "./arqdor-geometry-preflight": "./src/arqdor-geometry-preflight.ts",
+    "./arqdor-concept-adapter": "./src/arqdor-concept-adapter.ts",
     "./vertical-blueprint": "./src/vertical-blueprint.ts",
     "./marketing-agent": "./src/marketing-agent.ts",
     "./marketing-context": "./src/marketing-context.ts",

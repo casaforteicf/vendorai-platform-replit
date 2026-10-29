@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 // Deploy marker: refresh Projetos lead picker build.
 import "./planner5d-reference.css";
 import { useLocation } from "wouter";
@@ -14,7 +14,7 @@ import {
 } from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, ExternalLink, FolderOpen, Search, UserRound, UserPlus, Pencil, X, Loader2, Image } from "lucide-react";
+import { Plus, ExternalLink, FolderOpen, Search, UserRound, UserPlus, Pencil, X, Loader2, Image, Upload } from "lucide-react";
 
 function getToken() { return localStorage.getItem("vendorai_token"); }
 
@@ -106,6 +106,66 @@ export default function Projetos() {
   const [loading, setLoading]   = useState(true);
   const [error, setError]       = useState<string | null>(null);
 
+  const importInputRef = useRef<HTMLInputElement | null>(null);
+  const importProjectRef = useRef<string | null>(null);
+  const [importingProjectId, setImportingProjectId] = useState<string | null>(null);
+
+  function selectProjectFiles(id: string) {
+    if (importingProjectId) return;
+    importProjectRef.current = id;
+    importInputRef.current?.click();
+  }
+
+  async function importProjectFiles(files: FileList | null) {
+    const id = importProjectRef.current;
+    const selected = Array.from(files ?? []);
+    if (!id || !selected.length) return;
+    setImportingProjectId(id);
+    try {
+      const detail = await fetch(`/api/arch/projetos/${encodeURIComponent(id)}`, {
+        headers: { Authorization: `Bearer ${getToken()}` },
+      });
+      if (!detail.ok) throw new Error("Não foi possível consultar o projeto.");
+      const { projeto } = await detail.json() as { projeto: { dossieProjeto?: Record<string, unknown> | null } };
+      const current = projeto.dossieProjeto ?? {};
+      const arquivos = Array.isArray(current.arquivos) ? current.arquivos : [];
+      const novos = [];
+      for (const file of selected) {
+        const request = await fetch("/api/storage/uploads/request-url", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name: file.name, size: file.size, contentType: file.type || "application/octet-stream" }),
+        });
+        if (!request.ok) throw new Error(`Falha ao preparar ${file.name}`);
+        const { uploadURL, objectPath } = await request.json() as { uploadURL: string; objectPath: string };
+        const uploaded = await fetch(uploadURL, {
+          method: "PUT",
+          body: file,
+          headers: { "Content-Type": file.type || "application/octet-stream" },
+        });
+        if (!uploaded.ok) throw new Error(`Falha no envio de ${file.name}`);
+        const ext = file.name.split(".").pop()?.toLowerCase() ?? "";
+        const tipo = ext === "skp" ? "skp" : ["dxf", "dwg"].includes(ext) ? "dxf"
+          : ext === "ifc" ? "ifc" : ext === "pdf" ? "pdf" : file.type.startsWith("image/") ? "foto"
+          : ["doc", "docx", "xls", "xlsx", "txt"].includes(ext) ? "documento" : "outro";
+        novos.push({ id: crypto.randomUUID(), nome: file.name, url: `${window.location.origin}/api/storage${objectPath}`,
+          tipo, mimeType: file.type || undefined, size: file.size, ambienteId: null, createdAt: new Date().toISOString() });
+      }
+      const saved = await fetch(`/api/arch/projetos/${encodeURIComponent(id)}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${getToken()}` },
+        body: JSON.stringify({ dossieProjeto: { ...current, arquivos: [...arquivos, ...novos] } }),
+      });
+      if (!saved.ok) throw new Error("Arquivos enviados, mas não foi possível vinculá-los ao projeto.");
+      toast({ title: "Arquivos importados", description: `${novos.length} arquivo(s) vinculados ao projeto.` });
+    } catch (err) {
+      toast({ title: "Falha ao importar", description: err instanceof Error ? err.message : "Tente novamente.", variant: "destructive" });
+    } finally {
+      setImportingProjectId(null);
+      importProjectRef.current = null;
+    }
+  }
+
   // Filters
   const [filterStatus, setFilterStatus] = useState<string>("all");
   const [filterBusca,  setFilterBusca]  = useState("");
@@ -117,6 +177,14 @@ export default function Projetos() {
   const [dialogOpen, setDialogOpen] = useState(autoOpen);
   const [form, setForm]             = useState<FormData>(() => ({ ...EMPTY_FORM, titulo: requestedTitle }));
   const [saving, setSaving]         = useState(false);
+  // Seleções condicionais do assistente. O backend legado segue recebendo tipoObra.
+  const [disciplina, setDisciplina] = useState<"Arquitetura" | "Interiores" | "Área Externa">("Arquitetura");
+  const [situacaoImovel, setSituacaoImovel] = useState<"novo" | "existente" | "em_obra">("novo");
+  const [abrangencia, setAbrangencia] = useState<"completo" | "ambientes" | "area">("completo");
+  const [disciplinasExtras, setDisciplinasExtras] = useState<string[]>([]);
+  const [ambientesSelecionados, setAmbientesSelecionados] = useState<string[]>([]);
+  const [areaEspecifica, setAreaEspecifica] = useState("");
+
 
   // Cliente / lead existente
   const [leadSearch, setLeadSearch] = useState("");
@@ -350,6 +418,12 @@ export default function Projetos() {
 
   function resetDialog() {
     setForm(EMPTY_FORM);
+    setDisciplina("Arquitetura");
+    setSituacaoImovel("novo");
+    setAbrangencia("completo");
+    setDisciplinasExtras([]);
+    setAmbientesSelecionados([]);
+    setAreaEspecifica("");
     setSelectedLead(null);
     setLeadSearch("");
     setLeadResults([]);
@@ -363,6 +437,14 @@ export default function Projetos() {
       return;
     }
 
+    if (abrangencia === "ambientes" && ambientesSelecionados.length === 0) {
+      toast({ title: "Selecione pelo menos um ambiente", variant: "destructive" });
+      return;
+    }
+    if (abrangencia === "area" && !areaEspecifica.trim()) {
+      toast({ title: "Informe a área específica", variant: "destructive" });
+      return;
+    }
     setSaving(true);
     try {
       let projectLead = selectedLead;
@@ -396,6 +478,7 @@ export default function Projetos() {
         leadId:    projectLead.id,
         titulo:    form.titulo,
         tipoObra:  form.tipoObra,
+        dossieProjeto: { projectSetup: { disciplina, situacaoImovel, abrangencia, disciplinasExtras, ambientesSelecionados: abrangencia === "ambientes" ? ambientesSelecionados : [], areaEspecifica: abrangencia === "area" ? areaEspecifica.trim() : "" } },
       };
       if (form.clienteNome)     body.clienteNome     = form.clienteNome;
       if (form.clienteEmail)    body.clienteEmail    = form.clienteEmail;
@@ -434,18 +517,20 @@ export default function Projetos() {
   }
 
   return (
-    <div className="arqdor-reference-ui max-w-6xl mx-auto space-y-5">
+    <div className="arqdor-reference-ui mx-auto max-w-[1480px] space-y-5">
+      <input ref={importInputRef} type="file" multiple className="hidden"
+        aria-label="Selecionar arquivos para importar"
+        accept=".skp,.dxf,.dwg,.ifc,.pdf,.jpg,.jpeg,.png,.webp,.doc,.docx,.xls,.xlsx,.txt"
+        onChange={(e) => { void importProjectFiles(e.target.files); e.currentTarget.value = ""; }} />
+
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Projetos</h1>
           <p className="text-sm text-muted-foreground mt-0.5">{projetos.length} projeto{projetos.length !== 1 ? "s" : ""} encontrado{projetos.length !== 1 ? "s" : ""}</p>
         </div>
 
         <div className="flex items-center gap-2">
-        <Button variant="outline" onClick={() => navigate("/arch/concept?novo=1")}>
-          <Plus className="h-4 w-4 mr-2" /> Novo pré-projeto
-        </Button>
         <Dialog
           open={dialogOpen}
           onOpenChange={(open) => {
@@ -454,15 +539,92 @@ export default function Projetos() {
           }}
         >
           <DialogTrigger asChild>
-            <Button><Plus className="h-4 w-4 mr-2" /> Projeto direto</Button>
+            <Button><Plus className="h-4 w-4 mr-2" /> Novo Projeto</Button>
           </DialogTrigger>
-          <DialogContent className="max-w-lg">
+          <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
-              <DialogTitle>Novo projeto profissional</DialogTitle>
+              <DialogTitle>Novo Projeto</DialogTitle>
             </DialogHeader>
-            <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-900">
-              Use esta opção quando o projeto já nasce profissional. Se houver estudo inicial, croqui, terreno ou briefing em evolução, comece por <button type="button" onClick={() => { setDialogOpen(false); navigate("/arch/concept?novo=1"); }} className="font-bold underline">Novo pré-projeto</button> e envie para Projeto quando estiver aprovado. Isso evita projetos duplicados.
-            </div>
+            <p className="text-sm text-muted-foreground">
+              Identifique o cliente e crie seu projeto. Plantas, fotografias, estudos e materiais podem ser adicionados depois, no próprio projeto.
+            </p>
+            <button type="button" className="text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground text-left" onClick={() => { setDialogOpen(false); navigate("/arch/concept"); }}>
+              Já tenho um estudo em andamento — abrir meus estudos
+            </button>
+            <section className="space-y-3 rounded-xl border p-3" aria-label="Definir o projeto">
+              <p className="text-sm font-semibold">1. Definir o projeto</p>
+              <Label>Disciplina principal</Label>
+              <div className="grid grid-cols-3 gap-2">
+                {(["Arquitetura", "Interiores", "Área Externa"] as const).map((item) => (
+                  <Button type="button" key={item} size="sm" variant={disciplina === item ? "default" : "outline"}
+                    className="h-auto min-h-10 whitespace-normal" onClick={() => {
+                      setDisciplina(item);
+                      setDisciplinasExtras((current) => current.filter((x) => x !== item));
+                    }}>{item}</Button>
+                ))}
+              </div>
+              <Label>Tipo de imóvel</Label>
+              <Select value={form.tipoObra} onValueChange={(v) => setF("tipoObra", v)}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {TIPOS_OBRA.filter((x) => x !== "Reforma").map((x) => <SelectItem key={x} value={x}>{x}</SelectItem>)}
+                </SelectContent>
+              </Select>
+              <Label>Situação do imóvel</Label>
+              <div className="grid grid-cols-3 gap-2">
+                {([{key:"novo",label:"Novo"},{key:"existente",label:"Existente"},{key:"em_obra",label:"Em obra"}] as const).map(({key,label}) => (
+                  <Button key={key} type="button" variant={situacaoImovel===key?"default":"outline"} size="sm"
+                    onClick={()=>setSituacaoImovel(key)}>{label}</Button>
+                ))}
+              </div>
+              <Label>Abrangência</Label>
+              <div className="grid grid-cols-3 gap-2">
+                {([{key:"completo",label:"Completo"},{key:"ambientes",label:"Ambientes"},{key:"area",label:"Área específica"}] as const).map(({key,label}) => (
+                  <Button key={key} type="button" variant={abrangencia===key?"default":"outline"}
+                    className="h-auto min-h-10 whitespace-normal" size="sm"
+                    onClick={()=>setAbrangencia(key)}>{label}</Button>
+                ))}
+              </div>
+              {abrangencia === "ambientes" && (
+                <div className="space-y-2">
+                  <Label>Ambientes do projeto</Label>
+                  <div className="flex flex-wrap gap-2">
+                    {["Sala", "Cozinha", "Quarto", "Banheiro", "Área gourmet", "Escritório", "Lavanderia", "Garagem", "Jardim"].map((nome) => (
+                      <Button key={nome} type="button" size="sm"
+                        variant={ambientesSelecionados.includes(nome) ? "default" : "outline"}
+                        onClick={() => setAmbientesSelecionados((xs) => xs.includes(nome) ? xs.filter((x) => x !== nome) : [...xs, nome])}>
+                        {nome}
+                      </Button>
+                    ))}
+                  </div>
+                  <Input aria-label="Outro ambiente" placeholder="Outro ambiente (digite o nome e pressione Enter)"
+                    onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); const nome = e.currentTarget.value.trim(); if (nome) { setAmbientesSelecionados((xs) => xs.includes(nome) ? xs : [...xs, nome]); e.currentTarget.value = ""; } } }} />
+                </div>
+              )}
+              {abrangencia === "area" && (
+                <div className="space-y-1">
+                  <Label htmlFor="arq-area-especifica">Qual área?</Label>
+                  <Input id="arq-area-especifica" value={areaEspecifica} onChange={(e) => setAreaEspecifica(e.target.value)}
+                    placeholder="Ex.: Fachada principal, terraço ou jardim frontal" />
+                </div>
+              )}
+              <Label>Disciplinas complementares (opcionais)</Label>
+              <div className="flex flex-wrap gap-2">
+                {(["Arquitetura", "Interiores", "Área Externa"] as const).filter((x)=>x!==disciplina).map((item)=>(
+                  <Button key={item} size="sm" type="button"
+                    variant={disciplinasExtras.includes(item)?"default":"outline"}
+                    onClick={()=>setDisciplinasExtras((xs)=>xs.includes(item)?xs.filter((x)=>x!==item):[...xs,item])}>
+                    {item}
+                  </Button>
+                ))}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                {disciplina} · {situacaoImovel==="novo"?"Imóvel novo":situacaoImovel==="existente"?"Imóvel existente":"Em obra"} · {abrangencia==="completo"?"Escopo completo":abrangencia==="ambientes"?"Alguns ambientes":"Área específica"}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                A configuração será salva no dossiê do projeto, sem criar outro cadastro.
+              </p>
+            </section>
             <form onSubmit={handleCreate} className="space-y-4 mt-2">
               <div className="grid grid-cols-2 gap-3">
                 <div className="col-span-2 space-y-1.5">
@@ -598,15 +760,7 @@ export default function Projetos() {
                   />
                 </div>
 
-                <div className="space-y-1">
-                  <Label>Tipo de obra *</Label>
-                  <Select value={form.tipoObra} onValueChange={(v) => setF("tipoObra", v)}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      {TIPOS_OBRA.map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
-                </div>
+
                 <div className="space-y-1">
                   <Label>Área (m²)</Label>
                   <Input type="number" min="0" step="0.01" value={form.areaM2} onChange={(e) => setF("areaM2", e.target.value)} placeholder="120" />
@@ -687,7 +841,7 @@ export default function Projetos() {
       {/* Filtros */}
       <div className="flex gap-3 flex-wrap">
         <Input
-          placeholder="Buscar por cliente..."
+          placeholder="Buscar projeto ou cliente..."
           value={filterBusca}
           onChange={(e) => setFilterBusca(e.target.value)}
           className="max-w-xs"
@@ -707,7 +861,7 @@ export default function Projetos() {
 
       {/* Visão visual de projetos — ARQ-PROJ */}
       {loading ? (
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
           {Array.from({ length: 6 }).map((_, i) => (
             <div key={i} className="overflow-hidden rounded-2xl border bg-background">
               <Skeleton className="h-40 w-full rounded-none" />
@@ -730,8 +884,6 @@ export default function Projetos() {
       ) : (
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           {projetos.map((p) => {
-            const progressIndex = ["briefing", "orcamento", "aprovado", "em_execucao", "entregue"].indexOf(p.status);
-            const progress = p.status === "cancelado" ? 0 : Math.max(12, Math.min(100, ((progressIndex + 1) / 5) * 100));
             const nextAction =
               p.status === "briefing" ? "Continuar briefing"
                 : p.status === "orcamento" ? "Revisar orçamento"
@@ -768,30 +920,9 @@ export default function Projetos() {
                       {p.tipoObra && <span className="shrink-0 rounded-full bg-muted px-2 py-1 text-[10px] font-semibold">{p.tipoObra}</span>}
                     </div>
 
-                    <div className="mt-4 grid grid-cols-3 gap-2 text-center">
-                      <div className="rounded-xl bg-muted/50 p-2">
-                        <div className="text-[10px] text-muted-foreground">Área</div>
-                        <div className="mt-0.5 text-xs font-bold">{p.areaM2 ? `${Number(p.areaM2).toFixed(0)} m²` : "—"}</div>
-                      </div>
-                      <div className="rounded-xl bg-muted/50 p-2">
-                        <div className="text-[10px] text-muted-foreground">Ambientes</div>
-                        <div className="mt-0.5 text-xs font-bold">{p.totalAmbientes ?? 0}</div>
-                      </div>
-                      <div className="rounded-xl bg-muted/50 p-2">
-                        <div className="text-[10px] text-muted-foreground">Orçamento</div>
-                        <div className="mt-0.5 truncate text-xs font-bold text-emerald-700">{p.orcamentoTotal ? fmt(Number(p.orcamentoTotal)) : "—"}</div>
-                      </div>
-                    </div>
-
-                    <div className="mt-4">
-                      <div className="mb-1 flex items-center justify-between text-[10px] font-semibold text-muted-foreground">
-                        <span>Progresso</span>
-                        <span>{Math.round(progress)}%</span>
-                      </div>
-                      <div className="h-1.5 overflow-hidden rounded-full bg-muted">
-                        <div className="h-full rounded-full bg-primary transition-all" style={{ width: `${progress}%` }} />
-                      </div>
-                    </div>
+                    <p className="mt-3 text-xs text-muted-foreground">
+                      {p.tipoObra ? `${p.tipoObra} · ` : ""}{p.totalAmbientes ? `${p.totalAmbientes} ambiente(s) · ` : ""}{p.areaM2 ? `${Number(p.areaM2).toLocaleString("pt-BR")} m²` : "Área não informada"}
+                    </p>
 
                     <div className="mt-4 flex items-center justify-between gap-3">
                       <span className="text-xs font-semibold text-primary">{nextAction}</span>
@@ -820,6 +951,11 @@ export default function Projetos() {
                       <Pencil className="mr-1 h-3 w-3" /> Lead
                     </Button>
                   )}
+                  <Button size="sm" variant="ghost" className="h-8 text-xs" disabled={Boolean(importingProjectId)}
+                    onClick={() => selectProjectFiles(p.id)}>
+                    {importingProjectId === p.id ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : <Upload className="mr-1 h-3.5 w-3.5" />}
+                    Importar
+                  </Button>
                   <Button size="sm" variant="ghost" className="ml-auto h-8 text-xs" onClick={() => navigate(`/arch/projetos/${p.id}`)}>
                     Abrir
                   </Button>

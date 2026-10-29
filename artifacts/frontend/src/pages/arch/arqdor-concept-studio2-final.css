@@ -1,0 +1,165 @@
+/* Arqdor Studio 2.0 — editor chrome, scoped to professional workspace.
+   Does not recolor drawings, materials, renders, dialogs or exported content. */
+.arqdor-concept-studio.arq-studio-active .arq-workspace-stage {
+  --studio-bg: #171f22;
+  --studio-panel: #20282a;
+  --studio-panel-raised: #263034;
+  --studio-divider: #3a4649;
+  --studio-text: #eef2ef;
+  --studio-muted: #aab8b5;
+  --studio-green: #176d59;
+  --studio-green-hover: #21856c;
+  color: var(--studio-text);
+  background: var(--studio-bg);
+  font-family: Inter, "IBM Plex Sans", system-ui, sans-serif;
+  font-size: 12px;
+}
+/* Header and the existing view-switching actions remain interactive. */
+.arqdor-concept-studio.arq-studio-active .arq-workspace-stage > .arq-app-bar {
+  min-height: 52px;
+  background: var(--studio-panel);
+  color: var(--studio-text);
+  border-color: var(--studio-divider);
+  border-radius: 0;
+  box-shadow: none;
+  gap: 8px;
+}
+.arqdor-concept-studio.arq-studio-active .arq-app-bar :is(.text-slate-950,.text-slate-900,.text-slate-700,.text-slate-600) { color: var(--studio-text); }
+.arqdor-concept-studio.arq-studio-active .arq-app-bar :is(.text-slate-500,.text-slate-400) { color: var(--studio-muted); }
+.arqdor-concept-studio.arq-studio-active .arq-app-bar :is(button,a) {
+  min-height: 32px;
+  border-radius: 6px;
+  font-size: 11px;
+}
+.arqdor-concept-studio.arq-studio-active .arq-app-bar :is(button,a).bg-white,
+.arqdor-concept-studio.arq-studio-active .arq-app-bar :is(button,a).bg-white\/95 {
+  background: var(--studio-panel-raised);
+  border-color: var(--studio-divider);
+  color: var(--studio-text);
+}
+.arqdor-concept-studio.arq-studio-active .arq-app-bar :is(button,a):hover { border-color: var(--studio-green-hover); }
+/* Frame only: never recolor the 2D/3D viewport contents. */
+.arqdor-concept-studio.arq-studio-active .arq-workspace-stage .arq-workspace-shell {
+  background: var(--studio-bg);
+}
+.arqdor-concept-studio.arq-studio-active .arq-workspace-stage .arq-workspace-sidebar {
+  background: var(--studio-panel);
+  border-color: var(--studio-divider);
+  color: var(--studio-text);
+  box-shadow: 8px 0 28px rgb(0 0 0 / 18%);
+}
+.arqdor-concept-studio.arq-studio-active .arq-workspace-stage .arq-tool-rail {
+  width: 58px;
+  background: #1a2225;
+  border-color: var(--studio-divider);
+  padding-block: 8px;
+}
+.arqdor-concept-studio.arq-studio-active .arq-tool-rail :is(button,a) {
+  color: var(--studio-muted);
+  border-radius: 6px;
+  min-width: 36px;
+  min-height: 36px;
+  transition: background-color 120ms ease, color 120ms ease;
+}
+.arqdor-concept-studio.arq-studio-active .arq-tool-rail :is(button,a):hover,
+.arqdor-concept-studio.arq-studio-active .arq-tool-rail :is(button,a):focus-visible {
+  background: var(--studio-panel-raised);
+  color: var(--studio-text);
+}
+.arqdor-concept-studio.arq-studio-active .arq-tool-rail button:is(.bg-orange-50,.bg-orange-500),
+.arqdor-concept-studio.arq-studio-active .arq-tool-rail button[aria-pressed="true"],
+.arqdor-concept-studio.arq-studio-active .arq-tool-rail button[data-state="active"] {
+  background: var(--studio-green);
+  color: #fff;
+}
+.arqdor-concept-studio.arq-studio-active .arq-workspace-stage :is(button,input,select,textarea):focus-visible {
+  outline: 2px solid var(--studio-green-hover);
+  outline-offset: 2px;
+}
+/* On smaller screens keep the existing navigation and contextual overlays intact. */
+@media (max-width: 767px) {
+  .arqdor-concept-studio.arq-studio-active .arq-workspace-stage > .arq-app-bar { min-height: 48px; padding: 6px 8px; }
+  .arqdor-concept-studio.arq-studio-active .arq-workspace-stage .arq-tool-rail { width: 54px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .arqdor-concept-studio.arq-studio-active .arq-tool-rail :is(button,a) { transition: none; }
+}
+
+/* Keep tool panel typography readable without modifying canvas geometry. */
+.arqdor-concept-studio.arq-studio-active .arq-workspace-sidebar :is(h2,h3) {
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: .01em;
+}
+.arqdor-concept-studio.arq-studio-active .arq-workspace-sidebar :is(button,input,select) {
+  font-size: 12px;
+}
+/* Strong focus indication for keyboard navigation. */
+.arqdor-concept-studio.arq-studio-active .arq-app-bar :is(button,a):focus-visible,
+.arqdor-concept-studio.arq-studio-active .arq-tool-rail button:focus-visible {
+  outline: 2px solid #4ac59a;
+  outline-offset: 2px;
+}
+
+/* ARQDOR Studio 2.0 V3 - opt-in workspace layout, only professional mode.
+ * Desktop rail and tools dock beside the editor instead of covering it.
+ * No project data, zoom, SVG, canvas dimensions or drawing colors are changed.
+ * On small screens retain existing overlay drawer behavior.
+ */
+@media (min-width: 1024px) {
+  .arqdor-concept-studio.arq-studio-active .arq-workspace-shell.arq-studio-professional-layout {
+    display: flex;
+    align-items: stretch;
+    min-width: 0;
+    isolation: isolate;
+  }
+  .arqdor-concept-studio.arq-studio-active .arq-studio-professional-layout > .arq-workspace-sidebar {
+    position: relative;
+    inset: auto;
+    z-index: 20;
+    flex: 0 0 auto;
+    max-width: min(420px, 38vw);
+    overflow-x: auto;
+    height: auto;
+    min-height: inherit;
+    overflow-y: auto;
+    border-right: 1px solid var(--studio-divider, #3a4649);
+    box-shadow: none;
+  }
+  .arqdor-concept-studio.arq-studio-active .arq-studio-professional-layout > .arq-workspace-center {
+    flex: 1 1 0%;
+    min-width: 0;
+  }
+}
+/* Mode is explicit: guided flow intentionally retains its established behavior. */
+.arqdor-concept-studio.arq-studio-active .arq-studio-professional-layout .arq-tool-rail button[title] {
+  position: relative;
+}
+.arqdor-concept-studio.arq-studio-active .arq-studio-professional-layout .arq-tool-rail button[title]:focus-visible {
+  outline: 2px solid #4ac59a;
+  outline-offset: -2px;
+}
+
+/* The library already toggles through its real React handlers. Do not leave the
+   canvas toolbar offset for an overlay after docking the sidebar beside it. */
+@media (min-width: 1024px) {
+  .arqdor-concept-studio.arq-studio-active .arq-studio-professional-layout > .arq-workspace-center > .arq-canvas-toolbar {
+    left: 12px;
+    right: 12px;
+    width: max-content;
+    max-width: calc(100% - 24px);
+  }
+}
+/* Keep the existing 44px touch targets from the editor. */
+@media (pointer: coarse) {
+  .arqdor-concept-studio.arq-studio-active .arq-tool-rail :is(button,a),
+  .arqdor-concept-studio.arq-studio-active .arq-app-bar :is(button,a) {
+    min-width: 44px;
+    min-height: 44px;
+  }
+}
+.arqdor-concept-studio.arq-studio-active .arq-tool-rail button[aria-expanded="false"] {
+  background: transparent;
+  color: var(--studio-muted);
+  box-shadow: none;
+}

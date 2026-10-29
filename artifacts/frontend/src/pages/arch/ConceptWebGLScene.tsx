@@ -10,8 +10,6 @@ import { buildRoofPlan } from "./conceptRoofPlan";
 import type { SiteFrontSide } from "./conceptSitePlacement";
 import { useEffect, useMemo, useRef, useState, type DragEvent as ReactDragEvent } from "react";
 import type { ConceptModelLevel } from "./ConceptModel3D";
-import type { BimModel } from "./conceptBimElementModel";
-import { projectBimMeshes } from "./conceptBimMeshGeometry";
 import type { ConceptPlanObject } from "./ConceptPlan2D";
 import { getConceptModelDefinition } from "./catalogs/conceptModelCatalog";
 import { getConceptPBRMaterial } from "./catalogs/conceptMaterialCatalog";
@@ -22,9 +20,6 @@ type LightingMode = "day" | "sunset" | "night";
 type RenderQuality = "fast" | "realistic" | "ultra";
 
 type Props = {
-  experimentalBimModel?: BimModel;
-  selectedBimElementId?: string | null;
-  onSelectBimElement?: (id: string | null) => void;
   lotWidth: number;
   lotDepth: number;
   activeFloor: number;
@@ -318,9 +313,6 @@ function canWalkTo(
 }
 
 export default function ConceptWebGLScene({
-  experimentalBimModel,
-  selectedBimElementId,
-  onSelectBimElement,
   lotWidth,
   lotDepth,
   activeFloor,
@@ -638,14 +630,12 @@ export default function ConceptWebGLScene({
           let current = hit?.object;
           while (
             current &&
-            !current.userData?.bimElementId &&
             !current.userData?.objectId &&
             !current.userData?.wallId &&
             !current.userData?.spaceId &&
             !current.userData?.openingId
           ) current = current.parent;
 
-          const bimElementId = current?.userData?.bimElementId as string | undefined;
           const objectId = current?.userData?.objectId as string | undefined;
           const unionMesh = current?.userData?.wallUnionMesh as WallUnionMesh | undefined;
           const unionPick = unionMesh
@@ -665,14 +655,7 @@ export default function ConceptWebGLScene({
             return;
           }
 
-          if (bimElementId) {
-            onSelectBimElement?.(bimElementId);
-          } else {
-            onSelectBimElement?.(null);
-          }
-          if (bimElementId) {
-            // BIM selection is independent of the legacy selection mechanisms.
-          } else if (objectId) {
+          if (objectId) {
             onSelectObject?.(objectId);
             onSelectWall?.(null);
             onSelectCustomWall?.(null);
@@ -2084,31 +2067,6 @@ export default function ConceptWebGLScene({
           { transparent: box.opacity < 1, opacity: box.opacity });
       }
     }
-    if (experimentalBimModel && import.meta.env.VITE_ARQDOR_BIM_ELEMENTS === "true") {
-      try {
-        const meshes = projectBimMeshes(experimentalBimModel, 2.96);
-        for (const item of meshes) {
-          if (!visibleFloors.has(item.floor)) continue;
-          const positions = item.positions.slice();
-          for (let vertex = 0; vertex < positions.length; vertex += 3) {
-            positions[vertex] -= lotWidth / 2;
-            positions[vertex + 2] -= lotDepth / 2;
-          }
-          const geometry = new THREE.BufferGeometry();
-          geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
-          geometry.computeVertexNormals();
-          const material = new THREE.MeshStandardMaterial({ color: 0x35a77d, side: THREE.DoubleSide, transparent: true, opacity: 0.78 });
-          const mesh = new THREE.Mesh(geometry, material);
-          mesh.userData.bimElementId = item.id;
-          mesh.castShadow = true;
-          mesh.receiveShadow = true;
-          modelRoot.add(mesh);
-          runtime.pickables.push(mesh);
-        }
-      } catch (error) {
-        console.warn("Prévia BIM experimental não exibida:", error);
-      }
-    }
     const sceneBounds = new THREE.Box3().setFromObject(modelRoot);
     const hasRenderableContent = modelRoot.children.length > 0 && !sceneBounds.isEmpty();
     if (hasRenderableContent && !runtime.contentFramed) {
@@ -2158,7 +2116,6 @@ export default function ConceptWebGLScene({
     visibleFloors,
     facadeDesign,
     frontSide,
-    experimentalBimModel,
   ]);
 
   useEffect(() => {
@@ -2462,7 +2419,6 @@ export default function ConceptWebGLScene({
     if (!runtime || engineState !== "ready") return;
 
     const selectedKeys = new Set<string>();
-    if (selectedBimElementId) selectedKeys.add(`bim:${selectedBimElementId}`);
     if (selectedObjectId) selectedKeys.add(`object:${selectedObjectId}`);
     if (selectedWallId) selectedKeys.add(`wall:${selectedWallId}`);
     if (selectedCustomWallId) selectedKeys.add(`wall:${selectedCustomWallId}`);
@@ -2471,9 +2427,7 @@ export default function ConceptWebGLScene({
 
     runtime.modelRoot.traverse((node: any) => {
       if (!node?.isMesh) return;
-      const entityKey = node.userData?.bimElementId
-        ? `bim:${node.userData.bimElementId}`
-        : node.userData?.objectId
+      const entityKey = node.userData?.objectId
         ? `object:${node.userData.objectId}`
         : node.userData?.wallId
           ? `wall:${node.userData.wallId}`
@@ -2502,7 +2456,6 @@ export default function ConceptWebGLScene({
     selectedClosedSpaceId,
     selectedCustomWallId,
     selectedObjectId,
-    selectedBimElementId,
     selectedOpeningId,
     selectedWallId,
     navigationMode,

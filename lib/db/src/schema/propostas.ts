@@ -32,8 +32,42 @@ export const propostaItemExecucaoStatusSchema = z.enum([
 
 export type PropostaItemExecucaoStatus = z.infer<typeof propostaItemExecucaoStatusSchema>;
 
+// Dados documentais opcionais: vinculados ao item e preservados na revisão.
+// A IA pode sugerir correções, mas não pode criar valores contratuais sem fonte.
+export const propostaItemContratualSchema = z.object({
+  classificacao: z.enum(["incluido", "excluido", "opcional", "condicionado"]).optional(),
+  categoria: z.enum(["material", "servico", "composicao"]).optional(),
+  descricaoTecnica: z.string().max(12000).optional(),
+  fabricante: z.string().max(300).optional(),
+  marca: z.string().max(300).optional(),
+  modelo: z.string().max(300).optional(),
+  especificacao: z.string().max(5000).optional(),
+  localAplicacao: z.string().max(1000).optional(),
+  ambienteId: z.string().optional(),
+  arqdorProjectId: z.string().optional(),
+  arqdorSpecObjectId: z.string().optional(),
+  limiteMaterialUnitario: z.number().nonnegative().optional(),
+  limiteMaterialUnidade: z.string().max(30).optional(),
+  exigeValidacaoTecnica: z.boolean().optional(),
+  observacoesMemorial: z.string().max(5000).optional(),
+  // Proveniência obrigatória apenas quando um campo é declarado como verificado.
+  fonte: z.object({
+    tipo: z.enum(["projeto_arqdor", "especificacao_arqdor", "orcamento", "catalogo", "documento_assinado", "manual"]),
+    id: z.string().min(1),
+    revisao: z.string().optional(),
+    consultadoEm: z.string().datetime().optional(),
+    aprovado: z.boolean().default(false),
+  }).optional(),
+}).superRefine((item, ctx) => {
+  if (item.fonte?.aprovado && !item.fonte.revisao && item.fonte.tipo === "documento_assinado") {
+    ctx.addIssue({ code: "custom", path: ["fonte", "revisao"], message: "Documento assinado exige revisão de origem." });
+  }
+});
+
 export const propostaItemSchema = z.object({
   nome: z.string().min(1),
+  // Metadados opcionais, sem alterar quantidade, preço nem saldo comercial.
+  contratual: propostaItemContratualSchema.optional(),
   quantidade: z.number().positive(),
   valorUnitario: z.number().nonnegative(),
   sku: z.string().optional(),
