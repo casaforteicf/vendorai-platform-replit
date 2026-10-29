@@ -67,8 +67,21 @@ case "$ACTION" in
    ;;
  status)
    echo "LOT=$LOT SHA=$SHA IMAGE=$IMAGE"
-   docker image inspect "$IMAGE" --format 'IMAGE_PRESENT={{.Id}}' 2>/dev/null || echo IMAGE_NOT_BUILT
-   [[ -f "$STATE" ]] && cat "$STATE" || true
+   if [[ -f "$STATE" && ! -L "$STATE" ]]; then
+     cat "$STATE"
+   else
+     echo "STATUS=NO_BUILD_STATE"
+   fi
+   if docker image inspect "$IMAGE" --format 'IMAGE_PRESENT={{.Id}}' 2>/dev/null; then
+     :
+   else
+     echo "IMAGE_NOT_BUILT"
+   fi
+   if [[ -f "$BASE/state/$LOT.log" && ! -L "$BASE/state/$LOT.log" ]]; then
+     echo "LAST_BUILD_EVENT=$(grep -E ' (BUILD_START|BUILD_DONE|BUILD_FAILED|IMAGE_REUSED_EXISTING_SHA)( |$)' "$BASE/state/$LOT.log" | tail -n 1 || true)"
+   else
+     echo "LAST_BUILD_EVENT=NONE"
+   fi
    ;;
  rollback)
    # No cross-environment rollback until validated container topology exists.
