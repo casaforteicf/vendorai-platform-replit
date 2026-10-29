@@ -116,3 +116,19 @@ CREATE TABLE IF NOT EXISTS public.customer_global_credentials (
 ALTER TABLE public.customer_global_credentials ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.customer_global_credentials FORCE ROW LEVEL SECURITY;
 -- No RLS policy and no vendorai_app/anon/authenticated grants.
+
+-- Single-use global email verification. Created only by privileged service.
+CREATE TABLE IF NOT EXISTS public.customer_global_email_verifications (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  global_identity_id uuid NOT NULL REFERENCES public.customer_global_identities(id) ON DELETE CASCADE,
+  token_hash text NOT NULL UNIQUE CHECK (token_hash ~ '^[0-9a-f]{64}$'),
+  expires_at timestamptz NOT NULL,
+  consumed_at timestamptz,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  CHECK (expires_at > created_at)
+);
+CREATE INDEX IF NOT EXISTS idx_customer_global_email_verifications_identity
+  ON public.customer_global_email_verifications(global_identity_id,expires_at);
+ALTER TABLE public.customer_global_email_verifications ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.customer_global_email_verifications FORCE ROW LEVEL SECURITY;
+-- No app role grants, no RLS policies, no automated email delivery enabled here.
