@@ -44,7 +44,22 @@ case "$ACTION" in
     audit "PUBLISH_COMPLETED"
     ;;
   releaseStatus)
-    if [[ "$LOT" != "VENDI-02" ]]; then /usr/local/sbin/vendi04-release-runner status "$LOT"; exit $?; fi
+    if [[ "$LOT" != "VENDI-02" ]]; then
+      UNIT="vendi-build-${LOT,,}.service"
+      if systemctl is-active --quiet "$UNIT"; then
+        echo "LOT=$LOT"
+        echo "STATUS=BUILD_IN_PROGRESS"
+        echo "SYSTEMD_UNIT=$UNIT"
+        echo "PRODUCTION=untouched"
+        exit 0
+      fi
+      /usr/local/sbin/vendi04-release-runner status "$LOT"
+      if systemctl is-failed --quiet "$UNIT"; then
+        echo "BUILD_UNIT_FAILED=$UNIT"
+        systemctl show "$UNIT" --no-pager -p Result -p ExecMainStatus || true
+      fi
+      exit 0
+    fi
     echo "LOT=$LOT"
     echo "HOMOLOG_HEALTH=$(curl --silent --output /dev/null --write-out '%{http_code}' --max-time 8 "$HEALTH" || true)"
     docker inspect "$API" --format 'HOMOLOG={{.State.Status}} IMAGE={{.Config.Image}}'
@@ -53,8 +68,57 @@ case "$ACTION" in
     audit "OK"
     ;;
   build)
-    /usr/local/sbin/vendi04-release-runner build "$LOT"
-    audit "BUILD_REQUEST_COMPLETED"
+    # Docker builds last longer than the MCP SSH 180-second limit. Queue them
+    # on the host and keep logs/status there; never stream build output via SSH.
+    # Preserve the existing root-owned manifest, exact-SHA source, and
+    # vendi04-release-runner gates. This action never changes production.
+    /usr/local/sbin/vendi04-release-preflight "$LOT"
+    UNIT="vendi-build-${LOT,,}.service"
+    if systemctl is-active --quiet "$UNIT"; then
+      echo "LOT=$LOT"
+      echo "STATUS=BUILD_IN_PROGRESS"
+      audit "BUILD_ALREADY_RUNNING"
+      exit 0
+    fi
+    STATE="/var/lib/vendi-release/state/$LOT"
+    if [[ -f "$STATE" ]] && grep -Fxq "STATUS=BUILT_NOT_DEPLOYED" "$STATE"; then
+      echo "LOT=$LOT"
+      echo "STATUS=ALREADY_BUILT"
+      audit "BUILD_ALREADY_COMPLETE"
+      exit 0
+    fi
+    # Fail closed on scarce disk space; avoid jeopardizing the live API.
+    FREE_KB=$(df -Pk / | awk 'NR==2 {print $4}')
+    if [[ ! "$FREE_KB" =~ ^[0-9]+$ ]] || (( FREE_KB < 14680064 )); then
+      echo "BUILD_BLOCKED_DISK_CAPACITY"
+      echo "REQUIRED_FREE_KB=14680064"
+      echo "FREE_KB=$FREE_KB"
+      audit "DENIED_LOW_DISK"
+      exit 75
+    fi
+    command -v systemd-run >/dev/null || { echo "SYSTEMD_RUN_UNAVAILABLE"; exit 70; }
+    install -d -o root -g root -m 700 /var/log/vendi-builds
+    LOG="/var/log/vendi-builds/$LOT.log"
+    touch "$LOG"; chmod 600 "$LOG"
+    # One transient unit per lot. Limits shield production from runaway builds.
+    systemd-run --unit="${UNIT%.service}" --collect --no-block \
+      --property=Type=exec \
+      --property=Restart=no \
+      --property=CPUQuota=100% \
+      --property=Nice=10 \
+      --property=OOMScoreAdjust=500 \
+      --property=MemoryHigh=4G \
+      --property=MemoryMax=6G \
+      --property=MemorySwapMax=2G \
+      --property="StandardOutput=append:$LOG" \
+      --property="StandardError=append:$LOG" \
+      /usr/local/sbin/vendi04-release-runner build "$LOT"
+    echo "LOT=$LOT"
+    echo "STATUS=BUILD_QUEUED"
+    echo "SYSTEMD_UNIT=$UNIT"
+    echo "LOG_SAVED_LOCALLY=YES"
+    echo "PRODUCTION=untouched"
+    audit "BUILD_QUEUED"
     ;;
   homologate)
     # For non-legacy lots, test only the exact image already deployed to homologation.
@@ -78,7 +142,7 @@ case "$ACTION" in
       }
     fi
     check_health
-    TOKEN=$(docker exec vendorai-mcp-contabo-fixed printenv BROWSER_MCP_ACCESS_TOKEN)
+    TOKEN=$(docker exec vendorai-mcp-novo printenv BROWSER_MCP_ACCESS_TOKEN)
     [[ -n "$TOKEN" ]] || { echo "MCP_TOKEN_MISSING"; exit 70; }
     # Read-only API smoke; never print token.
     docker exec -i -e "VENDI_HOMOLOG_AUTH=$TOKEN" "$API" node - <<'JS'

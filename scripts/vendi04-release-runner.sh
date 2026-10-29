@@ -35,6 +35,10 @@ case "$ACTION" in
    exit 65
    ;;
  build)
+   # System-wide exclusive build gate: per-lot locking alone permits two
+   # concurrent Docker builds on the constrained production VPS.
+   exec 7>/run/lock/vendi-release-global-build.lock
+   flock -n 7 || { echo BUILD_BUSY_OTHER_LOT; exit 75; }
    /usr/local/sbin/vendi04-release-preflight "$LOT" || exit $?
    [[ -d "$REPO/.git" ]] || { echo REPOSITORY_MISSING;exit 65; }
    work="$BASE/work/$LOT"
@@ -47,6 +51,16 @@ case "$ACTION" in
    git -c safe.directory="$REPO" -C "$REPO" archive "$SHA" | tar -xf - -C "$work"
    [[ -f "$work/$DOCKERFILE" && -d "$work/$CONTEXT" ]] || { echo BUILD_CONTEXT_INVALID;exit 65; }
    record "BUILD_START sha=$SHA"
+   # The MCP queues this long-running build as a host-local systemd unit.
+   # Persist a terminal failure record even if the initiating SSH call closes.
+   build_failed(){
+     local rc="$?"
+     { printf 'LOT=%s\nSHA=%s\nIMAGE=%s\nSTATUS=BUILD_FAILED\nEXIT_CODE=%s\n' "$LOT" "$SHA" "$IMAGE" "$rc"; } > "$STATE.tmp" || true
+     [[ -f "$STATE.tmp" ]] && mv "$STATE.tmp" "$STATE" || true
+     record "BUILD_FAILED rc=$rc" || true
+     exit "$rc"
+   }
+   trap build_failed ERR
    docker build --pull=false -f "$work/$DOCKERFILE" -t "$IMAGE" "$work/$CONTEXT"
    docker image inspect "$IMAGE" --format 'BUILD_IMAGE_ID={{.Id}}'
    { echo "LOT=$LOT";echo "SHA=$SHA";echo "IMAGE=$IMAGE";echo "STATUS=BUILT_NOT_DEPLOYED"; } > "$STATE.tmp"
