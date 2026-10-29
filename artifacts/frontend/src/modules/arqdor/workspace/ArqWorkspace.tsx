@@ -940,8 +940,10 @@ function WorkspaceInner() {
             <img
               src="/brand/arqdor-logo.png"
               alt="ARQDOR"
-              style={{ display:'block', width:'100%', height:34, objectFit:'contain' }}
-              onError={event => { event.currentTarget.style.display='none' }}
+              width={34}
+              height={34}
+              decoding="async"
+              style={{ display:'block', width:34, height:34, objectFit:'contain', flexShrink:0 }}
             />
           </div>
 
