@@ -6,8 +6,8 @@
 // • Esconder complexidade — usuário pensa em objetivos, não em módulos
 // • Espaço em branco — menos elementos, mais impacto
 // • Verde tecnológico como destaque único — premium, comercial e arquitetônico
-// • Fluxo linear — Criar → Inspirar → Renderizar → Melhorar → Especificar → Apresentar → Entregar
-// • ✨ Gerar Render sempre visível — CTA principal nunca some
+// • Navegação aprovada — Projetos → Modelagem 2D/3D → Materiais → Render → Especificações → Orçamento → Entrega
+// • Render acessível uma vez no menu principal, sem CTA duplicado
 // • Linguagem humana — sem termos técnicos no UI
 
 import { useState, useEffect, useRef, useCallback, Suspense, lazy } from 'react'
@@ -135,14 +135,13 @@ interface FlowStep {
 }
 
 const FLOW_STEPS: FlowStep[] = [
-  { id:'criar',       icon:'✦',  label:'Projeto',      sublabel:'Cliente e projeto', primary:'home',          extras:['projeto'],                          color: PHX.purple },
-  { id:'inspirar',    icon:'🖼️', label:'Inspirar',    sublabel:'Biblioteca',        primary:'biblioteca',    extras:[],                                   color: PHX.blue   },
-  { id:'renderizar',  icon:'✨', label:'Renderizar',   sublabel:'Criar e editar render', primary:'renders', extras:['prompt'], color: PHX.purple },
-  { id:'melhorar',    icon:'🔄', label:'Melhorar',    sublabel:'Galeria, versões e aprovação', primary:'real-render-gallery', extras:['correcoes','ai-review','render-gallery','post-render'], color: PHX.amber  },
-  { id:'especificar', icon:'📋', label:'Especificar', sublabel:'Memorial técnico',  primary:'especificacao', extras:[],                                   color: '#16a34a'  },
-  { id:'orcamento',   icon:'💰', label:'Orçamento',   sublabel:'Budget executivo',  primary:'orcamento',     extras:['orcamento-pro'],                    color: '#0369a1'  },
-  { id:'apresentar',  icon:'👤', label:'Proposta',    sublabel:'Apresentar ao cliente',primary:'cliente',     extras:[],                                   color: PHX.cyan   },
-  { id:'entregar',    icon:'📦', label:'Entregar',    sublabel:'Obra e entrega',    primary:'office',        extras:[],                                   color: '#0d9488'  },
+  { id:'projetos', icon:'📁', label:'Projetos', sublabel:'Projetos e clientes', primary:'home', extras:['projeto'], color:PHX.purple },
+  { id:'modelagem', icon:'📐', label:'Modelagem 2D/3D', sublabel:'Modelagem e BIM', primary:'bim', extras:['digital-twin','twin'], color:PHX.blue },
+  { id:'materiais', icon:'🎨', label:'Materiais', sublabel:'Catálogo e biblioteca', primary:'biblioteca', extras:['arqhub','knowledge'], color:PHX.cyan },
+  { id:'render', icon:'✨', label:'Render', sublabel:'Criar, aprimorar e revisar renders', primary:'renders', extras:['prompt','render','correcoes','ai-review','real-render-gallery','render-gallery','post-render'], color:PHX.purple },
+  { id:'especificacoes', icon:'📋', label:'Especificações', sublabel:'Memorial técnico e documentação', primary:'especificacao', extras:['specification','especificacao-produto','real-specification','spec-catalog','spec-objects'], color:'#16a34a' },
+  { id:'orcamento', icon:'💰', label:'Orçamento', sublabel:'Quantitativos e custos', primary:'orcamento', extras:['orcamento-pro','real-budget','orcamento-real','budget-engine','budget'], color:'#0369a1' },
+  { id:'entrega', icon:'📦', label:'Entrega', sublabel:'Proposta, apresentação e entrega', primary:'office', extras:['cliente','client','portal-cliente','client-portal-approval','proposal-delivery','portal-aprovacao','delivery-success'], color:'#0d9488' },
 ]
 
 // Legado — mantido para keyboard shortcuts e command palette
@@ -870,8 +869,8 @@ function WorkspaceInner() {
       if (e.key === '?' && !editing && !e.ctrlKey) { setShortcutsVisible(p => !p); return }
       if (editing) return
 
-      // 1–5 → flow steps (mapped to primary modules)
-      if (['1','2','3','4','5'].includes(e.key) && !e.ctrlKey && !e.metaKey) {
+      // 1–7 → seven approved environments (mapped to primary modules)
+      if (['1','2','3','4','5','6','7'].includes(e.key) && !e.ctrlKey && !e.metaKey) {
         const step = FLOW_STEPS[parseInt(e.key) - 1]
         if (step) setActiveModule(step.primary)
         return
@@ -936,24 +935,16 @@ function WorkspaceInner() {
           boxShadow:PHX.shadow, gap:0, zIndex:200, position:'relative',
         }}>
 
-          {/* Logo */}
-          <div style={{
-            width:136, flexShrink:0, display:'flex', alignItems:'center', gap:8,
-            padding:'0 16px', borderRight:`1px solid ${PHX.border}`, height:'100%',
-          }}>
-            <div style={{
-              width:28, height:28, borderRadius:8,
-              background:`linear-gradient(135deg, ${PHX.purple} 0%, ${PHX.purpleL} 100%)`,
-              display:'flex', alignItems:'center', justifyContent:'center',
-              fontSize:14, color:'#fff', flexShrink:0,
-              boxShadow:'0 2px 8px rgba(124,58,237,0.3)',
-            }}><span style={{ fontSize:17, fontWeight:900, letterSpacing:'-0.08em' }}>A</span></div>
-            <div>
-              <p style={{ margin:0, fontSize:13, fontWeight:900, color:PHX.text, letterSpacing:'-0.02em', lineHeight:1 }}>
-                ARQDOR<span style={{ color:PHX.purple }}>.ai</span>
-              </p>
-              <p style={{ margin:0, fontSize:8, color:PHX.dim, letterSpacing:'0.08em', fontWeight:600 }}>ARQUITETURA + IA</p>
-            </div>
+          {/* Marca oficial ARQDOR: sem SVG recriado nem duplicação de logotipo. */}
+          <div style={{ width:136, flexShrink:0, display:'flex', alignItems:'center', padding:'0 10px', borderRight:`1px solid ${PHX.border}`, height:'100%' }}>
+            <img
+              src="/brand/arqdor-logo.png"
+              alt="ARQDOR"
+              width={34}
+              height={34}
+              decoding="async"
+              style={{ display:'block', width:34, height:34, objectFit:'contain', flexShrink:0 }}
+            />
           </div>
 
           {/* Project selector */}
@@ -1012,16 +1003,6 @@ function WorkspaceInner() {
               }}
             >
               🤖 {copilotCollapsed ? 'Vendi · posso ajudar aqui' : 'Vendi ▸'}
-            </button>
-
-            {/* ✨ Gerar Render — CTA principal */}
-            <button
-              className="phx-cta"
-              onClick={() => setActiveModule('renders')}
-              title="Abrir o fluxo oficial de Render IA"
-            >
-              <span style={{ fontSize:15 }}>✨</span>
-              Gerar Render
             </button>
 
             {/* Shortcuts hint */}
