@@ -12,6 +12,8 @@ DECLARE
   cols_ok boolean;
   challenge_rls boolean;
   challenge_force boolean;
+  sessions_rls boolean;
+  sessions_force boolean;
 BEGIN
   SELECT c.relrowsecurity,c.relforcerowsecurity
     INTO identities_rls,identities_force
@@ -34,6 +36,15 @@ BEGIN
   IF has_table_privilege('vendorai_app','public.customer_global_link_challenges','SELECT') THEN
     RAISE EXCEPTION 'Unexpected vendorai_app access to link challenges';
   END IF;
+  SELECT cl.relrowsecurity,cl.relforcerowsecurity INTO sessions_rls,sessions_force
+    FROM pg_class cl JOIN pg_namespace n ON n.oid=cl.relnamespace
+   WHERE n.nspname='public' AND cl.relname='customer_global_sessions';
+  IF NOT (coalesce(sessions_rls,false) AND coalesce(sessions_force,false)) THEN
+    RAISE EXCEPTION 'Global sessions RLS missing';
+  END IF;
+  IF has_table_privilege('vendorai_app','public.customer_global_sessions','SELECT') THEN
+    RAISE EXCEPTION 'Unexpected global sessions access';
+  END IF;
   SELECT has_table_privilege('vendorai_app','public.customer_global_identities','SELECT'),
          has_table_privilege('vendorai_app','public.customer_global_tenant_links','SELECT')
     INTO app_identities_select,app_links_select;
@@ -43,7 +54,7 @@ BEGIN
   IF EXISTS (
     SELECT 1 FROM pg_policies
     WHERE schemaname='public'
-      AND tablename IN ('customer_global_identities','customer_global_tenant_links','customer_global_link_challenges')
+      AND tablename IN ('customer_global_identities','customer_global_tenant_links','customer_global_link_challenges','customer_global_sessions')
   ) THEN
     RAISE EXCEPTION 'Global identity access policies enabled too early';
   END IF;
