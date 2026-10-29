@@ -28,7 +28,8 @@ export function getUi20VisibleServices(input: {
     return Boolean(row?.isEnabled && row.commerciallyEntitled !== false);
   }
   if (permittedModule("financeiro")) visible.add("erp");
-  if (arqdorEligible && permittedModule("arch")) visible.add("arqdor");
+  const arch = modules.find((module) => module.moduleKey === "arch");
+  if (arqdorEligible && !(arch?.hasOverride === true && arch.isEnabled === false) && arch?.commerciallyEntitled !== false) visible.add("arqdor");
   // Real NAV_MODULE_CATALOG keys; never infer IA access from missing entries.
   if (["sdr", "vendor_brain", "knowledge_graph"].some(permittedModule)) visible.add("ia");
   if (!permittedModule("leads")) visible.delete("crm");
