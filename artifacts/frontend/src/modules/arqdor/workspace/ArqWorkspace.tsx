@@ -935,24 +935,14 @@ function WorkspaceInner() {
           boxShadow:PHX.shadow, gap:0, zIndex:200, position:'relative',
         }}>
 
-          {/* Logo oficial: usar somente arquivo original da marca quando publicado no frontend. */}
-          <div style={{
-            width:136, flexShrink:0, display:'flex', alignItems:'center', gap:8,
-            padding:'0 16px', borderRight:`1px solid ${PHX.border}`, height:'100%',
-          }}>
-            <div style={{
-              width:28, height:28, borderRadius:8,
-              background:`linear-gradient(135deg, ${PHX.purple} 0%, ${PHX.purpleL} 100%)`,
-              display:'flex', alignItems:'center', justifyContent:'center',
-              fontSize:14, color:'#fff', flexShrink:0,
-              boxShadow:'0 2px 8px rgba(124,58,237,0.3)',
-            }}><span style={{ fontSize:17, fontWeight:900, letterSpacing:'-0.08em' }}>A</span></div>
-            <div>
-              <p style={{ margin:0, fontSize:13, fontWeight:900, color:PHX.text, letterSpacing:'-0.02em', lineHeight:1 }}>
-                ARQDOR<span style={{ color:PHX.purple }}>.ai</span>
-              </p>
-              <p style={{ margin:0, fontSize:8, color:PHX.dim, letterSpacing:'0.08em', fontWeight:600 }}>ARQUITETURA + IA</p>
-            </div>
+          {/* Marca oficial ARQDOR: sem SVG recriado nem duplicação de logotipo. */}
+          <div style={{ width:136, flexShrink:0, display:'flex', alignItems:'center', padding:'0 10px', borderRight:`1px solid ${PHX.border}`, height:'100%' }}>
+            <img
+              src="/branding/arqdor/logo-reduzida.png"
+              alt="ARQDOR"
+              style={{ display:'block', width:'100%', height:34, objectFit:'contain' }}
+              onError={event => { event.currentTarget.style.display='none' }}
+            />
           </div>
 
           {/* Project selector */}
