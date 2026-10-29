@@ -10,5 +10,6 @@
 - Suíte frontend: 846/847 testes passaram; a falha é uma expectativa existente de rota `/arch`, enquanto o código-base define `/arch/studio`. A mesma expectativa e rota estão na base `main` (`05d3ccc`).
 - Auditoria UI: bloqueada (282 achados HIGH; baseline configurado 170; contratos HTTP 179 vs 170; erros visíveis 64 vs 56). O gate é repo-wide e não foi possível atribuir os achados à mudança do logo.
 - Build frontend: `vite build` concluído; avisos de sourcemap e chunks grandes. Typecheck não concluído.
-- Verificação visual claro/escuro: pendente do preview da branch.
-- Estado: implementado; aprovação geral pendente devido aos gates acima e à verificação visual. Merge e publicação não executados.
+- Preview da branch: Cloudflare Pages reportou deploy bem-sucedido em `5a578497.vendorai.pages.dev`; o PNG foi servido com 1254 × 1254 px.
+- Contraste visual: o PNG original foi conferido em fundos claro e escuro; o símbolo verde permanece visível sem filtro e sem distorção. A tela do Workspace não pôde ser acessada: o preview redireciona ao login e o acesso de demonstração retornou HTTP 500.
+- Estado: implementado e preview publicado; aprovação geral pendente pelos gates acima e pela inspeção do Workspace. Merge e publicação de produção não executados.
