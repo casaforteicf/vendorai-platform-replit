@@ -44,4 +44,16 @@ describe("HOTEL-03 meal forecasting", () => {
     ])[0]?.status).toBe("incompatible_unit");
   });
 
+  it("consolidates the same ingredient across five services without subtracting stock five times", () => {
+    const demand = forecastIngredientDemand([
+      {productId:"flour",grossQuantityPerBatch:0.5,batchPortions:10,plannedPortions:20,unit:"kg"},
+      {productId:"flour",grossQuantityPerBatch:200,batchPortions:10,plannedPortions:10,unit:"g"},
+      {productId:"flour",grossQuantityPerBatch:1,batchPortions:20,plannedPortions:40,unit:"kg"},
+      {productId:"flour",grossQuantityPerBatch:300,batchPortions:10,plannedPortions:10,unit:"g"},
+      {productId:"flour",grossQuantityPerBatch:0.25,batchPortions:5,plannedPortions:10,unit:"kg"},
+    ]);
+    expect(demand).toEqual([{productId:"flour",unit:"g",required:4000}]);
+    expect(suggestPurchaseQuantity(demand[0]!.required,2500)).toBe(1500);
+  });
+
 });
