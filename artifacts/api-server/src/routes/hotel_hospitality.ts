@@ -1,6 +1,7 @@
 import {Router,type IRouter} from "express";
 import {pool} from "@workspace/db";
 import {z} from "zod/v4";
+import {validStay} from "../lib/hotel-stay-rules.js";
 const router:IRouter=Router();
 function allowed(req:Express.Request,tenantId:string,write=false){
  const u=req.user;
@@ -84,7 +85,7 @@ router.get("/tenants/:tenantId/hotelaria/hospedagem/disponibilidade",async(req,r
  const t=String(req.params.tenantId);
  if(!allowed(req,t))return res.status(403).json({error:"Forbidden"});
  const input=z.object({arrivalDate:z.iso.date(),departureDate:z.iso.date(),guestCount:z.coerce.number().int().min(1).max(30)}).safeParse(req.query);
- if(!input.success||input.data.departureDate<=input.data.arrivalDate)return res.status(422).json({error:"Invalid search period"});
+ if(!input.success||!validStay(input.data.arrivalDate,input.data.departureDate))return res.status(422).json({error:"Invalid search period"});
  const days=(Date.parse(input.data.departureDate+"T00:00:00Z")-Date.parse(input.data.arrivalDate+"T00:00:00Z"))/86400000;
  if(days>365)return res.status(422).json({error:"Maximum 365 nights"});
  try{
@@ -101,7 +102,7 @@ router.get("/tenants/:tenantId/hotelaria/hospedagem/disponibilidade",async(req,r
 });
 router.post("/tenants/:tenantId/hotelaria/hospedagem/reservas",async(req,res)=>{
  const t=String(req.params.tenantId);if(!allowed(req,t,true))return res.status(403).json({error:"Forbidden"});
- const v=bookingInput.safeParse(req.body);if(!v.success||v.data.departureDate<=v.data.arrivalDate)return res.status(422).json({error:"Invalid booking dates or party"});
+ const v=bookingInput.safeParse(req.body);if(!v.success||!validStay(v.data.arrivalDate,v.data.departureDate))return res.status(422).json({error:"Invalid booking dates or party"});
  const nights=(Date.parse(v.data.departureDate+"T00:00:00Z")-Date.parse(v.data.arrivalDate+"T00:00:00Z"))/86400000;
  if(!Number.isFinite(nights)||nights>365)return res.status(422).json({error:"Maximum 365 nights"});
  try{
