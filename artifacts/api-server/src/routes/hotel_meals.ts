@@ -264,6 +264,8 @@ router.get("/tenants/:tenantId/hotelaria/refeicoes/consolidado", async (req,res)
   const parsed=periodSchema.safeParse({start:req.query.start,end:req.query.end});
   if (!parsed.success) return res.status(422).json({error:"Use start/end as ISO dates"});
   const {start,end}=parsed.data;
+  const locationId = typeof req.query.locationId === "string" ? req.query.locationId : null;
+  if (locationId && !uuid.safeParse(locationId).success) return res.status(422).json({error:"Invalid location ID"});
   const dayDiff=(Date.parse(end+"T00:00:00Z")-Date.parse(start+"T00:00:00Z"))/86400000;
   if (!Number.isInteger(dayDiff) || dayDiff<0 || dayDiff>6)
     return res.status(422).json({error:"Period must span 1 to 7 days"});
@@ -294,6 +296,10 @@ router.get("/tenants/:tenantId/hotelaria/refeicoes/consolidado", async (req,res)
        JOIN hotel_recipe_ingredients i ON i.tenant_id=l.tenant_id AND i.recipe_id=l.recipe_id
        WHERE f.tenant_id=$1 AND f.service_date BETWEEN $2::date AND $3::date`,
       [tenantId,start,end]);
+    const physical = locationId ? await client.query(
+      "SELECT inv.produto_id AS product_id, inv.id AS item_id, inv.unidade AS unit, b.quantity FROM inventory_items inv JOIN hotel_stock_location_balances b ON b.tenant_id=inv.tenant_id AND b.inventory_item_id=inv.id WHERE inv.tenant_id=$1 AND b.location_id=$2",
+      [tenantId,locationId]
+    ) : null;
     await client.query("COMMIT");
     if (recipes.rows.some(r=>r.recipe_status!=="approved"))
       return res.status(409).json({error:"Planned recipe no longer approved; review the meal plan"});
@@ -306,8 +312,9 @@ router.get("/tenants/:tenantId/hotelaria/refeicoes/consolidado", async (req,res)
       unit:r.quantity_unit,
     }));
     const demand=forecastIngredientDemand(lines);
+    const shortages = physical ? compareDemandWithStock(demand, physical.rows.map(p=>({productId:p.product_id,itemId:p.item_id,unit:p.unit,quantity:Number(p.quantity)}))) : null;
     return res.json({
-      start,end,forecasts:forecasts.rows,demand,
+      start,end,forecasts:forecasts.rows,demand, locationId, shortages, complete: shortages?.every(x=>x.status==="ready") ?? false,
       occupancySource:"recorded_forecasts",
       stockDeducted:false,purchaseOrderCreated:false,
       notice:"Demand is consolidated across meals and dates. Physical stock must be deducted only once for the selected planning period.",
