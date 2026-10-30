@@ -331,7 +331,7 @@ export default function PortalObra() {
     try { return localStorage.getItem(portalSessionKey(token)) ?? ""; } catch { return ""; }
   });
   const [forceAuth, setForceAuth] = useState(false);
-  const [showArqdorClient, setShowArqdorClient] = useState(false);
+  const [showArqdorClient, setShowArqdorClient] = useState(true);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [approving, setApproving] = useState(false);
@@ -531,7 +531,7 @@ export default function PortalObra() {
         </div>
       </header>
 
-      {data.auth?.authenticated ? <div className="mx-auto max-w-4xl px-4 pt-5"><button type="button" onClick={() => setShowArqdorClient(true)} className="rounded-lg bg-emerald-800 px-4 py-3 text-sm font-semibold text-white">Abrir ARQDOR Cliente — Meus projetos</button></div> : null}
+      {data.auth?.authenticated ? <div className="mx-auto max-w-4xl px-4 pt-5"><button type="button" onClick={() => setShowArqdorClient(true)} className="rounded-lg bg-emerald-800 px-4 py-3 text-sm font-semibold text-white">Voltar ao ARQDOR Cliente — Meus projetos</button></div> : null}
       <main className="mx-auto max-w-4xl px-4 py-8">
         <div className="mb-8 rounded-2xl border border-gray-100 bg-white p-6 shadow-sm">
           <h1 className="mb-1 text-2xl font-bold text-gray-900">{obra.nome}</h1>
