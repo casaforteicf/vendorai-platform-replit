@@ -407,7 +407,7 @@ function eventLabel(type: string) {
 }
 function stageClass(stage: string) {
   if (stage === "prioridade") return "border-red-500/30 bg-red-500/10 text-red-700 dark:text-red-300";
-  if (stage === "oportunidade") return "border-orange-500/30 bg-orange-500/10 text-orange-700 dark:text-orange-300";
+  if (stage === "oportunidade") return "border-blue-500/30 bg-blue-500/10 text-blue-700 dark:text-blue-300";
   if (stage === "nutricao") return "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300";
   if (stage === "remarketing") return "border-blue-500/30 bg-blue-500/10 text-blue-700 dark:text-blue-300";
   return "border-border bg-muted text-muted-foreground";
@@ -789,7 +789,7 @@ export default function VisitorIntelligence() {
           <div className="divide-y">
             {filteredSessions.map((session) => <button key={session.sessionId} type="button" onClick={() => selectSession(session.sessionId)} className={`w-full px-4 py-3 text-left hover:bg-muted/40 ${selectedSessionId === session.sessionId ? "bg-muted/40 ring-1 ring-inset ring-primary/20" : ""}`}>
               <div className="grid gap-2 lg:grid-cols-[minmax(210px,1.15fr)_minmax(200px,1fr)_115px_minmax(150px,.8fr)] lg:items-center">
-                <div><div className="flex items-center gap-2"><span className={`h-2.5 w-2.5 rounded-full ${session.online ? "bg-emerald-500" : "bg-muted-foreground/30"}`} /><span className="truncate font-medium">{visitorLabel(session)}</span>{session.intent.score >= 60 ? <Flame className="h-4 w-4 text-orange-600" /> : null}</div><div className="mt-1 text-[11px] text-muted-foreground">{session.identified ? "Lead identificado" : "Visitante anônimo"} · {locationLabel(session)}</div></div>
+                <div><div className="flex items-center gap-2"><span className={`h-2.5 w-2.5 rounded-full ${session.online ? "bg-emerald-500" : "bg-muted-foreground/30"}`} /><span className="truncate font-medium">{visitorLabel(session)}</span>{session.intent.score >= 60 ? <Flame className="h-4 w-4 text-blue-600" /> : null}</div><div className="mt-1 text-[11px] text-muted-foreground">{session.identified ? "Lead identificado" : "Visitante anônimo"} · {locationLabel(session)}</div></div>
                 <div className="flex flex-wrap gap-1">{session.signalLabels.slice(0, 4).map((signal) => <span key={signal} className="rounded-full border bg-background px-2 py-0.5 text-[10px]">{signal}</span>)}{!session.signalLabels.length ? <span className="text-xs text-muted-foreground">Sem sinal forte ainda</span> : null}</div>
                 <div><span className={`inline-flex rounded-full border px-2 py-1 text-xs font-semibold ${stageClass(session.commercialStage)}`}>{session.intent.score}/100</span><div className="mt-1 text-[10px] text-muted-foreground">{session.commercialStageLabel}</div></div>
                 <div className="text-xs"><div className="truncate font-medium">{session.currentPath || "/"}</div><div className="mt-1 text-muted-foreground">{duration(session.durationMs)} · {sourceLabel(session)}</div></div>
