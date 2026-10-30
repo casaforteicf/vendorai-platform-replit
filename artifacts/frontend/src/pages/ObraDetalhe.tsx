@@ -1,3 +1,4 @@
+import { VendorBackButton } from "@/components/ui/back-button";
 import { useState, useEffect, useRef } from "react";
 import * as XLSX from "xlsx";
 import { useRoute, Link } from "wouter";
@@ -49,16 +50,7 @@ import { Progress } from "@/components/ui/progress";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
-import {
-  HardHat, ArrowLeft, Plus, Calendar, DollarSign,
-  ClipboardList, Package, ShoppingCart, BarChart3,
-  CheckCircle2, Clock, PauseCircle, Pencil, Trash2,
-  ChevronDown, ChevronUp, BookOpen, User, Building2,
-  Upload, X, Image as ImageIcon, FileSpreadsheet, Copy,
-  Send, ThumbsUp, ThumbsDown, ChevronRight, AlertCircle,
-  Search, Loader2, FileText, Download, Sparkles, Store,
-  Zap, Sun, BatteryCharging, CarFront, Droplets, Gauge, Flame, Waves, Activity, FileBarChart2, History,
-} from "lucide-react";
+import { HardHat, Plus, Calendar, DollarSign, ClipboardList, Package, ShoppingCart, BarChart3, CheckCircle2, Clock, PauseCircle, Pencil, Trash2, ChevronDown, ChevronUp, BookOpen, User, Building2, Upload, X, Image as ImageIcon, FileSpreadsheet, Copy, Send, ThumbsUp, ThumbsDown, ChevronRight, AlertCircle, Search, Loader2, FileText, Download, Sparkles, Store, Zap, Sun, BatteryCharging, CarFront, Droplets, Gauge, Flame, Waves, Activity, FileBarChart2, History } from "lucide-react";
 import TabFinanceiro from "./TabFinanceiro";
 import EquipeProducao from "./EquipeProducao";
 import RealProcurementWorkspace from "@/modules/arqdor/workspace/procurement-studio/RealProcurementWorkspace";
@@ -4215,7 +4207,7 @@ export default function ObraDetalhe() {
     return (
       <div className="text-center py-20 text-muted-foreground">
         <p>Obra não encontrada</p>
-        <Link href="/obras"><Button variant="link">← Voltar</Button></Link>
+        <VendorBackButton to="/obras" label="Voltar para obras" />
       </div>
     );
   }
@@ -4240,12 +4232,7 @@ export default function ObraDetalhe() {
     <div className="space-y-6">
       {/* Header */}
       <div className="space-y-3">
-        <Link href="/obras">
-          <Button variant="ghost" size="sm" className="gap-2 -ml-2 text-muted-foreground">
-            <ArrowLeft className="h-4 w-4" />
-            Obras
-          </Button>
-        </Link>
+        <VendorBackButton to="/obras" label="Voltar para obras" className="-ml-2" />
 
         <div className="flex items-start justify-between gap-3 flex-wrap">
           <div>
