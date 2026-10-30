@@ -73,7 +73,7 @@ const BASE_SCORE = {
 
 function riskLabel(score: number) {
   if (score >= 7) return { label: "Muito alto", className: "border-destructive/40 bg-destructive/10 text-destructive" };
-  if (score >= 5) return { label: "Alto", className: "border-orange-500/30 bg-orange-500/10 text-orange-700 dark:text-orange-300" };
+  if (score >= 5) return { label: "Alto", className: "border-red-500/30 bg-red-500/10 text-red-700 dark:text-red-300" };
   if (score >= 3) return { label: "Moderado", className: "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300" };
   return { label: "Baixo", className: "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300" };
 }
