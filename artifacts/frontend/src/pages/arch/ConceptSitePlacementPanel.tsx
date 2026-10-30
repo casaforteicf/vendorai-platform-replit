@@ -125,9 +125,9 @@ export default function ConceptSitePlacementPanel({
 
   return (
     <div className="space-y-4">
-      <div className="rounded-2xl border border-blue-200 bg-gradient-to-br from-blue-50 to-white p-4">
+      <div className="rounded-2xl border border-orange-200 bg-gradient-to-br from-orange-50 to-white p-4">
         <div className="flex items-start gap-3">
-          <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-blue-500 text-white">
+          <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-orange-500 text-white">
             <Home className="h-5 w-5" />
           </span>
           <div>
@@ -189,7 +189,7 @@ export default function ConceptSitePlacementPanel({
               width={bounds.width}
               height={bounds.depth}
               fill="none"
-              stroke={fits ? "#2563eb" : "#dc2626"}
+              stroke={fits ? "#f97316" : "#dc2626"}
               strokeWidth="0.12"
               strokeDasharray="0.3 0.16"
             />
@@ -206,7 +206,7 @@ export default function ConceptSitePlacementPanel({
         </div>
         <div className="mt-2 flex flex-wrap gap-2 text-[9px] font-semibold text-slate-500">
           <span className="rounded-full bg-emerald-50 px-2 py-1 text-emerald-700">Verde = área edificável</span>
-          <span className="rounded-full bg-blue-50 px-2 py-1 text-blue-700">Laranja = perímetro da casa</span>
+          <span className="rounded-full bg-orange-50 px-2 py-1 text-orange-700">Laranja = perímetro da casa</span>
           <span className="rounded-full bg-slate-200 px-2 py-1 text-slate-700">Faixa escura = rua</span>
         </div>
       </div>
@@ -220,7 +220,7 @@ export default function ConceptSitePlacementPanel({
       <section className="space-y-2">
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-2 text-xs font-bold text-slate-800">
-            <Route className="h-4 w-4 text-blue-500" />
+            <Route className="h-4 w-4 text-orange-500" />
             Formato do terreno
           </div>
           <span className="text-[10px] font-semibold text-slate-500">{lotArea.toFixed(1)} m² reais</span>
@@ -351,7 +351,7 @@ export default function ConceptSitePlacementPanel({
                   : placement.vehicleAccessSide,
               })}
               className={placement.frontSide === value
-                ? "rounded-xl border-2 border-blue-500 bg-blue-50 p-2 text-blue-700"
+                ? "rounded-xl border-2 border-orange-500 bg-orange-50 p-2 text-orange-700"
                 : "rounded-xl border bg-white p-2 text-slate-600"}
             >
               <Icon className="mx-auto h-4 w-4" />
@@ -363,7 +363,7 @@ export default function ConceptSitePlacementPanel({
 
       <section className="space-y-2">
         <div className="flex items-center gap-2 text-xs font-bold text-slate-800">
-          <Compass className="h-4 w-4 text-blue-500" />
+          <Compass className="h-4 w-4 text-orange-500" />
           Contexto real do terreno
         </div>
         <p className="text-[10px] leading-4 text-slate-500">
@@ -457,21 +457,21 @@ export default function ConceptSitePlacementPanel({
 
       {bounds && suggestions.length > 0 && (
         <section>
-          <div className="mb-2 flex items-center justify-between gap-2"><div className="flex items-center gap-2 text-xs font-bold text-slate-800"><Sparkles className="h-4 w-4 text-blue-500" />Sugestões automáticas</div><span className="text-[9px] font-semibold text-slate-400">1 clique para aplicar</span></div>
+          <div className="mb-2 flex items-center justify-between gap-2"><div className="flex items-center gap-2 text-xs font-bold text-slate-800"><Sparkles className="h-4 w-4 text-orange-500" />Sugestões automáticas</div><span className="text-[9px] font-semibold text-slate-400">1 clique para aplicar</span></div>
           <div className="space-y-2">
             {suggestions.map((suggestion) => (
               <button
                 key={suggestion.id}
                 type="button"
                 onClick={() => { setActiveSuggestionId(suggestion.id); applyOrigin(suggestion.origin.x, suggestion.origin.y); }}
-                className={activeSuggestionId === suggestion.id ? "w-full rounded-2xl border-2 border-blue-500 bg-blue-50 p-3 text-left shadow-sm" : "w-full rounded-2xl border bg-white p-3 text-left transition hover:border-blue-300 hover:bg-blue-50/40"}
+                className={activeSuggestionId === suggestion.id ? "w-full rounded-2xl border-2 border-orange-500 bg-orange-50 p-3 text-left shadow-sm" : "w-full rounded-2xl border bg-white p-3 text-left transition hover:border-orange-300 hover:bg-orange-50/40"}
               >
                 <div className="flex items-start justify-between gap-3">
                   <div>
                     <div className="text-[11px] font-bold text-slate-900">{suggestion.title}</div>
                     <p className="mt-1 text-[10px] leading-4 text-slate-500">{suggestion.description}</p>
                   </div>
-                  <span className={activeSuggestionId === suggestion.id ? "flex shrink-0 items-center gap-1 rounded-lg bg-blue-500 px-2 py-1 text-[9px] font-bold text-white" : "shrink-0 rounded-lg bg-slate-100 px-2 py-1 text-[9px] font-bold text-slate-600"}>
+                  <span className={activeSuggestionId === suggestion.id ? "flex shrink-0 items-center gap-1 rounded-lg bg-orange-500 px-2 py-1 text-[9px] font-bold text-white" : "shrink-0 rounded-lg bg-slate-100 px-2 py-1 text-[9px] font-bold text-slate-600"}>
                     {activeSuggestionId === suggestion.id && <CheckCircle2 className="h-3 w-3" />}
                     {activeSuggestionId === suggestion.id ? "Aplicada" : suggestion.score ? `${suggestion.score} pts` : "Aplicar"}
                   </span>
@@ -550,7 +550,7 @@ export default function ConceptSitePlacementPanel({
               type="button"
               disabled={!fits}
               onClick={onContinue}
-              className="flex w-full items-center justify-center gap-2 rounded-xl bg-blue-500 px-4 py-3 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-40"
+              className="flex w-full items-center justify-center gap-2 rounded-xl bg-orange-500 px-4 py-3 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-40"
             >
               <CheckCircle2 className="h-4 w-4" />
               Confirmar implantação e continuar
