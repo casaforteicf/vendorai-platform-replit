@@ -39,4 +39,25 @@ describe("HOTEL-02: gastronomic acquisition cost", () => {
       purchaseTotalCost: 2,
     }], 0)).toThrow();
   });
+  it("converts liters into milliliters without changing unit costs", () => {
+    const result = calculateRecipeCost([{
+      productId: "juice", quantityGross: 250, quantityUnit: "ml",
+      yieldFactor: 1, purchaseQuantity: 2, purchaseUnit: "l",
+      purchaseTotalCost: 16,
+    }], 2);
+    expect(result.totalCost).toBe(2);
+    expect(result.costPerPortion).toBe(1);
+  });
+
+  it("rejects invalid purchase and yield data", () => {
+    const item = {
+      productId: "x", quantityGross: 1, quantityUnit: "kg" as const,
+      yieldFactor: 1, purchaseQuantity: 1, purchaseUnit: "kg" as const,
+      purchaseTotalCost: 3,
+    };
+    expect(() => calculateRecipeCost([{ ...item, yieldFactor: 1.2 }], 1)).toThrow();
+    expect(() => calculateRecipeCost([{ ...item, purchaseQuantity: 0 }], 1)).toThrow();
+    expect(() => calculateRecipeCost([{ ...item, purchaseTotalCost: -1 }], 1)).toThrow();
+  });
+
 });
