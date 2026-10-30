@@ -34,6 +34,7 @@ export default function HotelPlanejamento() {
   const [recipeLines,setRecipeLines]=useState<PlannedRecipe[]>([{recipeId:"",plannedPortions:1}]);
   const [menuName,setMenuName]=useState("");
   const [menuImport,setMenuImport]=useState("");
+  const [pdfPreview,setPdfPreview]=useState("");
   const [summary,setSummary]=useState<Summary|null>(null);
   const [locations,setLocations]=useState<StockLocation[]>([]);
   const [requests,setRequests]=useState<PurchaseRequest[]>([]);
@@ -61,6 +62,24 @@ export default function HotelPlanejamento() {
     }catch(e){setMessage(String(e));}
   }
   useEffect(()=>{void reload();},[tenantId,token,date,locationId]);
+  async function loadPdf(file:File) {
+    if(file.size>5_000_000 || file.size===0){setMessage("PDF inválido ou maior que 5 MB.");return;}
+    setBusy(true);setMessage("");
+    try {
+      const base64=await new Promise<string>((resolve,reject)=>{
+        const reader=new FileReader();
+        reader.onerror=()=>reject(new Error("Falha na leitura"));
+        reader.onload=()=>resolve(String(reader.result).split(",")[1]??"");
+        reader.readAsDataURL(file);
+      });
+      const result=await api<{text:string;pages:number}>("/cardapios/importar-pdf",{
+        method:"POST",body:JSON.stringify({base64})
+      });
+      setPdfPreview(result.text);
+      setMenuName(file.name.replace(/\\.pdf$/i,"").slice(0,120));
+      setMessage("PDF lido. Confira o texto e vincule manualmente as receitas aprovadas antes de salvar.");
+    }catch(e){setMessage(String(e));}finally{setBusy(false);}
+  }
   function importMenu() {
     try {
       const raw:unknown=JSON.parse(menuImport);
@@ -138,6 +157,14 @@ export default function HotelPlanejamento() {
         <h3 className="font-medium">Cardápio: criar ou importar</h3>
         <label className="block text-sm">Nome do cardápio<Input maxLength={120} value={menuName} onChange={e=>setMenuName(e.target.value)} placeholder="Ex.: Café da manhã de sábado" /></label>
         <Button variant="outline" type="button" onClick={clearMenu}>Criar novo cardápio</Button>
+        <label className="block text-sm">Importar cardápio em PDF
+          <Input type="file" accept=".pdf,application/pdf" disabled={busy} onChange={e=>{const file=e.target.files?.[0];if(file)void loadPdf(file);}} />
+        </label>
+        {pdfPreview&&<div className="space-y-2">
+          <p className="text-sm font-medium">Prévia do texto extraído — conferência obrigatória</p>
+          <textarea readOnly className="w-full rounded-md border bg-background p-2 text-sm" rows={8} value={pdfPreview} />
+          <p className="text-xs text-muted-foreground">O PDF não cadastra receitas ou ingredientes automaticamente. Vincule abaixo as fichas técnicas existentes. PDFs digitalizados sem texto ainda exigem OCR.</p>
+        </div>}
         <label className="block text-sm">Selecionar arquivo de cardápio (.json)
           <Input type="file" accept=".json,application/json" onChange={async e=>{
             const file=e.target.files?.[0];if(!file)return;
