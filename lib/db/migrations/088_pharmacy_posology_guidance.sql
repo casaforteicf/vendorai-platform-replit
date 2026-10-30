@@ -26,7 +26,16 @@ CREATE UNIQUE INDEX IF NOT EXISTS farmacia_bulas_tenant_principio_uidx
   ON farmacia_bulas(tenant_id, principio_ativo);
 
 ALTER TABLE farmacia_bulas ENABLE ROW LEVEL SECURITY;
-REVOKE ALL ON farmacia_bulas FROM anon, authenticated;
+REVOKE ALL ON farmacia_bulas FROM PUBLIC;
+DO $$
+BEGIN
+  IF to_regrole('anon') IS NOT NULL THEN
+    EXECUTE 'REVOKE ALL ON farmacia_bulas FROM anon';
+  END IF;
+  IF to_regrole('authenticated') IS NOT NULL THEN
+    EXECUTE 'REVOKE ALL ON farmacia_bulas FROM authenticated';
+  END IF;
+END $$;
 
 INSERT INTO agent_defaults (
   id, agent_key, nome, descricao, categoria, system_prompt_base,
