@@ -1177,7 +1177,7 @@ export default function ConceptModel3D({
                 type="button"
                 onClick={() => setTransformMode("translate")}
                 className={transformMode === "translate"
-                  ? "bg-blue-500 px-3 py-2 text-[11px] font-semibold text-white"
+                  ? "bg-orange-500 px-3 py-2 text-[11px] font-semibold text-white"
                   : "px-3 py-2 text-[11px] font-semibold text-slate-600 hover:bg-slate-50"}
               >
                 Mover
@@ -1186,7 +1186,7 @@ export default function ConceptModel3D({
                 type="button"
                 onClick={() => setTransformMode("rotate")}
                 className={transformMode === "rotate"
-                  ? "border-l border-blue-400 bg-blue-500 px-3 py-2 text-[11px] font-semibold text-white"
+                  ? "border-l border-orange-400 bg-orange-500 px-3 py-2 text-[11px] font-semibold text-white"
                   : "border-l border-slate-200 px-3 py-2 text-[11px] font-semibold text-slate-600 hover:bg-slate-50"}
               >
                 Girar
@@ -1471,7 +1471,7 @@ export default function ConceptModel3D({
                 type="button"
                 onClick={() => setRenderQuality(value)}
                 className={renderQuality === value
-                  ? "bg-blue-500 px-2.5 py-2 text-[11px] font-semibold text-white"
+                  ? "bg-orange-500 px-2.5 py-2 text-[11px] font-semibold text-white"
                   : "border-l border-slate-200 px-2.5 py-2 text-[11px] font-semibold text-slate-600 first:border-l-0 hover:bg-slate-50"}
               >
                 {label}
@@ -1479,11 +1479,11 @@ export default function ConceptModel3D({
             ))}
           </div>
           {webglReady && navigationMode === "tour" && activeTourPoint && (
-            <div className="flex items-center gap-1 rounded-lg border border-blue-200 bg-blue-50 p-1">
+            <div className="flex items-center gap-1 rounded-lg border border-orange-200 bg-orange-50 p-1">
               <button
                 type="button"
                 onClick={() => goToTourPoint(tourIndex - 1)}
-                className="rounded-md px-2 py-1.5 text-[10px] font-semibold text-blue-800 hover:bg-blue-100"
+                className="rounded-md px-2 py-1.5 text-[10px] font-semibold text-orange-800 hover:bg-orange-100"
               >
                 ←
               </button>
@@ -1492,7 +1492,7 @@ export default function ConceptModel3D({
                 onClick={() => {
                   setTourToken((value) => value + 1);
                 }}
-                className="min-w-[110px] rounded-md px-2 py-1.5 text-[10px] font-semibold text-blue-900 hover:bg-blue-100"
+                className="min-w-[110px] rounded-md px-2 py-1.5 text-[10px] font-semibold text-orange-900 hover:bg-orange-100"
                 title={`${activeTourPoint.label} · ${activeTourPoint.area.toFixed(1)} m²`}
               >
                 {activeTourPoint.label}
@@ -1500,11 +1500,11 @@ export default function ConceptModel3D({
               <button
                 type="button"
                 onClick={() => goToTourPoint(tourIndex + 1)}
-                className="rounded-md px-2 py-1.5 text-[10px] font-semibold text-blue-800 hover:bg-blue-100"
+                className="rounded-md px-2 py-1.5 text-[10px] font-semibold text-orange-800 hover:bg-orange-100"
               >
                 →
               </button>
-              <span className="px-1 text-[9px] font-semibold text-blue-700">
+              <span className="px-1 text-[9px] font-semibold text-orange-700">
                 {tourIndex + 1}/{tourPoints.length}
               </span>
             </div>
@@ -1521,7 +1521,7 @@ export default function ConceptModel3D({
                   type="button"
                   onClick={() => setWalkSpeed(speed)}
                   className={Math.abs(walkSpeed - speed) < 0.001
-                    ? "rounded-md bg-blue-500 px-2 py-1.5 text-[10px] font-semibold text-white"
+                    ? "rounded-md bg-orange-500 px-2 py-1.5 text-[10px] font-semibold text-white"
                     : "rounded-md px-2 py-1.5 text-[10px] font-semibold text-slate-600 hover:bg-slate-50"}
                 >
                   {label}
@@ -1560,7 +1560,7 @@ export default function ConceptModel3D({
                 lightingMode,
                 interiorMode ? "interior" : "exterior",
               )}
-              className="flex items-center gap-2 rounded-lg bg-blue-500 px-3 py-2 text-xs font-semibold text-white shadow-sm hover:bg-blue-600"
+              className="flex items-center gap-2 rounded-lg bg-orange-500 px-3 py-2 text-xs font-semibold text-white shadow-sm hover:bg-orange-600"
             >
               <Sparkles className="h-4 w-4" />
               Renderizar vista
@@ -1616,7 +1616,7 @@ export default function ConceptModel3D({
               });
             }}
             className={interiorMode
-              ? "hidden rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-700 md:inline-flex"
+              ? "hidden rounded-lg border border-orange-200 bg-orange-50 px-3 py-2 text-xs font-semibold text-orange-700 md:inline-flex"
               : "hidden rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 md:inline-flex"}
           >
             {interiorMode ? "Interior ativo" : "Modo interior"}
@@ -1626,7 +1626,7 @@ export default function ConceptModel3D({
             onClick={() => setShowRoof((value) => !value)}
             className={showRoof
               ? "hidden rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 md:inline-flex"
-              : "hidden rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-700 md:inline-flex"}
+              : "hidden rounded-lg border border-orange-200 bg-orange-50 px-3 py-2 text-xs font-semibold text-orange-700 md:inline-flex"}
           >
             {showRoof ? "Ocultar cobertura" : "Mostrar cobertura"}
           </button>
@@ -1636,19 +1636,19 @@ export default function ConceptModel3D({
             onClick={() => setShowLabels((value) => !value)}
             className={showLabels
               ? "hidden rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 md:inline-flex"
-              : "hidden rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-700 md:inline-flex"}
+              : "hidden rounded-lg border border-orange-200 bg-orange-50 px-3 py-2 text-xs font-semibold text-orange-700 md:inline-flex"}
           >
             {showLabels ? "Ocultar nomes" : "Mostrar nomes"}
           </button>
           )}
           {paintTool && (
-            <div className="flex items-center gap-2 rounded-lg border border-blue-300 bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-800">
+            <div className="flex items-center gap-2 rounded-lg border border-orange-300 bg-orange-50 px-3 py-2 text-xs font-semibold text-orange-800">
               <span className="h-3 w-3 rounded-full border border-black/10" style={{ background: paintTool.swatch }} />
               Pintar {paintTool.target === "wall" ? "parede" : paintTool.target === "floor" ? "piso" : "objeto"} · {paintTool.name}
               <button
                 type="button"
                 onClick={onCancelPaint}
-                className="ml-1 rounded-md border border-blue-200 bg-white px-2 py-0.5 text-[10px] font-bold"
+                className="ml-1 rounded-md border border-orange-200 bg-white px-2 py-0.5 text-[10px] font-bold"
               >
                 Sair
               </button>
@@ -1659,7 +1659,7 @@ export default function ConceptModel3D({
               type="button"
               onClick={() => setShowAllFloors((value) => !value)}
               className={showAllFloors
-                ? "hidden rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-700 md:inline-flex"
+                ? "hidden rounded-lg border border-orange-200 bg-orange-50 px-3 py-2 text-xs font-semibold text-orange-700 md:inline-flex"
                 : "hidden rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 md:inline-flex"}
             >
               {showAllFloors ? "Todos pavimentos" : "Pavimento ativo"}
@@ -1801,7 +1801,7 @@ export default function ConceptModel3D({
             onPointerUp={() => setWalkControl({ forward: 0, strafe: 0 })}
             onPointerCancel={() => setWalkControl({ forward: 0, strafe: 0 })}
             onPointerLeave={() => setWalkControl({ forward: 0, strafe: 0 })}
-            className="grid h-12 w-12 place-items-center rounded-xl bg-white/15 text-xl font-bold text-white active:bg-blue-500"
+            className="grid h-12 w-12 place-items-center rounded-xl bg-white/15 text-xl font-bold text-white active:bg-orange-500"
           >
             ↑
           </button>
@@ -1817,7 +1817,7 @@ export default function ConceptModel3D({
             onPointerUp={() => setWalkControl({ forward: 0, strafe: 0 })}
             onPointerCancel={() => setWalkControl({ forward: 0, strafe: 0 })}
             onPointerLeave={() => setWalkControl({ forward: 0, strafe: 0 })}
-            className="grid h-12 w-12 place-items-center rounded-xl bg-white/15 text-xl font-bold text-white active:bg-blue-500"
+            className="grid h-12 w-12 place-items-center rounded-xl bg-white/15 text-xl font-bold text-white active:bg-orange-500"
           >
             ←
           </button>
@@ -1832,7 +1832,7 @@ export default function ConceptModel3D({
             onPointerUp={() => setWalkControl({ forward: 0, strafe: 0 })}
             onPointerCancel={() => setWalkControl({ forward: 0, strafe: 0 })}
             onPointerLeave={() => setWalkControl({ forward: 0, strafe: 0 })}
-            className="grid h-12 w-12 place-items-center rounded-xl bg-white/15 text-xl font-bold text-white active:bg-blue-500"
+            className="grid h-12 w-12 place-items-center rounded-xl bg-white/15 text-xl font-bold text-white active:bg-orange-500"
           >
             ↓
           </button>
@@ -1847,7 +1847,7 @@ export default function ConceptModel3D({
             onPointerUp={() => setWalkControl({ forward: 0, strafe: 0 })}
             onPointerCancel={() => setWalkControl({ forward: 0, strafe: 0 })}
             onPointerLeave={() => setWalkControl({ forward: 0, strafe: 0 })}
-            className="grid h-12 w-12 place-items-center rounded-xl bg-white/15 text-xl font-bold text-white active:bg-blue-500"
+            className="grid h-12 w-12 place-items-center rounded-xl bg-white/15 text-xl font-bold text-white active:bg-orange-500"
           >
             →
           </button>
@@ -2004,7 +2004,7 @@ export default function ConceptModel3D({
                       fill={floor3dMaterial(level.floorMaterials?.[space.id])?.fill ?? (level.floor === activeFloor ? "#e2e8f0" : "#cbd5e1")}
                       // Vista externa com todos os pavimentos: laje opaca (antes parecia vidro azulado).
                       fillOpacity={selectedClosedSpaceId === space.id ? "0.96" : showAllFloors && !interiorMode && level.floor > 0 ? "1" : level.floorMaterials?.[space.id] ? "0.82" : level.floor === activeFloor ? "0.42" : "0.28"}
-                      stroke={selectedClosedSpaceId === space.id ? "#2563eb" : floor3dMaterial(level.floorMaterials?.[space.id])?.edge ?? "#94a3b8"}
+                      stroke={selectedClosedSpaceId === space.id ? "#f97316" : floor3dMaterial(level.floorMaterials?.[space.id])?.edge ?? "#94a3b8"}
                       strokeOpacity={selectedClosedSpaceId === space.id ? "1" : level.floorMaterials?.[space.id] ? "0.68" : "0.35"}
                       strokeWidth={selectedClosedSpaceId === space.id ? "0.10" : "0.04"}
                       className={onSelectClosedSpace && level.floor === activeFloor ? "cursor-pointer" : undefined}
@@ -2069,7 +2069,7 @@ export default function ConceptModel3D({
                         <polygon
                           points={points(shape.sideA)}
                           fill={selectedWallMaterial?.front ?? (wall.exterior ? exteriorMaterial.baseColor : "#aab5c3")}
-                          stroke={(wall.custom ? selectedCustomWallId : selectedWallId) === wall.id ? "#2563eb" : "#475569"}
+                          stroke={(wall.custom ? selectedCustomWallId : selectedWallId) === wall.id ? "#f97316" : "#475569"}
                           strokeWidth={(wall.custom ? selectedCustomWallId : selectedWallId) === wall.id ? "0.11" : "0.055"}
                         />
                         <polygon
@@ -2081,7 +2081,7 @@ export default function ConceptModel3D({
                         <polygon
                           points={points(shape.top)}
                           fill={selectedWallMaterial?.top ?? "url(#concept3d-wall)"}
-                          stroke={(wall.custom ? selectedCustomWallId : selectedWallId) === wall.id ? "#2563eb" : "#64748b"}
+                          stroke={(wall.custom ? selectedCustomWallId : selectedWallId) === wall.id ? "#f97316" : "#64748b"}
                           strokeWidth={(wall.custom ? selectedCustomWallId : selectedWallId) === wall.id ? "0.11" : "0.055"}
                         />
                       </g>
@@ -2158,21 +2158,21 @@ export default function ConceptModel3D({
                       points={points(shape.sideA)}
                       fill={isDoor ? "#8b5e3c" : lightingPalette.window}
                       fillOpacity={isDoor ? "0.94" : String(lightingPalette.windowOpacity)}
-                      stroke={selected ? "#2563eb" : isDoor ? "#5b4636" : "#5d8fab"}
+                      stroke={selected ? "#f97316" : isDoor ? "#5b4636" : "#5d8fab"}
                       strokeWidth={selected ? "0.12" : "0.055"}
                     />
                     <polygon
                       points={points(shape.sideB)}
                       fill={isDoor ? "#705441" : lightingMode === "night" ? "#f59e0b" : "#9dd2ef"}
                       fillOpacity={isDoor ? "0.94" : lightingMode === "night" ? "0.78" : "0.48"}
-                      stroke={selected ? "#2563eb" : isDoor ? "#5b4636" : "#5d8fab"}
+                      stroke={selected ? "#f97316" : isDoor ? "#5b4636" : "#5d8fab"}
                       strokeWidth={selected ? "0.12" : "0.055"}
                     />
                     <polygon
                       points={points(shape.top)}
                       fill={isDoor ? "#b98a5f" : lightingMode === "night" ? "#fde68a" : "#dff3ff"}
                       fillOpacity={isDoor ? "0.94" : lightingMode === "night" ? "0.86" : "0.65"}
-                      stroke={selected ? "#2563eb" : isDoor ? "#5b4636" : "#5d8fab"}
+                      stroke={selected ? "#f97316" : isDoor ? "#5b4636" : "#5d8fab"}
                       strokeWidth={selected ? "0.12" : "0.055"}
                     />
                     {!isDoor && (
@@ -2371,7 +2371,7 @@ export default function ConceptModel3D({
                     projectionDepth,
                     zoom,
                   );
-                  const selectedStroke = selectedObjectId === object.id ? "#2563eb" : "#475569";
+                  const selectedStroke = selectedObjectId === object.id ? "#f97316" : "#475569";
                   const selectedWidth = selectedObjectId === object.id ? "0.10" : "0.04";
                   const tone = primitiveIndex % 3;
                   return (
@@ -2475,7 +2475,7 @@ export default function ConceptModel3D({
                             });
                           }}
                         >
-                          <circle r="0.34" fill="#2563eb" stroke="#ffffff" strokeWidth="0.10" />
+                          <circle r="0.34" fill="#f97316" stroke="#ffffff" strokeWidth="0.10" />
                           <path d="M -0.13 -0.13 L 0.13 0.13 M 0.00 -0.18 L 0.18 0.00 M -0.18 0.00 L 0.00 0.18" stroke="#ffffff" strokeWidth="0.06" strokeLinecap="round" />
                           <title>Arraste para redimensionar</title>
                         </g>
