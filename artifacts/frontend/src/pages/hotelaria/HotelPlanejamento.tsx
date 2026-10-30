@@ -138,6 +138,14 @@ export default function HotelPlanejamento() {
         <h3 className="font-medium">Cardápio: criar ou importar</h3>
         <label className="block text-sm">Nome do cardápio<Input maxLength={120} value={menuName} onChange={e=>setMenuName(e.target.value)} placeholder="Ex.: Café da manhã de sábado" /></label>
         <Button variant="outline" type="button" onClick={clearMenu}>Criar novo cardápio</Button>
+        <label className="block text-sm">Selecionar arquivo de cardápio (.json)
+          <Input type="file" accept=".json,application/json" onChange={async e=>{
+            const file=e.target.files?.[0];if(!file)return;
+            if(file.size>1024*1024){setMessage("Arquivo muito grande (limite de 1 MB).");return;}
+            setMenuImport(await file.text());
+            setMessage("Arquivo carregado. Clique em Importar e conferir receitas.");
+          }}/>
+        </label>
         <label className="block text-sm">Importar cardápio JSON<textarea rows={4} className="mt-1 w-full rounded-md border bg-background p-2 font-mono text-xs" value={menuImport} onChange={e=>setMenuImport(e.target.value)} placeholder={'{"name":"Café do hotel","recipes":[{"recipeId":"UUID da ficha aprovada","plannedPortions":50}]}'} /></label>
         <Button variant="outline" type="button" onClick={importMenu} disabled={!menuImport.trim()}>Importar e conferir receitas</Button>
         <p className="text-xs text-muted-foreground">A importação usa fichas técnicas já aprovadas no catálogo deste hotel. Ingredientes e quantidades vêm dessas fichas; a solicitação de compra só pode ser gerada após salvar o planejamento e conciliar o estoque.</p>
