@@ -2004,7 +2004,7 @@ export default function ConceptModel3D({
                       fill={floor3dMaterial(level.floorMaterials?.[space.id])?.fill ?? (level.floor === activeFloor ? "#e2e8f0" : "#cbd5e1")}
                       // Vista externa com todos os pavimentos: laje opaca (antes parecia vidro azulado).
                       fillOpacity={selectedClosedSpaceId === space.id ? "0.96" : showAllFloors && !interiorMode && level.floor > 0 ? "1" : level.floorMaterials?.[space.id] ? "0.82" : level.floor === activeFloor ? "0.42" : "0.28"}
-                      stroke={selectedClosedSpaceId === space.id ? "#f97316" : floor3dMaterial(level.floorMaterials?.[space.id])?.edge ?? "#94a3b8"}
+                      stroke={selectedClosedSpaceId === space.id ? "#2563eb" : floor3dMaterial(level.floorMaterials?.[space.id])?.edge ?? "#94a3b8"}
                       strokeOpacity={selectedClosedSpaceId === space.id ? "1" : level.floorMaterials?.[space.id] ? "0.68" : "0.35"}
                       strokeWidth={selectedClosedSpaceId === space.id ? "0.10" : "0.04"}
                       className={onSelectClosedSpace && level.floor === activeFloor ? "cursor-pointer" : undefined}
@@ -2069,7 +2069,7 @@ export default function ConceptModel3D({
                         <polygon
                           points={points(shape.sideA)}
                           fill={selectedWallMaterial?.front ?? (wall.exterior ? exteriorMaterial.baseColor : "#aab5c3")}
-                          stroke={(wall.custom ? selectedCustomWallId : selectedWallId) === wall.id ? "#f97316" : "#475569"}
+                          stroke={(wall.custom ? selectedCustomWallId : selectedWallId) === wall.id ? "#2563eb" : "#475569"}
                           strokeWidth={(wall.custom ? selectedCustomWallId : selectedWallId) === wall.id ? "0.11" : "0.055"}
                         />
                         <polygon
@@ -2081,7 +2081,7 @@ export default function ConceptModel3D({
                         <polygon
                           points={points(shape.top)}
                           fill={selectedWallMaterial?.top ?? "url(#concept3d-wall)"}
-                          stroke={(wall.custom ? selectedCustomWallId : selectedWallId) === wall.id ? "#f97316" : "#64748b"}
+                          stroke={(wall.custom ? selectedCustomWallId : selectedWallId) === wall.id ? "#2563eb" : "#64748b"}
                           strokeWidth={(wall.custom ? selectedCustomWallId : selectedWallId) === wall.id ? "0.11" : "0.055"}
                         />
                       </g>
@@ -2158,21 +2158,21 @@ export default function ConceptModel3D({
                       points={points(shape.sideA)}
                       fill={isDoor ? "#8b5e3c" : lightingPalette.window}
                       fillOpacity={isDoor ? "0.94" : String(lightingPalette.windowOpacity)}
-                      stroke={selected ? "#f97316" : isDoor ? "#5b4636" : "#5d8fab"}
+                      stroke={selected ? "#2563eb" : isDoor ? "#5b4636" : "#5d8fab"}
                       strokeWidth={selected ? "0.12" : "0.055"}
                     />
                     <polygon
                       points={points(shape.sideB)}
                       fill={isDoor ? "#705441" : lightingMode === "night" ? "#f59e0b" : "#9dd2ef"}
                       fillOpacity={isDoor ? "0.94" : lightingMode === "night" ? "0.78" : "0.48"}
-                      stroke={selected ? "#f97316" : isDoor ? "#5b4636" : "#5d8fab"}
+                      stroke={selected ? "#2563eb" : isDoor ? "#5b4636" : "#5d8fab"}
                       strokeWidth={selected ? "0.12" : "0.055"}
                     />
                     <polygon
                       points={points(shape.top)}
                       fill={isDoor ? "#b98a5f" : lightingMode === "night" ? "#fde68a" : "#dff3ff"}
                       fillOpacity={isDoor ? "0.94" : lightingMode === "night" ? "0.86" : "0.65"}
-                      stroke={selected ? "#f97316" : isDoor ? "#5b4636" : "#5d8fab"}
+                      stroke={selected ? "#2563eb" : isDoor ? "#5b4636" : "#5d8fab"}
                       strokeWidth={selected ? "0.12" : "0.055"}
                     />
                     {!isDoor && (
@@ -2371,7 +2371,7 @@ export default function ConceptModel3D({
                     projectionDepth,
                     zoom,
                   );
-                  const selectedStroke = selectedObjectId === object.id ? "#f97316" : "#475569";
+                  const selectedStroke = selectedObjectId === object.id ? "#2563eb" : "#475569";
                   const selectedWidth = selectedObjectId === object.id ? "0.10" : "0.04";
                   const tone = primitiveIndex % 3;
                   return (
@@ -2475,7 +2475,7 @@ export default function ConceptModel3D({
                             });
                           }}
                         >
-                          <circle r="0.34" fill="#f97316" stroke="#ffffff" strokeWidth="0.10" />
+                          <circle r="0.34" fill="#2563eb" stroke="#ffffff" strokeWidth="0.10" />
                           <path d="M -0.13 -0.13 L 0.13 0.13 M 0.00 -0.18 L 0.18 0.00 M -0.18 0.00 L 0.00 0.18" stroke="#ffffff" strokeWidth="0.06" strokeLinecap="round" />
                           <title>Arraste para redimensionar</title>
                         </g>
