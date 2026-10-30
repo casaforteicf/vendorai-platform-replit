@@ -84,3 +84,45 @@ CREATE POLICY hotel_purchase_suggestion_lines_tenant ON hotel_purchase_suggestio
 -- Estoque por local e ingredientes usam catálogos diferentes neste momento.
 -- É obrigatória reconciliação explícita de produtos, unidades e saldos antes
 -- de calcular faltas ou produzir sugestões destinadas ao setor de compras.
+
+-- Consolidado semanal, separado das sugestões individuais por refeição.
+-- Snapshot do estoque e da necessidade; não cria pedido de compra real.
+CREATE TABLE IF NOT EXISTS hotel_weekly_purchase_requests (
+ id text PRIMARY KEY,
+ tenant_id text NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+ location_id text NOT NULL,
+ period_start date NOT NULL,
+ period_end date NOT NULL,
+ status text NOT NULL DEFAULT 'draft' CHECK (status IN ('draft','reviewed','dismissed')),
+ requested_by text NOT NULL,
+ reviewed_by text,
+ reviewed_at timestamptz,
+ created_at timestamptz NOT NULL DEFAULT now(),
+ CHECK (period_end >= period_start AND period_end <= period_start + 6),
+ FOREIGN KEY (tenant_id, location_id) REFERENCES hotel_stock_locations(tenant_id,id),
+ FOREIGN KEY (tenant_id, requested_by) REFERENCES users(tenant_id,id),
+ FOREIGN KEY (tenant_id, reviewed_by) REFERENCES users(tenant_id,id),
+ UNIQUE (tenant_id,location_id,period_start,period_end),
+ UNIQUE (tenant_id,id)
+);
+CREATE TABLE IF NOT EXISTS hotel_weekly_purchase_request_lines (
+ id text PRIMARY KEY,
+ tenant_id text NOT NULL,
+ request_id text NOT NULL,
+ product_id text NOT NULL,
+ unit text NOT NULL CHECK (unit IN ('g','ml','un')),
+ quantity_required numeric(15,4) NOT NULL CHECK (quantity_required >= 0),
+ quantity_available numeric(15,4) NOT NULL CHECK (quantity_available >= 0),
+ quantity_suggested numeric(15,4) NOT NULL CHECK (quantity_suggested >= 0),
+ FOREIGN KEY (tenant_id,request_id) REFERENCES hotel_weekly_purchase_requests(tenant_id,id) ON DELETE CASCADE,
+ FOREIGN KEY (tenant_id,product_id) REFERENCES produtos_catalogo(tenant_id,id),
+ UNIQUE (tenant_id,request_id,product_id,unit)
+);
+ALTER TABLE hotel_weekly_purchase_requests ENABLE ROW LEVEL SECURITY;
+ALTER TABLE hotel_weekly_purchase_request_lines ENABLE ROW LEVEL SECURITY;
+CREATE POLICY hotel_weekly_requests_tenant ON hotel_weekly_purchase_requests
+ USING (tenant_id = current_setting('app.tenant_id',true))
+ WITH CHECK (tenant_id = current_setting('app.tenant_id',true));
+CREATE POLICY hotel_weekly_lines_tenant ON hotel_weekly_purchase_request_lines
+ USING (tenant_id = current_setting('app.tenant_id',true))
+ WITH CHECK (tenant_id = current_setting('app.tenant_id',true));
