@@ -45,7 +45,7 @@ router.get("/tenants/:tenantId/hotelaria/compras/pedidos",async(req,res)=>{
   await client.query("BEGIN READ ONLY");
   await client.query("SELECT set_config('app.tenant_id',$1,true)",[tenantId]);
   const rows=await client.query(
-   `SELECT o.id,o.request_id,o.status,o.created_at,l.product_id,l.unit,l.ordered_quantity,l.received_quantity
+   `SELECT o.id,o.request_id,o.status,o.created_at,l.id AS line_id,l.product_id,l.unit,l.ordered_quantity,l.received_quantity
     FROM hotel_purchase_orders o JOIN hotel_purchase_order_lines l ON l.tenant_id=o.tenant_id AND l.order_id=o.id
     WHERE o.tenant_id=$1 ORDER BY o.created_at DESC LIMIT 500`,[tenantId]);
   await client.query("COMMIT");
