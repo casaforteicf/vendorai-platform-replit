@@ -1,3 +1,4 @@
+import HotelModulesNav from "./HotelModulesNav";
 import {useEffect,useState} from "react";
 import {useAuth} from "@/contexts/AuthContext";
 type Plan={id:string;name:string;currency:string;standard_amount:string;extra_guest_amount:string;active:boolean};
@@ -21,6 +22,7 @@ export default function HotelTarifas(){
  }
  const money=(v:string)=>Number(v.replace(",","."));
  return <main className="space-y-5 p-4 md:p-6">
+  <HotelModulesNav />
   <header><h1 className="text-2xl font-semibold">Tarifas e diárias · Hotelaria</h1><p className="text-sm text-muted-foreground">Preços editáveis por hotel, período e dia da semana. Cotações não geram cobranças automaticamente.</p></header>
   {message&&<p role="status" className="rounded border p-3 text-sm">{message}</p>}
   <div className="grid gap-4 lg:grid-cols-2">
