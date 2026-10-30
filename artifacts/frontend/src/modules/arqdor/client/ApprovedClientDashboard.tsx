@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Bell, ChevronRight, FolderOpen, HelpCircle, Menu, Search, Settings, Sparkles } from "lucide-react";
+import { ChevronRight, FolderOpen, Menu } from "lucide-react";
 
 /** Visual aprovado da Tela 1 Cliente. Dados são recebidos somente após autorização pelo portal existente. */
 export type ClientProject = {
@@ -35,14 +35,13 @@ export default function ApprovedClientDashboard(props: ClientDashboardProps) {
   const [filter,setFilter]=useState<string>("Todos");
   const [sort,setSort]=useState<"recent"|"title">("recent");
   const [mobileNav,setMobileNav]=useState(false);
-  const [selected,setSelected]=useState(props.activeProjectId ?? "");
   const projects = props.projects;
   const filtered = useMemo(()=>projects.filter(p=>(filter==="Todos"||p.status===filter)
     && [p.title,p.location??"",p.category??""].some(v=>v.toLocaleLowerCase("pt-BR").includes(query.toLocaleLowerCase("pt-BR"))))
     .sort((a,b)=>sort==="title"?a.title.localeCompare(b.title):String(b.updatedAt??"").localeCompare(String(a.updatedAt??""))),
     [projects,filter,query,sort]);
   const navigate=(key:typeof nav[number][0])=>{setMobileNav(false);props.onNavigate(key)};
-  const open=(id:string)=>{setSelected(id);props.onOpenProject(id)};
+  const open=(id:string)=>props.onOpenProject(id);
   const complete=projects.filter(p=>p.status==="Concluído").length;
   const average=projects.length?Math.round(projects.reduce((total,p)=>total+Math.max(0,Math.min(100,p.progress??0)),0)/projects.length):0;
   const next=projects.find(p=>p.status!=="Concluído");
