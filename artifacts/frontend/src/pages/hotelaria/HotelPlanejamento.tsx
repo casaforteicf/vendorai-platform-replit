@@ -9,7 +9,9 @@ type Product = {id:string; nome:string; sku?:string|null};
 type PlannedRecipe = {recipeId:string; plannedPortions:number};
 type Forecast = { id:string; service_date:string; meal_type:string; guest_count:number; staff_meals:number };
 type Demand = { productId:string; unit:string; required:number };
-type Summary = { start:string; end:string; forecasts:Forecast[]; demand:Demand[] };
+type StockLocation = {id:string; name:string; active:boolean};
+type Shortage = {productId:string;unit:string;required:number;available:number|null;suggested:number|null;status:string};
+type Summary = { start:string; end:string; forecasts:Forecast[]; demand:Demand[]; shortages?:Shortage[]|null; complete?:boolean };
 const meals = [
   ["breakfast","Café da manhã"],
   ["morning_snack","Lanche da manhã"],
@@ -30,6 +32,8 @@ export default function HotelPlanejamento() {
   const [products,setProducts]=useState<Product[]>([]);
   const [recipeLines,setRecipeLines]=useState<PlannedRecipe[]>([{recipeId:"",plannedPortions:1}]);
   const [summary,setSummary]=useState<Summary|null>(null);
+  const [locations,setLocations]=useState<StockLocation[]>([]);
+  const [locationId,setLocationId]=useState("");
   const [message,setMessage]=useState("");
   const [busy,setBusy]=useState(false);
   const base=tenantId?`/api/tenants/${encodeURIComponent(tenantId)}/hotelaria`:"";
@@ -42,15 +46,16 @@ export default function HotelPlanejamento() {
   async function reload() {
     if(!tenantId||!token)return;
     try{
-      const [data,list,catalog]=await Promise.all([
-        api<Summary>(`/refeicoes/consolidado?start=${encodeURIComponent(date)}&end=${encodeURIComponent(weekEnd(date))}`),
+      const [data,list,catalog,stockLocations]=await Promise.all([
+        api<Summary>(`/refeicoes/consolidado?start=${encodeURIComponent(date)}&end=${encodeURIComponent(weekEnd(date))}${locationId?`&locationId=${encodeURIComponent(locationId)}`:""}`),
         api<Recipe[]>("/receitas"),
-        fetch(`/api/tenants/${encodeURIComponent(tenantId)}/produtos-catalogo`,{headers:{Authorization:`Bearer ${token}`}}).then(async response=>{if(!response.ok)throw new Error("Falha ao consultar catálogo");return response.json() as Promise<Product[]>;})
+        fetch(`/api/tenants/${encodeURIComponent(tenantId)}/produtos-catalogo`,{headers:{Authorization:`Bearer ${token}`}}).then(async response=>{if(!response.ok)throw new Error("Falha ao consultar catálogo");return response.json() as Promise<Product[]>;}),
+        api<StockLocation[]>("/estoque/locais")
       ]);
-      setSummary(data);setRecipes(list.filter(r=>r.status==="approved"));setProducts(catalog);
+      setSummary(data);setRecipes(list.filter(r=>r.status==="approved"));setProducts(catalog);setLocations(stockLocations.filter(l=>l.active));
     }catch(e){setMessage(String(e));}
   }
-  useEffect(()=>{void reload();},[tenantId,token,date]);
+  useEffect(()=>{void reload();},[tenantId,token,date,locationId]);
   async function save(){
     if(!isEffectiveAdmin||!Number.isInteger(guests)||guests<0||!Number.isInteger(staff)||staff<0||recipeLines.some(line=>!line.recipeId||!Number.isInteger(line.plannedPortions)||line.plannedPortions<=0)||new Set(recipeLines.map(line=>line.recipeId)).size!==recipeLines.length){setMessage("Selecione receitas distintas com porções e quantidades válidas.");return;}
     setBusy(true);setMessage("");
@@ -72,6 +77,12 @@ export default function HotelPlanejamento() {
     <Card><CardHeader><CardTitle>Período de planejamento</CardTitle></CardHeader><CardContent className="flex flex-wrap items-center gap-3">
       <label className="text-sm">Início do período<Input type="date" value={date} onChange={e=>setDate(e.target.value)} /></label>
       <span className="text-sm text-muted-foreground">Até {date?weekEnd(date):"—"} (7 dias)</span>
+      <label className="text-sm">Estoque para comparar
+        <select className="mt-1 block h-10 w-full rounded-md border bg-background px-3" value={locationId} onChange={e=>setLocationId(e.target.value)}>
+          <option value="">Sem desconto de estoque</option>
+          {locations.map(l=><option key={l.id} value={l.id}>{l.name}</option>)}
+        </select>
+      </label>
       <Button variant="outline" onClick={()=>void reload()} disabled={busy}>Atualizar</Button>
     </CardContent></Card>
     {isEffectiveAdmin&&<Card><CardHeader><CardTitle>Registrar previsão de uma refeição</CardTitle></CardHeader><CardContent className="grid gap-3 sm:grid-cols-2">
@@ -106,7 +117,15 @@ export default function HotelPlanejamento() {
       {summary?.demand.map(d=><div key={d.productId+":"+d.unit} className="flex justify-between gap-2 border-b py-2 text-sm">
         <span>{products.find(p=>p.id===d.productId)?.nome??"Produto não encontrado no catálogo"} <span className="text-xs text-muted-foreground">{products.find(p=>p.id===d.productId)?.sku??""}</span></span><strong>{Number(d.required.toFixed(3))} {d.unit}</strong>
       </div>)}
-      <p className="text-xs text-muted-foreground">Demanda de ingredientes: estoque físico ainda não descontado. A comparação de saldos deve ser realizada uma única vez no período.</p>
+      {summary?.shortages && <div className="space-y-2 border-t pt-3">
+        <h3 className="font-medium">Faltas de estoque do período</h3>
+        {summary.shortages.map(line=><div key={line.productId+":"+line.unit} className="flex flex-wrap justify-between gap-2 text-sm">
+          <span>{products.find(p=>p.id===line.productId)?.nome??"Produto não identificado"}</span>
+          <span>{line.status==="ready"?`Disponível: ${line.available} · Comprar: ${line.suggested} ${line.unit}`:`Conciliação necessária: ${line.status}`}</span>
+        </div>)}
+        {!summary.complete&&<p role="status" className="text-sm text-amber-700">Há itens não conciliados; nenhuma solicitação de compra deve ser emitida.</p>}
+      </div>}
+      <p className="text-xs text-muted-foreground">A demanda semanal é consolidada antes de comparar o estoque de um único local. Nenhum pedido é emitido nesta tela.</p>
     </CardContent></Card>
   </main>;
 }
