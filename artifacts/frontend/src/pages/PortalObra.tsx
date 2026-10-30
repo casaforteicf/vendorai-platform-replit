@@ -464,9 +464,11 @@ export default function PortalObra() {
   const clientNavigate = (destination: "projetos" | "renders" | "orcamentos" | "cotacoes" | "propostas" | "contratacoes" | "profissionais" | "mensagens" | "ajuda" | "configuracoes") => {
     // Somente abas explicitamente publicadas no portal sao navegaveis.
     const destinationTab: Partial<Record<typeof destination, TabId>> = {
-      projetos: "projetos", orcamentos: "orcamento", cotacoes: "compras",
+      orcamentos: "orcamento", cotacoes: "compras",
       propostas: "propostas", contratacoes: "contratos", mensagens: "chat", ajuda: "suporte",
     };
+    // "Meus projetos" e a propria Tela 1; nao redirecionar para documentos.
+    if (destination === "projetos") return;
     const tab = destinationTab[destination];
     if (tab && visibleTabs.some(visible => visible.id === tab)) {
       setShowArqdorClient(false);
@@ -486,7 +488,7 @@ export default function PortalObra() {
       <ApprovedClientDashboard projects={[clientProject]} clientName={data.auth.user?.nome ?? "Cliente"}
         activeProjectId={clientProject.id}
         availableDestinations={["projetos", ...(["orcamentos","cotacoes","propostas","contratacoes","mensagens","ajuda"] as const).filter(destination => { const tabs: Record<string, TabId> = {orcamentos:"orcamento",cotacoes:"compras",propostas:"propostas",contratacoes:"contratos",mensagens:"chat",ajuda:"suporte"}; return visibleTabs.some(tab => tab.id === tabs[destination]); })]}
-        onOpenProject={() => { setShowArqdorClient(false); handleTabChange("dados"); }}
+        onOpenProject={() => { const target = visibleTabs.some(tab => tab.id === "dados") ? "dados" : visibleTabs[0]?.id; if (target) { setShowArqdorClient(false); handleTabChange(target); } }}
         onNavigate={clientNavigate} />
     </div>
   );
