@@ -9,6 +9,9 @@ type Product = {id:string; nome:string; sku?:string|null};
 type PlannedRecipe = {recipeId:string; plannedPortions:number};
 type Forecast = { id:string; service_date:string; meal_type:string; guest_count:number; staff_meals:number };
 type Demand = { productId:string; unit:string; required:number };
+type Supplier = {id:string;nome:string;ativo:boolean};
+type Quote = {id:string;supplier_name:string;status:string;total_amount:string|null;delivery_days:number|null;payment_terms:string|null};
+type QuoteComparison = {suppliers:Quote[];items:{product_id:string;unit:string;quantity_suggested:string}[]};
 type PurchaseRequest = {id:string;location_id:string;period_start:string;period_end:string;status:string};
 type StockLocation = {id:string; name:string; active:boolean};
 type Shortage = {productId:string;unit:string;required:number;available:number|null;suggested:number|null;status:string};
@@ -38,6 +41,10 @@ export default function HotelPlanejamento() {
   const [summary,setSummary]=useState<Summary|null>(null);
   const [locations,setLocations]=useState<StockLocation[]>([]);
   const [requests,setRequests]=useState<PurchaseRequest[]>([]);
+  const [suppliers,setSuppliers]=useState<Supplier[]>([]);
+  const [selectedSuppliers,setSelectedSuppliers]=useState<string[]>([]);
+  const [viewRequest,setViewRequest]=useState("");
+  const [comparison,setComparison]=useState<QuoteComparison|null>(null);
   const [locationId,setLocationId]=useState("");
   const [message,setMessage]=useState("");
   const [busy,setBusy]=useState(false);
@@ -51,14 +58,15 @@ export default function HotelPlanejamento() {
   async function reload() {
     if(!tenantId||!token)return;
     try{
-      const [data,list,catalog,stockLocations,purchases]=await Promise.all([
+      const [data,list,catalog,stockLocations,purchases,supplierList]=await Promise.all([
         api<Summary>(`/refeicoes/consolidado?start=${encodeURIComponent(date)}&end=${encodeURIComponent(weekEnd(date))}${locationId?`&locationId=${encodeURIComponent(locationId)}`:""}`),
         api<Recipe[]>("/receitas"),
         fetch(`/api/tenants/${encodeURIComponent(tenantId)}/produtos-catalogo`,{headers:{Authorization:`Bearer ${token}`}}).then(async response=>{if(!response.ok)throw new Error("Falha ao consultar catálogo");return response.json() as Promise<Product[]>;}),
         api<StockLocation[]>("/estoque/locais"),
-        isEffectiveAdmin ? api<PurchaseRequest[]>("/compras/semanais") : Promise.resolve([])
+        isEffectiveAdmin ? api<PurchaseRequest[]>("/compras/semanais") : Promise.resolve([]),
+        isEffectiveAdmin ? fetch(`/api/tenants/${encodeURIComponent(tenantId)}/fornecedores`,{headers:{Authorization:`Bearer ${token}`}}).then(r=>r.ok?r.json() as Promise<Supplier[]>:Promise.reject(new Error("Falha no cadastro de fornecedores"))) : Promise.resolve([])
       ]);
-      setSummary(data);setRecipes(list.filter(r=>r.status==="approved"));setProducts(catalog);setLocations(stockLocations.filter(l=>l.active));setRequests(purchases);
+      setSummary(data);setRecipes(list.filter(r=>r.status==="approved"));setProducts(catalog);setLocations(stockLocations.filter(l=>l.active));setRequests(purchases);setSuppliers(supplierList.filter(p=>p.ativo));
     }catch(e){setMessage(String(e));}
   }
   useEffect(()=>{void reload();},[tenantId,token,date,locationId]);
@@ -127,6 +135,24 @@ export default function HotelPlanejamento() {
         await api("/compras/semanais",{method:"POST",body:JSON.stringify({start:date,end:weekEnd(date),locationId})});
       }
       await reload();setMessage("Registro atualizado, sem emissão de pedido.");
+    }catch(e){setMessage(String(e));}finally{setBusy(false);}
+  }
+  async function openComparison(id:string) {
+    setBusy(true);setMessage("");
+    try {
+      const data=await api<QuoteComparison>("/compras/semanais/"+encodeURIComponent(id)+"/cotacoes");
+      setViewRequest(id);setComparison(data);
+    }catch(e){setMessage(String(e));}finally{setBusy(false);}
+  }
+  async function assignSuppliers() {
+    if(!viewRequest||!selectedSuppliers.length)return;
+    setBusy(true);setMessage("");
+    try {
+      await api("/compras/semanais/"+encodeURIComponent(viewRequest)+"/fornecedores",{
+        method:"POST",body:JSON.stringify({supplierIds:selectedSuppliers})
+      });
+      await openComparison(viewRequest);
+      setMessage("Fornecedores selecionados. Convites ainda não enviados.");
     }catch(e){setMessage(String(e));}finally{setBusy(false);}
   }
   return <main className="mx-auto max-w-6xl space-y-5 p-4 sm:p-8">
@@ -218,11 +244,23 @@ export default function HotelPlanejamento() {
       {requests.map(request=><div key={request.id} className="flex flex-wrap justify-between gap-2 rounded-lg border p-3 text-sm">
         <div><strong>{String(request.period_start).slice(0,10)} a {String(request.period_end).slice(0,10)}</strong>
         <p>Status: {request.status} · Local: {locations.find(l=>l.id===request.location_id)?.name??request.location_id}</p></div>
+        <Button variant="outline" disabled={busy} onClick={()=>void openComparison(request.id)}>Itens e cotações</Button>
         {request.status==="draft"&&<div className="flex gap-2">
           <Button variant="outline" disabled={busy} onClick={()=>void purchaseAction(request.id,"reviewed")}>Revisada</Button>
           <Button variant="outline" disabled={busy} onClick={()=>void purchaseAction(request.id,"dismissed")}>Descartar</Button>
         </div>}
       </div>)}
+      {viewRequest&&comparison&&<div className="space-y-3 rounded-lg border p-3">
+        <h3 className="font-semibold">Comparativo de fornecedores</h3>
+        {comparison.items.map(item=><p className="text-sm" key={item.product_id+item.unit}>{products.find(p=>p.id===item.product_id)?.nome??item.product_id}: {item.quantity_suggested} {item.unit}</p>)}
+        {comparison.suppliers.map(q=><p className="text-sm" key={q.id}>{q.supplier_name} · {q.status} · {q.total_amount??"Sem valor"} · {q.delivery_days??"—"} dias</p>)}
+        <p className="text-xs text-muted-foreground">Os valores só são exibidos se houver cotação registrada. Nenhum convite foi enviado automaticamente.</p>
+        {requests.find(p=>p.id===viewRequest)?.status==="reviewed"&&<div className="space-y-2">
+          <h4 className="font-medium">Selecionar fornecedores para consulta</h4>
+          {suppliers.map(p=><label className="flex gap-2 text-sm" key={p.id}><input type="checkbox" checked={selectedSuppliers.includes(p.id)} onChange={e=>setSelectedSuppliers(old=>e.target.checked?[...old,p.id]:old.filter(id=>id!==p.id))}/>{p.nome}</label>)}
+          <Button disabled={busy||!selectedSuppliers.length} onClick={()=>void assignSuppliers()}>Vincular fornecedores (sem disparo)</Button>
+        </div>}
+      </div>}
       <p className="text-xs text-muted-foreground">Revisão não gera pedido de compra nem movimenta estoque.</p>
     </CardContent></Card>}
   </main>;
