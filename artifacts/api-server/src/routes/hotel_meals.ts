@@ -159,4 +159,96 @@ router.get("/tenants/:tenantId/hotelaria/refeicoes/previsoes/:id/faltas", async 
     return res.status(500).json({error:"Could not compare ingredient stock"});
   } finally { client.release(); }
 });
+
+const suggestionInput = z.object({ locationId: uuid }).strict();
+router.post("/tenants/:tenantId/hotelaria/refeicoes/previsoes/:id/sugestoes", async (req,res) => {
+  const tenantId=String(req.params.tenantId), forecastId=String(req.params.id);
+  if (!authorized(req,tenantId) || !editor(req)) return res.status(403).json({error:"Forbidden"});
+  if (!uuid.safeParse(forecastId).success) return res.status(422).json({error:"Invalid forecast ID"});
+  const parsed=suggestionInput.safeParse(req.body);
+  if (!parsed.success) return res.status(422).json({error:"Valid stock location required"});
+  const locationId=parsed.data.locationId;
+  const client=await pool.connect();
+  try {
+    await client.query("BEGIN");
+    await client.query("SELECT set_config('app.tenant_id',$1,true)",[tenantId]);
+    const forecast=await client.query("SELECT id FROM hotel_meal_forecasts WHERE tenant_id=$1 AND id=$2 FOR UPDATE",[tenantId,forecastId]);
+    const location=await client.query("SELECT id FROM hotel_stock_locations WHERE tenant_id=$1 AND id=$2 AND active=true",[tenantId,locationId]);
+    if (!forecast.rowCount || !location.rowCount) {
+      await client.query("ROLLBACK"); return res.status(404).json({error:"Forecast or location not found"});
+    }
+    const existing=await client.query("SELECT id FROM hotel_purchase_suggestions WHERE tenant_id=$1 AND forecast_id=$2 AND location_id=$3",[tenantId,forecastId,locationId]);
+    if (existing.rowCount) {
+      await client.query("ROLLBACK"); return res.status(409).json({error:"Suggestion already exists for this forecast and location"});
+    }
+    const recipeLines=await client.query(
+      `SELECT l.planned_portions,r.yield_quantity,i.product_id,i.quantity_gross,i.quantity_unit
+       FROM hotel_meal_plan_lines l
+       JOIN hotel_recipe_cards r ON r.tenant_id=l.tenant_id AND r.id=l.recipe_id AND r.status='approved'
+       JOIN hotel_recipe_ingredients i ON i.tenant_id=l.tenant_id AND i.recipe_id=l.recipe_id
+       WHERE l.tenant_id=$1 AND l.forecast_id=$2`,[tenantId,forecastId]);
+    const physical=await client.query(
+      `SELECT inv.produto_id AS product_id,inv.id AS item_id,inv.unidade AS unit,b.quantity
+       FROM inventory_items inv JOIN hotel_stock_location_balances b
+        ON b.tenant_id=inv.tenant_id AND b.inventory_item_id=inv.id
+       WHERE inv.tenant_id=$1 AND b.location_id=$2`,[tenantId,locationId]);
+    const demand=forecastIngredientDemand(recipeLines.rows.map(r=>({
+      productId:r.product_id,grossQuantityPerBatch:Number(r.quantity_gross),
+      batchPortions:Number(r.yield_quantity),plannedPortions:Number(r.planned_portions),unit:r.quantity_unit,
+    })));
+    if (!demand.length) {
+      await client.query("ROLLBACK"); return res.status(422).json({error:"No approved recipe ingredients in forecast"});
+    }
+    const comparison=compareDemandWithStock(demand,physical.rows.map(r=>({
+      productId:r.product_id,itemId:r.item_id,unit:r.unit,quantity:Number(r.quantity),
+    })));
+    if (comparison.some(r=>r.status!=="ready")) {
+      await client.query("ROLLBACK");
+      return res.status(422).json({error:"Unreconciled inventory; suggestion not created",lines:comparison});
+    }
+    const id=crypto.randomUUID();
+    await client.query("INSERT INTO hotel_purchase_suggestions(id,tenant_id,forecast_id,location_id) VALUES ($1,$2,$3,$4)",
+      [id,tenantId,forecastId,locationId]);
+    for (const line of comparison) {
+      await client.query(
+        `INSERT INTO hotel_purchase_suggestion_lines
+         (id,tenant_id,suggestion_id,product_id,quantity_required,quantity_available,quantity_suggested,unit)
+         VALUES($1,$2,$3,$4,$5,$6,$7,$8)`,
+        [crypto.randomUUID(),tenantId,id,line.productId,line.required,line.available,line.suggested,line.unit]);
+    }
+    await client.query("COMMIT");
+    return res.status(201).json({id,status:"draft",lines:comparison,orderCreated:false});
+  } catch(e) {
+    await client.query("ROLLBACK"); console.error("[hotel-meals] suggestion create",e);
+    return res.status(500).json({error:"Could not create purchase suggestion"});
+  } finally { client.release(); }
+});
+router.post("/tenants/:tenantId/hotelaria/compras/sugestoes/:id/revisar", async (req,res) => {
+  const tenantId=String(req.params.tenantId), id=String(req.params.id);
+  if (!authorized(req,tenantId) || !editor(req)) return res.status(403).json({error:"Forbidden"});
+  if (!uuid.safeParse(id).success) return res.status(422).json({error:"Invalid suggestion ID"});
+  const parsed=z.object({decision:z.enum(["reviewed","dismissed"])}).strict().safeParse(req.body);
+  if (!parsed.success) return res.status(422).json({error:"Invalid decision"});
+  const actorId=req.user?.sub;
+  const client=await pool.connect();
+  try {
+    await client.query("BEGIN");
+    await client.query("SELECT set_config('app.tenant_id',$1,true)",[tenantId]);
+    const updated=await client.query(
+      `UPDATE hotel_purchase_suggestions SET status=$3,reviewed_by=$4,reviewed_at=now()
+       WHERE tenant_id=$1 AND id=$2 AND status='draft'
+        AND EXISTS (SELECT 1 FROM users WHERE tenant_id=$1 AND id=$4 AND active=true)
+       RETURNING id,status,reviewed_at`,
+      [tenantId,id,parsed.data.decision,actorId]);
+    if (!updated.rowCount) {
+      await client.query("ROLLBACK"); return res.status(409).json({error:"Suggestion is not reviewable"});
+    }
+    await client.query("COMMIT");
+    return res.json({...updated.rows[0],orderCreated:false});
+  } catch(e) {
+    await client.query("ROLLBACK"); console.error("[hotel-meals] suggestion review",e);
+    return res.status(500).json({error:"Could not review suggestion"});
+  } finally { client.release(); }
+});
+
 export default router;
