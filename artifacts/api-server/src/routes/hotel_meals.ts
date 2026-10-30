@@ -6,7 +6,8 @@ const router: IRouter = Router();
 const uuid = z.string().uuid();
 const forecastInput = z.object({
   serviceDate: z.iso.date(),
-  mealType: z.enum(["breakfast","lunch","dinner"]),
+  mealType: z.enum(["breakfast","morning_snack","lunch","afternoon_snack","dinner"]),
+  serviceTime: z.string().regex(/^([01]\\d|2[0-3]):[0-5]\\d$/).optional(),
   guestCount: z.number().int().min(0).max(100000),
   staffMeals: z.number().int().min(0).max(100000).default(0),
   recipeLines: z.array(z.object({ recipeId: uuid, plannedPortions: z.number().int().min(0).max(100000) }).strict()).min(1).max(100),
@@ -27,7 +28,7 @@ router.get("/tenants/:tenantId/hotelaria/refeicoes/previsoes", async (req,res) =
     await client.query("BEGIN READ ONLY");
     await client.query("SELECT set_config('app.tenant_id',$1,true)",[tenantId]);
     const rows = await client.query(
-      "SELECT id, service_date, meal_type, guest_count, staff_meals, source_type FROM hotel_meal_forecasts WHERE tenant_id=$1 ORDER BY service_date DESC LIMIT 100",
+      "SELECT id, service_date, meal_type, service_time, guest_count, staff_meals, source_type FROM hotel_meal_forecasts WHERE tenant_id=$1 ORDER BY service_date DESC LIMIT 100",
       [tenantId]);
     await client.query("COMMIT");
     return res.json(rows.rows);
@@ -63,8 +64,8 @@ router.post("/tenants/:tenantId/hotelaria/refeicoes/previsoes", async (req,res) 
     }
     const id = crypto.randomUUID();
     await client.query(
-      "INSERT INTO hotel_meal_forecasts(id,tenant_id,service_date,meal_type,guest_count,staff_meals,source_type) VALUES($1,$2,$3,$4,$5,$6,'manual')",
-      [id,tenantId,v.serviceDate,v.mealType,v.guestCount,v.staffMeals]);
+      "INSERT INTO hotel_meal_forecasts(id,tenant_id,service_date,meal_type,guest_count,staff_meals,source_type,service_time) VALUES($1,$2,$3,$4,$5,$6,'manual',$7)",
+      [id,tenantId,v.serviceDate,v.mealType,v.guestCount,v.staffMeals,v.serviceTime ?? null]);
     for (const line of v.recipeLines) await client.query(
       "INSERT INTO hotel_meal_plan_lines(id,tenant_id,forecast_id,recipe_id,planned_portions) VALUES($1,$2,$3,$4,$5)",
       [crypto.randomUUID(),tenantId,id,line.recipeId,line.plannedPortions]);
