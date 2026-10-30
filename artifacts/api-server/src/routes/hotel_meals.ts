@@ -1,7 +1,7 @@
 import { Router, type IRouter } from "express";
 import { pool } from "@workspace/db";
 import { z } from "zod/v4";
-import { forecastIngredientDemand, type MealPlanIngredient } from "../lib/hotel-meal-planning.js";
+import { forecastIngredientDemand, compareDemandWithStock, type MealPlanIngredient } from "../lib/hotel-meal-planning.js";
 const router: IRouter = Router();
 const uuid = z.string().uuid();
 const forecastInput = z.object({
@@ -104,6 +104,59 @@ router.get("/tenants/:tenantId/hotelaria/refeicoes/previsoes/:id/demanda", async
   } catch(e) {
     await client.query("ROLLBACK"); console.error("[hotel-meals] demand",e);
     return res.status(500).json({error:"Could not calculate demand"});
+  } finally { client.release(); }
+});
+
+router.get("/tenants/:tenantId/hotelaria/refeicoes/previsoes/:id/faltas", async (req,res) => {
+  const tenantId = String(req.params.tenantId), id = String(req.params.id);
+  const locationId = String(req.query.locationId ?? "");
+  if (!authorized(req,tenantId)) return res.status(403).json({error:"Forbidden"});
+  if (!uuid.safeParse(id).success || !uuid.safeParse(locationId).success)
+    return res.status(422).json({error:"Valid forecast and stock location IDs required"});
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN READ ONLY");
+    await client.query("SELECT set_config('app.tenant_id',$1,true)",[tenantId]);
+    const location = await client.query(
+      "SELECT id FROM hotel_stock_locations WHERE tenant_id=$1 AND id=$2 AND active=true",
+      [tenantId,locationId]);
+    const forecast = await client.query(
+      "SELECT id FROM hotel_meal_forecasts WHERE tenant_id=$1 AND id=$2",[tenantId,id]);
+    if (!location.rowCount || !forecast.rowCount) {
+      await client.query("ROLLBACK");
+      return res.status(404).json({error:"Forecast or location not found"});
+    }
+    const ingredients = await client.query(
+      `SELECT l.planned_portions, r.yield_quantity, i.product_id, i.quantity_gross, i.quantity_unit
+       FROM hotel_meal_plan_lines l
+       JOIN hotel_recipe_cards r ON r.tenant_id=l.tenant_id AND r.id=l.recipe_id AND r.status='approved'
+       JOIN hotel_recipe_ingredients i ON i.tenant_id=l.tenant_id AND i.recipe_id=l.recipe_id
+       WHERE l.tenant_id=$1 AND l.forecast_id=$2`,[tenantId,id]);
+    const physical = await client.query(
+      `SELECT inv.produto_id AS product_id, inv.id AS item_id, inv.unidade AS unit,
+         b.quantity
+       FROM inventory_items inv
+       JOIN hotel_stock_location_balances b
+         ON b.tenant_id=inv.tenant_id AND b.inventory_item_id=inv.id
+       WHERE inv.tenant_id=$1 AND b.location_id=$2`,[tenantId,locationId]);
+    await client.query("COMMIT");
+    const demand = forecastIngredientDemand(ingredients.rows.map(r=>({
+      productId:r.product_id, grossQuantityPerBatch:Number(r.quantity_gross),
+      batchPortions:Number(r.yield_quantity), plannedPortions:Number(r.planned_portions),
+      unit:r.quantity_unit,
+    })));
+    const comparison = compareDemandWithStock(demand,physical.rows.map(r=>({
+      productId:r.product_id,itemId:r.item_id,unit:r.unit,quantity:Number(r.quantity),
+    })));
+    return res.json({
+      forecastId:id,locationId,lines:comparison,
+      complete:comparison.every(c=>c.status==="ready"),
+      purchaseSuggestionsCreated:false,
+      notice:"Only reconciled stock at the requested location is considered. Unmapped items cannot generate automatic shortages.",
+    });
+  } catch(e) {
+    await client.query("ROLLBACK"); console.error("[hotel-meals] shortages",e);
+    return res.status(500).json({error:"Could not compare ingredient stock"});
   } finally { client.release(); }
 });
 export default router;
