@@ -1,3 +1,4 @@
+import { VendorBackButton } from "@/components/ui/back-button";
 import { useState } from "react";
 import { useParams, useLocation } from "wouter";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -13,32 +14,7 @@ import { Input } from "@/components/ui/input";
 import { AccessLicenseAdminCard } from "@/components/billing/AccessLicenseAdminCard";
 import { TenantInternationalProfileCard } from "@/components/admin/TenantInternationalProfileCard";
 import { TenantImplementationStatusCard } from "@/components/admin/TenantImplementationStatusCard";
-import {
-  ArrowLeft,
-  Building2,
-  Shield,
-  ShieldOff,
-  Mail,
-  Loader2,
-  Zap,
-  Bot,
-  CheckCircle2,
-  XCircle,
-  Clock,
-  UserCheck,
-  MessageSquare,
-  SlidersHorizontal,
-  FileText,
-  Paperclip,
-  Wifi,
-  Send,
-  Settings2,
-  CreditCard,
-  Users,
-  PlugZap,
-  Rocket,
-  LayoutGrid,
-} from "lucide-react";
+import { Building2, Shield, ShieldOff, Mail, Loader2, Zap, Bot, CheckCircle2, XCircle, Clock, UserCheck, MessageSquare, SlidersHorizontal, FileText, Paperclip, Wifi, Send, Settings2, CreditCard, Users, PlugZap, Rocket, LayoutGrid } from "lucide-react";
 
 type TenantDetail = {
   id: string;
@@ -400,14 +376,14 @@ export default function AdminTenantDetail() {
   const enabledModules = (navModules ?? []).filter((item) => item.isEnabled || PROTECTED_MODULES.has(item.moduleKey)).length;
 
   if (tenantLoading) return <div className="flex items-center justify-center h-64"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>;
-  if (!tenant) return <div className="p-6 text-center space-y-3"><p>Tenant não encontrado.</p><Button variant="outline" onClick={() => setLocation("/admin/tenants")}><ArrowLeft className="h-4 w-4 mr-1" />Voltar</Button></div>;
+  if (!tenant) return <div className="p-6 text-center space-y-3"><p>Tenant não encontrado.</p><VendorBackButton to="/admin/tenants" label="Voltar para tenants" /></div>;
 
   const planName = availablePlans.find((plan) => plan.id === tenant.planId)?.name ?? tenant.planId ?? "Sem plano";
 
   return (
     <div className="p-3 sm:p-6 space-y-6 max-w-7xl mx-auto overflow-x-hidden">
       <div className="flex items-start gap-3 flex-wrap">
-        <Button variant="ghost" size="icon" onClick={() => setLocation("/admin/tenants")} className="shrink-0"><ArrowLeft className="h-4 w-4" /></Button>
+        <VendorBackButton to="/admin/tenants" label="Voltar para tenants" className="shrink-0" />
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
             <h1 className="text-xl sm:text-2xl font-bold flex items-center gap-2"><Building2 className="h-5 w-5" /><span className="truncate">{tenant.name}</span></h1>
