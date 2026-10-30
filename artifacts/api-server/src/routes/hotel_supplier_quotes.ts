@@ -72,4 +72,39 @@ router.get("/tenants/:tenantId/hotelaria/compras/semanais/:id/cotacoes",async(re
  }finally{client.release();}
 });
 
+
+router.post("/tenants/:tenantId/hotelaria/cotacoes/:quoteId/resposta",async(req,res)=>{
+ const tenantId=String(req.params.tenantId),quoteId=String(req.params.quoteId),u=req.user;
+ if(!u?.sub||u.tenantId!==tenantId||u.actorType==="ai"||u.actorType==="system"||
+ !(u.platformRole==="tenant_admin"||u.role==="admin"||u.userFunction==="administrador"))
+  return res.status(403).json({error:"Forbidden"});
+ const parsed=z.object({
+  totalAmount:z.number().finite().positive().max(1000000000),
+  deliveryDays:z.number().int().min(0).max(365),
+  paymentTerms:z.string().max(500),
+  notes:z.string().max(2000).optional()
+ }).strict().safeParse(req.body);
+ if(!parsed.success||!z.string().uuid().safeParse(quoteId).success)
+  return res.status(422).json({error:"Invalid quotation response"});
+ const client=await pool.connect();
+ try{
+  await client.query("BEGIN");
+  await client.query("SELECT set_config('app.tenant_id',$1,true)",[tenantId]);
+  const result=await client.query(
+   `UPDATE hotel_weekly_supplier_quotes q
+    SET status='responded',total_amount=$3,delivery_days=$4,payment_terms=$5,notes=$6,responded_at=now()
+    WHERE q.tenant_id=$1 AND q.id=$2 AND q.status='invited'
+      AND EXISTS (SELECT 1 FROM hotel_supplier_quote_deliveries d
+                  WHERE d.tenant_id=q.tenant_id AND d.quote_id=q.id AND d.status='sent')
+    RETURNING q.id,q.status,q.total_amount,q.delivery_days,q.payment_terms`,
+   [tenantId,quoteId,parsed.data.totalAmount,parsed.data.deliveryDays,parsed.data.paymentTerms,parsed.data.notes??null]);
+  if(!result.rowCount){await client.query("ROLLBACK");return res.status(409).json({error:"Quote must have a confirmed invitation before recording a response"});}
+  await client.query("COMMIT");
+  return res.json({...result.rows[0],recordedBy:u.sub,purchaseOrderCreated:false});
+ }catch(error){
+  await client.query("ROLLBACK");console.error("[hotel-purchases] quote response",error);
+  return res.status(500).json({error:"Could not record supplier quote"});
+ }finally{client.release();}
+});
+
 export default router;
