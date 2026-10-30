@@ -743,7 +743,7 @@ function SubStepNav({
             onClick={() => onNavigate(id)}
             style={{
               padding:'4px 10px', borderRadius:6, fontSize:11,
-              color: isActive ? PHX.purple : PHX.textSub,
+              color: isActive ? '#068669' : PHX.textSub,
               display:'flex', alignItems:'center', gap:5, flexShrink:0,
               whiteSpace:'nowrap', cursor:'pointer', border:0, background:'transparent',
             }}
@@ -1041,7 +1041,7 @@ function WorkspaceInner() {
         <div style={{ flex:1, overflow:'hidden', display:'flex', flexDirection:'row', minHeight:0 }}>
           {/* ── module content ── */}
           <div style={{ flex:1, overflow:'hidden', position:'relative', minWidth:0, minHeight:0 }}>
-            <div key={activeModule} className="phx-module-wrap" style={{ height:'100%', overflowX:'hidden', overflowY:'auto' }}>
+            <div key={activeModule} className="phx-module-wrap" style={{ height:'100%', width:'100%', minWidth:0, overflowX:'hidden', overflowY:'auto' }}>
               <Suspense fallback={
                 <div style={{
                   height:'100%', display:'flex', alignItems:'center', justifyContent:'center',
@@ -1057,7 +1057,7 @@ function WorkspaceInner() {
           </div>
 
           {/* ── Vendi contextual sidebar (right, same row as content) ── */}
-          {activeModule !== 'home' && <ArqCopilot
+          {activeModule !== 'home' && activeFlow?.id !== 'entrega' && <ArqCopilot
             collapsed={copilotCollapsed}
             onToggle={() => setCopilotCollapsed(p => !p)}
             nextAction={computeNextAction(arqState, 0)}
