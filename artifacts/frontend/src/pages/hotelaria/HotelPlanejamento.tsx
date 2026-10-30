@@ -5,6 +5,8 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 type Recipe = { id:string; title:string; status:string };
+type Product = {id:string; nome:string; sku?:string|null};
+type PlannedRecipe = {recipeId:string; plannedPortions:number};
 type Forecast = { id:string; service_date:string; meal_type:string; guest_count:number; staff_meals:number };
 type Demand = { productId:string; unit:string; required:number };
 type Summary = { start:string; end:string; forecasts:Forecast[]; demand:Demand[] };
@@ -25,8 +27,8 @@ export default function HotelPlanejamento() {
   const [guests,setGuests]=useState(0);
   const [staff,setStaff]=useState(0);
   const [recipes,setRecipes]=useState<Recipe[]>([]);
-  const [chosen,setChosen]=useState("");
-  const [portions,setPortions]=useState(0);
+  const [products,setProducts]=useState<Product[]>([]);
+  const [recipeLines,setRecipeLines]=useState<PlannedRecipe[]>([{recipeId:"",plannedPortions:1}]);
   const [summary,setSummary]=useState<Summary|null>(null);
   const [message,setMessage]=useState("");
   const [busy,setBusy]=useState(false);
@@ -40,21 +42,22 @@ export default function HotelPlanejamento() {
   async function reload() {
     if(!tenantId||!token)return;
     try{
-      const [data,list]=await Promise.all([
+      const [data,list,catalog]=await Promise.all([
         api<Summary>(`/refeicoes/consolidado?start=${encodeURIComponent(date)}&end=${encodeURIComponent(weekEnd(date))}`),
-        api<Recipe[]>("/receitas")
+        api<Recipe[]>("/receitas"),
+        fetch(`/api/tenants/${encodeURIComponent(tenantId)}/produtos-catalogo`,{headers:{Authorization:`Bearer ${token}`}}).then(async response=>{if(!response.ok)throw new Error("Falha ao consultar catálogo");return response.json() as Promise<Product[]>;})
       ]);
-      setSummary(data);setRecipes(list.filter(r=>r.status==="approved"));
+      setSummary(data);setRecipes(list.filter(r=>r.status==="approved"));setProducts(catalog);
     }catch(e){setMessage(String(e));}
   }
   useEffect(()=>{void reload();},[tenantId,token,date]);
   async function save(){
-    if(!isEffectiveAdmin||!chosen||guests<0||staff<0||portions<=0){setMessage("Selecione receita, porções e quantidades válidas.");return;}
+    if(!isEffectiveAdmin||!Number.isInteger(guests)||guests<0||!Number.isInteger(staff)||staff<0||recipeLines.some(line=>!line.recipeId||!Number.isInteger(line.plannedPortions)||line.plannedPortions<=0)||new Set(recipeLines.map(line=>line.recipeId)).size!==recipeLines.length){setMessage("Selecione receitas distintas com porções e quantidades válidas.");return;}
     setBusy(true);setMessage("");
     try{
       await api("/refeicoes/previsoes",{method:"POST",body:JSON.stringify({
         serviceDate:date,mealType:meal,guestCount:guests,staffMeals:staff,
-        recipeLines:[{recipeId:chosen,plannedPortions:portions}]
+        recipeLines
       })});
       await reload();setMessage("Previsão salva. Você pode consultar a demanda consolidada.");
     }catch(e){setMessage(String(e));}
@@ -75,13 +78,20 @@ export default function HotelPlanejamento() {
       <label className="text-sm">Refeição<select className="mt-1 block h-10 w-full rounded-md border bg-background px-3" value={meal} onChange={e=>setMeal(e.target.value as typeof meal)}>
         {meals.map(([key,label])=><option value={key} key={key}>{label}</option>)}
       </select></label>
-      <label className="text-sm">Receita aprovada<select className="mt-1 block h-10 w-full rounded-md border bg-background px-3" value={chosen} onChange={e=>setChosen(e.target.value)}>
-        <option value="">Selecione uma receita</option>{recipes.map(r=><option key={r.id} value={r.id}>{r.title}</option>)}
-      </select></label>
+
       <label className="text-sm">Hóspedes previstos<Input type="number" min={0} value={guests} onChange={e=>setGuests(Number(e.target.value))}/></label>
       <label className="text-sm">Refeições de equipe<Input type="number" min={0} value={staff} onChange={e=>setStaff(Number(e.target.value))}/></label>
-      <label className="text-sm">Porções da receita<Input type="number" min={1} value={portions} onChange={e=>setPortions(Number(e.target.value))}/></label>
-      <div className="flex items-end"><Button onClick={()=>void save()} disabled={busy||!chosen||!tenantId}>Salvar previsão</Button></div>
+      <div className="sm:col-span-2 space-y-3"><p className="text-sm font-medium">Receitas para esta refeição</p>
+        {recipeLines.map((line,index)=><div key={index} className="grid gap-2 rounded-lg border p-3 sm:grid-cols-[1fr_140px_auto]">
+          <label className="text-sm">Receita aprovada<select className="mt-1 block h-10 w-full rounded-md border bg-background px-3" value={line.recipeId} onChange={e=>setRecipeLines(prev=>prev.map((v,i)=>i===index?{...v,recipeId:e.target.value}:v))}>
+            <option value="">Selecione</option>{recipes.map(r=><option key={r.id} value={r.id}>{r.title}</option>)}
+          </select></label>
+          <label className="text-sm">Porções<Input type="number" min={1} value={line.plannedPortions} onChange={e=>setRecipeLines(prev=>prev.map((v,i)=>i===index?{...v,plannedPortions:Number(e.target.value)}:v))}/></label>
+          <div className="flex items-end"><Button variant="outline" type="button" disabled={recipeLines.length===1} onClick={()=>setRecipeLines(prev=>prev.filter((_,i)=>i!==index))}>Remover</Button></div>
+        </div>)}
+        <Button type="button" variant="outline" disabled={recipeLines.length>=100} onClick={()=>setRecipeLines(prev=>[...prev,{recipeId:"",plannedPortions:1}])}>Adicionar receita</Button>
+      </div>
+      <div className="sm:col-span-2"><Button onClick={()=>void save()} disabled={busy||!tenantId}>Salvar previsão</Button></div>
       <p className="sm:col-span-2 text-xs text-muted-foreground">O sistema permite uma previsão por data e refeição. Não será criada uma segunda previsão para o mesmo serviço.</p>
     </CardContent></Card>}
     <Card><CardHeader><CardTitle>Refeições planejadas</CardTitle></CardHeader><CardContent className="space-y-2">
@@ -94,7 +104,7 @@ export default function HotelPlanejamento() {
     <Card><CardHeader><CardTitle>Ingredientes consolidados (7 dias)</CardTitle></CardHeader><CardContent className="space-y-2">
       {!summary?.demand.length&&<p className="text-sm text-muted-foreground">Nenhuma demanda registrada.</p>}
       {summary?.demand.map(d=><div key={d.productId+":"+d.unit} className="flex justify-between gap-2 border-b py-2 text-sm">
-        <span className="break-all">{d.productId}</span><strong>{Number(d.required.toFixed(3))} {d.unit}</strong>
+        <span>{products.find(p=>p.id===d.productId)?.nome??"Produto não encontrado no catálogo"} <span className="text-xs text-muted-foreground">{products.find(p=>p.id===d.productId)?.sku??""}</span></span><strong>{Number(d.required.toFixed(3))} {d.unit}</strong>
       </div>)}
       <p className="text-xs text-muted-foreground">Demanda de ingredientes: estoque físico ainda não descontado. A comparação de saldos deve ser realizada uma única vez no período.</p>
     </CardContent></Card>
