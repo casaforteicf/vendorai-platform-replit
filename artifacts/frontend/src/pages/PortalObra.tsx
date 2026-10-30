@@ -472,8 +472,8 @@ export default function PortalObra() {
       setShowArqdorClient(false);
       handleTabChange(tab);
     } else {
-      // Não expor funcoes indisponiveis nem criar navegacao ficticia.
-      setShowArqdorClient(false);
+      // Nao abrir navegacao falsa nem sair do painel quando a acao nao esta publicada.
+      return;
     }
   };
   // Sem credencial autenticada, mantemos o portal e suas regras atuais inalterados.
@@ -485,6 +485,7 @@ export default function PortalObra() {
       </button>
       <ApprovedClientDashboard projects={[clientProject]} clientName={data.auth.user?.nome ?? "Cliente"}
         activeProjectId={clientProject.id}
+        availableDestinations={["projetos", ...(["orcamentos","cotacoes","propostas","contratacoes","mensagens","ajuda"] as const).filter(destination => { const tabs: Record<string, TabId> = {orcamentos:"orcamento",cotacoes:"compras",propostas:"propostas",contratacoes:"contratos",mensagens:"chat",ajuda:"suporte"}; return visibleTabs.some(tab => tab.id === tabs[destination]); })]}
         onOpenProject={() => { setShowArqdorClient(false); handleTabChange("dados"); }}
         onNavigate={clientNavigate} />
     </div>
