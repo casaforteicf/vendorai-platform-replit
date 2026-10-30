@@ -1,5 +1,6 @@
+import { VendorBackButton } from "@/components/ui/back-button";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowLeft, Building2, Globe2, Mail, MapPin, Phone, Users } from "lucide-react";
+import { Building2, Globe2, Mail, MapPin, Phone, Users } from "lucide-react";
 import { useLocation, useParams } from "wouter";
 import type { VepCompany, VepPortfolioItem, VepProfessional } from "./vep-types";
 
@@ -41,9 +42,7 @@ export function CompanyDetailPage() {
   if (companyQuery.isError || !companyQuery.data) {
     return (
       <div className="p-6">
-        <button onClick={() => navigate("/ecosystem-hub")} className="mb-4 inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground">
-          <ArrowLeft className="h-4 w-4" /> Ecosystem Hub
-        </button>
+        <VendorBackButton to="/ecosystem-hub" label="Voltar para o Ecosystem Hub" className="mb-4" />
         <div className="rounded-xl border bg-card p-6">
           <h1 className="text-lg font-semibold">Empresa não encontrada</h1>
           <p className="mt-2 text-sm text-muted-foreground">Não foi possível carregar um cadastro real para este identificador.</p>
@@ -59,9 +58,7 @@ export function CompanyDetailPage() {
 
   return (
     <div className="mx-auto max-w-6xl space-y-6 p-4 md:p-6">
-      <button onClick={() => navigate("/ecosystem-hub")} className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground">
-        <ArrowLeft className="h-4 w-4" /> Ecosystem Hub
-      </button>
+      <VendorBackButton to="/ecosystem-hub" label="Voltar para o Ecosystem Hub" />
 
       <section className="overflow-hidden rounded-2xl border bg-card">
         {company.coverUrl && <img src={company.coverUrl} alt="" className="h-44 w-full object-cover" />}
