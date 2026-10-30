@@ -66,7 +66,7 @@ O inventário de rotas deve identificar páginas de entrada, detalhe, edição, 
 
 ## Variações controladas
 
-- **ARQDOR Studio, vídeo e editores/canvas:** podem manter controles e área de trabalho especializados. Compartilham tipografia, acessibilidade, estados, navegação, botões, campos e tokens semânticos do produto; a área de desenho continua otimizada para sua tarefa.
+- **Ferramentas de projeto 3D, vídeo e editores/canvas:** podem manter controles e área de trabalho especializados. Compartilham tipografia, acessibilidade, estados, navegação, botões, campos e tokens semânticos do produto; a área de desenho continua otimizada para sua tarefa.
 - **Marca do tenant:** aplica-se apenas a superfícies white-label/co-branded previstas no produto. Não redefine a identidade do painel Vendor.ai.
 - **Site público, autenticação e conteúdo gerado:** podem ter composição própria, mantendo logo, cores e fontes oficiais da marca Vendor.ai quando a superfície representar a plataforma.
 
@@ -98,7 +98,7 @@ Migrar CRM, Prospector, Marketing, Omnichannel, Agenda, ERP, Operações, Market
 
 ### Fase 3 — Áreas especializadas e mobile
 
-Aplicar o contrato comum ao redor dos canvas do ARQDOR, vídeo e construtores de sites; depois alinhar o aplicativo mobile aos mesmos tokens, estados e acessibilidade.
+Aplicar o contrato comum ao redor de canvas especializados, vídeo e construtores de sites; depois alinhar o aplicativo mobile aos mesmos tokens, estados e acessibilidade.
 
 ### Fase 4 — Fechamento
 
