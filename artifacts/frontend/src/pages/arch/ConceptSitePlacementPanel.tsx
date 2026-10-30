@@ -189,7 +189,7 @@ export default function ConceptSitePlacementPanel({
               width={bounds.width}
               height={bounds.depth}
               fill="none"
-              stroke={fits ? "#f97316" : "#dc2626"}
+              stroke={fits ? "#2563eb" : "#dc2626"}
               strokeWidth="0.12"
               strokeDasharray="0.3 0.16"
             />
