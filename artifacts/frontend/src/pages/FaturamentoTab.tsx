@@ -91,7 +91,7 @@ const PLANO_CONFIG: Record<string, { label: string; className: string; icon: Rea
 const SUB_STATUS_CONFIG: Record<string, { label: string; className: string; dot: string }> = {
   trial:        { label: "Trial",        className: "bg-purple-100 text-purple-700 border-purple-200", dot: "bg-purple-500" },
   ativa:        { label: "Ativa",        className: "bg-emerald-100 text-emerald-700 border-emerald-200", dot: "bg-emerald-500" },
-  inadimplente: { label: "Inadimplente", className: "bg-orange-100 text-orange-700 border-orange-200",   dot: "bg-orange-500" },
+  inadimplente: { label: "Inadimplente", className: "bg-red-100 text-red-700 border-red-200",   dot: "bg-red-500" },
   cancelada:    { label: "Cancelada",    className: "bg-zinc-100 text-zinc-500 border-zinc-200",          dot: "bg-zinc-400" },
 };
 
