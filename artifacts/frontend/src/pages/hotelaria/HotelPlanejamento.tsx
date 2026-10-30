@@ -144,6 +144,17 @@ export default function HotelPlanejamento() {
       setViewRequest(id);setComparison(data);
     }catch(e){setMessage(String(e));}finally{setBusy(false);}
   }
+  async function approveQuote(quoteId:string) {
+    if(!viewRequest||!window.confirm("Aprovar este fornecedor para a solicitação semanal? Isso ainda não emite o pedido."))return;
+    setBusy(true);setMessage("");
+    try {
+      await api("/compras/semanais/"+encodeURIComponent(viewRequest)+"/adjudicar",{
+        method:"POST",body:JSON.stringify({quoteId})
+      });
+      await openComparison(viewRequest);
+      setMessage("Fornecedor aprovado. Pedido de compra ainda não emitido.");
+    }catch(e){setMessage(String(e));}finally{setBusy(false);}
+  }
   async function recordQuote(id:string) {
     const totalAmount=Number(window.prompt("Valor total da proposta (R$):"));
     const deliveryDays=Number(window.prompt("Prazo de entrega em dias:"));
@@ -281,6 +292,7 @@ export default function HotelPlanejamento() {
         {comparison.items.map(item=><p className="text-sm" key={item.product_id+item.unit}>{products.find(p=>p.id===item.product_id)?.nome??item.product_id}: {item.quantity_suggested} {item.unit}</p>)}
         {comparison.suppliers.map(q=><div className="flex flex-wrap items-center justify-between gap-2 border-b py-2 text-sm" key={q.id}>
           <span>{q.supplier_name} · {q.status} · {q.total_amount??"Sem valor"} · {q.delivery_days??"—"} dias</span>
+          {q.status==="responded"&&<Button variant="outline" size="sm" disabled={busy} onClick={()=>void approveQuote(q.id)}>Aprovar fornecedor</Button>}
           {q.status==="invited"&&<Button variant="outline" size="sm" disabled={busy} onClick={()=>void recordQuote(q.id)}>Registrar proposta</Button>}
           {q.status==="selected"&&<div className="flex gap-2">
             <Button variant="outline" size="sm" disabled={busy} onClick={()=>void sendQuote(q.id,"email")}>Enviar e-mail</Button>
