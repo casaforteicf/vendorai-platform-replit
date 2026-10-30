@@ -104,7 +104,20 @@ router.post("/tenants/:tenantId/hotelaria/hospedagem/reservas/:id/:action",async
  const from=action==="checkin"?"reserved":action==="checkout"?"checked_in":"reserved";
  const to=action==="checkin"?"checked_in":action==="checkout"?"checked_out":"cancelled";
  const column=action==="checkin"?"checked_in_at":action==="checkout"?"checked_out_at":null;
- try{const result=await transact(t,async c=>await c.query(`UPDATE hotel_reservations SET status=$3${column?", "+column+"=now()":""} WHERE tenant_id=$1 AND id=$2 AND status=$4 RETURNING id,status`,[t,reservationId,to,from]));if(!result.rowCount)return res.status(409).json({error:"Invalid booking transition"});return res.json(result.rows[0]);}
+ try{const result=await transact(t,async c=>{
+  const existing=await c.query("SELECT room_id,status FROM hotel_reservations WHERE tenant_id=$1 AND id=$2",[t,reservationId]);
+  if(!existing.rowCount||existing.rows[0].status!==from)return null;
+  const room=await c.query("SELECT status,housekeeping_status FROM hotel_rooms WHERE tenant_id=$1 AND id=$2 FOR UPDATE",[t,existing.rows[0].room_id]);
+  if(!room.rowCount)return null;
+  if(action==="checkin"&&(room.rows[0].status!=="active"||room.rows[0].housekeeping_status!=="clean"))return null;
+  const changed=await c.query(`UPDATE hotel_reservations SET status=$3${column?", "+column+"=now()":""} WHERE tenant_id=$1 AND id=$2 AND status=$4 RETURNING id,status`,[t,reservationId,to,from]);
+  if(!changed.rowCount)return null;
+  if(action==="checkout"){
+   await c.query("UPDATE hotel_rooms SET housekeeping_status='dirty' WHERE tenant_id=$1 AND id=$2",[t,existing.rows[0].room_id]);
+   await c.query("INSERT INTO hotel_room_operational_events(id,tenant_id,room_id,event_type,previous_status,new_status,created_by) VALUES($1,$2,$3,'housekeeping',$4,'dirty',$5)",[crypto.randomUUID(),t,existing.rows[0].room_id,room.rows[0].housekeeping_status,req.user!.sub]);
+  }
+  return changed.rows[0];
+ });if(!result)return res.status(409).json({error:"Room unavailable, not clean or invalid booking transition"});return res.json(result);}
  catch(e){return res.status(500).json({error:"Could not update booking"});}
 });
 export default router;
