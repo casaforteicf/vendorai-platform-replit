@@ -397,7 +397,7 @@ export default function EquipeProducao({
     <div className="space-y-4">
       <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
         <div>
-          <h2 className="text-lg font-semibold flex items-center gap-2"><HardHat className="h-5 w-5 text-orange-500" />Equipe & Produção</h2>
+          <h2 className="text-lg font-semibold flex items-center gap-2"><HardHat className="h-5 w-5 text-blue-500" />Equipe & Produção</h2>
           <p className="text-sm text-muted-foreground">Executores, acessos por obra, metas, apontamentos e KPIs operacionais.</p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -488,7 +488,7 @@ export default function EquipeProducao({
 
       <Dialog open={inviteOpen} onOpenChange={setInviteOpen}>
         <DialogContent className="max-w-lg">
-          <DialogHeader><DialogTitle className="flex items-center gap-2"><KeyRound className="h-5 w-5 text-orange-500" />Acesso de campo</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle className="flex items-center gap-2"><KeyRound className="h-5 w-5 text-blue-500" />Acesso de campo</DialogTitle></DialogHeader>
           {inviteData ? (
             <div className="space-y-4">
               <div className="rounded-xl bg-slate-50 p-4">
