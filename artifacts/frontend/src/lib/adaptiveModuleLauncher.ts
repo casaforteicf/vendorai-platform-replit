@@ -4,7 +4,7 @@
  * No role implicitly unlocks an entitlement; no grant is stored client-side.
  */
 export type LauncherModule = "crm" | "prospector" | "marketing" | "omnichannel" | "agenda" |
-  "arqdor" | "obras" | "pdv" | "erp" | "marketplace_casa" |
+  "arqdor" | "hotelaria" | "obras" | "pdv" | "erp" | "marketplace_casa" |
   "parceiros" | "portal_cliente" | "inteligencia" | "agentes_ia" | "configuracoes" | "suporte";
 
 export type LauncherAudience = "consumer" | "professional" | "business";
@@ -22,6 +22,7 @@ export const LAUNCHER_MODULES: readonly LauncherModuleInfo[] = [
   { key: "omnichannel", title: "Omnichannel", route: "/conversations", audiences: ["professional", "business"] },
   { key: "agenda", title: "Agenda", route: "/agenda", audiences: ["professional", "business"] },
   { key: "arqdor", title: "Arqdor", route: "/arch/studio", audiences: ["professional", "business"] },
+  { key: "hotelaria", title: "Hotelaria", route: "/hotelaria/recepcao", audiences: ["business"] },
   { key: "obras", title: "Operações", route: "/obras", audiences: ["professional", "business"] },
   { key: "pdv", title: "PDV", route: null, audiences: ["business"] },
   { key: "erp", title: "ERP", route: "/erp", audiences: ["business"] },
