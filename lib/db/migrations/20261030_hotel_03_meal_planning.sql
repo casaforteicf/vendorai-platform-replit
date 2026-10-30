@@ -134,7 +134,7 @@ CREATE TABLE IF NOT EXISTS hotel_weekly_supplier_quotes (
  tenant_id text NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
  request_id text NOT NULL,
  supplier_id text NOT NULL,
- status text NOT NULL DEFAULT 'selected' CHECK (status IN ('selected','invited','responded','declined','cancelled')),
+ status text NOT NULL DEFAULT 'selected' CHECK (status IN ('selected','sending','invited','responded','declined','cancelled')),
  invited_at timestamptz,
  responded_at timestamptz,
  currency text NOT NULL DEFAULT 'BRL',
