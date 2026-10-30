@@ -9,6 +9,7 @@ type Product = {id:string; nome:string; sku?:string|null};
 type PlannedRecipe = {recipeId:string; plannedPortions:number};
 type Forecast = { id:string; service_date:string; meal_type:string; guest_count:number; staff_meals:number };
 type Demand = { productId:string; unit:string; required:number };
+type PurchaseRequest = {id:string;location_id:string;period_start:string;period_end:string;status:string};
 type StockLocation = {id:string; name:string; active:boolean};
 type Shortage = {productId:string;unit:string;required:number;available:number|null;suggested:number|null;status:string};
 type Summary = { start:string; end:string; forecasts:Forecast[]; demand:Demand[]; shortages?:Shortage[]|null; complete?:boolean };
@@ -33,6 +34,7 @@ export default function HotelPlanejamento() {
   const [recipeLines,setRecipeLines]=useState<PlannedRecipe[]>([{recipeId:"",plannedPortions:1}]);
   const [summary,setSummary]=useState<Summary|null>(null);
   const [locations,setLocations]=useState<StockLocation[]>([]);
+  const [requests,setRequests]=useState<PurchaseRequest[]>([]);
   const [locationId,setLocationId]=useState("");
   const [message,setMessage]=useState("");
   const [busy,setBusy]=useState(false);
@@ -46,13 +48,14 @@ export default function HotelPlanejamento() {
   async function reload() {
     if(!tenantId||!token)return;
     try{
-      const [data,list,catalog,stockLocations]=await Promise.all([
+      const [data,list,catalog,stockLocations,purchases]=await Promise.all([
         api<Summary>(`/refeicoes/consolidado?start=${encodeURIComponent(date)}&end=${encodeURIComponent(weekEnd(date))}${locationId?`&locationId=${encodeURIComponent(locationId)}`:""}`),
         api<Recipe[]>("/receitas"),
         fetch(`/api/tenants/${encodeURIComponent(tenantId)}/produtos-catalogo`,{headers:{Authorization:`Bearer ${token}`}}).then(async response=>{if(!response.ok)throw new Error("Falha ao consultar catálogo");return response.json() as Promise<Product[]>;}),
-        api<StockLocation[]>("/estoque/locais")
+        api<StockLocation[]>("/estoque/locais"),
+        isEffectiveAdmin ? api<PurchaseRequest[]>("/compras/semanais") : Promise.resolve([])
       ]);
-      setSummary(data);setRecipes(list.filter(r=>r.status==="approved"));setProducts(catalog);setLocations(stockLocations.filter(l=>l.active));
+      setSummary(data);setRecipes(list.filter(r=>r.status==="approved"));setProducts(catalog);setLocations(stockLocations.filter(l=>l.active));setRequests(purchases);
     }catch(e){setMessage(String(e));}
   }
   useEffect(()=>{void reload();},[tenantId,token,date,locationId]);
@@ -67,6 +70,19 @@ export default function HotelPlanejamento() {
       await reload();setMessage("Previsão salva. Você pode consultar a demanda consolidada.");
     }catch(e){setMessage(String(e));}
     finally{setBusy(false);}
+  }
+  async function purchaseAction(id:string|null,decision?:"reviewed"|"dismissed") {
+    if(!isEffectiveAdmin)return;
+    setBusy(true);setMessage("");
+    try {
+      if(id && decision) {
+        await api("/compras/semanais/"+encodeURIComponent(id)+"/revisar",{method:"POST",body:JSON.stringify({decision})});
+      } else {
+        if(!locationId||!summary?.complete||!summary.shortages?.length)throw new Error("Concilie o estoque antes de solicitar.");
+        await api("/compras/semanais",{method:"POST",body:JSON.stringify({start:date,end:weekEnd(date),locationId})});
+      }
+      await reload();setMessage("Registro atualizado, sem emissão de pedido.");
+    }catch(e){setMessage(String(e));}finally{setBusy(false);}
   }
   return <main className="mx-auto max-w-6xl space-y-5 p-4 sm:p-8">
     <header><a href="/hotelaria/receitas" className="text-sm text-blue-700 hover:underline">← Voltar às fichas técnicas</a>
@@ -127,5 +143,18 @@ export default function HotelPlanejamento() {
       </div>}
       <p className="text-xs text-muted-foreground">A demanda semanal é consolidada antes de comparar o estoque de um único local. Nenhum pedido é emitido nesta tela.</p>
     </CardContent></Card>
+    {isEffectiveAdmin&&<Card><CardHeader><CardTitle>Solicitações semanais de compra</CardTitle></CardHeader><CardContent className="space-y-3">
+      <Button disabled={busy||!locationId||!summary?.complete||!summary.shortages?.length} onClick={()=>void purchaseAction(null)}>Gerar rascunho da semana</Button>
+      {!requests.length&&<p className="text-sm text-muted-foreground">Nenhuma solicitação registrada.</p>}
+      {requests.map(request=><div key={request.id} className="flex flex-wrap justify-between gap-2 rounded-lg border p-3 text-sm">
+        <div><strong>{String(request.period_start).slice(0,10)} a {String(request.period_end).slice(0,10)}</strong>
+        <p>Status: {request.status} · Local: {locations.find(l=>l.id===request.location_id)?.name??request.location_id}</p></div>
+        {request.status==="draft"&&<div className="flex gap-2">
+          <Button variant="outline" disabled={busy} onClick={()=>void purchaseAction(request.id,"reviewed")}>Revisada</Button>
+          <Button variant="outline" disabled={busy} onClick={()=>void purchaseAction(request.id,"dismissed")}>Descartar</Button>
+        </div>}
+      </div>)}
+      <p className="text-xs text-muted-foreground">Revisão não gera pedido de compra nem movimenta estoque.</p>
+    </CardContent></Card>}
   </main>;
 }
