@@ -144,6 +144,20 @@ export default function HotelPlanejamento() {
       setViewRequest(id);setComparison(data);
     }catch(e){setMessage(String(e));}finally{setBusy(false);}
   }
+  async function recordQuote(id:string) {
+    const totalAmount=Number(window.prompt("Valor total da proposta (R$):"));
+    const deliveryDays=Number(window.prompt("Prazo de entrega em dias:"));
+    const paymentTerms=window.prompt("Condições de pagamento:");
+    if(!Number.isFinite(totalAmount)||totalAmount<=0||!Number.isInteger(deliveryDays)||deliveryDays<0||!paymentTerms?.trim()) {
+      setMessage("Valor, prazo ou condições inválidos.");return;
+    }
+    setBusy(true);
+    try {
+      await api("/cotacoes/"+encodeURIComponent(id)+"/resposta",{method:"POST",body:JSON.stringify({totalAmount,deliveryDays,paymentTerms:paymentTerms.trim()})});
+      if(viewRequest)await openComparison(viewRequest);
+      setMessage("Proposta registrada; pedido não emitido.");
+    }catch(e){setMessage(String(e));}finally{setBusy(false);}
+  }
   async function sendQuote(id:string,channel:"email"|"whatsapp") {
     if(!window.confirm("Confirmar envio real da solicitação de cotação ao fornecedor por "+channel+"?"))return;
     setBusy(true);setMessage("");
@@ -267,6 +281,7 @@ export default function HotelPlanejamento() {
         {comparison.items.map(item=><p className="text-sm" key={item.product_id+item.unit}>{products.find(p=>p.id===item.product_id)?.nome??item.product_id}: {item.quantity_suggested} {item.unit}</p>)}
         {comparison.suppliers.map(q=><div className="flex flex-wrap items-center justify-between gap-2 border-b py-2 text-sm" key={q.id}>
           <span>{q.supplier_name} · {q.status} · {q.total_amount??"Sem valor"} · {q.delivery_days??"—"} dias</span>
+          {q.status==="invited"&&<Button variant="outline" size="sm" disabled={busy} onClick={()=>void recordQuote(q.id)}>Registrar proposta</Button>}
           {q.status==="selected"&&<div className="flex gap-2">
             <Button variant="outline" size="sm" disabled={busy} onClick={()=>void sendQuote(q.id,"email")}>Enviar e-mail</Button>
             <Button variant="outline" size="sm" disabled={busy} onClick={()=>void sendQuote(q.id,"whatsapp")}>Enviar WhatsApp</Button>
