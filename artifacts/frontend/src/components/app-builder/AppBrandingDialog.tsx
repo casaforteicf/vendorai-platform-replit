@@ -23,9 +23,9 @@ export default function AppBrandingDialog({ app, token, open, onOpenChange, onAp
   const [saving, setSaving] = useState(false);
   const [inheritTheme, setInheritTheme] = useState(true);
   const [inheritBrand, setInheritBrand] = useState(true);
-  const [primaryColor, setPrimaryColor] = useState("#f97316");
+  const [primaryColor, setPrimaryColor] = useState("#2563eb");
   const [logoUrl, setLogoUrl] = useState("");
-  const [tenantColor, setTenantColor] = useState("#f97316");
+  const [tenantColor, setTenantColor] = useState("#2563eb");
   const [tenantLogo, setTenantLogo] = useState("");
 
   useEffect(() => {
@@ -42,9 +42,9 @@ export default function AppBrandingDialog({ app, token, open, onOpenChange, onAp
         const resolvedBrand = data.resolved.whiteLabel ?? {};
         setInheritTheme(storedTheme.inheritFromTenant !== false);
         setInheritBrand(storedBrand.inheritFromTenant !== false);
-        setTenantColor(text(resolvedTheme.primaryColor, "#f97316"));
+        setTenantColor(text(resolvedTheme.primaryColor, "#2563eb"));
         setTenantLogo(text(resolvedBrand.logoUrl));
-        setPrimaryColor(text(storedTheme.primaryColor, text(resolvedTheme.primaryColor, "#f97316")));
+        setPrimaryColor(text(storedTheme.primaryColor, text(resolvedTheme.primaryColor, "#2563eb")));
         setLogoUrl(text(storedBrand.logoUrl, text(resolvedBrand.logoUrl)));
       })
       .catch((error) => toast({ title: "Erro ao carregar marca", description: error instanceof Error ? error.message : "Tente novamente.", variant: "destructive" }))

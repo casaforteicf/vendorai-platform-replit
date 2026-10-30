@@ -33,7 +33,7 @@ export default function DownloadApp() {
       <main className="vendor-page min-h-screen bg-slate-50 px-4 py-8 text-slate-950 sm:py-12">
         <div className="mx-auto max-w-md">
           <div className="text-center">
-            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-orange-500 text-white shadow-lg shadow-orange-500/20">
+            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-blue-600 text-white shadow-lg shadow-blue-600/20">
               <Smartphone className="h-8 w-8" />
             </div>
             <h1 className="mt-5 text-3xl font-bold tracking-tight text-slate-950">Instalar Vendor.ai</h1>
@@ -43,7 +43,7 @@ export default function DownloadApp() {
           <div className="vendor-card mt-8 overflow-hidden rounded-3xl">
             <div className="p-5 sm:p-6">
               <div className="flex items-start gap-4">
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-orange-500 text-lg font-bold text-white">1</div>
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-blue-600 text-lg font-bold text-white">1</div>
                 <div className="min-w-0 flex-1">
                   <h2 className="text-xl font-semibold text-slate-950">Baixe o aplicativo</h2>
                   <p className="mt-1 text-sm leading-6 text-slate-600">Toque no botão abaixo para baixar o Vendor.ai no seu celular.</p>
@@ -54,7 +54,7 @@ export default function DownloadApp() {
                 href={ANDROID_APK_URL}
                 download
                 onClick={() => setDownloadStarted(true)}
-                className="mt-5 flex h-14 w-full items-center justify-center gap-2 rounded-2xl bg-orange-500 px-5 text-base font-bold text-white shadow-lg shadow-orange-500/20 transition active:scale-[0.99] hover:bg-orange-600"
+                className="mt-5 flex h-14 w-full items-center justify-center gap-2 rounded-2xl bg-blue-600 px-5 text-base font-bold text-white shadow-lg shadow-blue-600/20 transition active:scale-[0.99] hover:bg-blue-700"
               >
                 <Download className="h-5 w-5" />
                 Baixar aplicativo
@@ -65,7 +65,7 @@ export default function DownloadApp() {
               </div>
             </div>
 
-            <div className="border-t border-slate-200 bg-orange-50/40 p-5 sm:p-6">
+            <div className="border-t border-slate-200 bg-blue-50/40 p-5 sm:p-6">
               <div className="flex items-start gap-4">
                 <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-lg font-bold ${downloadStarted ? "bg-emerald-500 text-white" : "bg-slate-100 text-slate-700"}`}>
                   {downloadStarted ? <CheckCircle2 className="h-6 w-6" /> : "2"}
@@ -85,7 +85,7 @@ export default function DownloadApp() {
             </div>
           </div>
 
-          <div className="mt-5 rounded-2xl border border-orange-200 bg-orange-50 p-4">
+          <div className="mt-5 rounded-2xl border border-blue-200 bg-blue-50 p-4">
             <p className="text-sm font-medium text-slate-900">Se o Android pedir permissão</p>
             <p className="mt-1 text-sm leading-5 text-slate-600">Autorize a instalação deste aplicativo e volte para continuar. Isso normalmente acontece somente na primeira instalação.</p>
           </div>
@@ -102,7 +102,7 @@ export default function DownloadApp() {
           <h1 className="mt-5 text-3xl font-bold text-slate-950">Vendor.ai para iPhone</h1>
           <p className="mt-3 leading-6 text-slate-600">{IOS_APP_URL ? "Toque abaixo para abrir a instalação oficial do Vendor.ai." : "A versão para iPhone está em preparação e será liberada por distribuição oficial da Apple."}</p>
           {IOS_APP_URL && (
-            <a href={IOS_APP_URL} className="mt-7 flex h-14 w-full items-center justify-center gap-2 rounded-2xl bg-orange-500 px-5 font-bold text-white shadow-lg shadow-orange-500/20 hover:bg-orange-600">
+            <a href={IOS_APP_URL} className="mt-7 flex h-14 w-full items-center justify-center gap-2 rounded-2xl bg-blue-600 px-5 font-bold text-white shadow-lg shadow-blue-600/20 hover:bg-blue-700">
               Instalar no iPhone <ExternalLink className="h-5 w-5" />
             </a>
           )}
@@ -114,7 +114,7 @@ export default function DownloadApp() {
   return (
     <main className="vendor-page min-h-screen bg-slate-50 px-4 py-14 text-slate-950">
       <div className="mx-auto max-w-3xl text-center">
-        <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-orange-500 text-white shadow-lg shadow-orange-500/20"><Smartphone className="h-8 w-8" /></div>
+        <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-blue-600 text-white shadow-lg shadow-blue-600/20"><Smartphone className="h-8 w-8" /></div>
         <h1 className="mt-5 text-4xl font-bold tracking-tight text-slate-950">Baixe o Vendor.ai no celular</h1>
         <p className="mx-auto mt-3 max-w-xl text-slate-600">Abra esta página no seu celular. A instalação correta será mostrada automaticamente para Android ou iPhone.</p>
 

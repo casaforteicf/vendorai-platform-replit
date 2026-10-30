@@ -38,7 +38,7 @@ const STATUS_COLORS: Record<string, string> = {
   confirmado:"bg-emerald-100 text-emerald-800 border-emerald-300",
   concluido: "bg-slate-100 text-slate-600 border-slate-300",
   cancelado: "bg-red-100 text-red-700 border-red-200 line-through opacity-60",
-  faltou:    "bg-orange-100 text-orange-700 border-orange-300",
+  faltou:    "bg-red-100 text-red-700 border-red-300",
 };
 const STATUS_LABELS: Record<string, string> = {
   agendado:  "Agendado",

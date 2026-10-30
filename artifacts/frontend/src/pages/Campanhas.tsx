@@ -98,7 +98,7 @@ const STATUS_CONFIG: Record<
   agendada:  { label: "Agendada",  className: "bg-blue-100 text-blue-700 border-blue-200" },
   enviando:  { label: "Enviando",  className: "bg-amber-100 text-amber-700 border-amber-200" },
   concluida: { label: "Concluída", className: "bg-emerald-100 text-emerald-700 border-emerald-200" },
-  pausada:   { label: "Pausada",   className: "bg-orange-100 text-orange-700 border-orange-200" },
+  pausada:   { label: "Pausada",   className: "bg-slate-100 text-slate-700 border-slate-200" },
 };
 
 const TIPO_CONFIG: Record<string, { label: string; className: string }> = {
@@ -1437,7 +1437,7 @@ function CampaignModal({
                 const CHURN_PRESETS = [
                   { label: "Todos os leads",  value: undefined,   className: "bg-muted text-foreground border-border" },
                   { label: "Risco ≥ 40%",     value: 40,          className: "bg-amber-50 text-amber-700 border-amber-300" },
-                  { label: "Risco ≥ 60%",     value: 60,          className: "bg-orange-50 text-orange-700 border-orange-300" },
+                  { label: "Risco ≥ 60%",     value: 60,          className: "bg-red-50 text-red-700 border-red-300" },
                   { label: "Crítico ≥ 80%",   value: 80,          className: "bg-red-50 text-red-700 border-red-300" },
                 ] as const;
 

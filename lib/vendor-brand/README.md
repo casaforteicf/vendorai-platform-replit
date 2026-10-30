@@ -35,9 +35,9 @@ O app mobile importa os mesmos tokens TypeScript através de `artifacts/mobile/c
 
 ## Cores oficiais
 
-- Primary: `#F97316`
-- Primary Strong: `#EA580C`
-- Info: `#2563EB`
+- Primary: `#2563EB`
+- Primary Strong: `#1D4ED8`
+- Info: `#0E7490`
 - Ink: `#0F172A`
 - Canvas: `#F8FAFC`
 

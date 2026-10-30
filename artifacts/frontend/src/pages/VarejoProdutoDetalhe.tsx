@@ -1,3 +1,4 @@
+import { VendorBackButton } from "@/components/ui/back-button";
 import { useState } from "react";
 import { useRoute, useLocation } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
@@ -21,7 +22,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
-import { ArrowLeft, Plus, Pencil, Trash2, Grid3X3, Package, AlertTriangle } from "lucide-react";
+import { Plus, Pencil, Trash2, Grid3X3, Package, AlertTriangle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 const CATEGORIAS = ["camiseta","calca","vestido","short","jaqueta","blazer","saia","acessorio","calcado","bolsa","outro"] as const;
@@ -171,9 +172,7 @@ export default function VarejoProdutoDetalhe() {
   return (
     <div className="max-w-5xl mx-auto space-y-6">
       <div className="flex items-center gap-3">
-        <Button variant="ghost" size="icon" onClick={() => navigate("/varejo/produtos")}>
-          <ArrowLeft className="h-4 w-4" />
-        </Button>
+        <VendorBackButton to="/varejo/produtos" label="Voltar para produtos" />
         <div className="flex-1 min-w-0">
           <h1 className="text-2xl font-bold truncate">{produto.nome}</h1>
           {produto.codigo && <p className="text-sm text-muted-foreground">Ref: {produto.codigo}</p>}

@@ -1,5 +1,6 @@
+import { VendorBackButton } from "@/components/ui/back-button";
 import { useEffect, useMemo, useState } from "react";
-import { ArrowLeft, Clapperboard, ExternalLink, Loader2, RefreshCw } from "lucide-react";
+import { Clapperboard, ExternalLink, Loader2, RefreshCw } from "lucide-react";
 import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/contexts/AuthContext";
@@ -83,9 +84,7 @@ export default function VideoProjectDirectPage() {
   return (
     <div className="mx-auto w-full max-w-4xl space-y-5 pb-24">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <Button variant="outline" size="sm" onClick={() => navigate("/content-studio/video")}>
-          <ArrowLeft className="mr-2 h-4 w-4" /> Voltar ao Video Studio
-        </Button>
+        <VendorBackButton to="/content-studio/video" label="Voltar ao Video Studio" />
         <Button variant="outline" size="sm" onClick={() => void load()} disabled={loading}>
           <RefreshCw className={`mr-2 h-4 w-4 ${loading ? "animate-spin" : ""}`} /> Atualizar
         </Button>

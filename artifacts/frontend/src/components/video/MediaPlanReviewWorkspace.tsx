@@ -140,7 +140,7 @@ export default function MediaPlanReviewWorkspace() {
   const [headline, setHeadline] = useState("");
   const [supportingText, setSupportingText] = useState("");
   const [cta, setCta] = useState("");
-  const [brandColor, setBrandColor] = useState("#F97316");
+  const [brandColor, setBrandColor] = useState("#2563EB");
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [approving, setApproving] = useState(false);
   const [generatedMedia, setGeneratedMedia] = useState<ReferenceMedia | null>(null);
@@ -159,7 +159,7 @@ export default function MediaPlanReviewWorkspace() {
       setHeadline(cleanHeadline(initialHeadline));
       setSupportingText(nextDesign?.brief?.supportingText || nextExecution?.campaign?.mensagemCentral || "");
       setCta(nextDesign?.brief?.cta || nextExecution?.campaign?.oferta || "Fale com nossa equipe");
-      setBrandColor(nextDesign?.brief?.brandColor || "#F97316");
+      setBrandColor(nextDesign?.brief?.brandColor || "#2563EB");
     } catch {
       setExecution(null);
     }
@@ -331,7 +331,7 @@ export default function MediaPlanReviewWorkspace() {
         <div className="space-y-4">
           <section className="rounded-3xl border bg-card p-4 shadow-sm sm:p-5">
             <div className="flex flex-wrap items-center gap-2">
-              <Badge className="border-orange-200 bg-orange-50 text-orange-700 hover:bg-orange-50">Em revisão</Badge>
+              <Badge className="border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-50">Em revisão</Badge>
               <Badge variant="secondary">{execution.calendarItem.canal || "Instagram"} / {(execution.calendarItem.tipo || "reels").replaceAll("_", " ")}</Badge>
               <Badge variant="outline">Lote 1 de {Math.max(1, Math.ceil((sortedItems.length || 10) / 10))}</Badge>
             </div>
@@ -355,12 +355,12 @@ export default function MediaPlanReviewWorkspace() {
                   mainMedia?.type === "video" ? <video src={previewUrl} muted playsInline className="absolute inset-0 h-full w-full object-cover" /> : <img src={previewUrl} alt="Prévia do material" className="absolute inset-0 h-full w-full object-cover" />
                 ) : <div className="absolute inset-0" style={{ background: `linear-gradient(145deg, ${brandColor}, #151515 78%)` }} />}
                 <div className="absolute inset-0 bg-gradient-to-b from-black/15 via-transparent to-black/55" />
-                <div className="absolute left-6 top-6 rounded-xl bg-orange-500 px-3 py-2 text-sm font-bold text-white">V</div>
+                <div className="absolute left-6 top-6 rounded-xl bg-blue-500 px-3 py-2 text-sm font-bold text-white">V</div>
                 <div className="absolute right-5 top-5 rounded-full bg-black/45 px-3 py-1 text-[11px] font-semibold text-white">REELS</div>
                 <div className="absolute inset-x-6 bottom-8 text-white">
                   <h3 className="max-w-[90%] text-3xl font-extrabold leading-[.98] sm:text-4xl">{firstSentence(headline, 70)}</h3>
                   {supportingText ? <p className="mt-4 max-w-[88%] text-sm leading-snug text-white/90">{firstSentence(supportingText, 105)}</p> : null}
-                  {cta ? <span className="mt-5 inline-flex rounded-full bg-orange-500 px-4 py-2 text-xs font-semibold">{firstSentence(cta, 32)} →</span> : null}
+                  {cta ? <span className="mt-5 inline-flex rounded-full bg-blue-500 px-4 py-2 text-xs font-semibold">{firstSentence(cta, 32)} →</span> : null}
                 </div>
                 {!previewUrl ? <div className="absolute right-5 bottom-5 rounded-full bg-black/45 p-2 text-white/70"><ImageIcon className="h-5 w-5" /></div> : null}
               </div>
@@ -373,14 +373,14 @@ export default function MediaPlanReviewWorkspace() {
                 {productionState === "processing" ? (
                   <div className="flex h-20 min-w-48 shrink-0 items-center gap-2 rounded-xl border border-indigo-200 bg-indigo-50 px-3 text-xs font-medium text-indigo-800"><Loader2 className="h-4 w-4 animate-spin" />IA criando cenas e montando vídeo</div>
                 ) : !previewUrl ? (
-                  <button type="button" onClick={() => navigate(`/content?tab=campanhas&source=media-plan&mediaPlanId=${execution.mediaPlanId ?? ""}`)} className="flex h-20 min-w-40 shrink-0 flex-col items-center justify-center rounded-xl border border-dashed border-orange-300 bg-orange-50 text-xs font-semibold text-orange-800"><Sparkles className="mb-1 h-5 w-5" />{productionState === "failed" ? "Tentar gerar novamente" : "Gerar mídia com IA"}</button>
+                  <button type="button" onClick={() => navigate(`/content?tab=campanhas&source=media-plan&mediaPlanId=${execution.mediaPlanId ?? ""}`)} className="flex h-20 min-w-40 shrink-0 flex-col items-center justify-center rounded-xl border border-dashed border-blue-300 bg-blue-50 text-xs font-semibold text-blue-800"><Sparkles className="mb-1 h-5 w-5" />{productionState === "failed" ? "Tentar gerar novamente" : "Gerar mídia com IA"}</button>
                 ) : null}
                 <button type="button" onClick={openAdvanced} className="flex h-20 min-w-32 shrink-0 flex-col items-center justify-center rounded-xl border border-dashed text-xs text-muted-foreground"><Plus className="mb-1 h-5 w-5" />Usar mídia própria</button>
               </div>
               {productionDetail ? <p className={`mt-2 text-xs ${productionState === "failed" ? "text-red-700" : "text-muted-foreground"}`}>{productionDetail}</p> : null}
             </div>
 
-            <Button className="mt-4 h-12 w-full rounded-xl bg-orange-500 text-base hover:bg-orange-600" onClick={() => void approve()} disabled={approving || !previewUrl}>{approving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : productionState === "processing" ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Check className="mr-2 h-4 w-4" />}{productionState === "processing" ? "Aguardando mídia da IA" : !previewUrl ? "Gere a mídia para aprovar" : "Aprovar material"}</Button>
+            <Button className="mt-4 h-12 w-full rounded-xl bg-blue-500 text-base hover:bg-blue-600" onClick={() => void approve()} disabled={approving || !previewUrl}>{approving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : productionState === "processing" ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Check className="mr-2 h-4 w-4" />}{productionState === "processing" ? "Aguardando mídia da IA" : !previewUrl ? "Gere a mídia para aprovar" : "Aprovar material"}</Button>
             <div className="mt-2 grid grid-cols-3 gap-2">
               <Button variant="outline" className="h-11" onClick={() => quickEditRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })}><Pencil className="mr-1.5 h-4 w-4" />Editar texto</Button>
               <Button variant="outline" className="h-11" onClick={openAdvanced}><ImageIcon className="mr-1.5 h-4 w-4" />Trocar mídia</Button>
@@ -397,7 +397,7 @@ export default function MediaPlanReviewWorkspace() {
               <div className="flex h-36 w-36 items-center justify-center rounded-full" style={{ background: `conic-gradient(#10b981 ${score * 3.6}deg, #e5e7eb 0)` }}><div className="flex h-28 w-28 flex-col items-center justify-center rounded-full bg-card"><span className="text-4xl font-semibold">{score}</span><span className="text-sm text-muted-foreground">/ 100</span></div></div>
               <div className="space-y-3">
                 <div><p className="text-sm font-semibold">Pontos fortes</p><div className="mt-2 space-y-1.5">{strongPoints.map((item) => <p key={item} className="flex items-center gap-2 text-sm text-muted-foreground"><span className="flex h-4 w-4 items-center justify-center rounded-full bg-emerald-500 text-white"><Check className="h-3 w-3" /></span>{item}</p>)}</div></div>
-                <div><p className="text-sm font-semibold">Ajustes sugeridos</p><div className="mt-2 space-y-1.5">{suggestions.length ? suggestions.map((item) => <p key={item} className="text-sm text-orange-700">• {item}</p>) : <p className="text-sm text-emerald-700">Nenhum ajuste crítico identificado.</p>}</div></div>
+                <div><p className="text-sm font-semibold">Ajustes sugeridos</p><div className="mt-2 space-y-1.5">{suggestions.length ? suggestions.map((item) => <p key={item} className="text-sm text-blue-700">• {item}</p>) : <p className="text-sm text-emerald-700">Nenhum ajuste crítico identificado.</p>}</div></div>
               </div>
             </div>
           </section>

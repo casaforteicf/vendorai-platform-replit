@@ -1,24 +1,7 @@
+import { VendorBackButton } from "@/components/ui/back-button";
 import { useEffect, useMemo, useState } from "react";
 import { useLocation, useParams } from "wouter";
-import {
-  Activity,
-  ArrowLeft,
-  BadgeDollarSign,
-  Building2,
-  FileText,
-  Handshake,
-  Landmark,
-  Link2,
-  Loader2,
-  MessageSquare,
-  Network,
-  PackageCheck,
-  Phone,
-  Mail,
-  Search,
-  Sparkles,
-  Users,
-} from "lucide-react";
+import { Activity, BadgeDollarSign, Building2, FileText, Handshake, Landmark, Link2, Loader2, MessageSquare, Network, PackageCheck, Phone, Mail, Search, Sparkles, Users } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -285,7 +268,7 @@ export default function CompanyCenter() {
   if (error || !data) {
     return (
       <div className="vendor-page-canvas vendor-companies-page mx-auto w-full max-w-3xl space-y-4 p-4 md:p-6">
-        <Button variant="ghost" onClick={() => history.back()}><ArrowLeft className="mr-2 h-4 w-4" />Voltar</Button>
+        <VendorBackButton to="/empresas" label="Voltar para empresas" />
         <Card className="mt-4"><CardContent className="p-6 text-sm text-destructive">{error ?? "Empresa não encontrada."}</CardContent></Card>
       </div>
     );
@@ -295,7 +278,7 @@ export default function CompanyCenter() {
     <div className="vendor-product-page vendor-page-canvas vendor-companies-page space-y-5">
       <div className="flex flex-col gap-4 rounded-2xl border bg-card p-5 shadow-sm lg:flex-row lg:items-center lg:justify-between">
         <div className="flex gap-3">
-          <Button variant="ghost" size="icon" onClick={() => history.back()} aria-label="Voltar"><ArrowLeft className="h-4 w-4" /></Button>
+          <VendorBackButton to="/empresas" label="Voltar para empresas" className="shrink-0" />
           <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border bg-muted/50">
             <Building2 className="h-6 w-6" />
           </div>

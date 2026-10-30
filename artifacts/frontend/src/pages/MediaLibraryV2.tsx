@@ -357,7 +357,7 @@ export default function MediaLibraryV2() {
             <button type="button" onClick={() => setUrlOpen((value) => !value)} className="inline-flex h-11 items-center gap-2 rounded-xl border bg-background px-4 text-sm font-semibold shadow-sm hover:bg-muted/40">
               <Link2 className="h-4 w-4 text-blue-600" /> Importar por URL
             </button>
-            <button type="button" onClick={() => inputRef.current?.click()} disabled={uploading} className="inline-flex h-11 items-center gap-2 rounded-xl bg-orange-500 px-5 text-sm font-semibold text-white shadow-sm transition hover:bg-orange-600 disabled:opacity-60">
+            <button type="button" onClick={() => inputRef.current?.click()} disabled={uploading} className="inline-flex h-11 items-center gap-2 rounded-xl bg-blue-500 px-5 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-600 disabled:opacity-60">
               {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />} Adicionar conteúdo
             </button>
           </div>
@@ -365,7 +365,7 @@ export default function MediaLibraryV2() {
 
         {urlOpen && (
           <div className="mt-3 flex max-w-2xl gap-2 rounded-2xl border bg-card p-3 shadow-sm">
-            <input value={importUrl} onChange={(event) => setImportUrl(event.target.value)} placeholder="Cole a URL temporária do documento" className="h-10 min-w-0 flex-1 rounded-xl border bg-background px-3 text-sm outline-none focus:border-orange-300" />
+            <input value={importUrl} onChange={(event) => setImportUrl(event.target.value)} placeholder="Cole a URL temporária do documento" className="h-10 min-w-0 flex-1 rounded-xl border bg-background px-3 text-sm outline-none focus:border-blue-300" />
             <button type="button" onClick={() => void importFromUrl()} disabled={importingUrl || !importUrl.trim()} className="h-10 rounded-xl bg-slate-950 px-4 text-sm font-semibold text-white disabled:opacity-50">
               {importingUrl ? "Importando..." : "Importar"}
             </button>
@@ -374,8 +374,8 @@ export default function MediaLibraryV2() {
 
         <div className="mt-5 grid grid-cols-2 gap-2 md:grid-cols-3 xl:grid-cols-6">
           {stats.map(({ id, label: statLabel, value, icon: Icon }) => (
-            <button key={id} type="button" onClick={() => setFilter(id)} className={`rounded-2xl border p-3 text-left transition ${filter === id ? "border-orange-400 bg-orange-50 shadow-sm" : "bg-card hover:border-slate-300"}`}>
-              <div className="flex items-center justify-between gap-2"><span className={`text-xs font-medium ${filter === id ? "text-orange-600" : "text-muted-foreground"}`}>{statLabel}</span><Icon className={`h-4 w-4 ${id === "ai" ? "text-emerald-600" : id === "favorites" ? "text-amber-500" : "text-blue-600"}`} /></div>
+            <button key={id} type="button" onClick={() => setFilter(id)} className={`rounded-2xl border p-3 text-left transition ${filter === id ? "border-blue-400 bg-blue-50 shadow-sm" : "bg-card hover:border-slate-300"}`}>
+              <div className="flex items-center justify-between gap-2"><span className={`text-xs font-medium ${filter === id ? "text-blue-600" : "text-muted-foreground"}`}>{statLabel}</span><Icon className={`h-4 w-4 ${id === "ai" ? "text-emerald-600" : id === "favorites" ? "text-amber-500" : "text-blue-600"}`} /></div>
               <p className="mt-1 text-xl font-bold">{loadError ? "—" : value}</p>
             </button>
           ))}
@@ -389,7 +389,7 @@ export default function MediaLibraryV2() {
             {folders.map((item) => {
               const count = item === "Todas" ? assets.length : assets.filter((asset) => folderOf(asset) === item).length;
               return (
-                <button key={item} type="button" onClick={() => setFolder(item)} className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm transition ${folder === item ? "bg-orange-50 font-semibold text-orange-600" : "text-slate-600 hover:bg-muted/60"}`}>
+                <button key={item} type="button" onClick={() => setFolder(item)} className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm transition ${folder === item ? "bg-blue-50 font-semibold text-blue-600" : "text-slate-600 hover:bg-muted/60"}`}>
                   <Folder className="h-4 w-4 shrink-0" /><span className="min-w-0 flex-1 truncate">{item}</span><span className="text-xs text-muted-foreground">{loadError ? "—" : count}</span>
                 </button>
               );
@@ -402,7 +402,7 @@ export default function MediaLibraryV2() {
             <div className="flex flex-col gap-2 lg:flex-row lg:items-center">
               <label className="relative min-w-0 flex-1">
                 <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar na biblioteca (nome, categoria, tipo, descrição...)" className="h-11 w-full rounded-xl border bg-background pl-10 pr-3 text-sm outline-none focus:border-orange-300" />
+                <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar na biblioteca (nome, categoria, tipo, descrição...)" className="h-11 w-full rounded-xl border bg-background pl-10 pr-3 text-sm outline-none focus:border-blue-300" />
               </label>
               <select value={folder} onChange={(event) => setFolder(event.target.value)} className="h-11 rounded-xl border bg-background px-3 text-sm lg:w-40">
                 {folders.map((item) => <option key={item}>{item}</option>)}
@@ -441,7 +441,7 @@ export default function MediaLibraryV2() {
           )}
 
           {loading ? (
-            <div className="flex min-h-[420px] items-center justify-center"><Loader2 className="h-7 w-7 animate-spin text-orange-500" /></div>
+            <div className="flex min-h-[420px] items-center justify-center"><Loader2 className="h-7 w-7 animate-spin text-blue-500" /></div>
           ) : loadError ? (
             <div className="mt-4 rounded-3xl border border-red-200 bg-red-50 p-10 text-center">
               <Bot className="mx-auto h-10 w-10 text-red-500" />
@@ -454,7 +454,7 @@ export default function MediaLibraryV2() {
           ) : view === "grid" ? (
             <section className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-5">
               {filtered.map((asset) => (
-                <article key={asset.id} onClick={() => setInspectedId(asset.id)} className={`group cursor-pointer overflow-hidden rounded-2xl border bg-card transition hover:-translate-y-0.5 hover:shadow-md ${inspectedId === asset.id ? "border-orange-400 ring-2 ring-orange-100" : ""}`}>
+                <article key={asset.id} onClick={() => setInspectedId(asset.id)} className={`group cursor-pointer overflow-hidden rounded-2xl border bg-card transition hover:-translate-y-0.5 hover:shadow-md ${inspectedId === asset.id ? "border-blue-400 ring-2 ring-blue-100" : ""}`}>
                   <div className="relative aspect-[4/3] overflow-hidden bg-muted">
                     <Preview asset={asset} />
                     <div className="absolute left-2 top-2 rounded-md bg-black/60 px-2 py-1 text-[10px] font-semibold text-white backdrop-blur">{asset.type === "document" ? "PDF" : label(asset.type)}</div>
@@ -495,7 +495,7 @@ export default function MediaLibraryV2() {
 
               <div>
                 <div className="mb-1 flex items-center justify-between"><p className="text-xs font-semibold">Descrição</p></div>
-                <textarea value={description} onChange={(event) => setDescription(event.target.value)} onBlur={() => void patchAsset(inspected, { description })} rows={3} placeholder="Descrição do conteúdo e contexto de uso." className="w-full resize-none rounded-xl border bg-background p-3 text-xs outline-none focus:border-orange-300" />
+                <textarea value={description} onChange={(event) => setDescription(event.target.value)} onBlur={() => void patchAsset(inspected, { description })} rows={3} placeholder="Descrição do conteúdo e contexto de uso." className="w-full resize-none rounded-xl border bg-background p-3 text-xs outline-none focus:border-blue-300" />
               </div>
 
               <div className="rounded-xl border border-violet-200 bg-violet-50 p-3">
@@ -518,7 +518,7 @@ export default function MediaLibraryV2() {
               )}
 
               <div className="grid grid-cols-[1fr_auto] gap-2">
-                <a href={assetAccessUrl(inspected)} download={inspected.originalFilename ?? undefined} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-orange-500 px-4 text-sm font-semibold text-white hover:bg-orange-600"><Download className="h-4 w-4" /> Baixar</a>
+                <a href={assetAccessUrl(inspected)} download={inspected.originalFilename ?? undefined} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-blue-500 px-4 text-sm font-semibold text-white hover:bg-blue-600"><Download className="h-4 w-4" /> Baixar</a>
                 <button type="button" onClick={() => void remove(inspected)} className="inline-flex h-11 items-center justify-center rounded-xl border border-red-200 px-3 text-red-600 hover:bg-red-50"><Trash2 className="h-4 w-4" /></button>
               </div>
               {saving && <p className="text-center text-xs text-muted-foreground">Salvando…</p>}

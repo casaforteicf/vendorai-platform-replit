@@ -387,7 +387,7 @@ function RealProductImage({
     return (
       <div className="flex h-full min-h-[240px] items-center justify-center bg-[linear-gradient(145deg,#f8fafc_0%,#eef4ff_100%)] px-8 text-center">
         <div className="max-w-sm rounded-2xl border border-slate-200/80 bg-white/90 px-7 py-6 shadow-sm">
-          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-orange-50 text-orange-500">
+          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-blue-50 text-blue-500">
             <BarChart3 className="h-6 w-6" />
           </div>
           <p className="mt-4 text-sm font-semibold text-slate-700">{alt}</p>
@@ -607,7 +607,7 @@ export default function Login() {
                       <Input
                         placeholder={copy.emailPlaceholder}
                         {...field}
-                        className="h-12 rounded-xl border-slate-200 bg-white px-4 text-[14px] shadow-none focus-visible:ring-2 focus-visible:ring-orange-200"
+                        className="h-12 rounded-xl border-slate-200 bg-white px-4 text-[14px] shadow-none focus-visible:ring-2 focus-visible:ring-blue-200"
                       />
                     </FormControl>
                     <FormMessage />
@@ -627,7 +627,7 @@ export default function Login() {
                           type={showPassword ? "text" : "password"}
                           placeholder={copy.passwordPlaceholder}
                           {...field}
-                          className="h-12 rounded-xl border-slate-200 bg-white px-4 pr-11 text-[14px] shadow-none focus-visible:ring-2 focus-visible:ring-orange-200"
+                          className="h-12 rounded-xl border-slate-200 bg-white px-4 pr-11 text-[14px] shadow-none focus-visible:ring-2 focus-visible:ring-blue-200"
                         />
                         <button
                           type="button"
@@ -647,7 +647,7 @@ export default function Login() {
 
               <Button
                 type="submit"
-                className="h-12 w-full rounded-xl bg-orange-500 text-[14px] font-semibold text-white shadow-none transition hover:bg-orange-600"
+                className="h-12 w-full rounded-xl bg-blue-500 text-[14px] font-semibold text-white shadow-none transition hover:bg-blue-700"
                 disabled={loginMutation.isPending}
               >
                 {loginMutation.isPending ? copy.entering : copy.enterPlatform}
@@ -683,7 +683,7 @@ export default function Login() {
               type="button"
               onClick={onDemoLogin}
               disabled={demoLoginMutation.isPending}
-              className="font-semibold text-slate-700 transition hover:text-orange-600 hover:underline disabled:opacity-50"
+              className="font-semibold text-slate-700 transition hover:text-blue-700 hover:underline disabled:opacity-50"
             >
               {demoLoginMutation.isPending ? copy.entering : copy.demo}
             </button>
@@ -701,14 +701,14 @@ export default function Login() {
         </div>
       </section>
 
-      <section className="relative hidden min-h-screen overflow-hidden border-l border-slate-200/70 bg-[radial-gradient(circle_at_80%_10%,rgba(59,130,246,0.12),transparent_34%),radial-gradient(circle_at_100%_100%,rgba(249,115,22,0.10),transparent_28%),linear-gradient(145deg,#f7fbff_0%,#eef5ff_48%,#f8fafc_100%)] lg:flex lg:flex-col">
-        <div className="pointer-events-none absolute -right-24 -top-24 h-80 w-80 rounded-full border border-orange-300/40" />
+      <section className="relative hidden min-h-screen overflow-hidden border-l border-slate-200/70 bg-[radial-gradient(circle_at_80%_10%,rgba(59,130,246,0.12),transparent_34%),radial-gradient(circle_at_100%_100%,rgba(37,99,235,0.10),transparent_28%),linear-gradient(145deg,#f7fbff_0%,#eef5ff_48%,#f8fafc_100%)] lg:flex lg:flex-col">
+        <div className="pointer-events-none absolute -right-24 -top-24 h-80 w-80 rounded-full border border-blue-300/40" />
         <div className="pointer-events-none absolute -right-10 -top-10 h-52 w-52 rounded-full border border-blue-300/30" />
 
         <div className="relative flex flex-1 flex-col px-8 pb-6 pt-8 xl:px-12 xl:pt-10 2xl:px-16">
-          <div className="flex items-center gap-3 text-[11px] font-bold uppercase tracking-[0.18em] text-orange-500">
+          <div className="flex items-center gap-3 text-[11px] font-bold uppercase tracking-[0.18em] text-blue-500">
             <span>{copy.tourKicker}</span>
-            <span className="h-px w-12 bg-orange-300" />
+            <span className="h-px w-12 bg-blue-300" />
           </div>
 
           <h2 className="mt-4 text-[34px] font-semibold leading-[1.08] tracking-[-0.035em] text-slate-950 xl:text-[38px]">
@@ -729,7 +729,7 @@ export default function Login() {
                   onClick={() => setActiveIndex(index)}
                   className={`flex min-w-max items-center gap-2 rounded-xl border px-3.5 py-2.5 text-left text-[12px] font-semibold transition ${
                     selected
-                      ? "border-orange-300 bg-orange-50 text-orange-600"
+                      ? "border-blue-300 bg-blue-50 text-blue-700"
                       : "border-transparent bg-white/55 text-slate-500 hover:border-slate-200 hover:bg-white hover:text-slate-800"
                   }`}
                   aria-pressed={selected}
@@ -743,10 +743,10 @@ export default function Login() {
 
           <div className="mt-4 grid min-h-0 flex-1 grid-cols-[minmax(245px,0.62fr)_minmax(0,1.38fr)] items-center gap-6 xl:gap-8">
             <div className="self-center">
-              <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-orange-500 text-white shadow-[0_12px_28px_rgba(249,115,22,0.22)]">
+              <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-blue-500 text-white shadow-[0_12px_28px_rgba(37,99,235,0.22)]">
                 <ActiveIcon className="h-5 w-5" />
               </div>
-              <p className="mt-5 text-[11px] font-bold uppercase tracking-[0.16em] text-orange-500">
+              <p className="mt-5 text-[11px] font-bold uppercase tracking-[0.16em] text-blue-500">
                 {active.kicker}
               </p>
               <h3 className="mt-2 text-[25px] font-semibold leading-[1.14] tracking-[-0.025em] text-slate-950">
@@ -759,7 +759,7 @@ export default function Login() {
               <div className="mt-5 space-y-3">
                 {active.bullets.map((bullet) => (
                   <div key={bullet} className="flex items-start gap-2.5 text-[13px] leading-5 text-slate-600">
-                    <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-orange-500" />
+                    <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-blue-500" />
                     <span>{bullet}</span>
                   </div>
                 ))}
@@ -782,7 +782,7 @@ export default function Login() {
                       onClick={() => setActiveIndex(index)}
                       aria-label={item.label}
                       className={`h-2 rounded-full transition-all ${
-                        index === activeIndex ? "w-5 bg-orange-500" : "w-2 bg-slate-300"
+                        index === activeIndex ? "w-5 bg-blue-500" : "w-2 bg-slate-300"
                       }`}
                     />
                   ))}
@@ -820,7 +820,7 @@ export default function Login() {
                   ) : (
                     <div className="flex h-full items-center justify-center px-10 text-center">
                       <div className="max-w-md">
-                        <Sparkles className="mx-auto h-8 w-8 text-orange-500" />
+                        <Sparkles className="mx-auto h-8 w-8 text-blue-500" />
                         <p className="mt-4 text-[14px] font-semibold text-slate-800">{active.label}</p>
                         <p className="mt-2 text-[12px] leading-5 text-slate-500">{active.previewNote}</p>
                       </div>

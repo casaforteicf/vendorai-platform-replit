@@ -1,10 +1,10 @@
 export const VENDOR_BRAND = {
   name: "Vendor.ai",
   colors: {
-    primary: "#F97316",
-    primaryStrong: "#EA580C",
-    primarySoft: "#FFF7ED",
-    info: "#2563EB",
+    primary: "#2563EB",
+    primaryStrong: "#1D4ED8",
+    primarySoft: "#EFF6FF",
+    info: "#0E7490",
     success: "#059669",
     warning: "#F59E0B",
     destructive: "#EF4444",

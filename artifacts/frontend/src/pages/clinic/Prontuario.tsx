@@ -1,3 +1,4 @@
+import { VendorBackButton } from "@/components/ui/back-button";
 import { useState, useEffect, useRef } from "react";
 import { useRoute } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
@@ -10,9 +11,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
-import {
-  Loader2, Save, FileText, ArrowLeft, Paperclip, X, Stethoscope,
-} from "lucide-react";
+import { Loader2, Save, FileText, Paperclip, X, Stethoscope } from "lucide-react";
 import { Link } from "wouter";
 import { format, parseISO } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -158,11 +157,7 @@ export default function Prontuario() {
       {/* Header */}
       <div className="flex items-start justify-between gap-3 flex-wrap">
         <div className="flex items-start gap-3">
-          <Link href="/clinic/agenda">
-            <Button variant="ghost" size="icon" className="mt-0.5 shrink-0">
-              <ArrowLeft className="h-4 w-4" />
-            </Button>
-          </Link>
+          <VendorBackButton to="/clinic/agenda" label="Voltar para agenda" className="mt-0.5 shrink-0" />
           <div>
             <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
               <FileText className="h-5 w-5" /> Prontuário

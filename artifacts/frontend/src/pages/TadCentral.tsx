@@ -21,7 +21,7 @@ export interface TadCentralProps {
 }
 
 const DISPLAY = "font-['Sora',_'Inter',_sans-serif]";
-const FOCUS = "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-300";
+const FOCUS = "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-300";
 const TOKEN_KEY = "vendorai_token";
 
 const TAD_LABELS: Partial<Record<LauncherModule, { description: string; section: string }>> = {
@@ -53,24 +53,14 @@ const ICON_MAP: Partial<Record<LauncherModule, typeof Users>> = {
 type Tone = { label: string; tile: string; card: string; bar: string };
 // Classes completas (estáticas) para o Tailwind gerar o CSS de cada tom neon.
 const TONES = {
-  cyan: { label: "text-cyan-300", tile: "from-cyan-400 to-blue-600 shadow-[0_0_24px_-4px_rgba(34,211,238,.75)]", card: "from-cyan-500/[.13] border-cyan-400/25 hover:border-cyan-300/70 hover:shadow-[0_0_36px_-10px_rgba(34,211,238,.7)]", bar: "from-cyan-600/40 to-cyan-300" },
-  violet: { label: "text-violet-300", tile: "from-violet-500 to-indigo-600 shadow-[0_0_24px_-4px_rgba(139,92,246,.75)]", card: "from-violet-500/[.14] border-violet-400/25 hover:border-violet-300/70 hover:shadow-[0_0_36px_-10px_rgba(139,92,246,.7)]", bar: "from-violet-700/40 to-violet-400" },
-  sky: { label: "text-sky-300", tile: "from-sky-400 to-blue-600 shadow-[0_0_24px_-4px_rgba(56,189,248,.75)]", card: "from-sky-500/[.12] border-sky-400/25 hover:border-sky-300/70 hover:shadow-[0_0_36px_-10px_rgba(56,189,248,.7)]", bar: "from-sky-700/40 to-sky-300" },
-  rose: { label: "text-rose-300", tile: "from-rose-400 to-red-600 shadow-[0_0_24px_-4px_rgba(251,113,133,.75)]", card: "from-rose-500/[.12] border-rose-400/25 hover:border-rose-300/70 hover:shadow-[0_0_36px_-10px_rgba(251,113,133,.7)]", bar: "from-rose-700/40 to-rose-300" },
-  amber: { label: "text-amber-300", tile: "from-amber-400 to-orange-600 shadow-[0_0_24px_-4px_rgba(245,158,11,.75)]", card: "from-amber-500/[.13] border-amber-400/25 hover:border-amber-300/70 hover:shadow-[0_0_36px_-10px_rgba(245,158,11,.7)]", bar: "from-amber-700/40 to-amber-300" },
-  blue: { label: "text-blue-300", tile: "from-blue-400 to-indigo-600 shadow-[0_0_24px_-4px_rgba(59,130,246,.75)]", card: "from-blue-500/[.13] border-blue-400/25 hover:border-blue-300/70 hover:shadow-[0_0_36px_-10px_rgba(59,130,246,.7)]", bar: "from-blue-700/40 to-cyan-300" },
-  orange: { label: "text-orange-300", tile: "from-orange-400 to-amber-700 shadow-[0_0_24px_-4px_rgba(249,115,22,.75)]", card: "from-orange-500/[.13] border-orange-400/25 hover:border-orange-300/70 hover:shadow-[0_0_36px_-10px_rgba(249,115,22,.7)]", bar: "from-orange-700/40 to-orange-300" },
-  fuchsia: { label: "text-fuchsia-300", tile: "from-fuchsia-500 to-purple-700 shadow-[0_0_24px_-4px_rgba(217,70,239,.75)]", card: "from-fuchsia-500/[.13] border-fuchsia-400/25 hover:border-fuchsia-300/70 hover:shadow-[0_0_36px_-10px_rgba(217,70,239,.7)]", bar: "from-purple-700/40 to-cyan-300" },
-  indigo: { label: "text-indigo-300", tile: "from-indigo-400 to-violet-700 shadow-[0_0_24px_-4px_rgba(99,102,241,.75)]", card: "from-indigo-500/[.14] border-indigo-400/25 hover:border-indigo-300/70 hover:shadow-[0_0_36px_-10px_rgba(99,102,241,.7)]", bar: "from-indigo-700/40 to-indigo-300" },
-  slate: { label: "text-cyan-200", tile: "from-slate-600 to-slate-800 shadow-[0_0_22px_-6px_rgba(148,163,184,.6)]", card: "from-slate-400/[.08] border-slate-400/20 hover:border-slate-300/60 hover:shadow-[0_0_36px_-10px_rgba(148,163,184,.55)]", bar: "from-slate-700/40 to-slate-300" },
-  teal: { label: "text-teal-300", tile: "from-teal-400 to-emerald-600 shadow-[0_0_24px_-4px_rgba(45,212,191,.75)]", card: "from-teal-500/[.12] border-teal-400/25 hover:border-teal-300/70 hover:shadow-[0_0_36px_-10px_rgba(45,212,191,.7)]", bar: "from-teal-700/40 to-teal-300" },
-} satisfies Record<string, Tone>;
+  blue: { label: "text-blue-300", tile: "from-blue-400 to-blue-600 shadow-[0_0_24px_-4px_rgba(59,130,246,.45)]", card: "from-blue-500/[.13] border-blue-400/25 hover:border-blue-300/70 hover:shadow-[0_0_36px_-10px_rgba(59,130,246,.4)]", bar: "from-blue-700/40 to-blue-300" },
+}
 
 const MODULE_TONE: Partial<Record<LauncherModule, Tone>> = {
-  crm: TONES.cyan, prospector: TONES.teal, marketing: TONES.violet, omnichannel: TONES.teal, agenda: TONES.sky,
-  arqdor: TONES.rose, obras: TONES.amber, pdv: TONES.teal, erp: TONES.blue,
-  marketplace_casa: TONES.orange, parceiros: TONES.teal, portal_cliente: TONES.teal,
-  inteligencia: TONES.fuchsia, agentes_ia: TONES.indigo, configuracoes: TONES.slate, suporte: TONES.blue,
+  crm: TONES.blue, prospector: TONES.blue, marketing: TONES.blue, omnichannel: TONES.blue,
+  agenda: TONES.blue, arqdor: TONES.blue, obras: TONES.blue, pdv: TONES.blue,
+  erp: TONES.blue, marketplace_casa: TONES.blue, parceiros: TONES.blue, portal_cliente: TONES.blue,
+  inteligencia: TONES.blue, agentes_ia: TONES.blue, configuracoes: TONES.blue, suporte: TONES.blue,
 };
 
 const PHOTO: Partial<Record<LauncherModule, string>> = {

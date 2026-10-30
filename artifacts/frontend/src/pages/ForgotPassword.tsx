@@ -1,10 +1,11 @@
+import { VendorBackButton } from "@/components/ui/back-button";
 import { useState } from "react";
 import { useForgotPassword } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 import { useI18n } from "@/i18n";
-import { ArrowLeft } from "lucide-react";
+import {} from "lucide-react";
 import { useLocation } from "wouter";
 import logoLight from "/logo-full-dark.svg";
 
@@ -84,13 +85,7 @@ export default function ForgotPassword() {
               <p className="text-sm text-emerald-800 font-medium">{copy.sentMessage}</p>
               <p className="text-xs text-emerald-700 mt-1">{copy.expiration}</p>
             </div>
-            <Button
-              variant="outline"
-              className="w-full"
-              onClick={() => setLocation("/login")}
-            >
-              {copy.backLogin}
-            </Button>
+            <VendorBackButton to="/login" label={copy.backLogin} className="w-full" />
           </div>
         ) : (
           <form onSubmit={handleSubmit} className="space-y-4">
@@ -112,15 +107,7 @@ export default function ForgotPassword() {
             >
               {mutation.isPending ? copy.sending : copy.sendLink}
             </Button>
-            <Button
-              type="button"
-              variant="ghost"
-              className="w-full text-muted-foreground"
-              onClick={() => setLocation("/login")}
-            >
-              <ArrowLeft className="h-4 w-4 mr-2" />
-              {copy.backLogin}
-            </Button>
+            <VendorBackButton to="/login" label={copy.backLogin} className="w-full" />
           </form>
         )}
       </div>

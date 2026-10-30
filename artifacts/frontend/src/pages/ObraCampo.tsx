@@ -417,14 +417,14 @@ export default function ObraCampo() {
       <div className="min-h-screen bg-slate-50 px-4 py-8">
         <div className="mx-auto max-w-md">
           <div className="mb-6 flex items-center gap-3">
-            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-orange-500 text-white shadow-sm"><HardHat className="h-6 w-6" /></div>
-            <div><p className="text-xs font-semibold uppercase tracking-[0.18em] text-orange-600">VendorAI Obras</p><h1 className="text-xl font-semibold text-slate-950">Acesso de campo</h1></div>
+            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-blue-500 text-white shadow-sm"><HardHat className="h-6 w-6" /></div>
+            <div><p className="text-xs font-semibold uppercase tracking-[0.18em] text-blue-600">VendorAI Obras</p><h1 className="text-xl font-semibold text-slate-950">Acesso de campo</h1></div>
           </div>
 
           <Card className="shadow-sm">
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-lg">
-                {activationMode ? <LockKeyhole className="h-5 w-5 text-orange-500" /> : <LogIn className="h-5 w-5 text-orange-500" />}
+                {activationMode ? <LockKeyhole className="h-5 w-5 text-blue-500" /> : <LogIn className="h-5 w-5 text-blue-500" />}
                 {activationMode ? "Ativar seu acesso" : "Entrar na obra"}
               </CardTitle>
               <p className="text-sm text-muted-foreground">
@@ -460,7 +460,7 @@ export default function ObraCampo() {
   }
 
   if (loading && !session) {
-    return <div className="min-h-screen bg-slate-50 flex items-center justify-center"><div className="h-9 w-9 animate-spin rounded-full border-4 border-orange-500 border-t-transparent" /></div>;
+    return <div className="min-h-screen bg-slate-50 flex items-center justify-center"><div className="h-9 w-9 animate-spin rounded-full border-4 border-blue-500 border-t-transparent" /></div>;
   }
 
   if (!session || !worksite) {
@@ -489,7 +489,7 @@ export default function ObraCampo() {
         <div className="mx-auto max-w-5xl px-4 py-4">
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
-              <div className="flex items-center gap-2"><HardHat className="h-5 w-5 shrink-0 text-orange-500" /><p className="truncate font-semibold text-slate-950">{session.obra.nome}</p></div>
+              <div className="flex items-center gap-2"><HardHat className="h-5 w-5 shrink-0 text-blue-500" /><p className="truncate font-semibold text-slate-950">{session.obra.nome}</p></div>
               <p className="mt-1 truncate text-xs text-slate-500">{session.obra.endereco || "Obra em execução"}</p>
             </div>
             <Button size="sm" variant="outline" onClick={() => void refresh()} disabled={loading}><RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} /></Button>
@@ -517,18 +517,18 @@ export default function ObraCampo() {
             </div>
 
             <Card>
-              <CardHeader className="pb-2"><CardTitle className="text-base flex items-center gap-2"><Target className="h-4 w-4 text-orange-500" />Minhas metas / atividades</CardTitle></CardHeader>
+              <CardHeader className="pb-2"><CardTitle className="text-base flex items-center gap-2"><Target className="h-4 w-4 text-blue-500" />Minhas metas / atividades</CardTitle></CardHeader>
               <CardContent className="space-y-3">
                 {activeGoals.length === 0 ? <p className="py-5 text-center text-sm text-muted-foreground">Nenhuma meta atribuída no momento.</p> : activeGoals.map((goal) => (
                   <div key={goal.id} className="rounded-xl border p-3">
-                    <div className="flex items-start justify-between gap-3"><div><p className="text-sm font-medium">{goal.nome}</p><p className="mt-1 text-xs text-muted-foreground">{goal.etapa_nome || "Obra"} · {goal.periodo}</p></div><span className="rounded-full bg-orange-50 px-2 py-1 text-xs font-medium text-orange-700">Meta {number(goal.valor_meta, 2)} {goal.unidade || ""}</span></div>
+                    <div className="flex items-start justify-between gap-3"><div><p className="text-sm font-medium">{goal.nome}</p><p className="mt-1 text-xs text-muted-foreground">{goal.etapa_nome || "Obra"} · {goal.periodo}</p></div><span className="rounded-full bg-blue-50 px-2 py-1 text-xs font-medium text-blue-700">Meta {number(goal.valor_meta, 2)} {goal.unidade || ""}</span></div>
                   </div>
                 ))}
               </CardContent>
             </Card>
 
             <Card>
-              <CardHeader className="pb-2"><CardTitle className="text-base flex items-center gap-2"><CalendarDays className="h-4 w-4 text-orange-500" />Etapas liberadas</CardTitle></CardHeader>
+              <CardHeader className="pb-2"><CardTitle className="text-base flex items-center gap-2"><CalendarDays className="h-4 w-4 text-blue-500" />Etapas liberadas</CardTitle></CardHeader>
               <CardContent className="space-y-3">
                 {todayStages.length === 0 ? <p className="py-5 text-center text-sm text-muted-foreground">Nenhuma etapa pendente atribuída.</p> : todayStages.map((stage) => {
                   const pct = Number(stage.percentual_executado ?? 0);
@@ -641,7 +641,7 @@ export default function ObraCampo() {
 
       <nav className="fixed inset-x-0 bottom-0 z-40 border-t bg-white/95 backdrop-blur">
         <div className="mx-auto grid max-w-5xl px-2" style={{ gridTemplateColumns: `repeat(${tabs.length}, minmax(0, 1fr))` }}>
-          {tabs.map((item) => <button key={item.id} onClick={() => setTab(item.id)} className={`flex flex-col items-center gap-1 px-2 py-3 text-[11px] font-medium ${tab === item.id ? "text-orange-600" : "text-slate-500"}`}><item.icon className="h-5 w-5" />{item.label}</button>)}
+          {tabs.map((item) => <button key={item.id} onClick={() => setTab(item.id)} className={`flex flex-col items-center gap-1 px-2 py-3 text-[11px] font-medium ${tab === item.id ? "text-blue-600" : "text-slate-500"}`}><item.icon className="h-5 w-5" />{item.label}</button>)}
         </div>
       </nav>
     </div>

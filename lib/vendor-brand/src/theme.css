@@ -1,10 +1,10 @@
 /* Production safety: the current custom WOFF2 binaries are rejected by Chromium OTS.
  * Use stable fallbacks until valid font binaries are republished. */
 :root {
-  --vendor-primary: #f97316;
-  --vendor-primary-strong: #ea580c;
-  --vendor-primary-soft: #fff7ed;
-  --vendor-info: #2563eb;
+  --vendor-primary: #2563eb;
+  --vendor-primary-strong: #1d4ed8;
+  --vendor-primary-soft: #eff6ff;
+  --vendor-info: #0e7490;
   --vendor-success: #059669;
   --vendor-warning: #f59e0b;
   --vendor-destructive: #ef4444;
@@ -28,6 +28,9 @@
 }
 
 .dark {
+  --vendor-primary: #60a5fa;
+  --vendor-primary-strong: #3b82f6;
+  --vendor-primary-soft: #172554;
   --vendor-canvas: #0f172a;
   --vendor-surface: #111827;
   --vendor-muted: #94a3b8;

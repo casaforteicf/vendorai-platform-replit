@@ -366,7 +366,7 @@ function DrePanel({
             value: structuredBudgetEmpty ? "—" : fmtBRL(dre.custoOrcado),
             color: "text-blue-700",
           },
-          { label: "Custo realizado", value: fmtBRL(dre.totalGasto), color: "text-orange-600" },
+          { label: "Custo realizado", value: fmtBRL(dre.totalGasto), color: "text-red-600" },
           {
             label: over ? "Estouro de custo" : "Saldo de custo",
             value: structuredBudgetEmpty ? "—" : fmtBRL(Math.abs(dre.desvioCusto)),
@@ -415,7 +415,7 @@ function DrePanel({
             </div>
             <div className="rounded-lg border p-3">
               <p className="text-[10px] uppercase tracking-wide text-muted-foreground">M.O. apontada</p>
-              <p className="text-sm font-semibold text-orange-700 mt-1">{fmtBRL(dre.maoObraApontada ?? 0)}</p>
+              <p className="text-sm font-semibold text-red-700 mt-1">{fmtBRL(dre.maoObraApontada ?? 0)}</p>
             </div>
             <div className="rounded-lg border p-3">
               <p className="text-[10px] uppercase tracking-wide text-muted-foreground">BDI / margem orçada</p>

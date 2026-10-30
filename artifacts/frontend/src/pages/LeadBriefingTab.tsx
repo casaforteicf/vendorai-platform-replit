@@ -199,13 +199,13 @@ function SpinSection({
   const colorMap = {
     blue: "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300 border-blue-300 dark:border-blue-700",
     amber: "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300 border-amber-300 dark:border-amber-700",
-    orange: "bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300 border-orange-300 dark:border-orange-700",
+    orange: "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300 border-blue-300 dark:border-blue-700",
     emerald: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300 border-emerald-300 dark:border-emerald-700",
   };
   const dotMap = {
     blue: "bg-blue-500",
     amber: "bg-amber-500",
-    orange: "bg-orange-500",
+    orange: "bg-blue-500",
     emerald: "bg-emerald-500",
   };
   if (!items?.length) return null;
@@ -722,7 +722,7 @@ export default function LeadBriefingTab({ leadId, tenantId, lead, dealId, roteir
     ? [
         { label: "Situação", key: "situacao" as const, color: "bg-blue-500", items: spinData.roteiro.situacao },
         { label: "Problema", key: "problema" as const, color: "bg-amber-500", items: spinData.roteiro.problema },
-        { label: "Implicação", key: "implicacao" as const, color: "bg-orange-500", items: spinData.roteiro.implicacao },
+        { label: "Implicação", key: "implicacao" as const, color: "bg-blue-500", items: spinData.roteiro.implicacao },
         { label: "Necessidade", key: "necessidade" as const, color: "bg-emerald-500", items: spinData.roteiro.necessidade },
       ]
     : [];
@@ -1409,7 +1409,7 @@ export default function LeadBriefingTab({ leadId, tenantId, lead, dealId, roteir
           {([
             { key: "situationAnswers" as const, letter: "S", title: "Situação", desc: "Contexto atual do negócio", color: "bg-blue-500" },
             { key: "problemAnswers" as const,   letter: "P", title: "Problema",  desc: "Dificuldades e gargalos",  color: "bg-amber-500", extra: "problemMinimized" as const },
-            { key: "implicationAnswers" as const, letter: "I", title: "Implicação", desc: "Impacto dos problemas", color: "bg-orange-500", extra: "implicationEstimatedValue" as const },
+            { key: "implicationAnswers" as const, letter: "I", title: "Implicação", desc: "Impacto dos problemas", color: "bg-blue-500", extra: "implicationEstimatedValue" as const },
             { key: "needAnswers" as const,      letter: "N", title: "Necessidade", desc: "Solução ideal e urgência", color: "bg-emerald-500", extra: "needThermometer" as const },
           ] as Array<{ key: keyof Pick<BriefingForm,"situationAnswers"|"problemAnswers"|"implicationAnswers"|"needAnswers">; letter: string; title: string; desc: string; color: string; extra?: string }>).map((section) => {
             const answered = form[section.key].filter((i) => i.answer?.trim()).length;

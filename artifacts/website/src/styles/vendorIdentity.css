@@ -1,8 +1,8 @@
 :root {
-  --vendor-orange: #f97316;
-  --vendor-orange-strong: #ea580c;
-  --vendor-orange-soft: #fff7ed;
-  --vendor-orange-border: #fed7aa;
+  --vendor-orange: #2563eb;
+  --vendor-orange-strong: #1d4ed8;
+  --vendor-orange-soft: #eff6ff;
+  --vendor-orange-border: #bfdbfe;
   --vendor-ink: #0f172a;
   --vendor-ink-soft: #334155;
   --vendor-muted: #64748b;
@@ -70,16 +70,16 @@
   mask-image: linear-gradient(to bottom, #000, transparent 78%);
 }
 .vendor-home-orb { position: absolute; border-radius: 999px; filter: blur(70px); pointer-events: none; opacity: .62; }
-.vendor-home-orb-orange { width: 420px; height: 420px; left: -180px; top: 70px; background: rgba(249,115,22,.22); }
+.vendor-home-orb-orange { width: 420px; height: 420px; left: -180px; top: 70px; background: rgba(37,99,235,.22); }
 .vendor-home-orb-blue { width: 420px; height: 420px; right: -170px; top: 20px; background: rgba(59,130,246,.13); }
-.vendor-hero-eyebrow { border: 1px solid rgba(249,115,22,.22); background: rgba(255,255,255,.75); color: #c2410c; box-shadow: 0 8px 30px rgba(15,23,42,.045); backdrop-filter: blur(16px); }
-.vendor-hero-accent { color: #ea580c; text-wrap: balance; }
-.vendor-cta-primary { background: linear-gradient(135deg, #f97316 0%, #ea580c 100%); box-shadow: 0 18px 45px rgba(234,88,12,.24); transition: transform .18s ease, box-shadow .18s ease; }
-.vendor-cta-primary:hover { transform: translateY(-2px); box-shadow: 0 24px 55px rgba(234,88,12,.3); }
+.vendor-hero-eyebrow { border: 1px solid rgba(37,99,235,.22); background: rgba(255,255,255,.75); color: #1e40af; box-shadow: 0 8px 30px rgba(15,23,42,.045); backdrop-filter: blur(16px); }
+.vendor-hero-accent { color: #1d4ed8; text-wrap: balance; }
+.vendor-cta-primary { background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%); box-shadow: 0 18px 45px rgba(37,99,235,.24); transition: transform .18s ease, box-shadow .18s ease; }
+.vendor-cta-primary:hover { transform: translateY(-2px); box-shadow: 0 24px 55px rgba(37,99,235,.3); }
 .vendor-cta-secondary { border: 1px solid rgba(148,163,184,.42); background: rgba(255,255,255,.82); box-shadow: 0 8px 28px rgba(15,23,42,.05); backdrop-filter: blur(16px); transition: transform .18s ease, border-color .18s ease; }
-.vendor-cta-secondary:hover { transform: translateY(-2px); border-color: rgba(249,115,22,.36); }
+.vendor-cta-secondary:hover { transform: translateY(-2px); border-color: rgba(37,99,235,.36); }
 .vendor-engine-card { border: 1px solid rgba(226,232,240,.92); background: rgba(255,255,255,.78); box-shadow: 0 10px 32px rgba(15,23,42,.045); backdrop-filter: blur(14px); transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease; }
-.vendor-engine-card:hover { transform: translateY(-3px); border-color: rgba(249,115,22,.28); box-shadow: 0 18px 38px rgba(15,23,42,.08); }
+.vendor-engine-card:hover { transform: translateY(-3px); border-color: rgba(37,99,235,.28); box-shadow: 0 18px 38px rgba(15,23,42,.08); }
 .vendor-product-window { border: 1px solid rgba(203,213,225,.9); background: rgba(255,255,255,.96); box-shadow: var(--vendor-shadow-premium); transform: perspective(1600px) rotateY(-1.3deg) rotateX(.35deg); transform-origin: center; }
 .vendor-floating-stat { position: absolute; align-items: center; gap: 10px; min-width: 190px; padding: 12px 14px; border-radius: 16px; border: 1px solid rgba(226,232,240,.95); background: rgba(255,255,255,.92); box-shadow: 0 18px 50px rgba(15,23,42,.12); backdrop-filter: blur(18px); }
 .vendor-floating-stat strong { display: block; font-size: 12px; color: #0f172a; }
@@ -88,7 +88,7 @@
 .vendor-floating-stat-right { right: -34px; top: 108px; }
 
 .vendor-brand-wordmark { font-family: var(--vendor-display-font); letter-spacing: -.045em; font-weight: 650; }
-.vendor-brand-dot { color: #f97316; }
+.vendor-brand-dot { color: #2563eb; }
 .vendor-nav-shell { border-bottom: 1px solid rgba(226,232,240,.75); background: rgba(255,255,255,.82); box-shadow: 0 8px 34px rgba(15,23,42,.035); backdrop-filter: blur(22px); }
 
 /* Normalize legacy dark heroes so every public route feels like the same VendorAI brand. */
@@ -96,7 +96,7 @@
 .vendor-public-shell main > div > div[class*="bg-slate-900"],
 .vendor-public-shell main main[class*="bg-[#070b14]"] {
   border-color: var(--vendor-line) !important;
-  background: radial-gradient(circle at 18% 18%, rgba(249,115,22,.13), transparent 28%), radial-gradient(circle at 84% 24%, rgba(37,99,235,.08), transparent 24%), linear-gradient(180deg, #fffdf9 0%, #fff 100%) !important;
+  background: radial-gradient(circle at 18% 18%, rgba(37,99,235,.13), transparent 28%), radial-gradient(circle at 84% 24%, rgba(37,99,235,.08), transparent 24%), linear-gradient(180deg, #fffdf9 0%, #fff 100%) !important;
   color: var(--vendor-ink) !important;
 }
 .vendor-public-shell main section[class*="bg-[#070b14]"][class*="text-white"] > div[class*="absolute"][class*="inset-0"] { opacity: 0 !important; }
@@ -115,7 +115,7 @@
 .vendor-public-shell main section[class*="bg-[#070b14]"][class*="text-white"] [class*="text-blue-300"],
 .vendor-public-shell main section[class*="bg-[#070b14]"][class*="text-white"] [class*="text-orange-300"] { color: var(--vendor-orange-strong) !important; }
 .vendor-public-shell main [class*="rounded-"][class*="border-slate-200"][class*="bg-white"] { box-shadow: var(--vendor-shadow-sm); }
-.vendor-public-shell main [class*="rounded-"][class*="border-slate-200"][class*="bg-white"]:hover { border-color: rgba(249,115,22,.28); }
+.vendor-public-shell main [class*="rounded-"][class*="border-slate-200"][class*="bg-white"]:hover { border-color: rgba(37,99,235,.28); }
 
 @media (max-width: 1023px) {
   .vendor-product-window { transform: none; }
@@ -148,7 +148,7 @@
 .vendor-home-hero-cinematic {
   border-bottom: 1px solid rgba(255,255,255,.08);
   background:
-    radial-gradient(circle at 72% 22%, rgba(249,115,22,.12), transparent 28%),
+    radial-gradient(circle at 72% 22%, rgba(37,99,235,.12), transparent 28%),
     radial-gradient(circle at 12% 48%, rgba(37,99,235,.10), transparent 30%),
     linear-gradient(180deg, #05080d 0%, #080d16 58%, #0b111c 100%);
   isolation: isolate;
@@ -165,7 +165,7 @@
   height: 540px;
   left: -230px;
   top: 150px;
-  background: rgba(249,115,22,.17);
+  background: rgba(37,99,235,.17);
   filter: blur(100px);
 }
 .vendor-home-hero-cinematic .vendor-home-orb-blue {
@@ -188,9 +188,9 @@
   pointer-events: none;
 }
 .vendor-hero-eyebrow-dark {
-  border-color: rgba(249,115,22,.28);
-  background: rgba(249,115,22,.08);
-  color: #fdba74;
+  border-color: rgba(37,99,235,.28);
+  background: rgba(37,99,235,.08);
+  color: #93c5fd;
   box-shadow: 0 12px 40px rgba(0,0,0,.18);
 }
 .vendor-cta-secondary-dark {
@@ -200,7 +200,7 @@
   box-shadow: 0 12px 34px rgba(0,0,0,.18);
 }
 .vendor-cta-secondary-dark:hover {
-  border-color: rgba(249,115,22,.34);
+  border-color: rgba(37,99,235,.34);
   background: rgba(255,255,255,.08);
 }
 .vendor-engine-card-dark {
@@ -209,7 +209,7 @@
   box-shadow: 0 14px 38px rgba(0,0,0,.16);
 }
 .vendor-engine-card-dark:hover {
-  border-color: rgba(249,115,22,.24);
+  border-color: rgba(37,99,235,.24);
   background: rgba(255,255,255,.052);
   box-shadow: 0 20px 48px rgba(0,0,0,.24);
 }
@@ -219,7 +219,7 @@
   box-shadow:
     0 46px 120px rgba(0,0,0,.46),
     0 0 0 1px rgba(255,255,255,.02),
-    0 0 80px rgba(249,115,22,.08);
+    0 0 80px rgba(37,99,235,.08);
 }
 .vendor-floating-stat-dark {
   border-color: rgba(255,255,255,.12);
@@ -239,7 +239,7 @@
 .vendor-live-stage {
   background:
     radial-gradient(circle at 82% 16%, rgba(37,99,235,.12), transparent 28%),
-    radial-gradient(circle at 15% 72%, rgba(249,115,22,.10), transparent 30%),
+    radial-gradient(circle at 15% 72%, rgba(37,99,235,.10), transparent 30%),
     #070b12;
 }
 .vendor-live-stage::before {
@@ -266,7 +266,7 @@
   height: 520px;
   left: -280px;
   top: 30%;
-  background: rgba(249,115,22,.18);
+  background: rgba(37,99,235,.18);
 }
 .vendor-live-glow-blue {
   width: 560px;
@@ -317,7 +317,7 @@
 @media (max-width: 1023px) {
   .vendor-home-hero-cinematic {
     background:
-      radial-gradient(circle at 80% 18%, rgba(249,115,22,.11), transparent 30%),
+      radial-gradient(circle at 80% 18%, rgba(37,99,235,.11), transparent 30%),
       linear-gradient(180deg, #05080d 0%, #0a101b 100%);
   }
   .vendor-hero-beam { display: none; }

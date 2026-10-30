@@ -1,3 +1,4 @@
+import { VendorBackButton } from "@/components/ui/back-button";
 import { useEffect, useMemo, useState } from "react";
 import { useLocation, useSearch } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
@@ -5,29 +6,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { MediaAssetPicker, mediaAssetUrl, type MediaPickerAsset } from "@/components/media/MediaAssetPicker";
 import { Badge } from "@/components/ui/badge";
-import {
-  MessageCircle,
-  Megaphone,
-  ArrowLeft,
-  ArrowRight,
-  Layers3,
-  Store,
-  BrainCircuit,
-  ShieldCheck,
-  Sparkles,
-  Radar,
-  Eye,
-  Loader2,
-  RefreshCw,
-  CalendarDays,
-  Images,
-  Globe2,
-  CheckCircle2,
-  Clock3,
-  CircleDashed,
-  ChevronDown,
-  ChevronUp,
-} from "lucide-react";
+import { MessageCircle, Megaphone, ArrowRight, Layers3, Store, BrainCircuit, ShieldCheck, Sparkles, Radar, Eye, Loader2, RefreshCw, CalendarDays, Images, Globe2, CheckCircle2, Clock3, CircleDashed, ChevronDown, ChevronUp } from "lucide-react";
 import MarketingVerticals from "@/pages/MarketingVerticals";
 import PracaVariedades from "@/pages/supermercado/SupermercadoCampanhas";
 import VisitorIntelligence from "@/pages/VisitorIntelligence";
@@ -253,7 +232,7 @@ function CampaignExecutionWorkspace({ mediaPlanId, campaignId }: { mediaPlanId: 
         <CardContent className="py-6">
           <p className="font-medium text-amber-900">Não foi possível abrir esta campanha.</p>
           <p className="mt-1 text-sm text-amber-800">{error ?? "Nenhuma campanha foi gerada para este planejamento."}</p>
-          <Button className="mt-4" variant="outline" onClick={() => setLocation("/content?tab=campanhas")}><ArrowLeft className="mr-1 h-4 w-4" />Campanhas</Button>
+          <VendorBackButton to="/content?tab=campanhas" label="Voltar para campanhas" className="mt-4" />
         </CardContent>
       </Card>
     );
@@ -262,7 +241,7 @@ function CampaignExecutionWorkspace({ mediaPlanId, campaignId }: { mediaPlanId: 
   return (
     <div data-vendorai-campaign-workspace-v2="true" className="space-y-3 md:space-y-4">
       <div className="flex items-center justify-between gap-2">
-        <Button size="sm" variant="ghost" onClick={() => setLocation(`/content?source=media-plan&tab=campanhas&mediaPlanId=${encodeURIComponent(plan.id)}&view=lista`)}><ArrowLeft className="mr-1 h-3.5 w-3.5" />Campanhas</Button>
+        <VendorBackButton to={`/content?source=media-plan&tab=campanhas&mediaPlanId=${encodeURIComponent(plan.id)}&view=lista`} label="Voltar para campanhas" />
         <div className="flex gap-1.5">
           <Button size="sm" variant="outline" onClick={() => void load()}><RefreshCw className="mr-1 h-3.5 w-3.5" /><span className="hidden sm:inline">Atualizar</span></Button>
           <Button size="sm" variant="ghost" onClick={() => setLocation("/content?tab=planejamento")}>Planejamento</Button>
@@ -427,10 +406,10 @@ export default function CampanhasHub() {
   const showPraca = view === "praca" || params.get("tab") === "variedades";
   const showPlannedExecution = source === "media-plan" && Boolean(mediaPlanId) && !view;
 
-  if (showMarkets) return <div className="p-4 md:p-6 space-y-4 max-w-7xl mx-auto"><Button variant="ghost" size="sm" className="gap-1.5" onClick={() => setLocation("/content?tab=campanhas")}><ArrowLeft className="h-4 w-4" /> Voltar para Campanhas</Button><MarketingVerticals /></div>;
-  if (showProspecting) return <div className="p-4 md:p-6 space-y-4 max-w-7xl mx-auto"><Button variant="ghost" size="sm" className="gap-1.5" onClick={() => setLocation("/content?tab=campanhas")}><ArrowLeft className="h-4 w-4" /> Voltar para Campanhas</Button><ColdProspectingCampaignPlanner /><ColdProspectingPilotValidation /></div>;
-  if (showVisitors) return <div className="p-4 md:p-6 space-y-4 max-w-[1600px] mx-auto"><Button variant="ghost" size="sm" className="gap-1.5" onClick={() => setLocation("/content?tab=campanhas")}><ArrowLeft className="h-4 w-4" /> Voltar para Campanhas</Button><VisitorIntelligence /></div>;
-  if (showPraca) return <div className="p-4 md:p-6 space-y-4 max-w-7xl mx-auto"><Button variant="ghost" size="sm" className="gap-1.5" onClick={() => setLocation("/content?tab=campanhas")}><ArrowLeft className="h-4 w-4" /> Voltar para Campanhas</Button><PracaVariedades /></div>;
+  if (showMarkets) return <div className="p-4 md:p-6 space-y-4 max-w-7xl mx-auto"><VendorBackButton to="/content?tab=campanhas" label="Voltar para campanhas" /><MarketingVerticals /></div>;
+  if (showProspecting) return <div className="p-4 md:p-6 space-y-4 max-w-7xl mx-auto"><VendorBackButton to="/content?tab=campanhas" label="Voltar para campanhas" /><ColdProspectingCampaignPlanner /><ColdProspectingPilotValidation /></div>;
+  if (showVisitors) return <div className="p-4 md:p-6 space-y-4 max-w-[1600px] mx-auto"><VendorBackButton to="/content?tab=campanhas" label="Voltar para campanhas" /><VisitorIntelligence /></div>;
+  if (showPraca) return <div className="p-4 md:p-6 space-y-4 max-w-7xl mx-auto"><VendorBackButton to="/content?tab=campanhas" label="Voltar para campanhas" /><PracaVariedades /></div>;
   if (showPlannedExecution) return <div className="p-3 md:p-5 max-w-7xl mx-auto"><CampaignExecutionWorkspace mediaPlanId={mediaPlanId} campaignId={campaignId} /></div>;
 
   return (

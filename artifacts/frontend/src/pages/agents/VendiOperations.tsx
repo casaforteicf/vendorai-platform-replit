@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { VendorBackButton } from "@/components/ui/back-button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -235,6 +236,7 @@ export default function VendiOperations() {
 
   return (
     <div className="mx-auto max-w-[1500px] space-y-5 px-4 py-5 sm:px-6">
+      <VendorBackButton to="/tad" label="Voltar para módulos" />
       <Card className="overflow-hidden border-primary/20 bg-primary/[0.025]">
         <div className="flex flex-col gap-5 p-5 xl:flex-row xl:items-center xl:justify-between">
           <div className="flex gap-4">
