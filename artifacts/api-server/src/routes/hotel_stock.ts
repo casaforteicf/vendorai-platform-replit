@@ -9,7 +9,7 @@ const router: IRouter = Router();
 
 function authorized(req: Express.Request, tenantId: string): boolean {
   const user = (req as any).user;
-  return Boolean(user?.tenantId && user.tenantId === tenantId);
+  return Boolean(user?.sub && user?.actorType !== "ai" && user?.actorType !== "system" && user?.tenantId === tenantId);
 }
 
 router.get("/tenants/:tenantId/hotelaria/estoque/locais", async (req, res) => {
@@ -72,7 +72,7 @@ router.post("/tenants/:tenantId/hotelaria/estoque/transferencias", async (req, r
   if (!authorized(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
   const parsed = createTransferSchema.safeParse(req.body);
   if (!parsed.success) return res.status(422).json({ error: "Invalid transfer", details: parsed.error.issues });
-  const actorId = (req as any).user?.userId ?? (req as any).user?.id;
+  const actorId = (req as any).user?.sub;
   if (!actorId) return res.status(403).json({ error: "User identity required" });
   const { originLocationId, destinationLocationId, items, notes } = parsed.data;
   const client = await pool.connect();
@@ -117,7 +117,7 @@ router.post("/tenants/:tenantId/hotelaria/estoque/transferencias", async (req, r
 router.post("/tenants/:tenantId/hotelaria/estoque/transferencias/:id/aprovar", async (req, res) => {
   const tenantId = String(req.params.tenantId);
   if (!authorized(req, tenantId) || !canApprove(req)) return res.status(403).json({ error: "Forbidden" });
-  const actorId = (req as any).user?.userId ?? (req as any).user?.id;
+  const actorId = (req as any).user?.sub;
   if (!actorId) return res.status(403).json({ error: "User identity required" });
   const client = await pool.connect();
   try {
