@@ -32,11 +32,14 @@ CREATE TABLE IF NOT EXISTS hotel_purchase_suggestions (
   id text PRIMARY KEY,
   tenant_id text NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
   forecast_id text NOT NULL,
+  location_id text NOT NULL,
   status text NOT NULL DEFAULT 'draft' CHECK (status IN ('draft','reviewed','dismissed')),
   created_at timestamptz NOT NULL DEFAULT now(),
   reviewed_by text,
   reviewed_at timestamptz,
   FOREIGN KEY (tenant_id, forecast_id) REFERENCES hotel_meal_forecasts(tenant_id, id),
+  FOREIGN KEY (tenant_id, location_id) REFERENCES hotel_stock_locations(tenant_id, id),
+  UNIQUE (tenant_id, forecast_id, location_id),
   FOREIGN KEY (tenant_id, reviewed_by) REFERENCES users(tenant_id, id),
   UNIQUE (tenant_id, id)
 );
