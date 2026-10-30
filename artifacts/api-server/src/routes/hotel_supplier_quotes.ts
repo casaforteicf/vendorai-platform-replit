@@ -41,4 +41,35 @@ router.post("/tenants/:tenantId/hotelaria/compras/semanais/:id/fornecedores",asy
   return res.status(500).json({error:"Could not select suppliers"});
  }finally{client.release();}
 });
+
+router.get("/tenants/:tenantId/hotelaria/compras/semanais/:id/cotacoes",async(req,res)=>{
+ const tenantId=String(req.params.tenantId),id=String(req.params.id),u=req.user;
+ if(!u?.sub||u.tenantId!==tenantId||u.actorType==="ai"||u.actorType==="system")
+  return res.status(403).json({error:"Forbidden"});
+ if(!z.string().uuid().safeParse(id).success)return res.status(422).json({error:"Invalid request"});
+ const client=await pool.connect();
+ try{
+  await client.query("BEGIN READ ONLY");
+  await client.query("SELECT set_config('app.tenant_id',$1,true)",[tenantId]);
+  const request=await client.query(
+   "SELECT id,status FROM hotel_weekly_purchase_requests WHERE tenant_id=$1 AND id=$2",[tenantId,id]);
+  if(!request.rowCount){await client.query("ROLLBACK");return res.status(404).json({error:"Not found"});}
+  const quotes=await client.query(
+   `SELECT q.id,q.status,q.currency,q.total_amount,q.delivery_days,q.payment_terms,
+           q.responded_at,s.nome AS supplier_name
+    FROM hotel_weekly_supplier_quotes q
+    JOIN fornecedores s ON s.tenant_id=q.tenant_id AND s.id=q.supplier_id
+    WHERE q.tenant_id=$1 AND q.request_id=$2 ORDER BY s.nome`,[tenantId,id]);
+  const items=await client.query(
+   "SELECT product_id,unit,quantity_suggested FROM hotel_weekly_purchase_request_lines WHERE tenant_id=$1 AND request_id=$2",
+   [tenantId,id]);
+  await client.query("COMMIT");
+  return res.json({requestId:id,requestStatus:request.rows[0].status,items:items.rows,
+   suppliers:quotes.rows,dispatchConfirmed:false,purchaseOrderCreated:false});
+ }catch(error){
+  await client.query("ROLLBACK");console.error("[hotel-purchases] comparisons",error);
+  return res.status(500).json({error:"Could not load quote comparison"});
+ }finally{client.release();}
+});
+
 export default router;
