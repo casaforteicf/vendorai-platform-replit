@@ -101,7 +101,7 @@ export default function HotelRecepcao(){
     <p className="text-sm">Limpeza: {room.housekeeping_status}</p>
     <div className="mt-2 flex flex-wrap gap-1">
      {room.status==="active"&&<>
-      {(["dirty","cleaning","inspection","clean"] as const).filter(a=>a!==room.housekeeping_status).map(op=><button key={op} type="button" disabled={busy} className="rounded border px-2 py-1 text-xs" onClick={()=>void roomOperation(room.id,op)}>{({dirty:"Sinalizar sujo",cleaning:"Em limpeza",inspection:"Inspeção",clean:"Liberar limpeza"})[op]}</button>)}
+      {(["dirty","cleaning","inspection","clean"] as const).filter(a=>({clean:"dirty",dirty:"cleaning",cleaning:"inspection",inspection:"clean"} as Record<string,string>)[room.housekeeping_status]===a).map(op=><button key={op} type="button" disabled={busy} className="rounded border px-2 py-1 text-xs" onClick={()=>void roomOperation(room.id,op)}>{({dirty:"Sinalizar sujo",cleaning:"Em limpeza",inspection:"Inspeção",clean:"Liberar limpeza"})[op]}</button>)}
       {!booking&&<button type="button" disabled={busy} className="rounded border px-2 py-1 text-xs" onClick={()=>void roomOperation(room.id,"maintenance")}>Manutenção</button>}
      </>}
      {room.status==="maintenance"&&<button type="button" disabled={busy} className="rounded border px-2 py-1 text-xs" onClick={()=>void roomOperation(room.id,"release")}>Liberar manutenção</button>}
