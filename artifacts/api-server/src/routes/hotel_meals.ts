@@ -296,6 +296,16 @@ router.get("/tenants/:tenantId/hotelaria/refeicoes/consolidado", async (req,res)
        JOIN hotel_recipe_ingredients i ON i.tenant_id=l.tenant_id AND i.recipe_id=l.recipe_id
        WHERE f.tenant_id=$1 AND f.service_date BETWEEN $2::date AND $3::date`,
       [tenantId,start,end]);
+    if (locationId) {
+      const validLocation = await client.query(
+        "SELECT id FROM hotel_stock_locations WHERE tenant_id=$1 AND id=$2 AND active=true",
+        [tenantId,locationId]
+      );
+      if (!validLocation.rowCount) {
+        await client.query("ROLLBACK");
+        return res.status(404).json({error:"Stock location not found"});
+      }
+    }
     const physical = locationId ? await client.query(
       "SELECT inv.produto_id AS product_id, inv.id AS item_id, inv.unidade AS unit, b.quantity FROM inventory_items inv JOIN hotel_stock_location_balances b ON b.tenant_id=inv.tenant_id AND b.inventory_item_id=inv.id WHERE inv.tenant_id=$1 AND b.location_id=$2",
       [tenantId,locationId]
