@@ -1,7 +1,8 @@
+import { VendorBackButton } from "@/components/ui/back-button";
 import { useAuth } from "@/contexts/AuthContext";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, Users } from "lucide-react";
+import { Users } from "lucide-react";
 import { useLocation } from "wouter";
 import {
   useListTenantLeads,
@@ -80,9 +81,7 @@ export default function RelatorioTipoCliente() {
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-3">
-        <Button variant="ghost" size="sm" onClick={() => navigate("/")}>
-          <ArrowLeft className="h-4 w-4 mr-1" /> Voltar ao Dashboard
-        </Button>
+        <VendorBackButton to="/" label="Voltar ao Dashboard" />
       </div>
 
       <div>
