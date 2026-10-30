@@ -19,15 +19,33 @@ A identidade de marca existente continua sendo a base:
 
 Não criar uma segunda paleta, escala tipográfica ou kit de componentes. Antes de migrar telas, consolidar os valores concorrentes em `index.css`, `vendor-brand.css`, `vendorai-ui2.css`, `ui-standard.css` e folhas específicas. Remover duplicações e regras que dependam da ordem incidental dos imports ou de `!important`.
 
-### Valores de marca vigentes
+### Nova direção de cor
 
-- Primária Vendor.ai: laranja `#F97316`; variação forte `#EA580C`.
-- Azul `#2563EB` para informação e navegação auxiliar, nunca como cor primária de marca.
-- Sucesso, alerta e erro usam tokens semânticos.
+Remover o laranja da interface do Vendor.ai. Usar azul como cor primária a partir do azul já presente na paleta:
+
+- Primária: `#2563EB`; ação/hover: `#1D4ED8`; superfície suave: `#EFF6FF`.
+- Tema escuro: primária clara `#60A5FA`, com fundo e superfícies neutros azul-marinho.
+- Sucesso, alerta e erro mantêm tokens semânticos próprios; não usam a cor primária.
 - Inter para interface e operação; Rigter apenas em usos de marca aprovados; serif editorial só em conteúdo editorial.
-- Claro e escuro devem compartilhar os mesmos significados semânticos, estados e contraste. O tema não pode mudar o significado de uma cor ou estado.
+- Claro e escuro compartilham os mesmos significados semânticos, estados e contraste.
+- Remover laranja de botões, links ativos, foco, navegação, cartões, tela de login e cor de status-bar do app.
+- Atualizar a marca Vendor.ai para a nova paleta usando os arquivos vetoriais oficiais, preservando desenho e proporções.
 
-A auditoria pode recomendar ajustes de valor, mas eles precisam ser feitos uma vez na fonte central e propagados aos consumidores.
+O azul parte do token informativo já existente. A migração deve mudar o significado desse token para primário de forma centralizada, sem deixar a cor antiga ou referências hardcoded em telas.
+
+### Padrão único de retorno
+
+Criar um componente compartilhado `VendorBackButton` para páginas internas:
+
+- Rótulo visível “Voltar” com ícone de seta; área de toque mínima de 44 px; foco e nome acessível.
+- Posição fixa no início do cabeçalho de conteúdo, antes do título. Não criar versões locais por módulo.
+- Voltar para a rota anterior do próprio sistema quando houver histórico válido; em abertura direta, usar a rota-pai declarada pela tela. Nunca enviar a pessoa para fora do produto nem depender de um histórico vazio.
+- Manter contexto útil (filtros, busca, página e tenant) ao retornar.
+- Para formulários com alterações não salvas, acionar a confirmação já padronizada antes de sair.
+- Não exibir em páginas-raiz como `/tad`; usar breadcrumb em caminhos profundos, sem duplicar botão e breadcrumb.
+- Em diálogos e drawers, “Fechar” continua fechando a camada atual; não deve imitar navegação de página.
+
+O inventário de rotas deve identificar páginas de entrada, detalhe, edição, fluxo em etapas e páginas-raiz e registrar o destino de retorno esperado para cada uma.
 
 ## Contrato comum de interface
 
