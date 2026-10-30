@@ -187,7 +187,8 @@ CREATE TABLE IF NOT EXISTS hotel_weekly_quote_awards (
  FOREIGN KEY(tenant_id,request_id) REFERENCES hotel_weekly_purchase_requests(tenant_id,id),
  FOREIGN KEY(tenant_id,quote_id) REFERENCES hotel_weekly_supplier_quotes(tenant_id,id),
  FOREIGN KEY(tenant_id,approved_by) REFERENCES users(tenant_id,id),
- UNIQUE(tenant_id,request_id)
+ UNIQUE(tenant_id,request_id),
+ UNIQUE(tenant_id,id)
 );
 ALTER TABLE hotel_weekly_quote_awards ENABLE ROW LEVEL SECURITY;
 CREATE POLICY hotel_weekly_quote_awards_tenant ON hotel_weekly_quote_awards
@@ -205,6 +206,7 @@ CREATE TABLE IF NOT EXISTS hotel_purchase_orders (
  created_at timestamptz NOT NULL DEFAULT now(),
  issued_at timestamptz,
  FOREIGN KEY(tenant_id,request_id) REFERENCES hotel_weekly_purchase_requests(tenant_id,id),
+ FOREIGN KEY(tenant_id,award_id) REFERENCES hotel_weekly_quote_awards(tenant_id,id),
  FOREIGN KEY(tenant_id,created_by) REFERENCES users(tenant_id,id),
  UNIQUE(tenant_id,request_id),
  UNIQUE(tenant_id,id)
