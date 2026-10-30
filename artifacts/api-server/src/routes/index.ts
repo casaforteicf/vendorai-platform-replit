@@ -66,6 +66,7 @@ import agentsRouter from "./agents";
 import voiceAgentRouter from "./voice_agent";
 import inventoryRouter, { inventorySyncRouter } from "./inventory";
 import hotelStockRouter from "./hotel_stock";
+import hotelHospitalityRouter from "./hotel_hospitality";
 import hotelRecipesRouter from "./hotel_recipes";
 import siteConfigRouter, { publicSiteRouter } from "./site_config";
 import segmentTemplatesRouter, { publicSegmentTemplatesRouter } from "./segment_templates";
@@ -462,6 +463,7 @@ router.use(rulesRouter);
 // Inventory Hub
 router.use(inventoryRouter);
 router.use(hotelStockRouter);
+router.use(hotelHospitalityRouter);
 router.use(hotelRecipesRouter);
 router.use(erpRouter);
 router.use(financeIntegrationsRouter);
