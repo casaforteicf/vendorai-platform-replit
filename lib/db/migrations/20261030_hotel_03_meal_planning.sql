@@ -174,3 +174,22 @@ ALTER TABLE hotel_supplier_quote_deliveries ENABLE ROW LEVEL SECURITY;
 CREATE POLICY hotel_supplier_quote_deliveries_tenant ON hotel_supplier_quote_deliveries
  USING(tenant_id=current_setting('app.tenant_id',true))
  WITH CHECK(tenant_id=current_setting('app.tenant_id',true));
+
+-- Escolha humana da proposta; um único fornecedor vencedor por solicitação.
+CREATE TABLE IF NOT EXISTS hotel_weekly_quote_awards (
+ id text PRIMARY KEY,
+ tenant_id text NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+ request_id text NOT NULL,
+ quote_id text NOT NULL,
+ approved_by text NOT NULL,
+ approved_at timestamptz NOT NULL DEFAULT now(),
+ notes text,
+ FOREIGN KEY(tenant_id,request_id) REFERENCES hotel_weekly_purchase_requests(tenant_id,id),
+ FOREIGN KEY(tenant_id,quote_id) REFERENCES hotel_weekly_supplier_quotes(tenant_id,id),
+ FOREIGN KEY(tenant_id,approved_by) REFERENCES users(tenant_id,id),
+ UNIQUE(tenant_id,request_id)
+);
+ALTER TABLE hotel_weekly_quote_awards ENABLE ROW LEVEL SECURITY;
+CREATE POLICY hotel_weekly_quote_awards_tenant ON hotel_weekly_quote_awards
+ USING(tenant_id=current_setting('app.tenant_id',true))
+ WITH CHECK(tenant_id=current_setting('app.tenant_id',true));
