@@ -1,0 +1,67 @@
+import {Router,type IRouter} from "express";
+import {pool} from "@workspace/db";
+import {z} from "zod/v4";
+const router:IRouter=Router();
+function allowed(req:Express.Request,tenantId:string,write=false){
+ const u=req.user;
+ return !!(u?.sub&&u.tenantId===tenantId&&u.actorType!=="ai"&&u.actorType!=="system"&&(!write||u.platformRole==="tenant_admin"||u.role==="admin"||u.userFunction==="administrador"));
+}
+const id=z.string().uuid();
+const roomInput=z.object({code:z.string().trim().min(1).max(32),name:z.string().trim().min(1).max(100),capacity:z.number().int().min(1).max(30)}).strict();
+const guestInput=z.object({fullName:z.string().trim().min(2).max(180),contactEmail:z.email().optional(),contactPhone:z.string().max(40).optional()}).strict();
+const bookingInput=z.object({roomId:id,guestId:id,arrivalDate:z.iso.date(),departureDate:z.iso.date(),guestCount:z.number().int().min(1).max(30)}).strict();
+async function transact<T>(tenantId:string,action:(client:any)=>Promise<T>):Promise<T>{
+ const client=await pool.connect();
+ try{await client.query("BEGIN");await client.query("SELECT set_config('app.tenant_id',$1,true)",[tenantId]);const out=await action(client);await client.query("COMMIT");return out;}
+ catch(e){await client.query("ROLLBACK");throw e;}finally{client.release();}
+}
+router.get("/tenants/:tenantId/hotelaria/hospedagem/quartos",async(req,res)=>{
+ const t=String(req.params.tenantId);if(!allowed(req,t))return res.status(403).json({error:"Forbidden"});
+ try{return res.json(await transact(t,async c=>(await c.query("SELECT id,code,name,capacity,status FROM hotel_rooms WHERE tenant_id=$1 ORDER BY code",[t])).rows));}
+ catch(e){return res.status(500).json({error:"Could not list rooms"});}
+});
+router.post("/tenants/:tenantId/hotelaria/hospedagem/quartos",async(req,res)=>{
+ const t=String(req.params.tenantId);if(!allowed(req,t,true))return res.status(403).json({error:"Forbidden"});
+ const v=roomInput.safeParse(req.body);if(!v.success)return res.status(422).json({error:"Invalid room"});
+ try{const result=await transact(t,async c=>await c.query("INSERT INTO hotel_rooms(id,tenant_id,code,name,capacity) VALUES($1,$2,$3,$4,$5) RETURNING id,code,name,capacity,status",[crypto.randomUUID(),t,v.data.code,v.data.name,v.data.capacity]));return res.status(201).json(result.rows[0]);}
+ catch(e){return res.status(409).json({error:"Could not create room; code may already exist"});}
+});
+router.post("/tenants/:tenantId/hotelaria/hospedagem/hospedes",async(req,res)=>{
+ const t=String(req.params.tenantId);if(!allowed(req,t,true))return res.status(403).json({error:"Forbidden"});
+ const v=guestInput.safeParse(req.body);if(!v.success)return res.status(422).json({error:"Invalid guest"});
+ try{const result=await transact(t,async c=>await c.query("INSERT INTO hotel_guests(id,tenant_id,full_name,contact_email,contact_phone) VALUES($1,$2,$3,$4,$5) RETURNING id,full_name,contact_email,contact_phone",[crypto.randomUUID(),t,v.data.fullName,v.data.contactEmail??null,v.data.contactPhone??null]));return res.status(201).json(result.rows[0]);}
+ catch(e){return res.status(500).json({error:"Could not register guest"});}
+});
+router.get("/tenants/:tenantId/hotelaria/hospedagem/reservas",async(req,res)=>{
+ const t=String(req.params.tenantId);if(!allowed(req,t))return res.status(403).json({error:"Forbidden"});
+ try{return res.json(await transact(t,async c=>(await c.query("SELECT r.id,r.room_id,r.primary_guest_id,r.arrival_date,r.departure_date,r.guest_count,r.status,rm.code AS room_code,g.full_name AS guest_name FROM hotel_reservations r JOIN hotel_rooms rm ON rm.tenant_id=r.tenant_id AND rm.id=r.room_id JOIN hotel_guests g ON g.tenant_id=r.tenant_id AND g.id=r.primary_guest_id WHERE r.tenant_id=$1 ORDER BY r.arrival_date DESC LIMIT 500",[t])).rows));}
+ catch(e){return res.status(500).json({error:"Could not list bookings"});}
+});
+router.post("/tenants/:tenantId/hotelaria/hospedagem/reservas",async(req,res)=>{
+ const t=String(req.params.tenantId);if(!allowed(req,t,true))return res.status(403).json({error:"Forbidden"});
+ const v=bookingInput.safeParse(req.body);if(!v.success||v.data.departureDate<=v.data.arrivalDate)return res.status(422).json({error:"Invalid booking dates or party"});
+ try{
+  const result=await transact(t,async c=>{
+   const room=await c.query("SELECT id,capacity FROM hotel_rooms WHERE tenant_id=$1 AND id=$2 AND status='active' FOR UPDATE",[t,v.data.roomId]);
+   if(!room.rowCount||v.data.guestCount>room.rows[0].capacity)return null;
+   const guest=await c.query("SELECT id FROM hotel_guests WHERE tenant_id=$1 AND id=$2",[t,v.data.guestId]);
+   if(!guest.rowCount)return null;
+   const conflict=await c.query("SELECT id FROM hotel_reservations WHERE tenant_id=$1 AND room_id=$2 AND status IN ('reserved','checked_in') AND arrival_date<$4 AND departure_date>$3 LIMIT 1",[t,v.data.roomId,v.data.arrivalDate,v.data.departureDate]);
+   if(conflict.rowCount)return null;
+   return await c.query("INSERT INTO hotel_reservations(id,tenant_id,room_id,primary_guest_id,arrival_date,departure_date,guest_count,created_by) VALUES($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id,status",[crypto.randomUUID(),t,v.data.roomId,v.data.guestId,v.data.arrivalDate,v.data.departureDate,v.data.guestCount,req.user!.sub]);
+  });
+  if(!result)return res.status(409).json({error:"Room unavailable, occupied or guest missing"});
+  return res.status(201).json(result.rows[0]);
+ }catch(e){return res.status(500).json({error:"Could not create booking"});}
+});
+router.post("/tenants/:tenantId/hotelaria/hospedagem/reservas/:id/:action",async(req,res)=>{
+ const t=String(req.params.tenantId),reservationId=String(req.params.id),action=String(req.params.action);
+ if(!allowed(req,t,true))return res.status(403).json({error:"Forbidden"});
+ if(!id.safeParse(reservationId).success||!["checkin","checkout","cancel"].includes(action))return res.status(422).json({error:"Invalid operation"});
+ const from=action==="checkin"?"reserved":action==="checkout"?"checked_in":"reserved";
+ const to=action==="checkin"?"checked_in":action==="checkout"?"checked_out":"cancelled";
+ const column=action==="checkin"?"checked_in_at":action==="checkout"?"checked_out_at":null;
+ try{const result=await transact(t,async c=>await c.query(`UPDATE hotel_reservations SET status=$3${column?", "+column+"=now()":""} WHERE tenant_id=$1 AND id=$2 AND status=$4 RETURNING id,status`,[t,reservationId,to,from]));if(!result.rowCount)return res.status(409).json({error:"Invalid booking transition"});return res.json(result.rows[0]);}
+ catch(e){return res.status(500).json({error:"Could not update booking"});}
+});
+export default router;
