@@ -35,6 +35,8 @@ router.post("/tenants/:tenantId/hotelaria/hospedagem/quartos/:id/operacao",async
    if(v.data.action==="release"&&room.status!=="maintenance")return null;
    if(v.data.action==="maintenance"&&room.status!=="active")return null;
    if(!maintenance&&room.status!=="active")return null;
+   const nextHousekeeping:Record<string,string>={dirty:"cleaning",cleaning:"inspection",inspection:"clean",clean:"dirty"};
+   if(!maintenance&&(v.data.action!==nextHousekeeping[room.housekeeping_status]))return null;
    if(v.data.action==="maintenance"){
     const occupied=await c.query("SELECT 1 FROM hotel_reservations WHERE tenant_id=$1 AND room_id=$2 AND status='checked_in' LIMIT 1",[t,roomId]);
     if(occupied.rowCount)return null;
