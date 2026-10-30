@@ -1040,11 +1040,11 @@ function WorkspaceInner() {
           </div>
 
           {/* ── Vendi contextual sidebar (right, same row as content) ── */}
-          <ArqCopilot
+          {activeModule !== 'home' && <ArqCopilot
             collapsed={copilotCollapsed}
             onToggle={() => setCopilotCollapsed(p => !p)}
             nextAction={computeNextAction(arqState, 0)}
-          />
+          />}
         </div>
 
         {/* ── COMMAND PALETTE ── */}
