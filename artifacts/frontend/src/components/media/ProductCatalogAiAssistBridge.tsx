@@ -64,14 +64,14 @@ export default function ProductCatalogAiAssistBridge() {
 
       const wrapper = document.createElement("div");
       wrapper.dataset.productAiAssist = "true";
-      wrapper.className = "rounded-2xl border border-orange-200 bg-orange-50 p-3";
+      wrapper.className = "rounded-2xl border border-blue-200 bg-blue-50 p-3";
       wrapper.innerHTML = `
         <div class="flex items-start justify-between gap-3">
           <div>
-            <p class="text-sm font-semibold text-orange-950">Apoio da IA</p>
-            <p class="mt-1 text-xs leading-relaxed text-orange-800">Completa somente campos vazios com base no que já está cadastrado. Revise antes de salvar.</p>
+            <p class="text-sm font-semibold text-blue-950">Apoio da IA</p>
+            <p class="mt-1 text-xs leading-relaxed text-blue-800">Completa somente campos vazios com base no que já está cadastrado. Revise antes de salvar.</p>
           </div>
-          <button type="button" data-product-ai-fill="true" class="inline-flex h-9 shrink-0 items-center justify-center rounded-xl bg-orange-500 px-3 text-xs font-semibold text-white hover:bg-orange-600 disabled:opacity-60">Preencher vazios</button>
+          <button type="button" data-product-ai-fill="true" class="inline-flex h-9 shrink-0 items-center justify-center rounded-xl bg-blue-500 px-3 text-xs font-semibold text-white hover:bg-blue-600 disabled:opacity-60">Preencher vazios</button>
         </div>`;
       referenceBlock.insertAdjacentElement("afterend", wrapper);
 
