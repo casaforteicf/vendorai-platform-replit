@@ -32,6 +32,8 @@ export default function HotelPlanejamento() {
   const [recipes,setRecipes]=useState<Recipe[]>([]);
   const [products,setProducts]=useState<Product[]>([]);
   const [recipeLines,setRecipeLines]=useState<PlannedRecipe[]>([{recipeId:"",plannedPortions:1}]);
+  const [menuName,setMenuName]=useState("");
+  const [menuImport,setMenuImport]=useState("");
   const [summary,setSummary]=useState<Summary|null>(null);
   const [locations,setLocations]=useState<StockLocation[]>([]);
   const [requests,setRequests]=useState<PurchaseRequest[]>([]);
@@ -59,6 +61,30 @@ export default function HotelPlanejamento() {
     }catch(e){setMessage(String(e));}
   }
   useEffect(()=>{void reload();},[tenantId,token,date,locationId]);
+  function importMenu() {
+    try {
+      const raw:unknown=JSON.parse(menuImport);
+      if(!raw || typeof raw!=="object" || Array.isArray(raw))throw new Error("Formato inválido");
+      const menu=raw as Record<string,unknown>;
+      if(typeof menu.name!=="string" || !Array.isArray(menu.recipes))throw new Error("Informe name e recipes");
+      if(menu.recipes.length===0 || menu.recipes.length>100)throw new Error("Informe entre 1 e 100 receitas");
+      const parsed:PlannedRecipe[]=menu.recipes.map((item:unknown)=>{
+        if(!item || typeof item!=="object" || Array.isArray(item))throw new Error("Receita inválida");
+        const row=item as Record<string,unknown>;
+        const matching=recipes.find(r=>r.id===row.recipeId && r.status==="approved");
+        if(!matching || !Number.isInteger(row.plannedPortions) || (row.plannedPortions as number)<=0)
+          throw new Error("Receita não aprovada ou porções inválidas: "+String(row.recipeId));
+        return {recipeId:matching.id,plannedPortions:row.plannedPortions as number};
+      });
+      if(new Set(parsed.map(r=>r.recipeId)).size!==parsed.length)throw new Error("Receitas duplicadas");
+      setMenuName(menu.name.slice(0,120));setRecipeLines(parsed);
+      setMessage("Cardápio importado para edição. Salve a previsão para registrar as receitas.");
+    }catch(e){setMessage("Não foi possível importar: "+String(e));}
+  }
+  function clearMenu(){
+    setMenuName("");setRecipeLines([{recipeId:"",plannedPortions:1}]);setMenuImport("");
+    setMessage("Novo cardápio iniciado. Selecione as receitas aprovadas.");
+  }
   async function save(){
     if(!isEffectiveAdmin||!Number.isInteger(guests)||guests<0||!Number.isInteger(staff)||staff<0||recipeLines.some(line=>!line.recipeId||!Number.isInteger(line.plannedPortions)||line.plannedPortions<=0)||new Set(recipeLines.map(line=>line.recipeId)).size!==recipeLines.length){setMessage("Selecione receitas distintas com porções e quantidades válidas.");return;}
     setBusy(true);setMessage("");
@@ -108,6 +134,14 @@ export default function HotelPlanejamento() {
 
       <label className="text-sm">Hóspedes previstos<Input type="number" min={0} value={guests} onChange={e=>setGuests(Number(e.target.value))}/></label>
       <label className="text-sm">Refeições de equipe<Input type="number" min={0} value={staff} onChange={e=>setStaff(Number(e.target.value))}/></label>
+      <div className="sm:col-span-2 space-y-3 rounded-lg border p-3">
+        <h3 className="font-medium">Cardápio: criar ou importar</h3>
+        <label className="block text-sm">Nome do cardápio<Input maxLength={120} value={menuName} onChange={e=>setMenuName(e.target.value)} placeholder="Ex.: Café da manhã de sábado" /></label>
+        <Button variant="outline" type="button" onClick={clearMenu}>Criar novo cardápio</Button>
+        <label className="block text-sm">Importar cardápio JSON<textarea rows={4} className="mt-1 w-full rounded-md border bg-background p-2 font-mono text-xs" value={menuImport} onChange={e=>setMenuImport(e.target.value)} placeholder={'{"name":"Café do hotel","recipes":[{"recipeId":"UUID da ficha aprovada","plannedPortions":50}]}'} /></label>
+        <Button variant="outline" type="button" onClick={importMenu} disabled={!menuImport.trim()}>Importar e conferir receitas</Button>
+        <p className="text-xs text-muted-foreground">A importação usa fichas técnicas já aprovadas no catálogo deste hotel. Ingredientes e quantidades vêm dessas fichas; a solicitação de compra só pode ser gerada após salvar o planejamento e conciliar o estoque.</p>
+      </div>
       <div className="sm:col-span-2 space-y-3"><p className="text-sm font-medium">Receitas para esta refeição</p>
         {recipeLines.map((line,index)=><div key={index} className="grid gap-2 rounded-lg border p-3 sm:grid-cols-[1fr_140px_auto]">
           <label className="text-sm">Receita aprovada<select className="mt-1 block h-10 w-full rounded-md border bg-background px-3" value={line.recipeId} onChange={e=>setRecipeLines(prev=>prev.map((v,i)=>i===index?{...v,recipeId:e.target.value}:v))}>
