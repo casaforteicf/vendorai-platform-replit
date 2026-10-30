@@ -15,7 +15,7 @@ import {
   Handshake, Shield, Cpu, Bug, Coins, Wrench, Pill, Home, Car, HelpCircle, WalletCards, Camera, KanbanSquare, ClipboardCheck, FileCheck, UserCog, Instagram,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { ui20SidebarServiceForPath } from "@/lib/ui20ServiceRoutes";
+import { ui20ServiceForPath, ui20SidebarServiceForPath } from "@/lib/ui20ServiceRoutes";
 import { getUi20VisibleServices } from "@/lib/ui20ServiceVisibility";
 import { Button } from "@/components/ui/button";
 import logoFull from "/logo-full-light.svg";
