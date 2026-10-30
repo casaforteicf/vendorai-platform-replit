@@ -433,7 +433,7 @@ export default function VideoProdutoPage() {
             </div>
           </div>
 
-          <button onClick={() => void generate()} disabled={!canGenerate} className={cn("w-full py-3 rounded-xl font-semibold text-sm flex items-center justify-center gap-2 transition-all", !canGenerate ? "bg-amber-900/40 text-amber-400/50 cursor-not-allowed" : "bg-gradient-to-r from-amber-500 to-orange-500 text-white hover:opacity-90")}>
+          <button onClick={() => void generate()} disabled={!canGenerate} className={cn("w-full py-3 rounded-xl font-semibold text-sm flex items-center justify-center gap-2 transition-all", !canGenerate ? "bg-amber-900/40 text-amber-400/50 cursor-not-allowed" : "bg-gradient-to-r from-blue-400 to-blue-600 text-white hover:opacity-90")}>
             {prodLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
             {prodLoading ? "Criando storyboard e iniciando render..." : `Gerar vídeo de ${prodFormat === "reel" ? "Reel" : "Stories"}`}
           </button>
@@ -464,7 +464,7 @@ export default function VideoProdutoPage() {
                   <span className="text-[11px] text-gray-500">{progressPercent}%</span>
                 </div>
                 <div className="h-2 rounded-full bg-black/30 overflow-hidden">
-                  <div className="h-full rounded-full bg-gradient-to-r from-amber-500 to-orange-500 transition-all" style={{ width: `${progressPercent}%` }} />
+                  <div className="h-full rounded-full bg-gradient-to-r from-amber-500 to-blue-500 transition-all" style={{ width: `${progressPercent}%` }} />
                 </div>
                 {job?.status === "error" && <p className="text-xs text-red-300">{job.error || "Não foi possível concluir o vídeo."}</p>}
                 {job?.output?.logoWarning && <p className="text-[11px] text-amber-300">{job.output.logoWarning}</p>}
