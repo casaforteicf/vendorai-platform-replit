@@ -57,7 +57,8 @@ export default function HotelReceitas() {
   }, [tenantId, token]);
 
   async function create() {
-    if (!title.trim() || ingredients.some(i => !i.productId || i.quantityGross <= 0 || i.yieldFactor <= 0 || i.yieldFactor > 1)) { setMessage("Informe nome e ingredientes válidos."); return; }\n    if (new Set(ingredients.map(i => i.productId)).size !== ingredients.length) { setMessage("Um mesmo produto só pode aparecer uma vez na receita."); return; }
+    if (!title.trim() || ingredients.some(i => !i.productId || i.quantityGross <= 0 || i.yieldFactor <= 0 || i.yieldFactor > 1)) { setMessage("Informe nome e ingredientes válidos."); return; }
+    if (new Set(ingredients.map(i => i.productId)).size !== ingredients.length) { setMessage("Um mesmo produto só pode aparecer uma vez na receita."); return; }
     setBusy(true); setMessage("");
     try {
       await request("/receitas", { method: "POST", body: JSON.stringify({
