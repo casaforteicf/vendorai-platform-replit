@@ -87,4 +87,25 @@ router.post("/tenants/:tenantId/hotelaria/compras/pedidos/:orderId/receber",asyn
  finally{client.release();}
 });
 
+
+router.post("/tenants/:tenantId/hotelaria/compras/pedidos/:orderId/emitir",async(req,res)=>{
+ const tenantId=String(req.params.tenantId),orderId=String(req.params.orderId);
+ if(!permitted(req,tenantId))return res.status(403).json({error:"Forbidden"});
+ if(!z.string().uuid().safeParse(orderId).success)return res.status(422).json({error:"Invalid order"});
+ const client=await pool.connect();
+ try{
+  await client.query("BEGIN");
+  await client.query("SELECT set_config('app.tenant_id',$1,true)",[tenantId]);
+  const result=await client.query(
+   `UPDATE hotel_purchase_orders SET status='issued',issued_at=now()
+    WHERE tenant_id=$1 AND id=$2 AND status='draft'
+    AND EXISTS(SELECT 1 FROM hotel_purchase_order_lines l WHERE l.tenant_id=$1 AND l.order_id=$2)
+    RETURNING id,status,issued_at`,[tenantId,orderId]);
+  if(!result.rowCount){await client.query("ROLLBACK");return res.status(409).json({error:"Order missing, empty or already issued"});}
+  await client.query("COMMIT");
+  return res.json({...result.rows[0],externalSupplierMessageSent:false,inventoryPosted:false});
+ }catch(error){await client.query("ROLLBACK");return res.status(500).json({error:"Could not issue internal order"});}
+ finally{client.release();}
+});
+
 export default router;
