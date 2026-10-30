@@ -139,7 +139,7 @@ router.get("/manifest.json", async (req, res) => {
     display: "standalone",
     orientation: "any",
     background_color: "#ffffff",
-    theme_color: "#D9673E",
+    theme_color: "#2563EB",
     lang: "pt-BR",
     icons,
   });
