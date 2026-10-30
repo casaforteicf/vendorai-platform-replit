@@ -28,6 +28,7 @@ import {
   ThumbsUp,
 } from "lucide-react";
 import PortalClientDecisions from "./PortalClientDecisions";
+import ApprovedClientDashboard, { type ClientProject } from "../modules/arqdor/client/ApprovedClientDashboard";
 import {
   PortalAuthGate,
   PortalCommercial,
@@ -330,6 +331,7 @@ export default function PortalObra() {
     try { return localStorage.getItem(portalSessionKey(token)) ?? ""; } catch { return ""; }
   });
   const [forceAuth, setForceAuth] = useState(false);
+  const [showArqdorClient, setShowArqdorClient] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [approving, setApproving] = useState(false);
@@ -449,6 +451,45 @@ export default function PortalObra() {
   />;
   if (error || !data) return <div className="flex min-h-screen items-center justify-center bg-gray-50"><div className="max-w-sm text-center"><Building2 className="mx-auto mb-4 h-12 w-12 text-gray-300" /><h1 className="mb-2 text-xl font-semibold text-gray-700">Portal não encontrado</h1><p className="text-sm text-gray-500">{error ?? "Verifique o link enviado pela construtora."}</p></div></div>;
 
+  // A Tela 1 Cliente consome somente a obra autorizada por este token e pela sessao.
+  // O endpoint atual nao autoriza listar outros projetos, entao nao os solicitamos.
+  const clientProject: ClientProject = {
+    id: data.obra.id,
+    title: data.obra.nome,
+    category: "Projeto / obra",
+    location: data.obra.endereco ?? undefined,
+    status: /conclu|entreg|finaliz/i.test(data.obra.status) ? "Concluído" : "Em desenvolvimento",
+    progress: Math.max(0,Math.min(100,Math.round(data.resumo?.progressoGeral ?? 0))),
+  };
+  const clientNavigate = (destination: "projetos" | "renders" | "orcamentos" | "cotacoes" | "propostas" | "contratacoes" | "profissionais" | "mensagens" | "ajuda" | "configuracoes") => {
+    // Somente abas explicitamente publicadas no portal sao navegaveis.
+    const destinationTab: Partial<Record<typeof destination, TabId>> = {
+      projetos: "projetos", orcamentos: "orcamento", cotacoes: "compras",
+      propostas: "propostas", contratacoes: "contratos", mensagens: "chat", ajuda: "suporte",
+    };
+    const tab = destinationTab[destination];
+    if (tab && visibleTabs.some(visible => visible.id === tab)) {
+      setShowArqdorClient(false);
+      handleTabChange(tab);
+    } else {
+      // Não expor funcoes indisponiveis nem criar navegacao ficticia.
+      setShowArqdorClient(false);
+    }
+  };
+  // Sem credencial autenticada, mantemos o portal e suas regras atuais inalterados.
+  if (showArqdorClient && data.auth?.authenticated) return (
+    <div>
+      <button type="button" onClick={() => setShowArqdorClient(false)}
+        className="fixed bottom-4 left-4 z-50 rounded-lg bg-white px-4 py-3 text-sm font-semibold text-emerald-900 shadow-xl border border-emerald-700">
+        ← Acompanhamento da obra
+      </button>
+      <ApprovedClientDashboard projects={[clientProject]} clientName={data.auth.user?.nome ?? "Cliente"}
+        activeProjectId={clientProject.id}
+        onOpenProject={() => { setShowArqdorClient(false); handleTabChange("dados"); }}
+        onNavigate={clientNavigate} />
+    </div>
+  );
+
   const { obra, tenant, orcamento, etapas, diario, ocorrencias } = data;
   const fases = data.fases ?? [];
   const decisions = data.decisions ?? [];
@@ -490,6 +531,7 @@ export default function PortalObra() {
         </div>
       </header>
 
+      {data.auth?.authenticated ? <div className="mx-auto max-w-4xl px-4 pt-5"><button type="button" onClick={() => setShowArqdorClient(true)} className="rounded-lg bg-emerald-800 px-4 py-3 text-sm font-semibold text-white">Abrir ARQDOR Cliente — Meus projetos</button></div> : null}
       <main className="mx-auto max-w-4xl px-4 py-8">
         <div className="mb-8 rounded-2xl border border-gray-100 bg-white p-6 shadow-sm">
           <h1 className="mb-1 text-2xl font-bold text-gray-900">{obra.nome}</h1>
