@@ -268,7 +268,7 @@ router.get("/tenants/:tenantId/business-profile", async (req, res) => {
   const [profileResult, tenantResult, whatsappResult] = await Promise.allSettled([
     withTimeout(
       db.select().from(businessProfilesTable).where(eq(businessProfilesTable.tenantId, tenantId)).limit(1),
-      3_500,
+      8_000,
       "business profile query",
     ),
     withTimeout(
@@ -299,7 +299,15 @@ router.get("/tenants/:tenantId/business-profile", async (req, res) => {
       "whatsapp connection query",
     ),
   ]);
-  let profile = profileResult.status === "fulfilled" ? profileResult.value[0] ?? null : null;
+  // An unavailable primary profile must never masquerade as an empty, editable profile.
+  // Return a retryable error instead of HTTP 200 with only tenant fallback fields.
+  if (profileResult.status === "rejected") {
+    req.log?.error({ error: profileResult.reason, tenantId }, "business-profile: primary profile query failed");
+    res.setHeader("Cache-Control", "no-store");
+    res.status(503).json({ error: "Não foi possível carregar o perfil salvo. Tente novamente.", code: "BUSINESS_PROFILE_UNAVAILABLE" });
+    return;
+  }
+  let profile = profileResult.value[0] ?? null;
   const tenant = tenantResult.status === "fulfilled" ? tenantResult.value[0] ?? null : null;
   const whatsapp = whatsappResult.status === "fulfilled" ? whatsappResult.value[0] ?? null : null;
 
