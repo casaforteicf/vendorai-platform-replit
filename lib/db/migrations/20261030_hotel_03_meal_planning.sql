@@ -126,3 +126,32 @@ CREATE POLICY hotel_weekly_requests_tenant ON hotel_weekly_purchase_requests
 CREATE POLICY hotel_weekly_lines_tenant ON hotel_weekly_purchase_request_lines
  USING (tenant_id = current_setting('app.tenant_id',true))
  WITH CHECK (tenant_id = current_setting('app.tenant_id',true));
+
+-- Hotelaria reutiliza o cadastro de fornecedores do ecossistema de compras.
+-- Uma solicitação semanal pode consultar diversos fornecedores, sem emitir pedidos.
+CREATE TABLE IF NOT EXISTS hotel_weekly_supplier_quotes (
+ id text PRIMARY KEY,
+ tenant_id text NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+ request_id text NOT NULL,
+ supplier_id text NOT NULL,
+ status text NOT NULL DEFAULT 'selected' CHECK (status IN ('selected','invited','responded','declined','cancelled')),
+ invited_at timestamptz,
+ responded_at timestamptz,
+ currency text NOT NULL DEFAULT 'BRL',
+ total_amount numeric(15,2),
+ delivery_days integer CHECK (delivery_days >= 0),
+ payment_terms text,
+ notes text,
+ created_at timestamptz NOT NULL DEFAULT now(),
+ FOREIGN KEY (tenant_id,request_id) REFERENCES hotel_weekly_purchase_requests(tenant_id,id) ON DELETE CASCADE,
+ UNIQUE (tenant_id,request_id,supplier_id),
+ UNIQUE (tenant_id,id)
+);
+CREATE INDEX IF NOT EXISTS hotel_weekly_supplier_quotes_request
+ ON hotel_weekly_supplier_quotes(tenant_id,request_id);
+ALTER TABLE hotel_weekly_supplier_quotes ENABLE ROW LEVEL SECURITY;
+CREATE POLICY hotel_weekly_supplier_quotes_tenant ON hotel_weekly_supplier_quotes
+ USING (tenant_id=current_setting('app.tenant_id',true))
+ WITH CHECK (tenant_id=current_setting('app.tenant_id',true));
+-- supplier_id é validado na API contra fornecedores do mesmo tenant.
+-- 'selected' registra seleção interna; 'invited' somente após envio confirmado.
