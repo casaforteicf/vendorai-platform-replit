@@ -1,3 +1,4 @@
+import { VendorBackButton } from "@/components/ui/back-button";
 import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import { useLocation, useParams } from "wouter";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -15,7 +16,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { AdminDeleteLeadButton } from "@/components/AdminDeleteLeadButton";
 import { PipelineStageFunctionAccess } from "@/components/PipelineStageFunctionAccess";
-import { ArrowLeft, ArrowRight, AlertTriangle, BrainCircuit, Building2, Clock3, HandCoins, Headset, Loader2, Pencil, Sparkles, UserRound, WalletCards } from "lucide-react";
+import { ArrowRight, AlertTriangle, BrainCircuit, Building2, Clock3, HandCoins, Headset, Loader2, Pencil, Sparkles, UserRound, WalletCards } from "lucide-react";
 
 const LeadDetail = lazy(() => import("@/pages/LeadDetail"));
 const DealParticipantsCard = lazy(() => import("@/components/DealParticipantsCard").then((m) => ({ default: m.DealParticipantsCard })));
@@ -877,9 +878,7 @@ export default function LeadWorkspace() {
       <CardContent className="p-4">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex min-w-0 items-start gap-2.5">
-            <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0" aria-label="Voltar à Central de Trabalho" onClick={() => navigate("/trabalho")}>
-              <ArrowLeft className="h-4 w-4" />
-            </Button>
+            <VendorBackButton to="/trabalho" label="Voltar à Central de Trabalho" className="shrink-0" />
             <div className="min-w-0">
               <p className="mb-1 text-xs font-medium text-muted-foreground">Central de Trabalho</p>
               <div className="flex flex-wrap items-center gap-2">
