@@ -894,7 +894,11 @@ export default function Configuracoes({ embedded = false, forcedTab }: { embedde
   }
 
   function onSaveDiscovery() {
-    if (!profileQuery.data?.id) return;
+    // Never persist a blank form when the tenant profile failed to load.
+    if (!tenantId || !profileQuery.isSuccess || !profileQuery.data?.id || profileQuery.isFetching) {
+      toast({ title: "Perfil da empresa não carregado.", description: "Atualize os dados antes de salvar o contexto.", variant: "destructive" });
+      return;
+    }
     setDiscSaving(true);
     const dd = {
       ...((profileQuery.data.discoveryData as Record<string, unknown>) ?? {}),
@@ -2990,9 +2994,17 @@ export default function Configuracoes({ embedded = false, forcedTab }: { embedde
               </Button>
             </div>
 
-            {profileQuery.isLoading ? (
-              <div className="space-y-3">
+            {profileQuery.isPending || (profileQuery.isFetching && !profileQuery.data) ? (
+              <div className="space-y-3" aria-live="polite">
                 {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-10 w-full" />)}
+              </div>
+            ) : profileQuery.isError || !profileQuery.data?.id ? (
+              <div role="alert" className="rounded-lg border border-destructive/40 p-4 space-y-3">
+                <p className="text-sm font-medium">Não foi possível carregar o contexto salvo da empresa.</p>
+                <p className="text-sm text-muted-foreground">Os campos não serão exibidos vazios para evitar substituir informações existentes. Confira a empresa selecionada e tente novamente.</p>
+                <Button type="button" variant="outline" onClick={() => void profileQuery.refetch()} disabled={profileQuery.isFetching}>
+                  {profileQuery.isFetching ? "Recarregando..." : "Tentar novamente"}
+                </Button>
               </div>
             ) : (
               <div className="flex flex-col gap-6">
@@ -3197,7 +3209,7 @@ export default function Configuracoes({ embedded = false, forcedTab }: { embedde
                 </div>
 
                 <div className="flex justify-end pt-2">
-                  <Button onClick={onSaveDiscovery} disabled={discSaving || !profileQuery.data?.id} className="gap-2">
+                  <Button onClick={onSaveDiscovery} disabled={discSaving || profileQuery.isFetching || !profileQuery.isSuccess || !profileQuery.data?.id} className="gap-2">
                     <Save className="h-4 w-4" />
                     {discSaving ? "Salvando..." : "Salvar Contexto"}
                   </Button>
