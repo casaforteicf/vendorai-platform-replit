@@ -80,6 +80,25 @@ router.get("/tenants/:tenantId/hotelaria/hospedagem/reservas",async(req,res)=>{
  try{return res.json(await transact(t,async c=>(await c.query("SELECT r.id,r.room_id,r.primary_guest_id,r.arrival_date,r.departure_date,r.guest_count,r.status,rm.code AS room_code,g.full_name AS guest_name FROM hotel_reservations r JOIN hotel_rooms rm ON rm.tenant_id=r.tenant_id AND rm.id=r.room_id JOIN hotel_guests g ON g.tenant_id=r.tenant_id AND g.id=r.primary_guest_id WHERE r.tenant_id=$1 ORDER BY r.arrival_date DESC LIMIT 500",[t])).rows));}
  catch(e){return res.status(500).json({error:"Could not list bookings"});}
 });
+router.get("/tenants/:tenantId/hotelaria/hospedagem/disponibilidade",async(req,res)=>{
+ const t=String(req.params.tenantId);
+ if(!allowed(req,t))return res.status(403).json({error:"Forbidden"});
+ const input=z.object({arrivalDate:z.iso.date(),departureDate:z.iso.date(),guestCount:z.coerce.number().int().min(1).max(30)}).safeParse(req.query);
+ if(!input.success||input.data.departureDate<=input.data.arrivalDate)return res.status(422).json({error:"Invalid search period"});
+ const days=(Date.parse(input.data.departureDate+"T00:00:00Z")-Date.parse(input.data.arrivalDate+"T00:00:00Z"))/86400000;
+ if(days>365)return res.status(422).json({error:"Maximum 365 nights"});
+ try{
+  const rooms=await transact(t,async c=>(await c.query(
+   `SELECT rm.id,rm.code,rm.name,rm.capacity,rm.status,rm.housekeeping_status
+    FROM hotel_rooms rm WHERE rm.tenant_id=$1 AND rm.status='active' AND rm.capacity>=$4
+     AND NOT EXISTS (
+      SELECT 1 FROM hotel_reservations r WHERE r.tenant_id=rm.tenant_id
+       AND r.room_id=rm.id AND r.status IN ('reserved','checked_in')
+       AND r.arrival_date<$3::date AND r.departure_date>$2::date)
+    ORDER BY rm.code`,[t,input.data.arrivalDate,input.data.departureDate,input.data.guestCount])).rows);
+  return res.json({arrivalDate:input.data.arrivalDate,departureDate:input.data.departureDate,rooms,availabilitySubjectToRecheck:true});
+ }catch(e){return res.status(500).json({error:"Could not check availability"});}
+});
 router.post("/tenants/:tenantId/hotelaria/hospedagem/reservas",async(req,res)=>{
  const t=String(req.params.tenantId);if(!allowed(req,t,true))return res.status(403).json({error:"Forbidden"});
  const v=bookingInput.safeParse(req.body);if(!v.success||v.data.departureDate<=v.data.arrivalDate)return res.status(422).json({error:"Invalid booking dates or party"});
