@@ -1,17 +1,7 @@
+import { VendorBackButton } from "@/components/ui/back-button";
 import { useQuery } from "@tanstack/react-query";
 import { useLocation, useParams } from "wouter";
-import {
-  ArrowLeft,
-  Building2,
-  Globe,
-  Mail,
-  MapPin,
-  Package,
-  Phone,
-  ShieldCheck,
-  Star,
-  UserRound,
-} from "lucide-react";
+import { Building2, Globe, Mail, MapPin, Package, Phone, ShieldCheck, Star, UserRound } from "lucide-react";
 
 type Partner = {
   id: string;
@@ -140,9 +130,7 @@ export function PartnerDetailPage() {
     return (
       <div className="min-h-full bg-background p-6">
         <div className="mx-auto max-w-4xl rounded-xl border border-destructive/30 bg-destructive/5 p-6">
-          <button type="button" onClick={() => navigate("/partner-hub")} className="mb-4 flex items-center gap-2 text-sm font-medium text-foreground hover:text-primary">
-            <ArrowLeft className="h-4 w-4" /> Voltar para parceiros
-          </button>
+          <VendorBackButton to="/partner-hub" label="Voltar para parceiros" className="mb-4" />
           <h1 className="font-semibold text-destructive">Não foi possível abrir este parceiro</h1>
           <p className="mt-2 text-sm text-muted-foreground">
             {partnerQuery.error instanceof Error ? partnerQuery.error.message : "Parceiro não encontrado."}
@@ -159,9 +147,7 @@ export function PartnerDetailPage() {
   return (
     <div className="min-h-full bg-background p-4 md:p-6 lg:p-8">
       <div className="mx-auto max-w-7xl space-y-6">
-        <button type="button" onClick={() => navigate("/partner-hub")} className="flex items-center gap-2 text-sm font-medium text-muted-foreground transition hover:text-foreground">
-          <ArrowLeft className="h-4 w-4" /> Rede de Parceiros
-        </button>
+        <VendorBackButton to="/partner-hub" label="Voltar para parceiros" />
 
         <section className="overflow-hidden rounded-2xl border bg-card">
           <div className="flex flex-col gap-5 p-6 md:flex-row md:items-start">
