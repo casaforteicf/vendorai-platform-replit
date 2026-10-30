@@ -53,4 +53,38 @@ router.get("/tenants/:tenantId/hotelaria/compras/pedidos",async(req,res)=>{
  }catch(e){await client.query("ROLLBACK");return res.status(500).json({error:"Could not list orders"});}
  finally{client.release();}
 });
+
+router.post("/tenants/:tenantId/hotelaria/compras/pedidos/:orderId/receber",async(req,res)=>{
+ const tenantId=String(req.params.tenantId),orderId=String(req.params.orderId);
+ if(!permitted(req,tenantId))return res.status(403).json({error:"Forbidden"});
+ const parsed=z.object({lineId:z.string().uuid(),quantity:z.number().finite().positive()}).strict().safeParse(req.body);
+ if(!z.string().uuid().safeParse(orderId).success||!parsed.success)return res.status(422).json({error:"Invalid receipt"});
+ const client=await pool.connect();
+ try{
+  await client.query("BEGIN");
+  await client.query("SELECT set_config('app.tenant_id',$1,true)",[tenantId]);
+  const order=await client.query(
+   "SELECT id FROM hotel_purchase_orders WHERE tenant_id=$1 AND id=$2 AND status IN ('issued','partially_received') FOR UPDATE",
+   [tenantId,orderId]);
+  if(!order.rowCount){await client.query("ROLLBACK");return res.status(409).json({error:"Order must be issued before receiving"});}
+  const updated=await client.query(
+   `UPDATE hotel_purchase_order_lines SET received_quantity=received_quantity+$4
+    WHERE tenant_id=$1 AND order_id=$2 AND id=$3 AND received_quantity+$4<=ordered_quantity
+    RETURNING id,ordered_quantity,received_quantity`,
+   [tenantId,orderId,parsed.data.lineId,parsed.data.quantity]);
+  if(!updated.rowCount){await client.query("ROLLBACK");return res.status(422).json({error:"Line not found or quantity exceeds order"});}
+  await client.query(
+   "INSERT INTO hotel_purchase_receipt_events(id,tenant_id,order_line_id,received_quantity,recorded_by) VALUES($1,$2,$3,$4,$5)",
+   [crypto.randomUUID(),tenantId,parsed.data.lineId,parsed.data.quantity,req.user?.sub]);
+  const pending=await client.query(
+   "SELECT count(*)::int AS pending FROM hotel_purchase_order_lines WHERE tenant_id=$1 AND order_id=$2 AND received_quantity<ordered_quantity",
+   [tenantId,orderId]);
+  const status=Number(pending.rows[0].pending)===0?"received":"partially_received";
+  await client.query("UPDATE hotel_purchase_orders SET status=$3 WHERE tenant_id=$1 AND id=$2",[tenantId,orderId,status]);
+  await client.query("COMMIT");
+  return res.json({orderId,line:updated.rows[0],status,inventoryPosted:false});
+ }catch(error){await client.query("ROLLBACK");console.error("[hotel-orders] receipt",error);return res.status(500).json({error:"Could not register receipt"});}
+ finally{client.release();}
+});
+
 export default router;
