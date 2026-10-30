@@ -43,7 +43,7 @@ Criar um componente compartilhado `VendorBackButton` para páginas internas:
 
 - Rótulo visível “Voltar” com ícone de seta; área de toque mínima de 44 px; foco e nome acessível.
 - Posição fixa no início do cabeçalho de conteúdo, antes do título. Não criar versões locais por módulo.
-- Voltar para a rota anterior do próprio sistema quando houver histórico válido; em abertura direta, usar a rota-pai declarada pela tela. Nunca enviar a pessoa para fora do produto nem depender de um histórico vazio.
+- Cada tela declara a rota-pai no componente; o botão sempre navega para esse destino explícito, inclusive quando a pessoa abriu a URL diretamente. Nunca depender de histórico vazio nem enviar para fora do produto.
 - Manter contexto útil (filtros, busca, página e tenant) ao retornar.
 - Para formulários com alterações não salvas, acionar a confirmação já padronizada antes de sair.
 - Não exibir em páginas-raiz como `/tad`; usar breadcrumb em caminhos profundos, sem duplicar botão e breadcrumb.
