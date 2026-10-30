@@ -86,4 +86,53 @@ router.post("/tenants/:tenantId/hotelaria/compras/semanais", async (req,res) => 
   } finally {client.release();}
 });
 
+
+function canReview(req: Express.Request, tenantId:string) {
+ const u=req.user;
+ return !!u?.sub && u.tenantId===tenantId && u.actorType!=="ai" && u.actorType!=="system" &&
+ (u.platformRole==="tenant_admin" || u.role==="admin" || u.userFunction==="administrador");
+}
+router.get("/tenants/:tenantId/hotelaria/compras/semanais", async (req,res) => {
+ const tenantId=String(req.params.tenantId);
+ if (!canReview(req,tenantId)) return res.status(403).json({error:"Forbidden"});
+ const client=await pool.connect();
+ try {
+  await client.query("BEGIN READ ONLY");
+  await client.query("SELECT set_config('app.tenant_id',$1,true)",[tenantId]);
+  const result=await client.query(
+    "SELECT id,location_id,period_start,period_end,status,created_at,reviewed_at FROM hotel_weekly_purchase_requests WHERE tenant_id=$1 ORDER BY created_at DESC LIMIT 100",[tenantId]);
+  await client.query("COMMIT");
+  return res.json(result.rows);
+ } catch(e) {
+  await client.query("ROLLBACK");console.error("[hotel-purchases] list",e);
+  return res.status(500).json({error:"Could not list requests"});
+ } finally {client.release();}
+});
+router.post("/tenants/:tenantId/hotelaria/compras/semanais/:id/revisar", async (req,res) => {
+ const tenantId=String(req.params.tenantId),id=String(req.params.id);
+ if (!canReview(req,tenantId)) return res.status(403).json({error:"Forbidden"});
+ const body=z.object({decision:z.enum(["reviewed","dismissed"])}).strict().safeParse(req.body);
+ if (!z.string().uuid().safeParse(id).success || !body.success)
+  return res.status(422).json({error:"Invalid request or decision"});
+ const client=await pool.connect();
+ try {
+  await client.query("BEGIN");
+  await client.query("SELECT set_config('app.tenant_id',$1,true)",[tenantId]);
+  const result=await client.query(
+    `UPDATE hotel_weekly_purchase_requests SET status=$3,reviewed_by=$4,reviewed_at=now()
+     WHERE tenant_id=$1 AND id=$2 AND status='draft'
+      AND EXISTS(SELECT 1 FROM users WHERE tenant_id=$1 AND id=$4)
+     RETURNING id,status,reviewed_at`,
+    [tenantId,id,body.data.decision,req.user?.sub]);
+  if (!result.rowCount) {
+   await client.query("ROLLBACK");return res.status(409).json({error:"Request not found or already reviewed"});
+  }
+  await client.query("COMMIT");
+  return res.json({...result.rows[0],purchaseOrderCreated:false});
+ } catch(e) {
+  await client.query("ROLLBACK");console.error("[hotel-purchases] review",e);
+  return res.status(500).json({error:"Could not review request"});
+ } finally {client.release();}
+});
+
 export default router;
