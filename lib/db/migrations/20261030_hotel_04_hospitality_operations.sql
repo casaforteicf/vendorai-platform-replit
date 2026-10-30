@@ -46,3 +46,23 @@ CREATE POLICY hotel_rooms_tenant ON hotel_rooms USING(tenant_id=current_setting(
 CREATE POLICY hotel_guests_tenant ON hotel_guests USING(tenant_id=current_setting('app.tenant_id',true)) WITH CHECK(tenant_id=current_setting('app.tenant_id',true));
 CREATE POLICY hotel_reservations_tenant ON hotel_reservations USING(tenant_id=current_setting('app.tenant_id',true)) WITH CHECK(tenant_id=current_setting('app.tenant_id',true));
 -- Application locks must serialize overlapping bookings on the room row.
+
+ALTER TABLE hotel_rooms ADD COLUMN IF NOT EXISTS housekeeping_status text NOT NULL DEFAULT 'clean' CHECK(housekeeping_status IN ('clean','dirty','cleaning','inspection'));
+CREATE TABLE IF NOT EXISTS hotel_room_operational_events (
+ id text PRIMARY KEY,
+ tenant_id text NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+ room_id text NOT NULL,
+ event_type text NOT NULL CHECK(event_type IN ('housekeeping','maintenance','release')),
+ previous_status text NOT NULL,
+ new_status text NOT NULL,
+ notes text,
+ created_by text NOT NULL,
+ created_at timestamptz NOT NULL DEFAULT now(),
+ FOREIGN KEY(tenant_id,room_id) REFERENCES hotel_rooms(tenant_id,id),
+ FOREIGN KEY(tenant_id,created_by) REFERENCES users(tenant_id,id)
+);
+CREATE INDEX IF NOT EXISTS hotel_room_events_lookup ON hotel_room_operational_events(tenant_id,room_id,created_at DESC);
+ALTER TABLE hotel_room_operational_events ENABLE ROW LEVEL SECURITY;
+CREATE POLICY hotel_room_events_tenant ON hotel_room_operational_events
+ USING(tenant_id=current_setting('app.tenant_id',true))
+ WITH CHECK(tenant_id=current_setting('app.tenant_id',true));
