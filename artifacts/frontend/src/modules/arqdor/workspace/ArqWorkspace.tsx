@@ -710,6 +710,13 @@ function SubStepNav({
   if (!activeFlow || (activeFlow.extras.length === 0)) return null
 
   const allModules = [activeFlow.primary, ...activeFlow.extras]
+  // Uma aba por rótulo visível. Se o módulo ativo compartilhar rótulo,
+  // manter a aba ativa; os demais destinos continuam acessíveis pelo roteamento.
+  const uniqueModules = allModules.filter((id, index) => {
+    const label = MODULE_MAP_INTERNAL[id]?.label ?? id
+    const group = allModules.filter(item => (MODULE_MAP_INTERNAL[item]?.label ?? item) === label)
+    return group.includes(activeModule) ? id === activeModule : id === group[0]
+  })
   const icons: Partial<Record<ModuleId, string>> = {
     home:'🏠', projeto:'🏗️', renders:'✨', prompt:'⚡',
     correcoes:'🔄', 'ai-review':'🔍', memoria:'🧠',
@@ -718,28 +725,32 @@ function SubStepNav({
 
   return (
     <div style={{
-      height:32, borderBottom:`1px solid ${PHX.border}`,
+      minHeight:36, borderBottom:`1px solid ${PHX.border}`,
       background:PHX.surface, display:'flex', alignItems:'center',
-      padding:'0 20px', gap:2, flexShrink:0,
+      padding:'0 12px', gap:2, flexShrink:0, overflowX:'auto', maxWidth:'100%',
+      scrollbarWidth:'thin',
     }}>
-      {allModules.map(id => {
+      {uniqueModules.map(id => {
         const isActive = activeModule === id
         const label = MODULE_MAP_INTERNAL[id]?.label ?? id
         const icon  = icons[id] ?? '◦'
         return (
-          <div
+          <button
+            type="button"
             key={id}
+            aria-current={isActive ? 'page' : undefined}
             className={`phx-sub-step${isActive ? ' active' : ''}`}
             onClick={() => onNavigate(id)}
             style={{
               padding:'4px 10px', borderRadius:6, fontSize:11,
               color: isActive ? PHX.purple : PHX.textSub,
-              display:'flex', alignItems:'center', gap:5,
+              display:'flex', alignItems:'center', gap:5, flexShrink:0,
+              whiteSpace:'nowrap', cursor:'pointer', border:0, background:'transparent',
             }}
           >
             <span style={{ fontSize:11 }}>{icon}</span>
             {label}
-          </div>
+          </button>
         )
       })}
     </div>
