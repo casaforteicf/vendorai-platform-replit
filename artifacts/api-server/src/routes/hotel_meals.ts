@@ -252,4 +252,70 @@ router.post("/tenants/:tenantId/hotelaria/compras/sugestoes/:id/revisar", async 
   } finally { client.release(); }
 });
 
+
+const periodSchema = z.object({
+  start: z.iso.date(),
+  end: z.iso.date(),
+}).strict();
+
+router.get("/tenants/:tenantId/hotelaria/refeicoes/consolidado", async (req,res) => {
+  const tenantId=String(req.params.tenantId);
+  if (!authorized(req,tenantId)) return res.status(403).json({error:"Forbidden"});
+  const parsed=periodSchema.safeParse({start:req.query.start,end:req.query.end});
+  if (!parsed.success) return res.status(422).json({error:"Use start/end as ISO dates"});
+  const {start,end}=parsed.data;
+  const dayDiff=(Date.parse(end+"T00:00:00Z")-Date.parse(start+"T00:00:00Z"))/86400000;
+  if (!Number.isInteger(dayDiff) || dayDiff<0 || dayDiff>6)
+    return res.status(422).json({error:"Period must span 1 to 7 days"});
+  const client=await pool.connect();
+  try {
+    await client.query("BEGIN READ ONLY");
+    await client.query("SELECT set_config('app.tenant_id',$1,true)",[tenantId]);
+    const forecasts=await client.query(
+      `SELECT f.id, to_char(f.service_date,'YYYY-MM-DD') AS service_date,
+       f.meal_type, f.guest_count, f.staff_meals
+       FROM hotel_meal_forecasts f
+       WHERE f.tenant_id=$1 AND f.service_date BETWEEN $2::date AND $3::date
+       ORDER BY f.service_date,f.meal_type`,[tenantId,start,end]);
+    const recipes=await client.query(
+      `SELECT f.id AS forecast_id, l.recipe_id, l.planned_portions,
+       r.status AS recipe_status,r.yield_quantity
+       FROM hotel_meal_forecasts f
+       JOIN hotel_meal_plan_lines l ON l.tenant_id=f.tenant_id AND l.forecast_id=f.id
+       JOIN hotel_recipe_cards r ON r.tenant_id=l.tenant_id AND r.id=l.recipe_id
+       WHERE f.tenant_id=$1 AND f.service_date BETWEEN $2::date AND $3::date`,
+      [tenantId,start,end]);
+    const ingredients=await client.query(
+      `SELECT f.id AS forecast_id,l.recipe_id,l.planned_portions,
+       r.yield_quantity,i.product_id,i.quantity_gross,i.quantity_unit
+       FROM hotel_meal_forecasts f
+       JOIN hotel_meal_plan_lines l ON l.tenant_id=f.tenant_id AND l.forecast_id=f.id
+       JOIN hotel_recipe_cards r ON r.tenant_id=l.tenant_id AND r.id=l.recipe_id
+       JOIN hotel_recipe_ingredients i ON i.tenant_id=l.tenant_id AND i.recipe_id=l.recipe_id
+       WHERE f.tenant_id=$1 AND f.service_date BETWEEN $2::date AND $3::date`,
+      [tenantId,start,end]);
+    await client.query("COMMIT");
+    if (recipes.rows.some(r=>r.recipe_status!=="approved"))
+      return res.status(409).json({error:"Planned recipe no longer approved; review the meal plan"});
+    const withIngredients=new Set(ingredients.rows.map(r=>r.forecast_id+":"+r.recipe_id));
+    if (recipes.rows.some(r=>Number(r.planned_portions)>0 && !withIngredients.has(r.forecast_id+":"+r.recipe_id)))
+      return res.status(422).json({error:"Planned recipe is missing ingredients"});
+    const lines: MealPlanIngredient[]=ingredients.rows.map(r=>({
+      productId:r.product_id,grossQuantityPerBatch:Number(r.quantity_gross),
+      batchPortions:Number(r.yield_quantity),plannedPortions:Number(r.planned_portions),
+      unit:r.quantity_unit,
+    }));
+    const demand=forecastIngredientDemand(lines);
+    return res.json({
+      start,end,forecasts:forecasts.rows,demand,
+      occupancySource:"recorded_forecasts",
+      stockDeducted:false,purchaseOrderCreated:false,
+      notice:"Demand is consolidated across meals and dates. Physical stock must be deducted only once for the selected planning period.",
+    });
+  } catch(e) {
+    await client.query("ROLLBACK"); console.error("[hotel-meals] consolidated forecast",e);
+    return res.status(500).json({error:"Could not consolidate meal plans"});
+  } finally { client.release(); }
+});
+
 export default router;
