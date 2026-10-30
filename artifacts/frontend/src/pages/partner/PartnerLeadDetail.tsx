@@ -1,3 +1,4 @@
+import { VendorBackButton } from "@/components/ui/back-button";
 import { useParams } from "wouter";
 import { useLocation } from "wouter";
 import { PartnerLayout } from "@/components/partner/PartnerLayout";
@@ -16,7 +17,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { ArrowLeft } from "lucide-react";
+
 import { format, parseISO } from "date-fns";
 import { ptBR } from "date-fns/locale";
 
@@ -276,15 +277,7 @@ export default function PartnerLeadDetail() {
   return (
     <PartnerLayout>
       <div className="space-y-4">
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => setLocation("/partner/leads")}
-          className="gap-1.5 -ml-2"
-        >
-          <ArrowLeft className="h-4 w-4" />
-          Voltar
-        </Button>
+        <VendorBackButton to="/partner/leads" label="Voltar" />
 
         {isLoading ? (
           <div className="space-y-4">
