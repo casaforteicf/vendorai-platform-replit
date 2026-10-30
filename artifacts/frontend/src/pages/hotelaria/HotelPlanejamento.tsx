@@ -334,7 +334,7 @@ export default function HotelPlanejamento() {
         <div><strong>{String(request.period_start).slice(0,10)} a {String(request.period_end).slice(0,10)}</strong>
         <p>Status: {request.status} · Local: {locations.find(l=>l.id===request.location_id)?.name??request.location_id}</p></div>
         <Button variant="outline" disabled={busy} onClick={()=>void openComparison(request.id)}>Itens e cotações</Button>
-        {request.status==="reviewed"&&<Button variant="outline" disabled={busy} onClick={()=>void createOrder(request.id)}>Criar pedido interno</Button>
+        {request.status==="reviewed"&&<Button variant="outline" disabled={busy} onClick={()=>void createOrder(request.id)}>Criar pedido interno</Button>}
         {request.status==="draft"&&<div className="flex gap-2">
           <Button variant="outline" disabled={busy} onClick={()=>void purchaseAction(request.id,"reviewed")}>Revisada</Button>
           <Button variant="outline" disabled={busy} onClick={()=>void purchaseAction(request.id,"dismissed")}>Descartar</Button>
