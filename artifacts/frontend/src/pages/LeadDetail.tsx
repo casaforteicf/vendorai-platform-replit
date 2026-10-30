@@ -1,3 +1,4 @@
+import { VendorBackButton } from "@/components/ui/back-button";
 import { useState, useEffect, useRef } from "react";
 import { useParams, useLocation } from "wouter";
 import { useRelativeTime } from "@/hooks/useRelativeTime";
@@ -1949,10 +1950,7 @@ export default function LeadDetail() {
     return (
       <div className="flex flex-col items-center justify-center py-24 gap-4">
         <p className="text-muted-foreground">Lead não encontrado.</p>
-        <Button variant="outline" onClick={() => setLocation("/leads")}>
-          <ArrowLeft className="h-4 w-4 mr-2" />
-          Voltar para Leads
-        </Button>
+        <VendorBackButton to="/leads" label="Voltar para Leads" />
       </div>
     );
   }
