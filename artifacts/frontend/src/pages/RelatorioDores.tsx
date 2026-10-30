@@ -1,7 +1,6 @@
 import { VendorBackButton } from "@/components/ui/back-button";
 import { useAuth } from "@/contexts/AuthContext";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
 import { Target } from "lucide-react";
 import { useLocation } from "wouter";
 import {
