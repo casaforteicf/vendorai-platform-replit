@@ -37,8 +37,8 @@ export default function ClientPortalApprovalStudio({ arqState, onNavigate }: Cli
   } = useClientPortalApproval(projectId, projectTitle, clientName, budgetId);
 
   return (
-    <div className="min-h-screen bg-[var(--arq-background)] text-[var(--arq-foreground)]">
-      <div className="mx-auto flex w-full max-w-[1760px] flex-col gap-5 px-6 py-6">
+    <div className="min-h-screen min-w-0 w-full overflow-x-hidden bg-[var(--arq-background)] text-[var(--arq-foreground)]">
+      <div className="mx-auto flex min-w-0 w-full max-w-[1760px] flex-col gap-5 px-3 py-4 sm:px-6 sm:py-6">
         <header className="rounded-[34px] border border-[var(--arq-border)] bg-[var(--arq-card)] p-5 shadow-sm">
           <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
             <div>
@@ -130,7 +130,7 @@ export default function ClientPortalApprovalStudio({ arqState, onNavigate }: Cli
 
             <ProposalSummaryCards proposal={proposal} stats={stats} />
 
-            <div className="grid gap-5 xl:grid-cols-[1.1fr_0.9fr]">
+            <div className="grid min-w-0 grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
               <div className="space-y-5">
                 <ProposalItemsApprovalTable items={items} />
                 <ClientPortalPreview proposal={proposal} items={items} />
