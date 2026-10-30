@@ -39,9 +39,9 @@ export function VendorAIAcquisitionPlaybook() {
   if (!visible || !host) return null;
 
   return createPortal(
-    <section className="mt-3 rounded-2xl border border-orange-200 bg-orange-50/40 p-4">
+    <section className="mt-3 rounded-2xl border border-blue-200 bg-blue-50/40 p-4">
       <div className="flex items-start gap-3">
-        <Sparkles className="mt-0.5 h-5 w-5 text-orange-600" />
+        <Sparkles className="mt-0.5 h-5 w-5 text-blue-600" />
         <div>
           <h3 className="font-semibold">Motor de Aquisição VendorAI</h3>
           <p className="mt-1 text-xs leading-5 text-muted-foreground">Pautas-base orientadas por dor real, função concreta e CTA mensurável. Use como referência para gerar o calendário e as peças, sem transformar o conteúdo em propaganda genérica.</p>
@@ -50,7 +50,7 @@ export function VendorAIAcquisitionPlaybook() {
       <div className="mt-4 grid gap-2 md:grid-cols-2 xl:grid-cols-3">
         {vendoraiAcquisitionPlaybook.map((item) => (
           <article key={item.day} className="rounded-xl border bg-background p-3">
-            <div className="flex items-center justify-between gap-2"><span className="text-[10px] font-bold uppercase tracking-wider text-orange-600">Dia {item.day} · {item.format}</span><ArrowRight className="h-3.5 w-3.5 text-muted-foreground" /></div>
+            <div className="flex items-center justify-between gap-2"><span className="text-[10px] font-bold uppercase tracking-wider text-blue-600">Dia {item.day} · {item.format}</span><ArrowRight className="h-3.5 w-3.5 text-muted-foreground" /></div>
             <p className="mt-2 text-sm font-semibold leading-5">{item.title}</p>
             <p className="mt-2 text-xs leading-5 text-muted-foreground">Dor: {item.pain}</p>
             <p className="mt-2 text-[11px] font-medium text-primary">CTA: {item.cta}</p>
