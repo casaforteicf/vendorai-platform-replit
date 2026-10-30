@@ -144,6 +144,18 @@ export default function HotelPlanejamento() {
       setViewRequest(id);setComparison(data);
     }catch(e){setMessage(String(e));}finally{setBusy(false);}
   }
+  async function sendQuote(id:string,channel:"email"|"whatsapp") {
+    if(!window.confirm("Confirmar envio real da solicitação de cotação ao fornecedor por "+channel+"?"))return;
+    setBusy(true);setMessage("");
+    try {
+      await api("/cotacoes/"+encodeURIComponent(id)+"/enviar",{
+        method:"POST",body:JSON.stringify({channel})
+      });
+      if(viewRequest)await openComparison(viewRequest);
+      setMessage("Envio solicitado ao provedor e confirmado pela API.");
+    }catch(e){setMessage("Não foi possível confirmar o envio: "+String(e));}
+    finally{setBusy(false);}
+  }
   async function assignSuppliers() {
     if(!viewRequest||!selectedSuppliers.length)return;
     setBusy(true);setMessage("");
@@ -253,7 +265,13 @@ export default function HotelPlanejamento() {
       {viewRequest&&comparison&&<div className="space-y-3 rounded-lg border p-3">
         <h3 className="font-semibold">Comparativo de fornecedores</h3>
         {comparison.items.map(item=><p className="text-sm" key={item.product_id+item.unit}>{products.find(p=>p.id===item.product_id)?.nome??item.product_id}: {item.quantity_suggested} {item.unit}</p>)}
-        {comparison.suppliers.map(q=><p className="text-sm" key={q.id}>{q.supplier_name} · {q.status} · {q.total_amount??"Sem valor"} · {q.delivery_days??"—"} dias</p>)}
+        {comparison.suppliers.map(q=><div className="flex flex-wrap items-center justify-between gap-2 border-b py-2 text-sm" key={q.id}>
+          <span>{q.supplier_name} · {q.status} · {q.total_amount??"Sem valor"} · {q.delivery_days??"—"} dias</span>
+          {q.status==="selected"&&<div className="flex gap-2">
+            <Button variant="outline" size="sm" disabled={busy} onClick={()=>void sendQuote(q.id,"email")}>Enviar e-mail</Button>
+            <Button variant="outline" size="sm" disabled={busy} onClick={()=>void sendQuote(q.id,"whatsapp")}>Enviar WhatsApp</Button>
+          </div>}
+        </div>)}
         <p className="text-xs text-muted-foreground">Os valores só são exibidos se houver cotação registrada. Nenhum convite foi enviado automaticamente.</p>
         {requests.find(p=>p.id===viewRequest)?.status==="reviewed"&&<div className="space-y-2">
           <h4 className="font-medium">Selecionar fornecedores para consulta</h4>
