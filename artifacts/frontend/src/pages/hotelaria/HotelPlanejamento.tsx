@@ -9,6 +9,7 @@ type Product = {id:string; nome:string; sku?:string|null};
 type PlannedRecipe = {recipeId:string; plannedPortions:number};
 type Forecast = { id:string; service_date:string; meal_type:string; guest_count:number; staff_meals:number };
 type Demand = { productId:string; unit:string; required:number };
+type OrderLine = {id:string;request_id:string;status:string;line_id:string;product_id:string;unit:string;ordered_quantity:string;received_quantity:string};
 type Supplier = {id:string;nome:string;ativo:boolean};
 type Quote = {id:string;supplier_name:string;status:string;total_amount:string|null;delivery_days:number|null;payment_terms:string|null};
 type QuoteComparison = {suppliers:Quote[];items:{product_id:string;unit:string;quantity_suggested:string}[]};
@@ -41,6 +42,7 @@ export default function HotelPlanejamento() {
   const [summary,setSummary]=useState<Summary|null>(null);
   const [locations,setLocations]=useState<StockLocation[]>([]);
   const [requests,setRequests]=useState<PurchaseRequest[]>([]);
+  const [orders,setOrders]=useState<OrderLine[]>([]);
   const [suppliers,setSuppliers]=useState<Supplier[]>([]);
   const [selectedSuppliers,setSelectedSuppliers]=useState<string[]>([]);
   const [viewRequest,setViewRequest]=useState("");
@@ -58,15 +60,16 @@ export default function HotelPlanejamento() {
   async function reload() {
     if(!tenantId||!token)return;
     try{
-      const [data,list,catalog,stockLocations,purchases,supplierList]=await Promise.all([
+      const [data,list,catalog,stockLocations,purchases,supplierList,orderList]=await Promise.all([
         api<Summary>(`/refeicoes/consolidado?start=${encodeURIComponent(date)}&end=${encodeURIComponent(weekEnd(date))}${locationId?`&locationId=${encodeURIComponent(locationId)}`:""}`),
         api<Recipe[]>("/receitas"),
         fetch(`/api/tenants/${encodeURIComponent(tenantId)}/produtos-catalogo`,{headers:{Authorization:`Bearer ${token}`}}).then(async response=>{if(!response.ok)throw new Error("Falha ao consultar catálogo");return response.json() as Promise<Product[]>;}),
         api<StockLocation[]>("/estoque/locais"),
         isEffectiveAdmin ? api<PurchaseRequest[]>("/compras/semanais") : Promise.resolve([]),
-        isEffectiveAdmin ? fetch(`/api/tenants/${encodeURIComponent(tenantId)}/fornecedores`,{headers:{Authorization:`Bearer ${token}`}}).then(r=>r.ok?r.json() as Promise<Supplier[]>:Promise.reject(new Error("Falha no cadastro de fornecedores"))) : Promise.resolve([])
+        isEffectiveAdmin ? fetch(`/api/tenants/${encodeURIComponent(tenantId)}/fornecedores`,{headers:{Authorization:`Bearer ${token}`}}).then(r=>r.ok?r.json() as Promise<Supplier[]>:Promise.reject(new Error("Falha no cadastro de fornecedores"))) : Promise.resolve([]),
+        isEffectiveAdmin ? api<OrderLine[]>("/compras/pedidos") : Promise.resolve([])
       ]);
-      setSummary(data);setRecipes(list.filter(r=>r.status==="approved"));setProducts(catalog);setLocations(stockLocations.filter(l=>l.active));setRequests(purchases);setSuppliers(supplierList.filter(p=>p.ativo));
+      setSummary(data);setRecipes(list.filter(r=>r.status==="approved"));setProducts(catalog);setLocations(stockLocations.filter(l=>l.active));setRequests(purchases);setSuppliers(supplierList.filter(p=>p.ativo));setOrders(orderList);
     }catch(e){setMessage(String(e));}
   }
   useEffect(()=>{void reload();},[tenantId,token,date,locationId]);
@@ -142,6 +145,18 @@ export default function HotelPlanejamento() {
     try {
       const data=await api<QuoteComparison>("/compras/semanais/"+encodeURIComponent(id)+"/cotacoes");
       setViewRequest(id);setComparison(data);
+    }catch(e){setMessage(String(e));}finally{setBusy(false);}
+  }
+  async function orderAction(orderId:string,kind:"emitir"|"receber",line?:OrderLine) {
+    const quantity=kind==="receber"?Number(window.prompt("Quantidade recebida na unidade exibida:")):0;
+    if(kind==="receber"&&(!line||!Number.isFinite(quantity)||quantity<=0)){setMessage("Quantidade inválida.");return;}
+    if(!window.confirm(kind==="emitir"?"Confirmar emissão interna do pedido?":"Registrar recebimento físico conferido (sem entrada automática no estoque)?"))return;
+    setBusy(true);setMessage("");
+    try{
+      await api("/compras/pedidos/"+encodeURIComponent(orderId)+"/"+kind,{
+        method:"POST",...(kind==="receber"?{body:JSON.stringify({lineId:line!.line_id,quantity})}:{})
+      });
+      await reload();setMessage("Pedido atualizado. A entrada no estoque continua pendente de conciliação.");
     }catch(e){setMessage(String(e));}finally{setBusy(false);}
   }
   async function createOrder(requestId:string) {
@@ -283,6 +298,17 @@ export default function HotelPlanejamento() {
       </div>}
       <p className="text-xs text-muted-foreground">A demanda semanal é consolidada antes de comparar o estoque de um único local. Nenhum pedido é emitido nesta tela.</p>
     </CardContent></Card>
+    {isEffectiveAdmin&&<Card><CardHeader><CardTitle>Pedidos internos e recebimentos</CardTitle></CardHeader><CardContent className="space-y-3">
+      {!orders.length&&<p className="text-sm text-muted-foreground">Nenhum pedido interno gerado.</p>}
+      {orders.map(line=><div key={line.line_id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border p-3 text-sm">
+        <div><strong>{products.find(p=>p.id===line.product_id)?.nome??line.product_id}</strong>
+          <p>{line.received_quantity} / {line.ordered_quantity} {line.unit} · {line.status}</p>
+        </div>
+        {line.status==="draft"&&<Button size="sm" variant="outline" disabled={busy} onClick={()=>void orderAction(line.id,"emitir")}>Emitir pedido interno</Button>}
+        {(line.status==="issued"||line.status==="partially_received")&&<Button size="sm" variant="outline" disabled={busy} onClick={()=>void orderAction(line.id,"receber",line)}>Registrar recebimento</Button>}
+      </div>)}
+      <p className="text-xs text-muted-foreground">Recebimento registrado para conferência; nenhuma entrada automática no saldo físico.</p>
+    </CardContent></Card>}
     {isEffectiveAdmin&&<Card><CardHeader><CardTitle>Solicitações semanais de compra</CardTitle></CardHeader><CardContent className="space-y-3">
       <Button disabled={busy||!locationId||!summary?.complete||!summary.shortages?.length} onClick={()=>void purchaseAction(null)}>Gerar rascunho da semana</Button>
       {!requests.length&&<p className="text-sm text-muted-foreground">Nenhuma solicitação registrada.</p>}
