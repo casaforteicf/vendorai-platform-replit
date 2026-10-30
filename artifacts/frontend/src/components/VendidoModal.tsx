@@ -92,7 +92,7 @@ const STATUS_COLORS: Record<string, string> = {
   enviada: "bg-blue-100 text-blue-700 border-blue-200",
   aceita: "bg-emerald-100 text-emerald-700 border-emerald-200",
   rejeitada: "bg-red-100 text-red-600 border-red-200",
-  expirada: "bg-orange-100 text-orange-700 border-orange-200",
+  expirada: "bg-red-100 text-red-700 border-red-200",
 };
 const STATUS_LABELS: Record<string, string> = {
   rascunho: "Rascunho", enviada: "Enviada", aceita: "Aceita",
@@ -555,14 +555,14 @@ export function VendidoModal({
 
             {/* Errors */}
             {(closureResult.errors ?? []).length > 0 && (
-              <div className="rounded-lg border border-orange-200 bg-orange-50 p-3 space-y-1">
-                <p className="text-xs font-semibold text-orange-700 flex items-center gap-1.5">
+              <div className="rounded-lg border border-red-200 bg-red-50 p-3 space-y-1">
+                <p className="text-xs font-semibold text-red-700 flex items-center gap-1.5">
                   <AlertTriangle className="h-3.5 w-3.5" />
                   Atenção — alguns passos falharam
                 </p>
                 <ul className="space-y-0.5">
                   {(closureResult.errors ?? []).map((e, i) => (
-                    <li key={i} className="text-xs text-orange-700">• {e}</li>
+                    <li key={i} className="text-xs text-red-700">• {e}</li>
                   ))}
                 </ul>
               </div>
