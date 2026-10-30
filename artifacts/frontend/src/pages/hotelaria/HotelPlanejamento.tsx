@@ -9,6 +9,7 @@ type Product = {id:string; nome:string; sku?:string|null};
 type PlannedRecipe = {recipeId:string; plannedPortions:number};
 type Forecast = { id:string; service_date:string; meal_type:string; guest_count:number; staff_meals:number };
 type Demand = { productId:string; unit:string; required:number };
+type Receipt = {id:string;received_quantity:string;product_id:string;unit:string;order_id:string;stock_post_id:string|null};
 type OrderLine = {id:string;request_id:string;status:string;line_id:string;product_id:string;unit:string;ordered_quantity:string;received_quantity:string};
 type Supplier = {id:string;nome:string;ativo:boolean};
 type Quote = {id:string;supplier_name:string;status:string;total_amount:string|null;delivery_days:number|null;payment_terms:string|null};
@@ -43,6 +44,7 @@ export default function HotelPlanejamento() {
   const [locations,setLocations]=useState<StockLocation[]>([]);
   const [requests,setRequests]=useState<PurchaseRequest[]>([]);
   const [orders,setOrders]=useState<OrderLine[]>([]);
+  const [receipts,setReceipts]=useState<Receipt[]>([]);
   const [suppliers,setSuppliers]=useState<Supplier[]>([]);
   const [selectedSuppliers,setSelectedSuppliers]=useState<string[]>([]);
   const [viewRequest,setViewRequest]=useState("");
@@ -60,16 +62,17 @@ export default function HotelPlanejamento() {
   async function reload() {
     if(!tenantId||!token)return;
     try{
-      const [data,list,catalog,stockLocations,purchases,supplierList,orderList]=await Promise.all([
+      const [data,list,catalog,stockLocations,purchases,supplierList,orderList,receiptList]=await Promise.all([
         api<Summary>(`/refeicoes/consolidado?start=${encodeURIComponent(date)}&end=${encodeURIComponent(weekEnd(date))}${locationId?`&locationId=${encodeURIComponent(locationId)}`:""}`),
         api<Recipe[]>("/receitas"),
         fetch(`/api/tenants/${encodeURIComponent(tenantId)}/produtos-catalogo`,{headers:{Authorization:`Bearer ${token}`}}).then(async response=>{if(!response.ok)throw new Error("Falha ao consultar catálogo");return response.json() as Promise<Product[]>;}),
         api<StockLocation[]>("/estoque/locais"),
         isEffectiveAdmin ? api<PurchaseRequest[]>("/compras/semanais") : Promise.resolve([]),
         isEffectiveAdmin ? fetch(`/api/tenants/${encodeURIComponent(tenantId)}/fornecedores`,{headers:{Authorization:`Bearer ${token}`}}).then(r=>r.ok?r.json() as Promise<Supplier[]>:Promise.reject(new Error("Falha no cadastro de fornecedores"))) : Promise.resolve([]),
-        isEffectiveAdmin ? api<OrderLine[]>("/compras/pedidos") : Promise.resolve([])
+        isEffectiveAdmin ? api<OrderLine[]>("/compras/pedidos") : Promise.resolve([]),
+        isEffectiveAdmin ? api<Receipt[]>("/compras/recebimentos") : Promise.resolve([])
       ]);
-      setSummary(data);setRecipes(list.filter(r=>r.status==="approved"));setProducts(catalog);setLocations(stockLocations.filter(l=>l.active));setRequests(purchases);setSuppliers(supplierList.filter(p=>p.ativo));setOrders(orderList);
+      setSummary(data);setRecipes(list.filter(r=>r.status==="approved"));setProducts(catalog);setLocations(stockLocations.filter(l=>l.active));setRequests(purchases);setSuppliers(supplierList.filter(p=>p.ativo));setOrders(orderList);setReceipts(receiptList);
     }catch(e){setMessage(String(e));}
   }
   useEffect(()=>{void reload();},[tenantId,token,date,locationId]);
@@ -145,6 +148,14 @@ export default function HotelPlanejamento() {
     try {
       const data=await api<QuoteComparison>("/compras/semanais/"+encodeURIComponent(id)+"/cotacoes");
       setViewRequest(id);setComparison(data);
+    }catch(e){setMessage(String(e));}finally{setBusy(false);}
+  }
+  async function postReceipt(eventId:string) {
+    if(!window.confirm("Conferiu o recebimento? Confirmar entrada física no estoque do hotel?"))return;
+    setBusy(true);setMessage("");
+    try {
+      await api("/compras/recebimentos/"+encodeURIComponent(eventId)+"/entrada-estoque",{method:"POST"});
+      await reload();setMessage("Recebimento lançado no estoque.");
     }catch(e){setMessage(String(e));}finally{setBusy(false);}
   }
   async function orderAction(orderId:string,kind:"emitir"|"receber",line?:OrderLine) {
@@ -298,6 +309,13 @@ export default function HotelPlanejamento() {
       </div>}
       <p className="text-xs text-muted-foreground">A demanda semanal é consolidada antes de comparar o estoque de um único local. Nenhum pedido é emitido nesta tela.</p>
     </CardContent></Card>
+    {isEffectiveAdmin&&<Card><CardHeader><CardTitle>Entradas de estoque pendentes</CardTitle></CardHeader><CardContent className="space-y-2">
+      {!receipts.length&&<p className="text-sm text-muted-foreground">Nenhum recebimento registrado.</p>}
+      {receipts.map(r=><div className="flex flex-wrap items-center justify-between gap-2 border-b py-2 text-sm" key={r.id}>
+        <span>{products.find(p=>p.id===r.product_id)?.nome??r.product_id}: {r.received_quantity} {r.unit}</span>
+        {r.stock_post_id?<span>Entrada registrada</span>:<Button variant="outline" size="sm" disabled={busy} onClick={()=>void postReceipt(r.id)}>Lançar no estoque</Button>}
+      </div>)}
+    </CardContent></Card>}
     {isEffectiveAdmin&&<Card><CardHeader><CardTitle>Pedidos internos e recebimentos</CardTitle></CardHeader><CardContent className="space-y-3">
       {!orders.length&&<p className="text-sm text-muted-foreground">Nenhum pedido interno gerado.</p>}
       {orders.map(line=><div key={line.line_id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border p-3 text-sm">
