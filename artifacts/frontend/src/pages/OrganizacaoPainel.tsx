@@ -295,7 +295,7 @@ export default function OrganizacaoPainel() {
                   <Card>
                     <CardContent className="p-4">
                       <div className="flex items-center gap-2 mb-1">
-                        <MessageSquare className="h-4 w-4 text-orange-500" />
+                        <MessageSquare className="h-4 w-4 text-blue-500" />
                         <span className="text-xs text-muted-foreground">Msgs (30d)</span>
                       </div>
                       <p className="text-xl font-bold">{fmtN(totais.totalMensagens30d)}</p>
