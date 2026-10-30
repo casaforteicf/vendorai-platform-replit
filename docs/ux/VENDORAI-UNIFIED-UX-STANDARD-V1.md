@@ -6,7 +6,7 @@
 
 ## Entrega inicial
 
-A primeira aplicação atualiza os tokens centrais, o login, o launcher TAD, a identidade pública, os logos vetoriais e introduz `VendorBackButton` na Central de Operações do Vendi. As demais rotas autenticadas devem adotar os tokens e o componente compartilhado na sequência da auditoria; este PR estabelece a base e não declara a migração visual de todas as telas concluída.
+A primeira aplicação atualiza os tokens centrais, o login, o launcher TAD, a identidade pública, logos vetoriais e acentos de telas operacionais. O `VendorBackButton` foi aplicado a rotas de detalhes, relatórios, campanhas, parceiros, empresas, varejo, clínica e Central de Operações do Vendi. A auditoria e migração das demais rotas continuam em lotes; este PR estabelece a base sem declarar todas as telas concluídas.
 
 ## Objetivo
 
