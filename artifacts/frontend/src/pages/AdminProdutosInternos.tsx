@@ -133,7 +133,7 @@ const OFFER_LABEL: Record<OfferKind, string> = {
 };
 const OFFER_STYLE: Record<OfferKind, string> = {
   free: "border-emerald-300 bg-emerald-50 text-emerald-700",
-  subscription: "border-orange-300 bg-orange-50 text-orange-700",
+  subscription: "border-blue-300 bg-blue-50 text-blue-700",
   module: "border-blue-300 bg-blue-50 text-blue-700",
   prepaid_pass: "border-violet-300 bg-violet-50 text-violet-700",
   consumption_pack: "border-amber-300 bg-amber-50 text-amber-700",
@@ -363,7 +363,7 @@ export default function AdminProdutosInternos() {
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <h1 className="flex items-center gap-2 text-2xl font-bold tracking-tight">
-            <WalletCards className="h-6 w-6 text-orange-500" />
+            <WalletCards className="h-6 w-6 text-blue-500" />
             Produtos & Monetização
           </h1>
           <p className="mt-1 max-w-4xl text-sm text-muted-foreground">
@@ -389,18 +389,18 @@ export default function AdminProdutosInternos() {
         <>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-5">
             <Card><CardContent className="p-4"><div className="flex items-center justify-between"><span className="text-xs text-muted-foreground">Ofertas ativas</span><CheckCircle2 className="h-4 w-4 text-emerald-600" /></div><p className="mt-2 text-2xl font-semibold">{commercialSummary.active}</p></CardContent></Card>
-            <Card><CardContent className="p-4"><div className="flex items-center justify-between"><span className="text-xs text-muted-foreground">Incluídas no Growth</span><Sparkles className="h-4 w-4 text-orange-500" /></div><p className="mt-2 text-2xl font-semibold">{commercialSummary.growth}</p></CardContent></Card>
+            <Card><CardContent className="p-4"><div className="flex items-center justify-between"><span className="text-xs text-muted-foreground">Incluídas no Growth</span><Sparkles className="h-4 w-4 text-blue-500" /></div><p className="mt-2 text-2xl font-semibold">{commercialSummary.growth}</p></CardContent></Card>
             <Card><CardContent className="p-4"><div className="flex items-center justify-between"><span className="text-xs text-muted-foreground">Valor modular listado</span><Layers3 className="h-4 w-4 text-blue-600" /></div><p className="mt-2 text-xl font-semibold">{money(commercialSummary.recurringValue)}<span className="text-xs font-normal text-muted-foreground">/mês</span></p></CardContent></Card>
             <Card><CardContent className="p-4"><div className="flex items-center justify-between"><span className="text-xs text-muted-foreground">Custo medido no mês</span><BarChart3 className="h-4 w-4 text-violet-600" /></div><p className="mt-2 text-xl font-semibold">{usd(commercialSummary.costUsd)}</p></CardContent></Card>
             <Card><CardContent className="p-4"><div className="flex items-center justify-between"><span className="text-xs text-muted-foreground">Vendor Credits medidos</span><Gauge className="h-4 w-4 text-amber-600" /></div><p className="mt-2 text-2xl font-semibold">{commercialSummary.vendorCredits.toLocaleString("pt-BR")}</p></CardContent></Card>
           </div>
 
-          <Card className="border-orange-200 bg-orange-50/40">
+          <Card className="border-blue-200 bg-blue-50/40">
             <CardContent className="grid gap-4 p-4 md:grid-cols-4">
-              <div><p className="text-xs font-semibold uppercase tracking-wide text-orange-700">CRM Free</p><p className="mt-1 text-sm">Porta de entrada permanente, 1 usuário.</p></div>
-              <div><p className="text-xs font-semibold uppercase tracking-wide text-orange-700">Por módulos</p><p className="mt-1 text-sm">Cliente assina somente as capacidades de que precisa.</p></div>
-              <div><p className="text-xs font-semibold uppercase tracking-wide text-orange-700">Growth</p><p className="mt-1 text-sm">R$ 1.490/mês, usuários ilimitados e módulos aplicáveis ao segmento.</p></div>
-              <div><p className="text-xs font-semibold uppercase tracking-wide text-orange-700">Growth por período</p><p className="mt-1 text-sm">5 dias grátis/mês e blocos adicionais de 5 dias por R$ 399.</p></div>
+              <div><p className="text-xs font-semibold uppercase tracking-wide text-blue-700">CRM Free</p><p className="mt-1 text-sm">Porta de entrada permanente, 1 usuário.</p></div>
+              <div><p className="text-xs font-semibold uppercase tracking-wide text-blue-700">Por módulos</p><p className="mt-1 text-sm">Cliente assina somente as capacidades de que precisa.</p></div>
+              <div><p className="text-xs font-semibold uppercase tracking-wide text-blue-700">Growth</p><p className="mt-1 text-sm">R$ 1.490/mês, usuários ilimitados e módulos aplicáveis ao segmento.</p></div>
+              <div><p className="text-xs font-semibold uppercase tracking-wide text-blue-700">Growth por período</p><p className="mt-1 text-sm">5 dias grátis/mês e blocos adicionais de 5 dias por R$ 399.</p></div>
             </CardContent>
           </Card>
 
@@ -435,7 +435,7 @@ export default function AdminProdutosInternos() {
                           <div className="flex flex-wrap items-center gap-2">
                             <CardTitle className="text-base">{product.name ?? product.commercialKey}</CardTitle>
                             <Badge variant="outline" className={`text-[10px] ${OFFER_STYLE[product.offerKind]}`}>{OFFER_LABEL[product.offerKind]}</Badge>
-                            {product.includedInGrowth && <Badge className="bg-orange-500 text-white hover:bg-orange-500">Incluído no Growth</Badge>}
+                            {product.includedInGrowth && <Badge className="bg-blue-500 text-white hover:bg-blue-500">Incluído no Growth</Badge>}
                             {product.catalogActive === false && <Badge variant="destructive">Catálogo inativo</Badge>}
                           </div>
                           <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
