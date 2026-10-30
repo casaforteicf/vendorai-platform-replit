@@ -600,7 +600,7 @@ export function BrandKitSettings() {
                 {logoUrl ? "Logo oficial cadastrada e compartilhada com as ferramentas." : "Nenhuma logo oficial cadastrada."}
               </div>
             </div>
-            {field("Cores secundárias", "coresSecundarias", "Ex.: #111827, #F97316, branco e cinza claro", 3)}
+            {field("Cores secundárias", "coresSecundarias", "Ex.: #111827, #2563EB, branco e cinza claro", 3)}
             {field("Tipografia", "tipografia", "Ex.: Inter para interface; Montserrat para títulos", 3)}
             <div className="lg:col-span-2">{field("Estilo visual", "estiloVisual", "Fotografia, iluminação, composição, cenários, acabamentos e padrões visuais.")}</div>
           </div>
