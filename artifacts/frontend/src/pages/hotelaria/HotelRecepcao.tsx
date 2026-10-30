@@ -1,6 +1,6 @@
 import {useEffect,useState} from "react";
 import {useAuth} from "@/contexts/AuthContext";
-type Room={id:string;code:string;name:string;capacity:number;status:string};
+type Room={id:string;code:string;name:string;capacity:number;status:string;housekeeping_status:string};
 type Booking={id:string;room_id:string;primary_guest_id:string;room_code:string;guest_name:string;arrival_date:string;departure_date:string;guest_count:number;status:string};
 const day=(s:string)=>String(s).slice(0,10);
 const today=()=>new Date(Date.now()-new Date().getTimezoneOffset()*60000).toISOString().slice(0,10);
@@ -29,6 +29,12 @@ export default function HotelRecepcao(){
  async function submit(path:string,body:Record<string,unknown>,success:string){
   setBusy(true);setMessage("");
   try{await api(path,{method:"POST",body:JSON.stringify(body)});await load();setMessage(success);}
+  catch(e){setMessage(String(e));}finally{setBusy(false);}
+ }
+ async function roomOperation(id:string,operation:"dirty"|"cleaning"|"inspection"|"clean"|"maintenance"|"release"){
+  if(!window.confirm("Confirmar alteração da situação do apartamento?"))return;
+  setBusy(true);setMessage("");
+  try{await api("/quartos/"+encodeURIComponent(id)+"/operacao",{method:"POST",body:JSON.stringify({action:operation})});await load();setMessage("Situação do apartamento atualizada e registrada no histórico.");}
   catch(e){setMessage(String(e));}finally{setBusy(false);}
  }
  async function action(id:string,kind:"checkin"|"checkout"|"cancel"){
@@ -73,6 +79,14 @@ export default function HotelRecepcao(){
    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">{rooms.map(room=>{const booking=visible.find(b=>b.room_id===room.id);return <article key={room.id} className="rounded-lg border p-3">
     <strong>{room.code} · {room.name}</strong><p className="text-sm">Capacidade: {room.capacity}</p>
     <p className="text-sm">{room.status!=="active"?"Indisponível":booking?(booking.status==="checked_in"?"Ocupado":"Reservado"):"Livre"}</p>
+    <p className="text-sm">Limpeza: {room.housekeeping_status}</p>
+    <div className="mt-2 flex flex-wrap gap-1">
+     {room.status==="active"&&<>
+      {(["dirty","cleaning","inspection","clean"] as const).filter(a=>a!==room.housekeeping_status).map(op=><button key={op} type="button" disabled={busy} className="rounded border px-2 py-1 text-xs" onClick={()=>void roomOperation(room.id,op)}>{({dirty:"Sinalizar sujo",cleaning:"Em limpeza",inspection:"Inspeção",clean:"Liberar limpeza"})[op]}</button>)}
+      {!booking&&<button type="button" disabled={busy} className="rounded border px-2 py-1 text-xs" onClick={()=>void roomOperation(room.id,"maintenance")}>Manutenção</button>}
+     </>}
+     {room.status==="maintenance"&&<button type="button" disabled={busy} className="rounded border px-2 py-1 text-xs" onClick={()=>void roomOperation(room.id,"release")}>Liberar manutenção</button>}
+    </div>
     {booking&&<><p className="text-sm">{booking.guest_name}</p><p className="text-xs">{day(booking.arrival_date)} até {day(booking.departure_date)}</p></>}
    </article>})}</div>
   </section>
