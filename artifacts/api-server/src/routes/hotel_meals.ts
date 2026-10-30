@@ -7,7 +7,7 @@ const uuid = z.string().uuid();
 const forecastInput = z.object({
   serviceDate: z.iso.date(),
   mealType: z.enum(["breakfast","morning_snack","lunch","afternoon_snack","dinner"]),
-  serviceTime: z.string().regex(/^([01]\\d|2[0-3]):[0-5]\\d$/).optional(),
+  serviceTime: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/).optional(),
   guestCount: z.number().int().min(0).max(100000),
   staffMeals: z.number().int().min(0).max(100000).default(0),
   recipeLines: z.array(z.object({ recipeId: uuid, plannedPortions: z.number().int().min(0).max(100000) }).strict()).min(1).max(100),
