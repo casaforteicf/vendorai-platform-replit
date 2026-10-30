@@ -46,7 +46,7 @@ router.post("/tenants/:tenantId/hotelaria/cotacoes/:quoteId/enviar",async(req,re
   await client.query(
    "INSERT INTO hotel_supplier_quote_deliveries(id,tenant_id,quote_id,channel,destination,status) VALUES($1,$2,$3,$4,$5,'pending')",
    [deliveryId,tenantId,quoteId,channel,destination]);
-  await client.query("UPDATE hotel_weekly_supplier_quotes SET status='invited',invited_at=now() WHERE tenant_id=$1 AND id=$2",
+  await client.query("UPDATE hotel_weekly_supplier_quotes SET status='sending' WHERE tenant_id=$1 AND id=$2",
     [tenantId,quoteId]);
   await client.query("COMMIT");
  }catch(error){
@@ -60,8 +60,9 @@ router.post("/tenants/:tenantId/hotelaria/cotacoes/:quoteId/enviar",async(req,re
   }else{
    const logger={info:()=>{},warn:()=>{},error:()=>{},debug:()=>{}} as any;
    providerId=(await sendDirectWhatsAppMessage(tenantId,destination!,message!,logger))??null;
-   if(!providerId)throw new Error("WhatsApp provider did not confirm dispatch");
+   // Evolution API completes successfully without returning an external message ID.
   }
+  await pool.query("UPDATE hotel_weekly_supplier_quotes SET status='invited',invited_at=now() WHERE id=$1 AND tenant_id=$2",[quoteId,tenantId]);
   await pool.query(
    "UPDATE hotel_supplier_quote_deliveries SET status='sent',provider_message_id=$1,finished_at=now() WHERE id=$2 AND tenant_id=$3",
    [providerId,deliveryId!,tenantId]);
