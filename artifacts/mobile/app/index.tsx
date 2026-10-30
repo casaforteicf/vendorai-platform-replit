@@ -241,7 +241,7 @@ export default function VendorAIMobileShell() {
       onError={() => setLoadError(true)}
       renderLoading={() => (
         <View style={styles.loadingWrap}>
-          <ActivityIndicator size="large" color="#D9673E" />
+          <ActivityIndicator size="large" color="#2563EB" />
           <Text style={styles.loadingText}>Abrindo VendorAI...</Text>
         </View>
       )}
@@ -270,7 +270,7 @@ const styles = StyleSheet.create({
   errorText: { color: "#94a3b8", fontSize: 15, textAlign: "center", marginTop: 10 },
   retry: {
     color: "#ffffff",
-    backgroundColor: "#D9673E",
+    backgroundColor: "#2563EB",
     paddingHorizontal: 24,
     paddingVertical: 14,
     borderRadius: 12,
