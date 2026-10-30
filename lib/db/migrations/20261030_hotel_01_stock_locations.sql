@@ -178,6 +178,8 @@ BEGIN
      WHERE tenant_id = p_tenant_id AND transfer_id = p_transfer_id
      GROUP BY inventory_item_id ORDER BY inventory_item_id
   LOOP
+    -- Serializa transferências opostas para o mesmo item entre locais.
+    PERFORM pg_advisory_xact_lock(hashtextextended(p_tenant_id || ':' || v_item.inventory_item_id, 0));
     UPDATE hotel_stock_location_balances
        SET quantity = quantity - v_item.total_quantity,
            updated_at = now()
@@ -212,6 +214,9 @@ BEGIN
    WHERE tenant_id = p_tenant_id AND id = p_transfer_id;
 END;
 $$;
+
+-- Execução será concedida explicitamente apenas ao papel de API autorizado.
+REVOKE ALL ON FUNCTION hotel_stock_complete_transfer(text, text) FROM PUBLIC;
 
 -- NÃO ativar em produção até testar privilégios, RLS, aprovações,
 -- reenvio de solicitações, bootstrap dos saldos e concorrência entre locais.
