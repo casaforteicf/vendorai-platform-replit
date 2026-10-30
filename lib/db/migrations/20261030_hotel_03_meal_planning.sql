@@ -193,3 +193,50 @@ ALTER TABLE hotel_weekly_quote_awards ENABLE ROW LEVEL SECURITY;
 CREATE POLICY hotel_weekly_quote_awards_tenant ON hotel_weekly_quote_awards
  USING(tenant_id=current_setting('app.tenant_id',true))
  WITH CHECK(tenant_id=current_setting('app.tenant_id',true));
+
+-- Pedido formal vinculado à proposta aprovada; ainda sem emissão externa.
+CREATE TABLE IF NOT EXISTS hotel_purchase_orders (
+ id text PRIMARY KEY,
+ tenant_id text NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+ request_id text NOT NULL,
+ award_id text NOT NULL,
+ status text NOT NULL DEFAULT 'draft' CHECK(status IN ('draft','issued','partially_received','received','cancelled')),
+ created_by text NOT NULL,
+ created_at timestamptz NOT NULL DEFAULT now(),
+ issued_at timestamptz,
+ FOREIGN KEY(tenant_id,request_id) REFERENCES hotel_weekly_purchase_requests(tenant_id,id),
+ FOREIGN KEY(tenant_id,created_by) REFERENCES users(tenant_id,id),
+ UNIQUE(tenant_id,request_id),
+ UNIQUE(tenant_id,id)
+);
+CREATE TABLE IF NOT EXISTS hotel_purchase_order_lines (
+ id text PRIMARY KEY,
+ tenant_id text NOT NULL,
+ order_id text NOT NULL,
+ product_id text NOT NULL,
+ unit text NOT NULL CHECK(unit IN ('g','ml','un')),
+ ordered_quantity numeric(15,4) NOT NULL CHECK(ordered_quantity > 0),
+ received_quantity numeric(15,4) NOT NULL DEFAULT 0 CHECK(received_quantity >= 0 AND received_quantity <= ordered_quantity),
+ FOREIGN KEY(tenant_id,order_id) REFERENCES hotel_purchase_orders(tenant_id,id) ON DELETE CASCADE,
+ FOREIGN KEY(tenant_id,product_id) REFERENCES produtos_catalogo(tenant_id,id),
+ UNIQUE(tenant_id,order_id,product_id,unit),
+ UNIQUE(tenant_id,id)
+);
+CREATE TABLE IF NOT EXISTS hotel_purchase_receipt_events (
+ id text PRIMARY KEY,
+ tenant_id text NOT NULL,
+ order_line_id text NOT NULL,
+ received_quantity numeric(15,4) NOT NULL CHECK(received_quantity>0),
+ recorded_by text NOT NULL,
+ created_at timestamptz NOT NULL DEFAULT now(),
+ FOREIGN KEY(tenant_id,order_line_id) REFERENCES hotel_purchase_order_lines(tenant_id,id),
+ FOREIGN KEY(tenant_id,recorded_by) REFERENCES users(tenant_id,id)
+);
+ALTER TABLE hotel_purchase_orders ENABLE ROW LEVEL SECURITY;
+ALTER TABLE hotel_purchase_order_lines ENABLE ROW LEVEL SECURITY;
+ALTER TABLE hotel_purchase_receipt_events ENABLE ROW LEVEL SECURITY;
+CREATE POLICY hotel_orders_tenant ON hotel_purchase_orders USING(tenant_id=current_setting('app.tenant_id',true)) WITH CHECK(tenant_id=current_setting('app.tenant_id',true));
+CREATE POLICY hotel_order_lines_tenant ON hotel_purchase_order_lines USING(tenant_id=current_setting('app.tenant_id',true)) WITH CHECK(tenant_id=current_setting('app.tenant_id',true));
+CREATE POLICY hotel_receipts_tenant ON hotel_purchase_receipt_events USING(tenant_id=current_setting('app.tenant_id',true)) WITH CHECK(tenant_id=current_setting('app.tenant_id',true));
+-- Recebimento administrativo separado da entrada no estoque físico:
+-- integração com movimento de inventário depende de conciliação de unidades/lotes.
