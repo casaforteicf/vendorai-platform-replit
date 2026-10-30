@@ -64,3 +64,26 @@ CREATE POLICY hotel_recipe_ingredients_tenant_isolation ON hotel_recipe_ingredie
 -- vínculo restaurante/food_service, aprovações e cálculo com unidades.
 -- Custos precisam considerar preços de compra e conversão de unidades,
 -- nunca presumir que o preço de venda do catálogo seja custo do ingrediente.
+
+-- Custo de aquisição registrado por produto e tenant, com unidade explícita.
+-- A origem é rastreável; o custo não é inferido do preço de venda.
+CREATE TABLE IF NOT EXISTS hotel_ingredient_costs (
+  id text PRIMARY KEY,
+  tenant_id text NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  product_id text NOT NULL,
+  unit text NOT NULL CHECK (unit IN ('g','kg','ml','l','un')),
+  purchase_quantity numeric(15,4) NOT NULL CHECK (purchase_quantity > 0),
+  total_cost numeric(15,4) NOT NULL CHECK (total_cost >= 0),
+  source_type text NOT NULL CHECK (source_type IN ('invoice','receipt','manual')),
+  source_reference text,
+  effective_at timestamptz NOT NULL DEFAULT now(),
+  created_at timestamptz NOT NULL DEFAULT now(),
+  FOREIGN KEY (tenant_id, product_id) REFERENCES produtos_catalogo(tenant_id, id)
+);
+CREATE INDEX IF NOT EXISTS hotel_ingredient_costs_latest
+ ON hotel_ingredient_costs(tenant_id, product_id, effective_at DESC, created_at DESC);
+ALTER TABLE hotel_ingredient_costs ENABLE ROW LEVEL SECURITY;
+CREATE POLICY hotel_ingredient_costs_tenant_isolation ON hotel_ingredient_costs
+ USING (tenant_id = current_setting('app.tenant_id', true))
+ WITH CHECK (tenant_id = current_setting('app.tenant_id', true));
+-- Somente pessoal autorizado poderá registrar custos de aquisição via API.
