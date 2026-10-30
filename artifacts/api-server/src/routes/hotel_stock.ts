@@ -1,6 +1,5 @@
 import { Router, type IRouter } from "express";
-import { sql } from "drizzle-orm";
-import { db, pool } from "@workspace/db";
+import { pool } from "@workspace/db";
 import { z } from "zod/v4";
 
 // HOTEL-01: locais e transferências com escopo de tenant e aprovação explícita.
@@ -12,17 +11,29 @@ function authorized(req: Express.Request, tenantId: string): boolean {
   return Boolean(user?.sub && user?.actorType !== "ai" && user?.actorType !== "system" && user?.tenantId === tenantId);
 }
 
+async function tenantRead(tenantId: string, statement: string) {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN READ ONLY");
+    await client.query("SELECT set_config('app.tenant_id', $1, true)", [tenantId]);
+    const result = await client.query(statement, [tenantId]);
+    await client.query("COMMIT");
+    return result.rows;
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
 router.get("/tenants/:tenantId/hotelaria/estoque/locais", async (req, res) => {
   const tenantId = String(req.params.tenantId);
   if (!authorized(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
   try {
-    const result = await db.execute(sql`
-      SELECT id, code, name, kind, active, created_at
-      FROM hotel_stock_locations
-      WHERE tenant_id = ${tenantId}
-      ORDER BY name ASC
-    `);
-    return res.json(result.rows);
+    return res.json(await tenantRead(tenantId,
+      "SELECT id, code, name, kind, active, created_at FROM hotel_stock_locations WHERE tenant_id=$1 ORDER BY name ASC"
+    ));
   } catch (error) {
     console.error("[hotel-stock] failed to list locations", error);
     return res.status(500).json({ error: "Failed to load stock locations" });
@@ -33,20 +44,14 @@ router.get("/tenants/:tenantId/hotelaria/estoque/transferencias", async (req, re
   const tenantId = String(req.params.tenantId);
   if (!authorized(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
   try {
-    const result = await db.execute(sql`
-      SELECT id, origin_location_id, destination_location_id,
-             status, requested_by, approved_by, notes, created_at, updated_at
-      FROM hotel_stock_transfer_requests
-      WHERE tenant_id = ${tenantId}
-      ORDER BY created_at DESC LIMIT 100
-    `);
-    return res.json(result.rows);
+    return res.json(await tenantRead(tenantId,
+      "SELECT id, origin_location_id, destination_location_id, status, requested_by, approved_by, notes, created_at, updated_at FROM hotel_stock_transfer_requests WHERE tenant_id=$1 ORDER BY created_at DESC LIMIT 100"
+    ));
   } catch (error) {
     console.error("[hotel-stock] failed to list transfers", error);
     return res.status(500).json({ error: "Failed to load transfers" });
   }
 });
-
 
 const createTransferSchema = z.object({
   originLocationId: z.string().uuid(),
