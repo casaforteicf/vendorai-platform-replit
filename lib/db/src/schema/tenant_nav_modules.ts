@@ -24,6 +24,7 @@ export const NAV_MODULE_KEYS = [
   "supermercado",
   "beauty",
   "clinic",
+  "hotelaria",
   // Ferramentas de inteligência do próprio Vendor.ai — antes visíveis pra
   // todo mundo sem nenhum toggle (seção "inteligencia" é sempre exibida)
   "knowledge_graph",
@@ -64,6 +65,7 @@ export const NAV_MODULE_CATALOG: NavModuleCatalogEntry[] = [
   { moduleKey: "supermercado", moduleName: "Supermercado",   icon: "ShoppingCart",    description: "Produtos, pedidos e campanhas de mercado",     isDefault: true },
   { moduleKey: "beauty",       moduleName: "Salão",          icon: "Scissors",        description: "Agenda, serviços e profissionais do salão",    isDefault: true },
   { moduleKey: "clinic",       moduleName: "Clínica",        icon: "Stethoscope",     description: "Agenda e médicos da clínica",                   isDefault: true },
+  { moduleKey: "hotelaria", moduleName: "Hotelaria", icon: "Building2", description: "Recepção, reservas, quartos e gestão hoteleira", isDefault: false },
   { moduleKey: "knowledge_graph", moduleName: "Knowledge Graph", icon: "Network",     description: "Mapa de conhecimento e relações do negócio",   isDefault: true },
   { moduleKey: "vendor_brain",    moduleName: "Vendor Brain",    icon: "BrainCircuit", description: "Central de inteligência de IA sobre o negócio", isDefault: true },
   { moduleKey: "content_autopilot", moduleName: "Content Autopilot", icon: "Sparkles", description: "Pesquisa, gera e publica conteúdo SEO automaticamente", isDefault: false },
