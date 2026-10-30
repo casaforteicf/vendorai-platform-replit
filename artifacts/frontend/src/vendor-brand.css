@@ -12,28 +12,28 @@
   --popover-foreground: 222 47% 11%;
   --popover-border: 214 32% 91%;
 
-  --primary: 25 95% 53%;           /* #f97316 */
+  --primary: 221 83% 53%;           /* #f97316 */
   --primary-foreground: 0 0% 100%;
   --secondary: 210 40% 96%;        /* #f1f5f9 */
   --secondary-foreground: 215 25% 27%;
   --muted: 210 40% 96%;
   --muted-foreground: 215 16% 47%; /* #64748b */
-  --accent: 33 100% 96%;           /* orange-50 */
-  --accent-foreground: 21 90% 40%; /* orange-700 */
+  --accent: 213 100% 96%;           /* orange-50 */
+  --accent-foreground: 221 83% 40%; /* orange-700 */
   --border: 214 32% 91%;
   --input: 213 27% 84%;
-  --ring: 25 95% 53%;
+  --ring: 221 83% 53%;
 
   --sidebar: 0 0% 100%;
   --sidebar-foreground: 222 47% 11%;
   --sidebar-border: 214 32% 91%;
-  --sidebar-primary: 25 95% 53%;
+  --sidebar-primary: 221 83% 53%;
   --sidebar-primary-foreground: 0 0% 100%;
-  --sidebar-accent: 33 100% 96%;
-  --sidebar-accent-foreground: 21 90% 40%;
+  --sidebar-accent: 213 100% 96%;
+  --sidebar-accent-foreground: 221 83% 40%;
   --sidebar-ring: 25 95% 53%;
 
-  --chart-1: 25 95% 53%;
+  --chart-1: 221 83% 53%;
   --chart-2: 221 83% 53%;           /* #2563eb */
   --chart-3: 160 84% 39%;
   --chart-4: 38 92% 50%;
@@ -43,9 +43,9 @@
   --app-font-display: 'Inter', -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', sans-serif;
   --app-font-serif: Georgia, 'Times New Roman', serif;
 
-  --vendor-brand-orange: #f97316;
-  --vendor-brand-orange-strong: #ea580c;
-  --vendor-brand-blue: #2563eb;
+  --vendor-brand-primary: #2563eb;
+  --vendor-brand-primary-strong: #1d4ed8;
+  --vendor-brand-info: #0e7490;
   --vendor-brand-ink: #0f172a;
   --vendor-brand-muted: #64748b;
   --vendor-brand-canvas: #f8fafc;
@@ -60,24 +60,24 @@
   --popover: 222 32% 11%;
   --popover-foreground: 210 40% 96%;
   --popover-border: 215 28% 17%;
-  --primary: 25 95% 56%;
+  --primary: 213 94% 68%;
   --primary-foreground: 0 0% 100%;
   --secondary: 215 28% 17%;
   --secondary-foreground: 210 40% 96%;
   --muted: 215 28% 17%;
   --muted-foreground: 215 20% 65%;
-  --accent: 22 55% 18%;
-  --accent-foreground: 33 100% 90%;
+  --accent: 221 55% 18%;
+  --accent-foreground: 213 100% 90%;
   --border: 215 28% 17%;
   --input: 215 25% 22%;
-  --ring: 25 95% 56%;
+  --ring: 213 94% 68%;
   --sidebar: 222 47% 7%;
   --sidebar-foreground: 210 40% 96%;
   --sidebar-border: 215 28% 17%;
-  --sidebar-primary: 25 95% 56%;
+  --sidebar-primary: 213 94% 68%;
   --sidebar-primary-foreground: 0 0% 100%;
-  --sidebar-accent: 22 55% 18%;
-  --sidebar-accent-foreground: 33 100% 90%;
+  --sidebar-accent: 221 55% 18%;
+  --sidebar-accent-foreground: 213 100% 90%;
   --sidebar-ring: 25 95% 56%;
 }
 
