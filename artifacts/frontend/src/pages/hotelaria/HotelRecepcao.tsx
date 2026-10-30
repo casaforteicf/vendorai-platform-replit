@@ -13,6 +13,7 @@ export default function HotelRecepcao(){
  const [guestName,setGuestName]=useState(""),[guestEmail,setGuestEmail]=useState(""),[guestPhone,setGuestPhone]=useState("");
  const [guestId,setGuestId]=useState(""),[roomId,setRoomId]=useState(""),[arrival,setArrival]=useState(today()),[departure,setDeparture]=useState(""),[guestCount,setGuestCount]=useState(1);
  const [guests,setGuests]=useState<{id:string;full_name:string}[]>([]);
+ const [availableRooms,setAvailableRooms]=useState<Room[]|null>(null);
  const [forecast,setForecast]=useState<ForecastDay[]>([]);
 
  const base=tenantId?`/api/tenants/${encodeURIComponent(tenantId)}/hotelaria/hospedagem`:"";
@@ -36,9 +37,15 @@ export default function HotelRecepcao(){
   catch(e){setMessage(String(e));}
  }
  useEffect(()=>{void loadForecast();},[tenantId,token,date,bookings]);
+ async function findAvailability(){
+  if(!arrival||!departure||departure<=arrival){setMessage("Escolha datas válidas.");return;}
+  setBusy(true);setMessage("");
+  try{const data=await api<{rooms:Room[]}>("/disponibilidade?arrivalDate="+encodeURIComponent(arrival)+"&departureDate="+encodeURIComponent(departure)+"&guestCount="+guestCount);setAvailableRooms(data.rooms);if(!data.rooms.some(r=>r.id===roomId))setRoomId("");}
+  catch(e){setAvailableRooms(null);setMessage(String(e));}finally{setBusy(false);}
+ }
  async function submit(path:string,body:Record<string,unknown>,success:string){
   setBusy(true);setMessage("");
-  try{await api(path,{method:"POST",body:JSON.stringify(body)});await load();setMessage(success);}
+  try{await api(path,{method:"POST",body:JSON.stringify(body)});await load();if(path==="/reservas")setAvailableRooms(null);setMessage(success);}
   catch(e){setMessage(String(e));}finally{setBusy(false);}
  }
  async function roomOperation(id:string,operation:"dirty"|"cleaning"|"inspection"|"clean"|"maintenance"|"release"){
@@ -76,12 +83,14 @@ export default function HotelRecepcao(){
    </form>
    <form className="space-y-3 rounded-lg border p-4" onSubmit={e=>{e.preventDefault();if(departure<=arrival){setMessage("A saída deve ser posterior à entrada.");return;}void submit("/reservas",{roomId,guestId,arrivalDate:arrival,departureDate:departure,guestCount},"Reserva criada.");}}>
     <h2 className="font-semibold">Nova reserva</h2>
-    <select required className="w-full rounded border p-2" value={roomId} onChange={e=>setRoomId(e.target.value)}><option value="">Selecione o apartamento</option>{rooms.filter(r=>r.status==="active").map(r=><option value={r.id} key={r.id}>{r.code} · {r.name} ({r.capacity} pessoas)</option>)}</select>
+    <select required className="w-full rounded border p-2" value={roomId} onChange={e=>setRoomId(e.target.value)}><option value="">Selecione o apartamento</option>{(availableRooms??rooms.filter(r=>r.status==="active")).map(r=><option value={r.id} key={r.id}>{r.code} · {r.name} ({r.capacity} pessoas)</option>)}</select>
     <select required className="w-full rounded border p-2" value={guestId} onChange={e=>setGuestId(e.target.value)}><option value="">Selecione o hóspede</option>{guests.map(g=><option value={g.id} key={g.id}>{g.full_name}</option>)}</select>
-    <label className="block text-sm">Entrada<input required type="date" className="w-full rounded border p-2" value={arrival} onChange={e=>setArrival(e.target.value)}/></label>
-    <label className="block text-sm">Saída<input required type="date" className="w-full rounded border p-2" value={departure} min={arrival} onChange={e=>setDeparture(e.target.value)}/></label>
-    <label className="block text-sm">Número de hóspedes<input required type="number" min={1} max={rooms.find(r=>r.id===roomId)?.capacity??30} className="w-full rounded border p-2" value={guestCount} onChange={e=>setGuestCount(Number(e.target.value))}/></label>
-    <button disabled={busy} className="rounded border px-3 py-2">Confirmar reserva</button>
+    <label className="block text-sm">Entrada<input required type="date" className="w-full rounded border p-2" value={arrival} onChange={e=>{setArrival(e.target.value);setAvailableRooms(null);}}/></label>
+    <label className="block text-sm">Saída<input required type="date" className="w-full rounded border p-2" value={departure} min={arrival} onChange={e=>{setDeparture(e.target.value);setAvailableRooms(null);}}/></label>
+    <label className="block text-sm">Número de hóspedes<input required type="number" min={1} max={rooms.find(r=>r.id===roomId)?.capacity??30} className="w-full rounded border p-2" value={guestCount} onChange={e=>{setGuestCount(Number(e.target.value));setAvailableRooms(null);}}/></label>
+    <button type="button" disabled={busy} className="rounded border px-3 py-2" onClick={()=>void findAvailability()}>Consultar disponibilidade</button>
+    <p className="text-xs text-muted-foreground">{availableRooms===null?"Verifique as datas e consulte a disponibilidade antes de reservar.":availableRooms.length+" apartamento(s) disponível(is) no período."}</p>
+    <button disabled={busy||availableRooms===null||!availableRooms.some(r=>r.id===roomId)} className="rounded border px-3 py-2">Confirmar reserva</button>
    </form>
   </div>
   <section className="rounded-lg border p-4"><h2 className="mb-3 text-lg font-medium">Mapa de apartamentos</h2>
