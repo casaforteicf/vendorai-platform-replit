@@ -105,6 +105,7 @@ const PartnerCommissions = lazy(() => import("@/pages/partner/PartnerCommissions
 const SiteLandingPage    = lazy(() => import("@/pages/SiteLandingPage"));
 const Marketplace        = lazy(() => import("@/pages/Marketplace"));
 const Estoque            = lazy(() => import("@/pages/Estoque"));
+const HotelReceitas = lazy(() => import("@/pages/hotelaria/HotelReceitas"));
 const GestaoErp          = lazy(() => import("@/pages/GestaoErp"));
 const ErpCapture         = lazy(() => import("@/pages/erp"));
 const Content            = lazy(() => import("@/pages/ContentHub"));
@@ -705,6 +706,7 @@ function AppRoutes() {
         <Route path="/campanhas-nova"><LegacyCampaignHubRedirect /></Route>
         <Route path="/campanhas"><RedirectPage to="/content?tab=campanhas&view=organicas" /></Route>
         <Route path="/estoque">{() => <ProtectedRoute component={Estoque} />}</Route>
+        <Route path="/hotelaria/receitas">{() => <ProtectedRoute component={HotelReceitas} />}</Route>
         <Route path="/erp/captura">{() => <ProtectedRoute component={ErpCapture} />}</Route>
         <Route path="/erp">{() => <ProtectedRoute component={GestaoErp} />}</Route>
         <Route path="/faturamento"><RedirectPage to="/configuracoes" /></Route>
