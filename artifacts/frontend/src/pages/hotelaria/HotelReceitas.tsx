@@ -4,7 +4,9 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 
-type CatalogProduct = { id: string; nome: string; sku?: string | null };\ntype IngredientDraft = { productId: string; quantityGross: number; quantityUnit: "kg" | "g" | "l" | "ml" | "un"; yieldFactor: number };\ntype Recipe = { id: string; title: string; status: string; yield_quantity: string; yield_unit: string; allergens: string[] };
+type CatalogProduct = { id: string; nome: string; sku?: string | null };
+type IngredientDraft = { productId: string; quantityGross: number; quantityUnit: "kg" | "g" | "l" | "ml" | "un"; yieldFactor: number };
+type Recipe = { id: string; title: string; status: string; yield_quantity: string; yield_unit: string; allergens: string[] };
 type CostResult = { totalCost: number; costPerPortion: number; currency: string };
 const formatMoney = (value: number) => new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value);
 
@@ -14,9 +16,10 @@ export default function HotelReceitas() {
   const [recipes, setRecipes] = useState<Recipe[]>([]);
   const [title, setTitle] = useState("");
   const [portions, setPortions] = useState(10);
-  const [productId, setProductId] = useState("");
-  const [quantity, setQuantity] = useState(1);
-  const [unit, setUnit] = useState<"kg" | "g" | "l" | "ml" | "un">("kg");
+  const [products, setProducts] = useState<CatalogProduct[]>([]);
+  const [ingredients, setIngredients] = useState<IngredientDraft[]>([
+    { productId: "", quantityGross: 1, quantityUnit: "kg", yieldFactor: 1 },
+  ]);
   const [costs, setCosts] = useState<Record<string, CostResult>>({});
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
