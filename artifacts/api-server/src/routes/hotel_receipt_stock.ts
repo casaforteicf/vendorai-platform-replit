@@ -60,4 +60,27 @@ router.post("/tenants/:tenantId/hotelaria/compras/recebimentos/:eventId/entrada-
   return res.status(500).json({error:"Unable to post receipt to stock"});
  }finally{client.release();}
 });
+
+router.get("/tenants/:tenantId/hotelaria/compras/recebimentos",async(req,res)=>{
+ const tenantId=String(req.params.tenantId),u=req.user;
+ if(!u?.sub||u.tenantId!==tenantId||u.actorType==="ai"||u.actorType==="system")
+  return res.status(403).json({error:"Forbidden"});
+ const client=await pool.connect();
+ try{
+  await client.query("BEGIN READ ONLY");
+  await client.query("SELECT set_config('app.tenant_id',$1,true)",[tenantId]);
+  const items=await client.query(
+   `SELECT e.id,e.created_at,e.received_quantity,l.product_id,l.unit,o.id AS order_id,
+           p.id AS stock_post_id,p.posted_at
+    FROM hotel_purchase_receipt_events e
+    JOIN hotel_purchase_order_lines l ON l.tenant_id=e.tenant_id AND l.id=e.order_line_id
+    JOIN hotel_purchase_orders o ON o.tenant_id=l.tenant_id AND o.id=l.order_id
+    LEFT JOIN hotel_purchase_receipt_stock_posts p ON p.tenant_id=e.tenant_id AND p.receipt_event_id=e.id
+    WHERE e.tenant_id=$1 ORDER BY e.created_at DESC LIMIT 300`,[tenantId]);
+  await client.query("COMMIT");
+  return res.json(items.rows);
+ }catch(error){await client.query("ROLLBACK");return res.status(500).json({error:"Unable to list receipt events"});}
+ finally{client.release();}
+});
+
 export default router;
