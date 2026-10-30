@@ -4150,6 +4150,22 @@ router.post("/arch/projetos", authenticate, async (req, res) => {
     return res.status(400).json({ error: "Selecione ao menos um ambiente." });
   }
 
+  // Validate the selected CRM lead in the same tenant before attempting the insert.
+  // Do not weaken the database's cross-tenant integrity protection.
+  if (parsed.data.leadId) {
+    const [selectedLead] = await db
+      .select({ id: leadsTable.id })
+      .from(leadsTable)
+      .where(and(eq(leadsTable.id, parsed.data.leadId), eq(leadsTable.tenantId, tid)))
+      .limit(1);
+    if (!selectedLead) {
+      return res.status(422).json({
+        error: "O cliente selecionado não pertence à empresa atual. Selecione um cliente desta empresa para criar o projeto.",
+        code: "ARCH_PROJECT_LEAD_TENANT_MISMATCH",
+      });
+    }
+  }
+
   const projeto = await db.transaction(async (tx) => {
     const [created] = await tx
       .insert(archProjetosTable)
