@@ -26,6 +26,11 @@ router.post("/tenants/:tenantId/hotelaria/hospedagem/quartos",async(req,res)=>{
  try{const result=await transact(t,async c=>await c.query("INSERT INTO hotel_rooms(id,tenant_id,code,name,capacity) VALUES($1,$2,$3,$4,$5) RETURNING id,code,name,capacity,status",[crypto.randomUUID(),t,v.data.code,v.data.name,v.data.capacity]));return res.status(201).json(result.rows[0]);}
  catch(e){return res.status(409).json({error:"Could not create room; code may already exist"});}
 });
+router.get("/tenants/:tenantId/hotelaria/hospedagem/hospedes",async(req,res)=>{
+ const t=String(req.params.tenantId);if(!allowed(req,t))return res.status(403).json({error:"Forbidden"});
+ try{return res.json(await transact(t,async c=>(await c.query("SELECT id,full_name FROM hotel_guests WHERE tenant_id=$1 ORDER BY full_name LIMIT 500",[t])).rows));}
+ catch(e){return res.status(500).json({error:"Could not list guests"});}
+});
 router.post("/tenants/:tenantId/hotelaria/hospedagem/hospedes",async(req,res)=>{
  const t=String(req.params.tenantId);if(!allowed(req,t,true))return res.status(403).json({error:"Forbidden"});
  const v=guestInput.safeParse(req.body);if(!v.success)return res.status(422).json({error:"Invalid guest"});
