@@ -65,6 +65,7 @@ import webhooksRouter from "./webhooks";
 import agentsRouter from "./agents";
 import voiceAgentRouter from "./voice_agent";
 import inventoryRouter, { inventorySyncRouter } from "./inventory";
+import hotelStockRouter from "./hotel_stock";
 import siteConfigRouter, { publicSiteRouter } from "./site_config";
 import segmentTemplatesRouter, { publicSegmentTemplatesRouter } from "./segment_templates";
 import invitesRouter, { invitesProtectedRouter } from "./invites";
@@ -459,6 +460,7 @@ router.use(rulesRouter);
 
 // Inventory Hub
 router.use(inventoryRouter);
+router.use(hotelStockRouter);
 router.use(erpRouter);
 router.use(financeIntegrationsRouter);
 router.use(customIntegrationsRouter);
