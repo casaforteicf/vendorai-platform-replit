@@ -787,7 +787,7 @@ export default function VideoAvatarPage() {
             </button>
             <button
               onClick={() => { resetCreate(); setShowCreate(true); setCreateStep(1); }}
-              className="inline-flex items-center justify-center gap-2 rounded-xl bg-orange-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-orange-500"
+              className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-blue-500"
             >
               <Plus className="h-4 w-4" /> Criar Dublê Digital
             </button>
@@ -821,7 +821,7 @@ export default function VideoAvatarPage() {
                       className={cn(
                         "rounded-lg px-3 py-2 text-xs font-medium transition-colors",
                         dubleFilter === value
-                          ? "border border-orange-200 bg-orange-50 text-orange-700"
+                          ? "border border-blue-200 bg-blue-50 text-blue-700"
                           : "border border-slate-200 bg-slate-50 text-slate-600 hover:bg-white hover:text-slate-900",
                       )}
                     >
@@ -835,7 +835,7 @@ export default function VideoAvatarPage() {
                     value={dubleSearch}
                     onChange={(event) => setDubleSearch(event.target.value)}
                     placeholder="Buscar dublê..."
-                    className="w-full min-w-[250px] rounded-xl border border-slate-200 bg-white py-2 pl-10 pr-3 text-sm outline-none focus:border-orange-300 focus:ring-2 focus:ring-orange-500/10"
+                    className="w-full min-w-[250px] rounded-xl border border-slate-200 bg-white py-2 pl-10 pr-3 text-sm outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-500/10"
                   />
                   <button onClick={() => void loadAll(true)} className="rounded-xl border border-slate-200 bg-white p-2 text-slate-500 hover:bg-slate-50" aria-label="Atualizar">
                     <RefreshCw className="h-4 w-4" />
@@ -861,7 +861,7 @@ export default function VideoAvatarPage() {
                   <button
                     type="button"
                     onClick={() => { resetCreate(); setShowCreate(true); setCreateStep(1); }}
-                    className="mt-5 inline-flex items-center gap-2 rounded-xl bg-orange-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-orange-500"
+                    className="mt-5 inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-500"
                   >
                     <Plus className="h-4 w-4" /> Criar Dublê Digital
                   </button>
@@ -1015,7 +1015,7 @@ export default function VideoAvatarPage() {
                   </div>
                   <label className="block space-y-1.5">
                     <span className="text-sm font-medium">Nome</span>
-                    <input value={displayName} onChange={(event) => setDisplayName(event.target.value)} placeholder="Ex.: Marcos — Comercial" className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-orange-500/20" />
+                    <input value={displayName} onChange={(event) => setDisplayName(event.target.value)} placeholder="Ex.: Marcos — Comercial" className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-500/20" />
                   </label>
                   <div className="grid gap-4 sm:grid-cols-2">
                     <label className="space-y-1.5">
@@ -1171,7 +1171,7 @@ export default function VideoAvatarPage() {
                   <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-emerald-500/10 text-emerald-600"><ShieldCheck className="h-8 w-8" /></div>
                   <h3 className="mt-4 text-xl font-bold">Tudo pronto para criar o Dublê Digital</h3>
                   <p className="mx-auto mt-2 max-w-lg text-sm text-muted-foreground">Ao concluir, foto, voz, vídeo e autorizações serão salvos na mesma Identidade Audiovisual. Não será criado um cadastro paralelo.</p>
-                  <button disabled={saving || !displayName.trim() || voiceRecording || videoRecording || !authorizationConfirmed} onClick={() => void createIdentity()} className="mt-6 inline-flex items-center gap-2 rounded-xl bg-orange-600 px-5 py-3 text-sm font-semibold text-white hover:bg-orange-500 disabled:opacity-50">
+                  <button disabled={saving || !displayName.trim() || voiceRecording || videoRecording || !authorizationConfirmed} onClick={() => void createIdentity()} className="mt-6 inline-flex items-center gap-2 rounded-xl bg-blue-600 px-5 py-3 text-sm font-semibold text-white hover:bg-blue-500 disabled:opacity-50">
                     {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />} Finalizar captura do Dublê
                   </button>
                 </div>
@@ -1198,7 +1198,7 @@ export default function VideoAvatarPage() {
                     (createStep === 3 && !canContinueStep3)
                   }
                   onClick={() => setCreateStep((Math.min(5, createStep + 1)) as 1 | 2 | 3 | 4 | 5)}
-                  className="rounded-xl bg-orange-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-orange-500 disabled:opacity-40"
+                  className="rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-blue-500 disabled:opacity-40"
                 >
                   Continuar
                 </button>
