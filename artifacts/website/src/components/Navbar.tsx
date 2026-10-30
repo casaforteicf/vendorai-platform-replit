@@ -104,7 +104,7 @@ export default function Navbar() {
           </select>
           <Link
             href="/demo"
-            className="group ml-1 inline-flex h-11 items-center rounded-[var(--vendor-radius-md)] bg-[var(--vendor-primary)] px-5 text-sm font-semibold text-white shadow-[0_12px_36px_rgba(249,115,22,0.24)] transition hover:-translate-y-0.5 hover:bg-[var(--vendor-primary-strong)]"
+            className="group ml-1 inline-flex h-11 items-center rounded-[var(--vendor-radius-md)] bg-[var(--vendor-primary)] px-5 text-sm font-semibold text-white shadow-[0_12px_36px_rgba(37,99,235,0.24)] transition hover:-translate-y-0.5 hover:bg-[var(--vendor-primary-strong)]"
             data-testid="btn-demo"
           >
             {copy.trial}
@@ -166,7 +166,7 @@ export default function Navbar() {
             </Link>
             <Link
               href="/demo"
-              className="mt-2 inline-flex h-12 items-center justify-center rounded-[var(--vendor-radius-md)] bg-[var(--vendor-primary)] px-5 font-semibold text-white shadow-[0_12px_34px_rgba(249,115,22,0.20)] hover:bg-[var(--vendor-primary-strong)]"
+              className="mt-2 inline-flex h-12 items-center justify-center rounded-[var(--vendor-radius-md)] bg-[var(--vendor-primary)] px-5 font-semibold text-white shadow-[0_12px_34px_rgba(37,99,235,0.20)] hover:bg-[var(--vendor-primary-strong)]"
               onClick={() => setMobileMenuOpen(false)}
             >
               {copy.trial}
