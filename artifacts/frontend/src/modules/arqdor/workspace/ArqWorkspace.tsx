@@ -667,11 +667,17 @@ function FlowNav({
               <div style={{ width:8, height:1, background:PHX.border, flexShrink:0, margin:'0 1px' }} />
             )}
             {/* Step */}
-            <div
+            <button
+              type="button"
+              aria-current={isActive ? 'step' : undefined}
+              aria-label={step.label}
               className={`phx-flow-step${isActive ? ' active' : ''}`}
               onClick={() => onNavigate(step.primary)}
               onMouseEnter={() => setHoveredStep(step.id)}
               onMouseLeave={() => setHoveredStep(null)}
+              onFocus={() => setHoveredStep(step.id)}
+              onBlur={() => setHoveredStep(null)}
+              style={{ border:0, background:'transparent', cursor:'pointer', fontFamily:'inherit' }}
             >
               <span style={{ fontSize:12 }}>{step.icon}</span>
               <span style={{ fontSize:11, fontWeight: isActive ? 700 : 500, color: isActive ? PHX.purple : PHX.textSub }}>
@@ -689,7 +695,7 @@ function FlowNav({
                   <div style={{ position:'absolute', top:-3, left:'50%', transform:'translateX(-50%)', width:6, height:6, background:PHX.text, borderRadius:1, rotate:'45deg' }} />
                 </div>
               )}
-            </div>
+            </button>
           </div>
         )
       })}
