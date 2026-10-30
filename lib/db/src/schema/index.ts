@@ -289,3 +289,5 @@ export * from "./atr_origin";
 export * from "./agenda_access_grants";
 
 export * from "./calendar_oauth_states";
+
+export * from "./tenant_user_colors";

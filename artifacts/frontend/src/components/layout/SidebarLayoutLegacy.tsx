@@ -21,7 +21,7 @@ import { Button } from "@/components/ui/button";
 import logoFull from "/logo-full-light.svg";
 import { applyTenantTheme, resetTenantTheme } from "@/lib/tenantTheme";
 
-const StoreSwitcher = lazy(() => import("@/components/StoreSwitcher").then((m) => ({ default: m.StoreSwitcher })));
+import { TenantSwitcher } from "@/components/crm/TenantSwitcher";
 const NovidadesBell = lazy(() => import("@/components/NovidadesBell").then((m) => ({ default: m.NovidadesBell })));
 const SupportChatWidget = lazy(() => import("@/components/support/SupportChatWidget").then((m) => ({ default: m.SupportChatWidget })));
 const AccessLicenseBanner = lazy(() => import("@/components/billing/AccessLicenseBanner").then((m) => ({ default: m.AccessLicenseBanner })));
@@ -715,6 +715,8 @@ export function SidebarLayout({ children, arqdorVisible = false }: { children: R
     return (
       <Link
         href={item.href}
+        title={!sidebarExpanded ? item.name : undefined}
+        aria-label={!sidebarExpanded ? item.name : undefined}
         data-arqdor-tool-entry={item.arqdorToolEntry ? "true" : undefined}
         onClick={() => {
           if (item.href === "/faq") sessionStorage.setItem("vendorai_help_from", location);
@@ -1364,8 +1366,8 @@ export function SidebarLayout({ children, arqdorVisible = false }: { children: R
               </div>
             )}
           </div>
-          <div className="px-3 py-2 border-b">
-            <Suspense fallback={null}><StoreSwitcher /></Suspense>
+          <div className={`py-2 border-b ${sidebarExpanded ? "px-3" : "pl-3 pr-[calc(100%-56px)]"}`}>
+            <TenantSwitcher compact={!sidebarExpanded} />
           </div>
           <div className="vendor-scrollbar flex-1 py-4 flex flex-col gap-1 px-3 overflow-y-auto">
             <NavLinks />
@@ -1394,7 +1396,7 @@ export function SidebarLayout({ children, arqdorVisible = false }: { children: R
               </Button>
             </div>
             <div className="px-3 py-2 border-b">
-              <Suspense fallback={null}><StoreSwitcher /></Suspense>
+              <TenantSwitcher />
             </div>
             <div className="flex-1 py-3 flex flex-col gap-1 px-3 overflow-y-auto">
               <NavLinks onNavigate={() => setMobileOpen(false)} />

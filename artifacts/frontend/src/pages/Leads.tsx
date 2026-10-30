@@ -19,6 +19,17 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import type { ActiveWorkCard } from "@/components/ActiveLeadProcesses";
+import { CrmPipelineTabs } from "@/components/crm/CrmPipelineTabs";
+import { responsavelColor, initials, UNASSIGNED_COLOR } from "@/lib/responsavelColors";
+import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
   Search,
   ChevronRight,
@@ -38,6 +49,18 @@ import {
   Tags,
   Pencil,
   Loader2,
+  MoreHorizontal,
+  Phone,
+  CalendarDays,
+  ClipboardList,
+  MessageCircle,
+  Columns3,
+  X,
+  AlertCircle,
+  ChevronLeft,
+  Mail,
+  MapPin,
+  Users,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import {
@@ -103,11 +126,72 @@ type ActiveProcess = {
   codigo?: string;
 };
 
+type NextAction = { id: string; titulo: string; tipo: string; dataVencimento: string | null; pendentes: number };
+
 type LeadsOverviewContext = {
   activeProcessesByLeadId: Record<string, ActiveProcess[]>;
   proposalTotalsByLeadId: Record<string, string>;
   userLabelsById: Record<string, string>;
+  nextActionsByLeadId?: Record<string, NextAction>;
+  userColorsById?: Record<string, string>;
 };
+
+type PendingFilter = "todos" | "sem_responsavel" | "atrasadas" | "sem_acao";
+type OptionalColumn = "status" | "negocios" | "responsavel" | "proxima" | "valor" | "segmento" | "risco";
+
+const OPTIONAL_COLUMNS: Array<{ key: OptionalColumn; label: string }> = [
+  { key: "status", label: "Status" },
+  { key: "negocios", label: "Negócios ativos" },
+  { key: "responsavel", label: "Responsável" },
+  { key: "proxima", label: "Próxima ação" },
+  { key: "valor", label: "Valor em aberto" },
+  { key: "segmento", label: "Segmento" },
+  { key: "risco", label: "Risco de churn" },
+];
+const DEFAULT_HIDDEN_COLUMNS: OptionalColumn[] = ["segmento", "risco"];
+const COLUMNS_STORAGE_KEY = "vendorai_leads_hidden_columns";
+const PAGE_SIZE = 25;
+
+const NEXT_ACTION_TYPES = [
+  { value: "tarefa", label: "Tarefa" },
+  { value: "ligacao", label: "Ligação" },
+  { value: "whatsapp", label: "WhatsApp" },
+  { value: "email", label: "E-mail" },
+  { value: "visita", label: "Visita" },
+  { value: "reuniao", label: "Reunião" },
+];
+
+function nextActionIcon(tipo: string) {
+  if (tipo === "ligacao") return Phone;
+  if (tipo === "whatsapp") return MessageCircle;
+  if (tipo === "email") return Mail;
+  if (tipo === "visita") return MapPin;
+  if (tipo === "reuniao") return Users;
+  return CalendarDays;
+}
+
+function isOverdue(action: NextAction | undefined, now: number) {
+  return !!action?.dataVencimento && new Date(action.dataVencimento).getTime() < now;
+}
+
+function formatDue(value: string | null, now: number) {
+  if (!value) return "Sem data";
+  const date = new Date(value);
+  const today = new Date(now);
+  const startOfToday = new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime();
+  const dayDiff = Math.floor((new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime() - startOfToday) / 86_400_000);
+  const time = date.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+  const hasTime = date.getHours() !== 0 || date.getMinutes() !== 0;
+  const label = dayDiff === 0 ? "Hoje" : dayDiff === 1 ? "Amanhã" : date.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
+  if (date.getTime() < now) return `Atrasada · ${date.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })}`;
+  return hasTime ? `${label} · ${time}` : label;
+}
+
+function whatsappHref(phone: string | null | undefined) {
+  const digits = (phone ?? "").replace(/\D/g, "");
+  if (digits.length < 10) return null;
+  return `https://wa.me/${digits.length <= 11 ? `55${digits}` : digits}`;
+}
 
 type ParsedLeadRow = {
   nome: string;
@@ -715,6 +799,110 @@ export default function Leads() {
       return churnSort === "desc" ? riskB - riskA : riskA - riskB;
     });
 
+  const [responsavelFilter, setResponsavelFilter] = useState<string>("all");
+  const [pendingFilter, setPendingFilter] = useState<PendingFilter>("todos");
+  const [page, setPage] = useState(1);
+  const [hiddenColumns, setHiddenColumns] = useState<OptionalColumn[]>(() => {
+    try {
+      const saved = window.localStorage.getItem(COLUMNS_STORAGE_KEY);
+      return saved ? (JSON.parse(saved) as OptionalColumn[]) : DEFAULT_HIDDEN_COLUMNS;
+    } catch {
+      return DEFAULT_HIDDEN_COLUMNS;
+    }
+  });
+  const [nextActionDialog, setNextActionDialog] = useState<{ lead: Lead | null; tipo: string; titulo: string; data: string }>({ lead: null, tipo: "tarefa", titulo: "", data: "" });
+
+  const now = Date.now();
+  const nextActions = overview?.nextActionsByLeadId ?? {};
+  const userColors = overview?.userColorsById ?? {};
+  const show = (column: OptionalColumn) => !hiddenColumns.includes(column);
+  function toggleColumn(column: OptionalColumn) {
+    setHiddenColumns((current) => {
+      const next = current.includes(column) ? current.filter((item) => item !== column) : [...current, column];
+      window.localStorage.setItem(COLUMNS_STORAGE_KEY, JSON.stringify(next));
+      return next;
+    });
+  }
+
+  const responsibleLeads = filteredLeads.filter((lead) =>
+    responsavelFilter === "all" ? true : responsavelFilter === "none" ? !lead.assignedTo : lead.assignedTo === responsavelFilter,
+  );
+  const pendingCounts = {
+    todos: responsibleLeads.length,
+    sem_responsavel: responsibleLeads.filter((lead) => !lead.assignedTo).length,
+    atrasadas: responsibleLeads.filter((lead) => isOverdue(nextActions[lead.id], now)).length,
+    sem_acao: responsibleLeads.filter((lead) => !nextActions[lead.id]).length,
+  };
+  const visibleLeads = responsibleLeads.filter((lead) => {
+    if (pendingFilter === "sem_responsavel") return !lead.assignedTo;
+    if (pendingFilter === "atrasadas") return isOverdue(nextActions[lead.id], now);
+    if (pendingFilter === "sem_acao") return !nextActions[lead.id];
+    return true;
+  });
+  const pageCount = Math.max(1, Math.ceil(visibleLeads.length / PAGE_SIZE));
+  const currentPage = Math.min(page, pageCount);
+  const pagedLeads = visibleLeads.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
+
+  const responsibleLegend = Array.from(
+    filteredLeads.reduce((map, lead) => {
+      if (!lead.assignedTo) return map;
+      map.set(lead.assignedTo, (map.get(lead.assignedTo) ?? 0) + 1);
+      return map;
+    }, new Map<string, number>()),
+  )
+    .map(([userId, total]) => ({ userId, total, name: userMap.get(userId) ?? "Usuário", color: responsavelColor(userId, userColors) }))
+    .sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));
+
+  const hasActiveFilters = !!search || segmentFilter !== "all" || statusFilter !== "all" || maturityFilter !== "all" || responsavelFilter !== "all" || pendingFilter !== "todos";
+  function clearFilters() {
+    setSearch("");
+    setSegmentFilter("all");
+    setStatusFilter("all");
+    setMaturityFilter("all");
+    setResponsavelFilter("all");
+    setPendingFilter("todos");
+    setPage(1);
+  }
+
+  function openAssign(lead: Lead) {
+    setAssignSelectedUser(lead.assignedTo ?? "");
+    setAssignDialog({ open: true, leadId: lead.id, currentAssignedTo: lead.assignedTo ?? null });
+  }
+
+  function openNextAction(lead: Lead) {
+    setNextActionDialog({ lead, tipo: "tarefa", titulo: "", data: "" });
+  }
+
+  const createNextAction = useMutation({
+    mutationFn: async () => {
+      const { lead, tipo, titulo, data } = nextActionDialog;
+      if (!lead) throw new Error("Lead não selecionado.");
+      const response = await fetch("/api/activities", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        body: JSON.stringify({
+          tenantId,
+          leadId: lead.id,
+          tipo,
+          titulo: titulo.trim(),
+          dataVencimento: data ? new Date(data).toISOString() : undefined,
+          responsavelId: lead.assignedTo ?? undefined,
+        }),
+      });
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({}));
+        throw new Error(body?.error ?? "Não foi possível salvar a próxima ação.");
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["leads-overview-context", tenantId] });
+      queryClient.invalidateQueries({ predicate: (query) => String(query.queryKey[0] ?? "").includes("activities") });
+      toast({ title: "Próxima ação definida." });
+      setNextActionDialog({ lead: null, tipo: "tarefa", titulo: "", data: "" });
+    },
+    onError: (error: Error) => toast({ title: "Não foi possível salvar", description: error.message, variant: "destructive" }),
+  });
+
   function toggleBudgetSort() {
     setBudgetSort((previous) => (previous === "desc" ? "asc" : "desc"));
     setChurnSort(null);
@@ -727,33 +915,15 @@ export default function Leads() {
 
   return (
     <div className="vendor-product-page vendor-page-canvas vendor-leads-page space-y-5">
-      <div className="rounded-xl border bg-card p-3" aria-label="Navegação entre pipelines do CRM">
-        <div className="mb-2 text-sm font-semibold">Pipelines do CRM</div>
-        <nav className="flex flex-wrap gap-2" aria-label="Acessar pipelines">
-          {[
-            { label: "Aquecimento", href: "/pipeline-relacionamento/aquecimento" },
-            { label: "Comercial", href: "/deals" },
-            { label: "Execução / Pedidos", href: "/pipeline-operacional/execucao" },
-            { label: "Suporte / Assistência", href: "/pipeline-operacional/suporte" },
-            { label: "Parceiros", href: "/pipeline-relacionamento/parceiros" },
-            { label: "Scout", href: "/scout/pipeline" },
-          ].map((pipeline) => (
-            <Button key={pipeline.href} type="button" variant="outline" size="sm"
-              className="min-h-10 max-w-full whitespace-normal text-left"
-              onClick={() => setLocation(pipeline.href)}>
-              {pipeline.label}
-            </Button>
-          ))}
-        </nav>
-      </div>
+      <CrmPipelineTabs />
       <div className="vendor-product-hero flex flex-col sm:flex-row justify-between items-start sm:items-end gap-4">
         <div>
           <h1 className="vendor-product-title">Leads</h1>
-          <p className="vendor-product-subtitle">{leads?.length ?? 0} contatos cadastrados · visualize primeiro o que exige ação</p>
+          <p className="vendor-product-subtitle">Contatos, negócios e próximas ações</p>
         </div>
 
         <div className="flex gap-2 flex-wrap">
-          <Button variant="outline" onClick={() => setLocation("/contacts-nonleads")}>Outros contatos</Button>
+          <Button variant="ghost" onClick={() => setLocation("/contacts-nonleads")}>Outros contatos</Button>
 
           <Dialog
             open={isImportOpen}
@@ -888,17 +1058,46 @@ export default function Leads() {
         </div>
       </div>
 
-      <div className="flex items-center gap-2">
-        <Button variant={viewMode === "ativos" ? "default" : "outline"} size="sm" onClick={() => setViewMode("ativos")}>Ativos</Button>
-        {isAdmin && <Button
-          variant={viewMode === "excluidos" ? "default" : "outline"}
-          size="sm"
-          onClick={() => setViewMode("excluidos")}
-          className="gap-1.5"
-        >
-          <Trash2 className="h-3.5 w-3.5" /> Excluídos
-          {excludedLeads && excludedLeads.length > 0 && <Badge variant="secondary" className="ml-0.5">{excludedLeads.length}</Badge>}
-        </Button>}
+      {viewMode === "ativos" && (
+        <div className="flex flex-wrap gap-2" role="group" aria-label="Atalhos de pendências">
+          {([
+            { key: "todos", label: "Todos", dot: null },
+            { key: "sem_responsavel", label: "Sem responsável", dot: UNASSIGNED_COLOR },
+            { key: "atrasadas", label: "Ações atrasadas", dot: "#DC2626" },
+            { key: "sem_acao", label: "Sem próxima ação", dot: "#F59E0B" },
+          ] as Array<{ key: PendingFilter; label: string; dot: string | null }>).map((chip) => {
+            const active = pendingFilter === chip.key;
+            return (
+              <button
+                key={chip.key}
+                type="button"
+                aria-pressed={active}
+                onClick={() => { setPendingFilter(chip.key); setPage(1); }}
+                className={`inline-flex min-h-10 items-center gap-2 rounded-lg border px-3 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 ${active ? "border-primary bg-primary/5 text-primary" : "bg-card text-foreground/80 hover:bg-muted"}`}
+              >
+                {chip.dot && <span className="h-2 w-2 rounded-full" style={{ backgroundColor: chip.dot }} aria-hidden />}
+                {chip.label}
+                <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${active ? "bg-primary text-primary-foreground" : chip.key === "atrasadas" && pendingCounts.atrasadas > 0 ? "bg-red-100 text-red-700" : "bg-muted text-foreground/70"}`}>
+                  {pendingCounts[chip.key]}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      <div className="flex items-center gap-1 border-b" role="tablist" aria-label="Situação dos leads">
+        <button type="button" role="tab" aria-selected={viewMode === "ativos"} onClick={() => setViewMode("ativos")}
+          className={`-mb-px border-b-2 px-4 py-2 text-sm font-medium ${viewMode === "ativos" ? "border-primary text-primary" : "border-transparent text-muted-foreground hover:text-foreground"}`}>
+          Ativos <Badge variant="secondary" className="ml-1">{leads?.length ?? 0}</Badge>
+        </button>
+        {isAdmin && (
+          <button type="button" role="tab" aria-selected={viewMode === "excluidos"} onClick={() => setViewMode("excluidos")}
+            className={`-mb-px flex items-center gap-1.5 border-b-2 px-4 py-2 text-sm font-medium ${viewMode === "excluidos" ? "border-primary text-primary" : "border-transparent text-muted-foreground hover:text-foreground"}`}>
+            <Trash2 className="h-3.5 w-3.5" /> Excluídos
+            {excludedLeads && excludedLeads.length > 0 && <Badge variant="secondary" className="ml-0.5">{excludedLeads.length}</Badge>}
+          </button>
+        )}
       </div>
 
       {viewMode === "excluidos" ? (
@@ -934,50 +1133,110 @@ export default function Leads() {
         </Card>
       ) : (
         <Card>
-          <div className="p-4 border-b flex flex-col lg:flex-row gap-3 lg:items-center">
-            <div className="relative flex-1 min-w-[220px] lg:max-w-sm">
+          <div className="p-4 border-b flex flex-col xl:flex-row gap-3 xl:items-center">
+            <div className="relative flex-1 min-w-[220px]">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
                 data-testid="input-search-leads"
-                placeholder="Buscar por nome ou documento..."
+                placeholder="Buscar nome, empresa ou telefone..."
+                aria-label="Buscar leads"
                 value={search}
-                onChange={(event) => setSearch(event.target.value)}
+                onChange={(event) => { setSearch(event.target.value); setPage(1); }}
                 className="pl-9"
               />
             </div>
 
-            <Select value={segmentFilter} onValueChange={setSegmentFilter}>
-              <SelectTrigger className="w-full sm:w-56" data-testid="select-segment-filter"><SelectValue placeholder="Filtrar por segmento" /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Todos os segmentos</SelectItem>
-                <SelectItem value={NO_SEGMENT}>Sem segmento</SelectItem>
-                {segmentOptions.map((segment) => <SelectItem key={segment} value={segment}>{segment}</SelectItem>)}
-              </SelectContent>
-            </Select>
+            <div className="flex flex-wrap gap-2">
+              <Select value={segmentFilter} onValueChange={(value) => { setSegmentFilter(value); setPage(1); }}>
+                <SelectTrigger className="w-full sm:w-44" data-testid="select-segment-filter" aria-label="Segmento"><SelectValue placeholder="Segmento" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos os segmentos</SelectItem>
+                  <SelectItem value={NO_SEGMENT}>Sem segmento</SelectItem>
+                  {segmentOptions.map((segment) => <SelectItem key={segment} value={segment}>{segment}</SelectItem>)}
+                </SelectContent>
+              </Select>
 
-            <Select value={statusFilter} onValueChange={setStatusFilter}>
-              <SelectTrigger className="w-full sm:w-48" data-testid="select-status-filter"><SelectValue placeholder="Filtrar por status" /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Todos os status</SelectItem>
-                <SelectItem value="high_risk" data-testid="filter-high-risk">Alto risco (&gt;70)</SelectItem>
-                <SelectItem value="quente">Quente</SelectItem>
-                {LEAD_STATUSES.filter((status) => status.value !== "quente").map((status) => (
-                  <SelectItem key={status.value} value={status.value}>{status.label}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+              <Select value={statusFilter} onValueChange={(value) => { setStatusFilter(value); setPage(1); }}>
+                <SelectTrigger className="w-full sm:w-40" data-testid="select-status-filter" aria-label="Status"><SelectValue placeholder="Status" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos os status</SelectItem>
+                  <SelectItem value="high_risk" data-testid="filter-high-risk">Alto risco (&gt;70)</SelectItem>
+                  <SelectItem value="quente">Quente</SelectItem>
+                  {LEAD_STATUSES.filter((status) => status.value !== "quente").map((status) => (
+                    <SelectItem key={status.value} value={status.value}>{status.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
 
-            <Select value={maturityFilter} onValueChange={setMaturityFilter}>
-              <SelectTrigger className="w-full sm:w-52" data-testid="select-maturity-filter"><SelectValue placeholder="Maturidade IA" /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Toda maturidade</SelectItem>
-                <SelectItem value="1">✋ Manual, sem sistema</SelectItem>
-                <SelectItem value="2">⚙️ Tem sistema, sem IA</SelectItem>
-                <SelectItem value="3">🤖 Já usa IA/automação</SelectItem>
-                <SelectItem value="sem_resposta">Sem resposta</SelectItem>
-              </SelectContent>
-            </Select>
+              <Select value={responsavelFilter} onValueChange={(value) => { setResponsavelFilter(value); setPage(1); }}>
+                <SelectTrigger className="w-full sm:w-44" data-testid="select-responsavel-filter" aria-label="Responsável"><SelectValue placeholder="Responsável" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos os responsáveis</SelectItem>
+                  <SelectItem value="none">Sem responsável</SelectItem>
+                  {responsibleLegend.map((item) => <SelectItem key={item.userId} value={item.userId}>{item.name}</SelectItem>)}
+                </SelectContent>
+              </Select>
+
+              <Select value={maturityFilter} onValueChange={(value) => { setMaturityFilter(value); setPage(1); }}>
+                <SelectTrigger className="w-full sm:w-44" data-testid="select-maturity-filter" aria-label="Maturidade IA"><SelectValue placeholder="Maturidade IA" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Toda maturidade</SelectItem>
+                  <SelectItem value="1">✋ Manual, sem sistema</SelectItem>
+                  <SelectItem value="2">⚙️ Tem sistema, sem IA</SelectItem>
+                  <SelectItem value="3">🤖 Já usa IA/automação</SelectItem>
+                  <SelectItem value="sem_resposta">Sem resposta</SelectItem>
+                </SelectContent>
+              </Select>
+
+              {hasActiveFilters && (
+                <Button variant="ghost" size="sm" className="min-h-10 gap-1" onClick={clearFilters}>
+                  <X className="h-4 w-4" /> Limpar filtros
+                </Button>
+              )}
+
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="sm" className="min-h-10 gap-2"><Columns3 className="h-4 w-4" /> Colunas</Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuLabel>Colunas visíveis</DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  {OPTIONAL_COLUMNS.map((column) => (
+                    <DropdownMenuCheckboxItem key={column.key} checked={show(column.key)} onCheckedChange={() => toggleColumn(column.key)} onSelect={(event) => event.preventDefault()}>
+                      {column.label}
+                    </DropdownMenuCheckboxItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
           </div>
+
+          {responsibleLegend.length > 0 && (
+            <div className="flex flex-wrap items-center gap-2 border-b px-4 py-2" aria-label="Legenda de responsáveis">
+              <span className="text-xs font-medium text-muted-foreground">Responsáveis:</span>
+              {responsibleLegend.map((item) => {
+                const active = responsavelFilter === item.userId;
+                return (
+                  <button key={item.userId} type="button" aria-pressed={active}
+                    onClick={() => { setResponsavelFilter(active ? "all" : item.userId); setPage(1); }}
+                    title={active ? "Remover filtro" : `Mostrar apenas leads de ${item.name}`}
+                    className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition-colors ${active ? "bg-muted" : "bg-card hover:bg-muted/60"}`}
+                    style={active ? { borderColor: item.color } : undefined}>
+                    <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: item.color }} aria-hidden />
+                    {item.name} <span className="text-muted-foreground">{item.total}</span>
+                  </button>
+                );
+              })}
+              {pendingCounts.sem_responsavel > 0 && (
+                <button type="button" onClick={() => { setResponsavelFilter(responsavelFilter === "none" ? "all" : "none"); setPage(1); }}
+                  aria-pressed={responsavelFilter === "none"}
+                  className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium ${responsavelFilter === "none" ? "bg-muted" : "bg-card hover:bg-muted/60"}`}>
+                  <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: UNASSIGNED_COLOR }} aria-hidden />
+                  Sem responsável
+                </button>
+              )}
+            </div>
+          )}
 
           <CardContent className="p-0">
             <div className="md:hidden divide-y">
@@ -988,18 +1247,19 @@ export default function Leads() {
                     <div className="h-3 bg-muted rounded w-1/2" />
                   </div>
                 ))
-              ) : filteredLeads.length === 0 ? (
+              ) : visibleLeads.length === 0 ? (
                 <p className="p-8 text-center text-sm text-muted-foreground">
                   {leads?.length === 0 ? "Nenhum lead cadastrado ainda." : "Nenhum resultado para os filtros aplicados."}
                 </p>
               ) : (
-                filteredLeads.map((lead) => {
+                pagedLeads.map((lead) => {
                   const ci = ciMap.get(lead.id);
                   const isHighRisk = typeof ci?.churnRisk === "number" && ci.churnRisk > 70;
                   return (
                     <div
                       key={lead.id}
-                      className={`flex items-center gap-2 p-4 cursor-pointer hover:bg-muted/50 active:bg-muted/80 transition-colors min-h-[72px] ${isHighRisk ? "border-l-4 border-l-red-500" : ""}`}
+                      className="flex items-center gap-2 border-l-4 p-4 cursor-pointer hover:bg-muted/50 active:bg-muted/80 transition-colors min-h-[72px]"
+                      style={{ borderLeftColor: responsavelColor(lead.assignedTo, userColors) }}
                       onClick={() => setLocation(`/leads/${lead.id}`)}
                       data-testid={`row-lead-${lead.id}`}
                     >
@@ -1009,9 +1269,20 @@ export default function Leads() {
                           <p className="font-medium text-sm truncate">{lead.nome}</p>
                         </div>
                         {lead.empresa && <p className="text-xs text-muted-foreground truncate">{lead.empresa}</p>}
+                        {(() => {
+                          const action = nextActions[lead.id];
+                          if (!action) return <p className="text-xs text-amber-700">Sem próxima ação</p>;
+                          const overdue = isOverdue(action, now);
+                          return <p className={`text-xs truncate ${overdue ? "text-red-600 font-medium" : "text-muted-foreground"}`}>{action.titulo} · {formatDue(action.dataVencimento, now)}</p>;
+                        })()}
                         <div><EditableSegmentBadge lead={lead} /></div>
                         <div className="flex items-center gap-1.5">
-                          {lead.assignedTo && userMap.get(lead.assignedTo) && <p className="text-xs text-muted-foreground truncate">👤 {userMap.get(lead.assignedTo)}</p>}
+                          {lead.assignedTo && userMap.get(lead.assignedTo) && (
+                            <p className="flex items-center gap-1 text-xs text-muted-foreground truncate">
+                              <span className="h-2 w-2 rounded-full" style={{ backgroundColor: responsavelColor(lead.assignedTo, userColors) }} aria-hidden />
+                              {userMap.get(lead.assignedTo)}
+                            </p>
+                          )}
                           {(lead as typeof lead & { representativeFunctionId?: string | null }).representativeFunctionId && <p className="text-xs text-muted-foreground truncate">🏢 Empresa representante</p>}
                           {isAdmin && (
                             <button
@@ -1069,147 +1340,192 @@ export default function Leads() {
               )}
             </div>
 
-            <div className="hidden md:block max-h-[calc(100dvh-22rem)] min-h-[320px] overflow-auto overscroll-contain">
+            <div className="hidden md:block max-h-[calc(100dvh-24rem)] min-h-[320px] overflow-auto overscroll-contain">
               <TooltipProvider delayDuration={300}>
                 <Table>
-                  <TableHeader className="sticky top-0 z-10 bg-background shadow-[0_1px_0_hsl(var(--border))]">
+                  <TableHeader className="sticky top-0 z-10 bg-muted/60 backdrop-blur shadow-[0_1px_0_hsl(var(--border))]">
                     <TableRow>
-                      <TableHead>Nome</TableHead>
-                      <TableHead>Empresa</TableHead>
-                      <TableHead>Segmento</TableHead>
-                      <TableHead>Telefone</TableHead>
-                      <TableHead>Status do contato</TableHead>
-                      <TableHead title="Um contato pode ter vários negócios simultâneos, e cada negócio pode ter vários processos operacionais.">Negócios / processos ativos</TableHead>
-                      <TableHead>Responsável</TableHead>
-                      <TableHead className="text-right" title="Maior valor de orçamento registrado para este contato.">
-                        <button
-                          type="button"
-                          data-testid="sort-largest-budget"
-                          onClick={toggleBudgetSort}
-                          className="flex w-full items-center justify-end gap-1 hover:text-foreground transition-colors"
-                          aria-label="Ordenar por maior orçamento"
-                          title={budgetSort === "desc" ? "Ordenado do maior para o menor" : budgetSort === "asc" ? "Ordenado do menor para o maior" : "Ordenar por orçamento"}
-                        >
-                          Maior orçamento
-                          {budgetSort === "desc" ? (
-                            <ArrowDown className="h-3.5 w-3.5" />
-                          ) : budgetSort === "asc" ? (
-                            <ArrowUp className="h-3.5 w-3.5" />
-                          ) : (
-                            <ArrowUpDown className="h-3.5 w-3.5 opacity-40" />
-                          )}
-                        </button>
-                      </TableHead>
-                      <TableHead>
-                        <button
-                          data-testid="sort-churn-risk"
-                          onClick={toggleChurnSort}
-                          className="flex items-center gap-1 hover:text-foreground transition-colors"
-                        >
-                          Churn Risk
-                          {churnSort === "desc" ? (
-                            <ArrowDown className="h-3.5 w-3.5" />
-                          ) : churnSort === "asc" ? (
-                            <ArrowUp className="h-3.5 w-3.5" />
-                          ) : (
-                            <ArrowUpDown className="h-3.5 w-3.5 opacity-40" />
-                          )}
-                        </button>
-                      </TableHead>
-                      <TableHead className="w-24 text-right">Ações</TableHead>
+                      <TableHead className="min-w-[260px] font-semibold text-foreground">Contato</TableHead>
+                      {show("status") && <TableHead className="font-semibold text-foreground">Status</TableHead>}
+                      {show("segmento") && <TableHead className="font-semibold text-foreground">Segmento</TableHead>}
+                      {show("negocios") && <TableHead className="font-semibold text-foreground" title="Cada contato pode ter vários negócios simultâneos. Clique em um negócio para abri-lo.">Negócios ativos</TableHead>}
+                      {show("responsavel") && <TableHead className="font-semibold text-foreground">Responsável</TableHead>}
+                      {show("proxima") && <TableHead className="font-semibold text-foreground">Próxima ação</TableHead>}
+                      {show("valor") && (
+                        <TableHead className="text-right font-semibold text-foreground" title="Maior valor de orçamento registrado para este contato.">
+                          <button type="button" data-testid="sort-largest-budget" onClick={toggleBudgetSort}
+                            className="flex w-full items-center justify-end gap-1 hover:text-primary transition-colors"
+                            aria-label="Ordenar por valor em aberto">
+                            Valor em aberto
+                            {budgetSort === "desc" ? <ArrowDown className="h-3.5 w-3.5" /> : budgetSort === "asc" ? <ArrowUp className="h-3.5 w-3.5" /> : <ArrowUpDown className="h-3.5 w-3.5 opacity-40" />}
+                          </button>
+                        </TableHead>
+                      )}
+                      {show("risco") && (
+                        <TableHead className="font-semibold text-foreground">
+                          <button type="button" data-testid="sort-churn-risk" onClick={toggleChurnSort} className="flex items-center gap-1 hover:text-primary transition-colors">
+                            Risco de churn
+                            {churnSort === "desc" ? <ArrowDown className="h-3.5 w-3.5" /> : churnSort === "asc" ? <ArrowUp className="h-3.5 w-3.5" /> : <ArrowUpDown className="h-3.5 w-3.5 opacity-40" />}
+                          </button>
+                        </TableHead>
+                      )}
+                      <TableHead className="w-32 text-right font-semibold text-foreground">Ações</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {leadsLoading ? (
                       Array.from({ length: 5 }).map((_, rowIndex) => (
                         <TableRow key={rowIndex}>
-                          {Array.from({ length: 10 }).map((__, columnIndex) => (
+                          {Array.from({ length: 7 }).map((__, columnIndex) => (
                             <TableCell key={columnIndex}><div className="h-4 bg-muted animate-pulse rounded w-full max-w-[120px]" /></TableCell>
                           ))}
                         </TableRow>
                       ))
-                    ) : filteredLeads.length === 0 ? (
+                    ) : visibleLeads.length === 0 ? (
                       <TableRow>
                         <TableCell colSpan={10} className="text-center py-12 text-muted-foreground">
                           {leads?.length === 0 ? "Nenhum lead cadastrado ainda." : "Nenhum resultado para os filtros aplicados."}
                         </TableCell>
                       </TableRow>
                     ) : (
-                      filteredLeads.map((lead) => {
+                      pagedLeads.map((lead) => {
                         const ci = ciMap.get(lead.id);
                         const isHighRisk = typeof ci?.churnRisk === "number" && ci.churnRisk > 70;
+                        const ownerColor = responsavelColor(lead.assignedTo, userColors);
+                        const ownerName = lead.assignedTo ? userMap.get(lead.assignedTo) ?? "Usuário" : null;
+                        const isRepresentative = !lead.assignedTo && !!(lead as typeof lead & { representativeFunctionId?: string | null }).representativeFunctionId;
+                        const action = nextActions[lead.id];
+                        const overdue = isOverdue(action, now);
+                        const ActionIcon = overdue ? AlertCircle : action ? nextActionIcon(action.tipo) : ClipboardList;
+                        const whatsapp = whatsappHref(lead.telefone);
                         return (
                           <TableRow
                             key={lead.id}
-                            className={`cursor-pointer hover:bg-muted/50 ${isHighRisk ? "border-l-4 border-l-red-500" : ""}`}
+                            className="cursor-pointer hover:bg-muted/40"
                             onClick={() => setLocation(`/leads/${lead.id}`)}
                             data-testid={`row-lead-${lead.id}`}
                           >
-                            <TableCell className="font-medium">
-                              <span className="flex items-center gap-1.5">
-                                {isHighRisk && <AlertTriangle className="h-3.5 w-3.5 text-red-500 shrink-0" />}
-                                {lead.nome}
-                              </span>
+                            <TableCell className="border-l-4 py-3" style={{ borderLeftColor: ownerColor }}>
+                              <div className="flex items-center gap-3">
+                                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-sm font-semibold"
+                                  style={{ backgroundColor: `${ownerColor}1A`, color: ownerColor }} aria-hidden>
+                                  {initials(lead.nome)}
+                                </span>
+                                <div className="min-w-0">
+                                  <p className="flex items-center gap-1.5 font-semibold text-foreground">
+                                    {isHighRisk && <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-red-500" aria-label="Alto risco de churn" />}
+                                    <span className="truncate">{lead.nome}</span>
+                                  </p>
+                                  <p className="flex flex-wrap items-center gap-x-3 text-xs text-muted-foreground">
+                                    {lead.empresa && <span className="truncate max-w-[160px]">{lead.empresa}</span>}
+                                    {lead.telefone && (
+                                      whatsapp ? (
+                                        <a href={whatsapp} target="_blank" rel="noreferrer" onClick={(event) => event.stopPropagation()}
+                                          className="inline-flex items-center gap-1 hover:text-emerald-700" title="Abrir conversa no WhatsApp">
+                                          <MessageCircle className="h-3.5 w-3.5 text-emerald-600" /> {lead.telefone}
+                                        </a>
+                                      ) : <span>{lead.telefone}</span>
+                                    )}
+                                  </p>
+                                </div>
+                              </div>
                             </TableCell>
-                            <TableCell className="text-muted-foreground">{lead.empresa || "—"}</TableCell>
-                            <TableCell className="min-w-[150px] max-w-[240px]"><EditableSegmentBadge lead={lead} /></TableCell>
-                            <TableCell className="text-muted-foreground font-mono text-sm">{lead.telefone || "—"}</TableCell>
-                            <TableCell>
-                              <Badge variant="outline" className={STATUS_STYLES[lead.status] ?? ""}>
-                                {LEAD_STATUSES.find((status) => status.value === lead.status)?.label ?? lead.status}
-                              </Badge>
-                            </TableCell>
-                            <TableCell className="min-w-[240px]">
-                              <ActiveLeadProcesses
-                                processes={overview?.activeProcessesByLeadId?.[lead.id]}
-                                workCards={activeWorkCards}
-                                onOpenDeal={(dealId) => setLocation(`/trabalho/${lead.id}?dealId=${encodeURIComponent(dealId)}`)}
-                              />
-                            </TableCell>
-                            <TableCell className="text-sm text-muted-foreground">
-                              <span className="flex items-center gap-2">
-                                <span>{lead.assignedTo ? userMap.get(lead.assignedTo) ?? "—" : (lead as typeof lead & { representativeFunctionId?: string | null }).representativeFunctionId ? "Empresa representante" : "—"}</span>
-                                {isAdmin && (
-                                  <button
-                                    title="Atribuir responsável"
-                                    className="text-muted-foreground/50 hover:text-primary transition-colors shrink-0"
-                                    onClick={(event) => {
-                                      event.stopPropagation();
-                                      setAssignSelectedUser(lead.assignedTo ?? "");
-                                      setAssignDialog({ open: true, leadId: lead.id, currentAssignedTo: lead.assignedTo ?? null });
-                                    }}
-                                  >
-                                    <UserRound className="h-3.5 w-3.5" />
+                            {show("status") && (
+                              <TableCell>
+                                <Badge variant="outline" className={STATUS_STYLES[lead.status] ?? ""}>
+                                  {LEAD_STATUSES.find((status) => status.value === lead.status)?.label ?? lead.status}
+                                </Badge>
+                              </TableCell>
+                            )}
+                            {show("segmento") && <TableCell className="min-w-[150px] max-w-[240px]"><EditableSegmentBadge lead={lead} /></TableCell>}
+                            {show("negocios") && (
+                              <TableCell className="min-w-[200px]">
+                                <Suspense fallback={null}>
+                                  <ActiveLeadProcesses
+                                    processes={overview?.activeProcessesByLeadId?.[lead.id]}
+                                    workCards={activeWorkCards}
+                                    onOpenDeal={(dealId) => setLocation(`/trabalho/${lead.id}?dealId=${encodeURIComponent(dealId)}`)}
+                                  />
+                                </Suspense>
+                              </TableCell>
+                            )}
+                            {show("responsavel") && (
+                              <TableCell className="text-sm">
+                                {ownerName ? (
+                                  <button type="button" disabled={!isAdmin}
+                                    onClick={(event) => { event.stopPropagation(); if (isAdmin) openAssign(lead); }}
+                                    title={isAdmin ? "Trocar responsável" : ownerName}
+                                    className="flex items-center gap-2 rounded-md text-left enabled:hover:text-primary">
+                                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-semibold text-white" style={{ backgroundColor: ownerColor }} aria-hidden>
+                                      {initials(ownerName)}
+                                    </span>
+                                    <span className="truncate max-w-[120px]">{ownerName}</span>
+                                  </button>
+                                ) : isRepresentative ? (
+                                  <span className="text-muted-foreground">Empresa representante</span>
+                                ) : isAdmin ? (
+                                  <button type="button" onClick={(event) => { event.stopPropagation(); openAssign(lead); }}
+                                    className="flex items-center gap-2 text-left font-medium text-orange-600 hover:text-orange-700">
+                                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-dashed" style={{ borderColor: UNASSIGNED_COLOR }}>
+                                      <UserRound className="h-4 w-4 text-muted-foreground" />
+                                    </span>
+                                    Atribuir responsável
+                                  </button>
+                                ) : (
+                                  <span className="text-muted-foreground">Sem responsável</span>
+                                )}
+                              </TableCell>
+                            )}
+                            {show("proxima") && (
+                              <TableCell className="min-w-[170px]">
+                                {action ? (
+                                  <div className="flex items-start gap-2" title={action.pendentes > 1 ? `${action.pendentes} ações pendentes` : undefined}>
+                                    <ActionIcon className={`mt-0.5 h-4 w-4 shrink-0 ${overdue ? "text-red-600" : "text-primary"}`} />
+                                    <div className="min-w-0">
+                                      <p className={`truncate text-sm font-medium ${overdue ? "text-red-600" : "text-foreground"}`}>{action.titulo}</p>
+                                      <p className={`text-xs ${overdue ? "text-red-600" : "text-muted-foreground"}`}>{formatDue(action.dataVencimento, now)}</p>
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <button type="button" onClick={(event) => { event.stopPropagation(); openNextAction(lead); }}
+                                    className="flex items-center gap-2 text-sm text-muted-foreground hover:text-primary">
+                                    <ClipboardList className="h-4 w-4" /> Definir próxima ação
                                   </button>
                                 )}
-                              </span>
-                            </TableCell>
-                            <TableCell className="text-right font-mono text-sm text-emerald-700">{formatCurrency(leadValorMap.get(lead.id)) || "—"}</TableCell>
+                              </TableCell>
+                            )}
+                            {show("valor") && <TableCell className="text-right font-mono text-sm">{formatCurrency(leadValorMap.get(lead.id)) || "—"}</TableCell>}
+                            {show("risco") && (
+                              <TableCell>
+                                <span className="flex items-center gap-1">
+                                  <BriefingBadge briefing={briefingMap.get(lead.id)} />
+                                  {churnBadge(ci?.churnRisk, ci?.churnReasons)}
+                                </span>
+                              </TableCell>
+                            )}
                             <TableCell>
-                              <span className="flex items-center gap-1">
-                                <BriefingBadge briefing={briefingMap.get(lead.id)} />
-                                {churnBadge(ci?.churnRisk, ci?.churnReasons)}
-                              </span>
-                            </TableCell>
-                            <TableCell>
-                              <span className="flex items-center justify-end gap-1">
+                              <span className="flex items-center justify-end gap-1" onClick={(event) => event.stopPropagation()}>
+                                <Button variant="ghost" size="sm" className="font-semibold text-primary" onClick={() => setLocation(`/leads/${lead.id}`)}>Abrir</Button>
                                 <Suspense fallback={null}><LeadQuickEditButton lead={lead} isAdmin={isAdmin} compact /></Suspense>
-                                {isAdmin && (
-                                  <button
-                                    type="button"
-                                    title="Excluir lead"
-                                    aria-label={`Excluir ${lead.nome}`}
-                                    className="p-2 rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10"
-                                    disabled={deleteLead.isPending}
-                                    onClick={(event) => {
-                                      event.stopPropagation();
-                                      confirmDeleteLead(lead);
-                                    }}
-                                  >
-                                    <Trash2 className="h-4 w-4" />
-                                  </button>
-                                )}
-                                <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                                <DropdownMenu>
+                                  <DropdownMenuTrigger asChild>
+                                    <Button variant="ghost" size="icon" className="h-8 w-8" aria-label={`Mais opções para ${lead.nome}`}><MoreHorizontal className="h-4 w-4" /></Button>
+                                  </DropdownMenuTrigger>
+                                  <DropdownMenuContent align="end">
+                                    <DropdownMenuItem onSelect={() => setLocation(`/leads/${lead.id}`)}>Abrir cadastro</DropdownMenuItem>
+                                    {whatsapp && <DropdownMenuItem onSelect={() => window.open(whatsapp, "_blank", "noopener")}>Conversar no WhatsApp</DropdownMenuItem>}
+                                    <DropdownMenuItem onSelect={() => openNextAction(lead)}>Definir próxima ação</DropdownMenuItem>
+                                    {isAdmin && <DropdownMenuItem onSelect={() => openAssign(lead)}>{lead.assignedTo ? "Trocar responsável" : "Atribuir responsável"}</DropdownMenuItem>}
+                                    {isAdmin && (
+                                      <>
+                                        <DropdownMenuSeparator />
+                                        <DropdownMenuItem className="text-destructive focus:text-destructive" disabled={deleteLead.isPending} onSelect={() => confirmDeleteLead(lead)}>
+                                          <Trash2 className="mr-2 h-4 w-4" /> Excluir lead
+                                        </DropdownMenuItem>
+                                      </>
+                                    )}
+                                  </DropdownMenuContent>
+                                </DropdownMenu>
                               </span>
                             </TableCell>
                           </TableRow>
@@ -1219,6 +1535,16 @@ export default function Leads() {
                   </TableBody>
                 </Table>
               </TooltipProvider>
+            </div>
+            <div className="flex items-center justify-between gap-3 border-t px-4 py-3 text-sm text-muted-foreground">
+              <span>{visibleLeads.length} {visibleLeads.length === 1 ? "contato" : "contatos"}</span>
+              {pageCount > 1 && (
+                <div className="flex items-center gap-2">
+                  <Button variant="outline" size="icon" className="h-8 w-8" aria-label="Página anterior" disabled={currentPage <= 1} onClick={() => setPage(currentPage - 1)}><ChevronLeft className="h-4 w-4" /></Button>
+                  <span className="min-w-[64px] text-center">{currentPage} de {pageCount}</span>
+                  <Button variant="outline" size="icon" className="h-8 w-8" aria-label="Próxima página" disabled={currentPage >= pageCount} onClick={() => setPage(currentPage + 1)}><ChevronRight className="h-4 w-4" /></Button>
+                </div>
+              )}
             </div>
           </CardContent>
         </Card>
@@ -1253,6 +1579,7 @@ export default function Leads() {
                     {
                       onSuccess: () => {
                         queryClient.invalidateQueries({ queryKey: getListTenantLeadsQueryKey(tenantId) });
+                        queryClient.invalidateQueries({ queryKey: ["leads-overview-context", tenantId] });
                         toast({ title: "Responsável atribuído com sucesso." });
                         setAssignDialog({ open: false, leadId: "", currentAssignedTo: null });
                       },
@@ -1265,6 +1592,34 @@ export default function Leads() {
               </Button>
             </div>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!nextActionDialog.lead} onOpenChange={(open) => !open && setNextActionDialog({ lead: null, tipo: "tarefa", titulo: "", data: "" })}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader><DialogTitle className="flex items-center gap-2"><ClipboardList className="h-4 w-4" /> Definir próxima ação</DialogTitle></DialogHeader>
+          <form
+            className="space-y-3 pt-1"
+            onSubmit={(event) => { event.preventDefault(); if (nextActionDialog.titulo.trim()) createNextAction.mutate(); }}
+          >
+            <p className="text-sm text-muted-foreground">{nextActionDialog.lead?.nome}</p>
+            <Select value={nextActionDialog.tipo} onValueChange={(tipo) => setNextActionDialog((current) => ({ ...current, tipo }))}>
+              <SelectTrigger aria-label="Tipo da ação"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {NEXT_ACTION_TYPES.map((type) => <SelectItem key={type.value} value={type.value}>{type.label}</SelectItem>)}
+              </SelectContent>
+            </Select>
+            <Input autoFocus required aria-label="Descrição da ação" placeholder="Ex: enviar proposta, retornar ligação..."
+              value={nextActionDialog.titulo} onChange={(event) => setNextActionDialog((current) => ({ ...current, titulo: event.target.value }))} />
+            <Input type="datetime-local" aria-label="Data e horário"
+              value={nextActionDialog.data} onChange={(event) => setNextActionDialog((current) => ({ ...current, data: event.target.value }))} />
+            <div className="flex gap-2 justify-end">
+              <Button type="button" variant="outline" size="sm" onClick={() => setNextActionDialog({ lead: null, tipo: "tarefa", titulo: "", data: "" })}>Cancelar</Button>
+              <Button type="submit" size="sm" disabled={createNextAction.isPending || !nextActionDialog.titulo.trim()}>
+                {createNextAction.isPending ? "Salvando..." : "Salvar"}
+              </Button>
+            </div>
+          </form>
         </DialogContent>
       </Dialog>
 
