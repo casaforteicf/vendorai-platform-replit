@@ -708,7 +708,7 @@ export default function Configuracoes({ embedded = false, forcedTab }: { embedde
   }
 
   // ── Business Profile ───────────────────────────────────────────────────────
-  const profileQuery   = useGetBusinessProfileByTenant(tenantId, { query: { queryKey: getGetBusinessProfileByTenantQueryKey(tenantId), enabled: !!tenantId, retry: false } });
+  const profileQuery   = useGetBusinessProfileByTenant(tenantId, { query: { queryKey: getGetBusinessProfileByTenantQueryKey(tenantId), enabled: !!tenantId, retry: 2, retryDelay: (attempt) => Math.min(1000 * (attempt + 1), 3000) } });
   const createProfile  = useCreateBusinessProfile();
   const updateProfile  = useUpdateBusinessProfile();
 
