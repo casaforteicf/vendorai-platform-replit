@@ -215,7 +215,7 @@ function FacadeStylePreview({ style }: { style: ConceptFacadePreferences["style"
         {classic && <div className="absolute inset-x-[18%] top-0 h-2 rounded-full bg-stone-400" />}
         {rustic && <div className="absolute inset-y-0 left-[34%] w-[18%]" style={{ backgroundImage: "repeating-linear-gradient(135deg,#8b735f 0 3px,#b5a18e 3px 6px)" }} />}
       </div>
-      <div className={`absolute left-[7%] right-[7%] top-5 h-1.5 ${industrial ? "bg-zinc-700" : minimal ? "bg-slate-300" : classic ? "bg-stone-400" : "bg-orange-400/80"}`} />
+      <div className={`absolute left-[7%] right-[7%] top-5 h-1.5 ${industrial ? "bg-zinc-700" : minimal ? "bg-slate-300" : classic ? "bg-stone-400" : "bg-blue-400/80"}`} />
       {(tropical || rustic) && (
         <>
           <div className="absolute bottom-2 left-[3%] h-7 w-10 rounded-full bg-emerald-600/60" />
@@ -314,7 +314,7 @@ function FacadePresetThumbnail({ kind }: { kind: FacadeVolumeKind }) {
   }
 
   return (
-    <div className="relative h-14 w-full rounded-lg bg-gradient-to-br from-slate-50 to-orange-50">
+    <div className="relative h-14 w-full rounded-lg bg-gradient-to-br from-slate-50 to-blue-50">
       <div className={`absolute bottom-2 left-5 right-5 top-3 rounded-md shadow-sm ${light}`} />
       <div className={`absolute bottom-2 left-5 h-8 w-2 rounded-sm ${dark}`} />
       <div className={`absolute right-6 top-5 h-5 w-8 rounded-sm ${warm}`} />
@@ -580,7 +580,7 @@ export default function ConceptFacadeEditor({
         </button>
 
         <div className="absolute left-4 top-3 z-10 flex items-center gap-2">
-          <span className="rounded-full bg-orange-50 px-2 py-1 text-[9px] font-bold uppercase tracking-[0.12em] text-orange-600">
+          <span className="rounded-full bg-blue-50 px-2 py-1 text-[9px] font-bold uppercase tracking-[0.12em] text-blue-600">
             Configurador de fachada
           </span>
         </div>
@@ -598,7 +598,7 @@ export default function ConceptFacadeEditor({
                   key={preset.kind}
                   type="button"
                   onClick={() => addVolume(preset.kind)}
-                  className="rounded-xl border bg-white p-3 text-left transition hover:border-orange-300 hover:bg-orange-50/40"
+                  className="rounded-xl border bg-white p-3 text-left transition hover:border-blue-300 hover:bg-blue-50/40"
                 >
                   <FacadePresetThumbnail kind={preset.kind} />
                   <div className="mt-2 text-xs font-semibold">{preset.label}</div>
@@ -619,7 +619,7 @@ export default function ConceptFacadeEditor({
                       type="button"
                       onClick={() => setSelectedVolumeId(volume.id)}
                       className={selectedVolumeId === volume.id
-                        ? "flex w-full items-center justify-between rounded-lg border border-orange-400 bg-orange-50 px-3 py-2 text-left"
+                        ? "flex w-full items-center justify-between rounded-lg border border-blue-400 bg-blue-50 px-3 py-2 text-left"
                         : "flex w-full items-center justify-between rounded-lg border px-3 py-2 text-left hover:bg-slate-50"}
                     >
                       <span>
@@ -688,7 +688,7 @@ export default function ConceptFacadeEditor({
                 type="button"
                 onClick={() => void runFacadeStudy("develop")}
                 disabled={!resolvedConceptProjectId || aiBusy}
-                className="flex w-full items-center justify-center gap-2 rounded-xl bg-orange-500 px-3 py-3 text-xs font-bold text-white shadow-sm disabled:opacity-50"
+                className="flex w-full items-center justify-center gap-2 rounded-xl bg-blue-500 px-3 py-3 text-xs font-bold text-white shadow-sm disabled:opacity-50"
               >
                 {aiBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <WandSparkles className="h-4 w-4" />}
                 2. Desenvolver proposta de fachada
@@ -731,12 +731,12 @@ export default function ConceptFacadeEditor({
             )}
 
             {aiResult?.concept && (
-              <div className="mt-3 rounded-xl border border-orange-200 bg-orange-50 p-3">
-                <div className="text-[10px] font-bold uppercase tracking-[0.12em] text-orange-700">
+              <div className="mt-3 rounded-xl border border-blue-200 bg-blue-50 p-3">
+                <div className="text-[10px] font-bold uppercase tracking-[0.12em] text-blue-700">
                   {aiResult.concept.title || "Proposta de fachada"}
                 </div>
                 {aiResult.concept.architecturalDirection && (
-                  <p className="mt-1 text-[10px] leading-4 text-orange-950">{aiResult.concept.architecturalDirection}</p>
+                  <p className="mt-1 text-[10px] leading-4 text-blue-950">{aiResult.concept.architecturalDirection}</p>
                 )}
                 <div className="mt-2 space-y-1 text-[10px] leading-4 text-slate-700">
                   {aiResult.concept.entryStrategy && <div><b>Entrada:</b> {aiResult.concept.entryStrategy}</div>}
@@ -763,7 +763,7 @@ export default function ConceptFacadeEditor({
               <button
                 type="button"
                 onClick={applyFacadeStudy}
-                className="mt-3 w-full rounded-xl border border-orange-300 bg-white px-3 py-3 text-[11px] font-bold text-orange-700"
+                className="mt-3 w-full rounded-xl border border-blue-300 bg-white px-3 py-3 text-[11px] font-bold text-blue-700"
               >
                 3. Aplicar proposta ao projeto
               </button>
@@ -800,7 +800,7 @@ export default function ConceptFacadeEditor({
                   type="button"
                   onClick={() => setSelectedSurface(surface)}
                   className={selectedSurface === surface
-                    ? "rounded-lg border border-orange-400 bg-orange-50 px-2.5 py-2 text-left text-[11px] font-semibold text-orange-800"
+                    ? "rounded-lg border border-blue-400 bg-blue-50 px-2.5 py-2 text-left text-[11px] font-semibold text-blue-800"
                     : "rounded-lg border px-2.5 py-2 text-left text-[11px] font-semibold text-slate-600"}
                 >
                   {label}
@@ -817,7 +817,7 @@ export default function ConceptFacadeEditor({
                     type="button"
                     onClick={() => setSurfaceMaterial(material.id)}
                     className={active
-                      ? "overflow-hidden rounded-xl border-2 border-orange-500 bg-white text-left"
+                      ? "overflow-hidden rounded-xl border-2 border-blue-500 bg-white text-left"
                       : "overflow-hidden rounded-xl border bg-white text-left hover:border-slate-300"}
                   >
                     <div
@@ -863,7 +863,7 @@ export default function ConceptFacadeEditor({
                     setSelectedSurface("frames");
                   }}
                   className={facade.frameTone === value
-                    ? "rounded-xl border-2 border-orange-500 bg-orange-50 p-2 text-center"
+                    ? "rounded-xl border-2 border-blue-500 bg-blue-50 p-2 text-center"
                     : "rounded-xl border bg-white p-2 text-center hover:border-slate-300"}
                 >
                   <span className="mx-auto block h-10 w-full rounded-lg border" style={{ backgroundColor: swatch }} />
@@ -881,7 +881,7 @@ export default function ConceptFacadeEditor({
                   setSelectedSurface("frames");
                   setPanel("materials");
                 }}
-                className="mt-3 w-full rounded-lg border bg-white px-3 py-2 text-[11px] font-bold text-slate-700 hover:border-orange-300"
+                className="mt-3 w-full rounded-lg border bg-white px-3 py-2 text-[11px] font-bold text-slate-700 hover:border-blue-300"
               >
                 Escolher material dos perfis
               </button>
@@ -896,10 +896,10 @@ export default function ConceptFacadeEditor({
               Complete a fachada com jardim, muro, portão, pergolado e elementos externos.
             </p>
 
-            <div className="mt-4 overflow-hidden rounded-2xl border border-orange-200 bg-gradient-to-br from-orange-50 to-white">
-              <div className="border-b border-orange-100 p-3">
+            <div className="mt-4 overflow-hidden rounded-2xl border border-blue-200 bg-gradient-to-br from-blue-50 to-white">
+              <div className="border-b border-blue-100 p-3">
                 <div className="flex items-center justify-between gap-2">
-                  <div className="text-[10px] font-bold uppercase tracking-[0.12em] text-orange-600">Implantação vinculada</div>
+                  <div className="text-[10px] font-bold uppercase tracking-[0.12em] text-blue-600">Implantação vinculada</div>
                   <span className={siteSynced ? "rounded-full bg-emerald-100 px-2 py-1 text-[9px] font-bold text-emerald-700" : "rounded-full bg-slate-100 px-2 py-1 text-[9px] font-bold text-slate-600"}>
                     {siteSynced ? "Sincronizada" : "Pendente"}
                   </span>
@@ -957,7 +957,7 @@ export default function ConceptFacadeEditor({
                     key={preset.kind}
                     type="button"
                     onClick={() => addVolume(preset.kind)}
-                    className="overflow-hidden rounded-xl border bg-white text-left hover:border-orange-300 hover:shadow-sm"
+                    className="overflow-hidden rounded-xl border bg-white text-left hover:border-blue-300 hover:shadow-sm"
                   >
                     <FacadePresetThumbnail kind={preset.kind} />
                     <div className="p-2.5">
@@ -981,7 +981,7 @@ export default function ConceptFacadeEditor({
                     type="button"
                     onClick={() => onFacadeChange({ ...facade, landscaping: value })}
                     className={facade.landscaping === value
-                      ? "rounded-lg border border-orange-400 bg-orange-50 px-2 py-2 text-[10px] font-semibold text-orange-800"
+                      ? "rounded-lg border border-blue-400 bg-blue-50 px-2 py-2 text-[10px] font-semibold text-blue-800"
                       : "rounded-lg border px-2 py-2 text-[10px] font-semibold text-slate-600"}
                   >
                     {label}
@@ -1010,11 +1010,11 @@ export default function ConceptFacadeEditor({
                   type="button"
                   onClick={() => updateDesign({ lighting: value })}
                   className={design.lighting === value
-                    ? "w-full rounded-xl border-2 border-orange-500 bg-orange-50 p-3 text-left"
+                    ? "w-full rounded-xl border-2 border-blue-500 bg-blue-50 p-3 text-left"
                     : "w-full rounded-xl border bg-white p-3 text-left hover:border-slate-300"}
                 >
                   <div className="flex items-center gap-2">
-                    <Sun className="h-4 w-4 text-orange-500" />
+                    <Sun className="h-4 w-4 text-blue-500" />
                     <span className="text-xs font-bold text-slate-800">{label}</span>
                   </div>
                   <div className="mt-1 text-[10px] leading-4 text-slate-500">{helper}</div>
@@ -1027,7 +1027,7 @@ export default function ConceptFacadeEditor({
                 type="button"
                 onClick={onOpenRender}
               disabled={realisticPreviewLoading || !onOpenRender}
-                className="mt-5 flex w-full items-center justify-center gap-2 rounded-xl bg-orange-500 px-4 py-3 text-sm font-semibold text-white"
+                className="mt-5 flex w-full items-center justify-center gap-2 rounded-xl bg-blue-500 px-4 py-3 text-sm font-semibold text-white"
               >
                 <Sparkles className="h-4 w-4" />
                 Gerar imagem realista
@@ -1064,7 +1064,7 @@ export default function ConceptFacadeEditor({
                     onDesignChange(next.design);
                   }}
                   className={facade.style === value
-                    ? "w-[76%] shrink-0 snap-center overflow-hidden rounded-2xl border-2 border-orange-500 bg-orange-50 text-left shadow-sm md:w-auto"
+                    ? "w-[76%] shrink-0 snap-center overflow-hidden rounded-2xl border-2 border-blue-500 bg-blue-50 text-left shadow-sm md:w-auto"
                     : "w-[76%] shrink-0 snap-center overflow-hidden rounded-2xl border bg-white text-left hover:border-slate-300 hover:shadow-sm md:w-auto"}
                 >
                   <div className="h-24 w-full overflow-hidden bg-slate-50" aria-hidden="true">
@@ -1088,7 +1088,7 @@ export default function ConceptFacadeEditor({
                     <div className="text-[9px] font-bold uppercase tracking-[0.12em] text-slate-400">Opção {String(index + 1).padStart(2, "0")}</div>
                     <div className="mt-0.5 text-[11px] font-bold text-slate-800">{label}</div>
                     <div className="mt-1 min-h-[32px] text-[9px] leading-4 text-slate-500">{STYLE_DESCRIPTIONS[value]}</div>
-                    <div className={facade.style === value ? "mt-2 text-[9px] font-bold text-orange-600" : "mt-2 text-[9px] font-bold text-slate-400"}>
+                    <div className={facade.style === value ? "mt-2 text-[9px] font-bold text-blue-600" : "mt-2 text-[9px] font-bold text-slate-400"}>
                       {facade.style === value ? "Opção em estudo" : "Comparar esta opção"}
                     </div>
                   </div>
@@ -1109,7 +1109,7 @@ export default function ConceptFacadeEditor({
                     type="button"
                     onClick={() => onFacadeChange({ ...facade, roof: value })}
                     className={facade.roof === value
-                      ? "rounded-lg border border-orange-400 bg-orange-50 px-2 py-2 text-[10px] font-semibold text-orange-800"
+                      ? "rounded-lg border border-blue-400 bg-blue-50 px-2 py-2 text-[10px] font-semibold text-blue-800"
                       : "rounded-lg border px-2 py-2 text-[10px] font-semibold text-slate-600"}
                   >
                     {label}
@@ -1314,7 +1314,7 @@ export default function ConceptFacadeEditor({
           </div>
 
           <div className="absolute right-4 top-16 z-20 flex items-center gap-2 rounded-xl border bg-white/95 px-3 py-2 shadow-sm backdrop-blur md:top-4">
-            <Sun className="h-4 w-4 text-orange-500" />
+            <Sun className="h-4 w-4 text-blue-500" />
             <span className="text-xs font-semibold">
               {design.lighting === "day" ? "Dia" : design.lighting === "sunset" ? "Pôr do sol" : "Noite"}
             </span>
@@ -1323,7 +1323,7 @@ export default function ConceptFacadeEditor({
 
         <div className="absolute inset-x-3 bottom-[calc(7.25rem+env(safe-area-inset-bottom))] z-20 flex gap-2 md:inset-x-auto md:bottom-4 md:right-4 xl:hidden">
           <button type="button" onClick={onOpenRender} disabled={realisticPreviewLoading || !onOpenRender}
-            className="min-h-12 flex-1 rounded-xl bg-orange-500 px-4 py-3 text-sm font-bold text-white shadow-lg disabled:opacity-50 md:min-h-0 md:flex-none md:text-xs">
+            className="min-h-12 flex-1 rounded-xl bg-blue-500 px-4 py-3 text-sm font-bold text-white shadow-lg disabled:opacity-50 md:min-h-0 md:flex-none md:text-xs">
             {realisticPreviewLoading ? "Gerando..." : "Gerar imagem realista"}
           </button>
           <button type="button" onClick={onOpenGallery} className="min-h-12 rounded-xl border bg-white px-4 py-3 text-sm font-semibold shadow-lg md:min-h-0 md:text-xs">
@@ -1337,7 +1337,7 @@ export default function ConceptFacadeEditor({
               <div className="mt-0.5 text-[11px] text-slate-400">Elevação fiel à planta + visualização fotorealista</div>
             </div>
             {realisticPreviewLoading && (
-              <span className="rounded-full bg-orange-500/15 px-2.5 py-1 text-[10px] font-bold text-orange-300">Gerando...</span>
+              <span className="rounded-full bg-blue-500/15 px-2.5 py-1 text-[10px] font-bold text-blue-300">Gerando...</span>
             )}
           </div>
 
@@ -1353,7 +1353,7 @@ export default function ConceptFacadeEditor({
             ) : (
               <div className="w-full rounded-2xl border border-white/10 bg-white/[0.04] p-5 shadow-2xl">
                 <div className="flex items-center gap-2">
-                  <Sparkles className="h-5 w-5 text-orange-400" />
+                  <Sparkles className="h-5 w-5 text-blue-400" />
                   <div>
                     <div className="text-sm font-bold text-white">Composição vinculada à planta</div>
                     <div className="text-[11px] text-slate-400">Volumes e acabamentos podem evoluir sem deslocar portas, janelas ou paredes.</div>
@@ -1394,7 +1394,7 @@ export default function ConceptFacadeEditor({
                   type="button"
                   onClick={onOpenRender}
               disabled={realisticPreviewLoading || !onOpenRender}
-                  className="mt-5 w-full rounded-xl bg-orange-500 px-4 py-3 text-xs font-bold text-white disabled:opacity-50"
+                  className="mt-5 w-full rounded-xl bg-blue-500 px-4 py-3 text-xs font-bold text-white disabled:opacity-50"
                 >
                   {realisticPreviewLoading ? "Gerando..." : "Gerar visualização fotorealista"}
                 </button>
@@ -1407,7 +1407,7 @@ export default function ConceptFacadeEditor({
               type="button"
               onClick={onOpenRender}
               disabled={realisticPreviewLoading || !onOpenRender}
-              className="rounded-xl bg-orange-500 px-3 py-2.5 text-xs font-bold text-white disabled:opacity-50"
+              className="rounded-xl bg-blue-500 px-3 py-2.5 text-xs font-bold text-white disabled:opacity-50"
             >
               {realisticPreviewUrl ? "Atualizar render" : "Gerar render"}
             </button>
