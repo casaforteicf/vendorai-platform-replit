@@ -144,6 +144,14 @@ export default function HotelPlanejamento() {
       setViewRequest(id);setComparison(data);
     }catch(e){setMessage(String(e));}finally{setBusy(false);}
   }
+  async function createOrder(requestId:string) {
+    if(!window.confirm("Criar pedido de compra interno com o fornecedor aprovado?"))return;
+    setBusy(true);setMessage("");
+    try{
+      await api("/compras/semanais/"+encodeURIComponent(requestId)+"/pedido",{method:"POST"});
+      setMessage("Pedido interno criado. Confira os itens antes de emitir.");
+    }catch(e){setMessage(String(e));}finally{setBusy(false);}
+  }
   async function approveQuote(quoteId:string) {
     if(!viewRequest||!window.confirm("Aprovar este fornecedor para a solicitação semanal? Isso ainda não emite o pedido."))return;
     setBusy(true);setMessage("");
@@ -282,6 +290,7 @@ export default function HotelPlanejamento() {
         <div><strong>{String(request.period_start).slice(0,10)} a {String(request.period_end).slice(0,10)}</strong>
         <p>Status: {request.status} · Local: {locations.find(l=>l.id===request.location_id)?.name??request.location_id}</p></div>
         <Button variant="outline" disabled={busy} onClick={()=>void openComparison(request.id)}>Itens e cotações</Button>
+        {request.status==="reviewed"&&<Button variant="outline" disabled={busy} onClick={()=>void createOrder(request.id)}>Criar pedido interno</Button>
         {request.status==="draft"&&<div className="flex gap-2">
           <Button variant="outline" disabled={busy} onClick={()=>void purchaseAction(request.id,"reviewed")}>Revisada</Button>
           <Button variant="outline" disabled={busy} onClick={()=>void purchaseAction(request.id,"dismissed")}>Descartar</Button>
