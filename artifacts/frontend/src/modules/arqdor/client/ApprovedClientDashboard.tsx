@@ -16,6 +16,7 @@ export type ClientDashboardProps = {
   onNewProject?: () => void;
   /** Tenant/servidor deve autorizar criação e fornecer handler real. */
   canCreateProject?: boolean;
+  availableDestinations?: readonly string[];
   /** Opcional: eventos previamente autorizados pelo backend; nunca sintetizar atividade. */
   recentActivity?: Array<{id: string; title: string; when: string}>;
 };
@@ -72,7 +73,7 @@ export default function ApprovedClientDashboard(props: ClientDashboardProps) {
       <div className="arqc-account"><div className="arqc-avatar">{props.clientName.trim().slice(0,2).toUpperCase()||"CL"}</div><div>{props.clientName}<small style={{display:"block"}}>Cliente</small></div></div>
     </header>
     <div className="arqc-body"><nav className={"arqc-side"+(mobileNav?" open":"")} aria-label="Ambientes do cliente">
-      {nav.map(([key,label],index)=><button key={key} className={"arqc-nav"+(index===0?" on":"")} onClick={()=>navigate(key)}>{label}</button>)}
+      {nav.filter(([key])=>key==="projetos"||props.availableDestinations?.includes(key)).map(([key,label],index)=><button key={key} className={"arqc-nav"+(index===0?" on":"")} onClick={()=>navigate(key)}>{label}</button>)}
     </nav><main className="arqc-main">
       <div className="arqc-title"><div><h1>Meus projetos</h1><p>Acompanhe suas ideias, orçamentos, cotações e contratações em um só lugar.</p></div>
         {props.canCreateProject&&props.onNewProject?<button className="arqc-button" onClick={props.onNewProject}>＋ Novo projeto</button>:null}</div>
