@@ -232,6 +232,7 @@ CREATE TABLE IF NOT EXISTS hotel_purchase_receipt_events (
  recorded_by text NOT NULL,
  created_at timestamptz NOT NULL DEFAULT now(),
  FOREIGN KEY(tenant_id,order_line_id) REFERENCES hotel_purchase_order_lines(tenant_id,id),
+ UNIQUE(tenant_id,id),
  FOREIGN KEY(tenant_id,recorded_by) REFERENCES users(tenant_id,id)
 );
 ALTER TABLE hotel_purchase_orders ENABLE ROW LEVEL SECURITY;
@@ -242,3 +243,24 @@ CREATE POLICY hotel_order_lines_tenant ON hotel_purchase_order_lines USING(tenan
 CREATE POLICY hotel_receipts_tenant ON hotel_purchase_receipt_events USING(tenant_id=current_setting('app.tenant_id',true)) WITH CHECK(tenant_id=current_setting('app.tenant_id',true));
 -- Recebimento administrativo separado da entrada no estoque físico:
 -- integração com movimento de inventário depende de conciliação de unidades/lotes.
+
+-- Idempotent stock posting: each receipt event can increase physical balance once.
+CREATE TABLE IF NOT EXISTS hotel_purchase_receipt_stock_posts (
+ id text PRIMARY KEY,
+ tenant_id text NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+ receipt_event_id text NOT NULL,
+ location_id text NOT NULL,
+ inventory_item_id text NOT NULL,
+ quantity numeric(15,4) NOT NULL CHECK(quantity>0),
+ posted_by text NOT NULL,
+ posted_at timestamptz NOT NULL DEFAULT now(),
+ FOREIGN KEY(tenant_id,receipt_event_id) REFERENCES hotel_purchase_receipt_events(tenant_id,id),
+ FOREIGN KEY(tenant_id,location_id) REFERENCES hotel_stock_locations(tenant_id,id),
+ FOREIGN KEY(tenant_id,inventory_item_id) REFERENCES inventory_items(tenant_id,id),
+ FOREIGN KEY(tenant_id,posted_by) REFERENCES users(tenant_id,id),
+ UNIQUE(tenant_id,receipt_event_id)
+);
+ALTER TABLE hotel_purchase_receipt_stock_posts ENABLE ROW LEVEL SECURITY;
+CREATE POLICY hotel_receipt_stock_posts_tenant ON hotel_purchase_receipt_stock_posts
+ USING(tenant_id=current_setting('app.tenant_id',true))
+ WITH CHECK(tenant_id=current_setting('app.tenant_id',true));
