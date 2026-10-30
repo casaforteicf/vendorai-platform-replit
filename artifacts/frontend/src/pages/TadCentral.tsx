@@ -31,6 +31,7 @@ const TAD_LABELS: Partial<Record<LauncherModule, { description: string; section:
   omnichannel: { description: "Conversas e atendimento integrado", section: "Comercial" },
   agenda: { description: "Compromissos, tarefas e visitas", section: "Produtividade" },
   arqdor: { description: "Projetos, modelagem, render e especificações", section: "Projetos" },
+  hotelaria: { description: "Recepção, reservas, quartos, hóspedes e operações", section: "Operação" },
   obras: { description: "Processos, equipes e entregas por segmento", section: "Operação" },
   pdv: { description: "Vendas de balcão", section: "Operação" },
   erp: { description: "Gestão operacional e financeira", section: "Operação" },
@@ -45,7 +46,7 @@ const TAD_LABELS: Partial<Record<LauncherModule, { description: string; section:
 
 const ICON_MAP: Partial<Record<LauncherModule, typeof Users>> = {
   crm: Users, prospector: Radar, marketing: Megaphone, omnichannel: MessageSquare, agenda: CalendarDays,
-  arqdor: Layers3, obras: HardHat, pdv: ShoppingBag, erp: Package,
+  arqdor: Layers3, hotelaria: Building2, obras: HardHat, pdv: ShoppingBag, erp: Package,
   marketplace_casa: Store, parceiros: BriefcaseBusiness, portal_cliente: UserRound,
   inteligencia: ChartNoAxesCombined, agentes_ia: Bot, configuracoes: Settings, suporte: Headphones,
 };
@@ -58,7 +59,7 @@ const TONES = {
 
 const MODULE_TONE: Partial<Record<LauncherModule, Tone>> = {
   crm: TONES.blue, prospector: TONES.blue, marketing: TONES.blue, omnichannel: TONES.blue,
-  agenda: TONES.blue, arqdor: TONES.blue, obras: TONES.blue, pdv: TONES.blue,
+  agenda: TONES.blue, arqdor: TONES.blue, hotelaria: TONES.blue, obras: TONES.blue, pdv: TONES.blue,
   erp: TONES.blue, marketplace_casa: TONES.blue, parceiros: TONES.blue, portal_cliente: TONES.blue,
   inteligencia: TONES.blue, agentes_ia: TONES.blue, configuracoes: TONES.blue, suporte: TONES.blue,
 };
