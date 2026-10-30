@@ -101,7 +101,7 @@ export default function ConceptConstructionLibraryPanel(props: Props) {
                 onClick={() => addRoom(kind)}
                 className="overflow-hidden rounded-xl border bg-white text-left hover:border-slate-300 hover:shadow-sm"
               >
-                <div className="grid h-20 place-items-center bg-gradient-to-br from-slate-50 to-orange-50">
+                <div className="grid h-20 place-items-center bg-gradient-to-br from-slate-50 to-blue-50">
                   <Icon className="h-8 w-8 text-slate-600" />
                 </div>
                 <div className="flex items-center justify-between p-3">
@@ -129,15 +129,15 @@ export default function ConceptConstructionLibraryPanel(props: Props) {
             closeLibraryOnMobile();
           }}
           className={interactionMode === "draw-wall"
-            ? "group overflow-hidden rounded-xl border-2 border-orange-500 bg-orange-50 text-left"
+            ? "group overflow-hidden rounded-xl border-2 border-blue-500 bg-blue-50 text-left"
             : "group overflow-hidden rounded-xl border bg-white text-left hover:border-slate-300 hover:shadow-sm"}
         >
           <div className="grid h-24 place-items-center bg-gradient-to-br from-slate-50 to-slate-100">
             <div className="relative h-12 w-14">
               <span className="absolute left-1 top-1 h-10 w-1.5 rounded-full bg-slate-700" />
               <span className="absolute left-1 top-1 h-1.5 w-11 rounded-full bg-slate-700" />
-              <span className="absolute bottom-1 right-1 h-10 w-1.5 rounded-full bg-orange-400" />
-              <span className="absolute bottom-1 right-1 h-1.5 w-11 rounded-full bg-orange-400" />
+              <span className="absolute bottom-1 right-1 h-10 w-1.5 rounded-full bg-blue-400" />
+              <span className="absolute bottom-1 right-1 h-1.5 w-11 rounded-full bg-blue-400" />
             </div>
           </div>
           <div className="p-3">
@@ -153,11 +153,11 @@ export default function ConceptConstructionLibraryPanel(props: Props) {
             clearOpeningAndWalls();
           }}
           className={(interactionMode === "room" || interactionMode === "space")
-            ? "group overflow-hidden rounded-xl border-2 border-orange-500 bg-orange-50 text-left"
+            ? "group overflow-hidden rounded-xl border-2 border-blue-500 bg-blue-50 text-left"
             : "group overflow-hidden rounded-xl border bg-white text-left hover:border-slate-300 hover:shadow-sm"}
         >
-          <div className="grid h-24 place-items-center bg-gradient-to-br from-orange-50 to-amber-50">
-            <Home className="h-10 w-10 text-orange-500" />
+          <div className="grid h-24 place-items-center bg-gradient-to-br from-blue-50 to-amber-50">
+            <Home className="h-10 w-10 text-blue-500" />
           </div>
           <div className="p-3">
             <div className="text-sm font-semibold">Ambiente</div>
@@ -173,7 +173,7 @@ export default function ConceptConstructionLibraryPanel(props: Props) {
             closeLibraryOnMobile();
           }}
           className={interactionMode === "opening"
-            ? "group overflow-hidden rounded-xl border-2 border-orange-500 bg-orange-50 text-left"
+            ? "group overflow-hidden rounded-xl border-2 border-blue-500 bg-blue-50 text-left"
             : "group overflow-hidden rounded-xl border bg-white text-left hover:border-slate-300 hover:shadow-sm"}
         >
           <div className="grid h-24 place-items-center bg-gradient-to-br from-sky-50 to-slate-50">
@@ -190,7 +190,7 @@ export default function ConceptConstructionLibraryPanel(props: Props) {
         <button
           type="button"
           onClick={() => { addRoom("escada"); closeLibraryOnMobile(); }}
-          className="group overflow-hidden rounded-xl border bg-white text-left hover:border-orange-300 hover:shadow-sm"
+          className="group overflow-hidden rounded-xl border bg-white text-left hover:border-blue-300 hover:shadow-sm"
         >
           <div className="grid h-24 place-items-center bg-gradient-to-br from-stone-50 to-slate-100">
             <div className="flex items-end gap-0.5">
@@ -225,7 +225,7 @@ export default function ConceptConstructionLibraryPanel(props: Props) {
                 familyId: family.id,
                 familyLabel: family.label,
               })}
-              className="rounded-xl border bg-white px-3 py-3 text-left disabled:cursor-not-allowed disabled:opacity-40 hover:border-orange-300 hover:bg-orange-50/40"
+              className="rounded-xl border bg-white px-3 py-3 text-left disabled:cursor-not-allowed disabled:opacity-40 hover:border-blue-300 hover:bg-blue-50/40"
             >
               <div className="flex items-center justify-between gap-2">
                 <div className="text-xs font-semibold">{family.label}</div>
