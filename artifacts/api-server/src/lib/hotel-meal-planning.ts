@@ -40,3 +40,42 @@ export function suggestPurchaseQuantity(required: number, available: number): nu
     throw new Error("Invalid demand or availability");
   return Math.max(0, required - available);
 }
+
+export type PhysicalStock = {
+  productId: string;
+  itemId: string;
+  unit: string;
+  quantity: number;
+};
+export type StockComparison = {
+  productId: string;
+  unit: "g" | "ml" | "un";
+  required: number;
+  available: number | null;
+  suggested: number | null;
+  status: "ready" | "unmapped" | "ambiguous" | "incompatible_unit";
+};
+/** Only calculate shortage when one unambiguous, compatible stock item exists.
+ * Tenant/location scoping and source data reconciliation happen in the caller.
+ */
+export function compareDemandWithStock(demand: Demand[], physical: PhysicalStock[]): StockComparison[] {
+  const normalize = (q: number, unit: string) => {
+    if (!Number.isFinite(q) || q < 0) throw new Error("Invalid stock quantity");
+    if (unit === "kg") return {unit:"g", quantity:q * 1000};
+    if (unit === "l") return {unit:"ml", quantity:q * 1000};
+    if (unit === "g" || unit === "ml" || unit === "un") return {unit, quantity:q};
+    return null;
+  };
+  return demand.map(d => {
+    const matches = physical.filter(p => p.productId === d.productId);
+    const base = {productId:d.productId,unit:d.unit,required:d.required};
+    if (!matches.length) return {...base,available:null,suggested:null,status:"unmapped" as const};
+    if (new Set(matches.map(p => p.itemId)).size !== 1)
+      return {...base,available:null,suggested:null,status:"ambiguous" as const};
+    const normalized = matches.map(p=>normalize(p.quantity,p.unit));
+    if (normalized.some(p=>!p || p.unit !== d.unit))
+      return {...base,available:null,suggested:null,status:"incompatible_unit" as const};
+    const available = normalized.reduce((sum,p)=>sum + (p?.quantity ?? 0),0);
+    return {...base,available,suggested:suggestPurchaseQuantity(d.required,available),status:"ready" as const};
+  });
+}
