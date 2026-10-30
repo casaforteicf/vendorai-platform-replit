@@ -189,105 +189,170 @@ function ProjectCard({ project, onOpen }: { project: ArqProject; onOpen: () => v
   );
 }
 
+const FILTERS = [
+  { key: "todos", label: "Todos" },
+  { key: "andamento", label: "Em andamento" },
+  { key: "planejamento", label: "Planejamento" },
+  { key: "proposta", label: "Proposta" },
+  { key: "concluido", label: "Concluído" },
+  { key: "arquivado", label: "Arquivado" },
+] as const;
+
+function projectStage(project: ArqProject): string {
+  const raw = String(project.status || "briefing").toLowerCase();
+  if (["entregue", "concluido", "concluído", "finalizado"].includes(raw)) return "concluido";
+  if (["arquivado", "cancelado"].includes(raw)) return "arquivado";
+  if (["orcamento", "proposta", "aprovado"].includes(raw)) return "proposta";
+  if (["briefing", "planejamento", "rascunho"].includes(raw)) return "planejamento";
+  return "andamento";
+}
+
+const STAGE_LABELS: Record<string, string> = {
+  andamento: "Em andamento", planejamento: "Planejamento", proposta: "Proposta",
+  concluido: "Concluído", arquivado: "Arquivado",
+};
+const STAGE_COLORS: Record<string, string> = {
+  andamento: "#08ae81", planejamento: "#1585f4", proposta: "#f5b30a",
+  concluido: "#009d72", arquivado: "#64748b",
+};
+
 export default function ProjectHomeV2({ arqState, onNavigate }: ProjectHomeV2Props) {
   const [search, setSearch] = useState("");
+  const [filter, setFilter] = useState("todos");
+  const [order, setOrder] = useState("recentes");
   const projects = useMemo(() => getProjects(arqState), [arqState]);
-  const activeProject = useMemo(() => getActiveProject(arqState, projects), [arqState, projects]);
-  const pct = progress(activeProject);
-
-  const filteredProjects = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    if (!q) return projects;
-    return projects.filter((project) => [title(project), client(project), String(project.status || "")].some((value) => value.toLowerCase().includes(q)));
-  }, [projects, search]);
-
-  const projectModules = LIFECYCLE.filter((item) => item.group === "projeto");
-  const siteModules = LIFECYCLE.filter((item) => item.group === "obra");
-  const clientModules = LIFECYCLE.filter((item) => item.group === "cliente");
+  const filtered = useMemo(() => {
+    const q = search.toLowerCase().trim();
+    const matches = projects.filter((p) =>
+      (filter === "todos" || projectStage(p) === filter) &&
+      [title(p), client(p), String(p.status || "")].some((text) => text.toLowerCase().includes(q))
+    );
+    return [...matches].sort((a, b) => {
+      if (order === "nome") return title(a).localeCompare(title(b), "pt-BR");
+      const da = new Date(a.updatedAt || a.updated_at || 0).getTime() || 0;
+      const db = new Date(b.updatedAt || b.updated_at || 0).getTime() || 0;
+      return db - da;
+    });
+  }, [projects, filter, search, order]);
+  const count = (key: string) => key === "todos" ? projects.length : projects.filter((p) => projectStage(p) === key).length;
+  const openProject = () => onNavigate?.("projeto");
+  const actionClass = "inline-flex min-h-10 items-center justify-center gap-2 rounded-lg border border-slate-200 px-4 text-sm font-medium transition hover:border-emerald-400 focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-500";
+  const recent = [...projects].sort((a, b) =>
+    (new Date(b.updatedAt || b.updated_at || 0).getTime() || 0) -
+    (new Date(a.updatedAt || a.updated_at || 0).getTime() || 0)
+  ).slice(0, 3);
 
   return (
-    <div className="min-h-screen bg-[#f7f7f8] text-slate-950">
-      <div className="mx-auto flex w-full max-w-[1760px] flex-col gap-6 px-5 py-6 lg:px-8">
-        <header className="rounded-[32px] border border-slate-100 bg-white p-5 shadow-sm">
-          <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-violet-600">ARQDOR.ai</p>
-              <h1 className="mt-1 text-3xl font-semibold tracking-tight">Pré-Projeto simples. Evolução técnica quando você quiser.</h1>
-              <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-500">Primeiro conclua o projeto. Depois, opcionalmente, especifique, gere quantitativos, orce, envie para cotação e siga para execução sem recriar informações.</p>
-            </div>
-            <div className="flex flex-col gap-2 sm:flex-row">
-              <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar projeto ou cliente..." className="h-11 min-w-[280px] rounded-2xl border border-slate-200 bg-white px-4 text-sm outline-none transition focus:border-violet-300 focus:ring-4 focus:ring-violet-100" />
-              <button type="button" onClick={() => onNavigate?.("projeto")} className="h-11 rounded-2xl bg-slate-950 px-5 text-sm font-semibold text-white transition hover:bg-violet-700">+ Novo projeto</button>
-            </div>
+    <div className="min-h-full w-full overflow-x-hidden bg-[#f6f8f8] text-slate-950">
+      <div className="mx-auto w-full max-w-[1800px] px-3 py-5 sm:px-5 lg:px-7">
+        <header className="mb-5 flex flex-wrap items-center justify-between gap-4">
+          <div>
+            <h1 className="text-3xl font-bold tracking-tight">Projetos</h1>
+            <p className="text-sm text-slate-500">Gerencie seus projetos de arquitetura e interiores</p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <button type="button" onClick={openProject} className="inline-flex min-h-11 items-center gap-3 rounded-lg bg-gradient-to-r from-emerald-500 to-emerald-800 px-5 font-semibold text-white">＋ Novo projeto</button>
+            <button type="button" onClick={openProject} className={actionClass + " bg-white"}>⇧ Importar</button>
           </div>
         </header>
 
-        <section className="overflow-hidden rounded-[36px] bg-slate-950 text-white shadow-sm">
-          <div className="grid lg:grid-cols-[1.2fr_0.8fr]">
-            <div className="p-7 lg:p-9">
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="rounded-full bg-violet-500/20 px-3 py-1 text-xs font-semibold text-violet-200">Projeto atual</span>
-                <span className="rounded-full bg-white/10 px-3 py-1 text-xs font-semibold">{status(activeProject)}</span>
-                <span className="rounded-full bg-white/10 px-3 py-1 text-xs font-semibold">{Math.round(pct)}% concluído</span>
-              </div>
-              <h2 className="mt-5 text-3xl font-semibold tracking-tight lg:text-4xl">{title(activeProject)}</h2>
-              <p className="mt-2 text-base text-slate-300">{client(activeProject)}</p>
-
-              <div className="mt-7 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                <div className="rounded-2xl bg-white/10 p-4"><p className="text-xs text-slate-400">Área</p><p className="mt-1 text-lg font-semibold">{area(activeProject)}</p></div>
-                <div className="rounded-2xl bg-white/10 p-4"><p className="text-xs text-slate-400">Orçamento</p><p className="mt-1 text-lg font-semibold">{money(activeProject?.orcamentoTotal)}</p></div>
-                <div className="rounded-2xl bg-white/10 p-4"><p className="text-xs text-slate-400">Ambientes</p><p className="mt-1 text-lg font-semibold">{activeProject?.totalAmbientes || activeProject?.ambientes?.length || 0}</p></div>
-                <div className="rounded-2xl bg-white/10 p-4"><p className="text-xs text-slate-400">Renders</p><p className="mt-1 text-lg font-semibold">{activeProject?.totalRenders || activeProject?.renders?.length || 0}</p></div>
-              </div>
-
-              <div className="mt-7">
-                <p className="mb-3 text-xs font-semibold uppercase tracking-[0.14em] text-slate-400">Depois que o projeto estiver pronto</p>
-                <div className="flex flex-wrap gap-3">
-                  <button type="button" onClick={() => onNavigate?.(activeProject ? "projeto" : "projeto")} className="rounded-2xl bg-white px-5 py-3 text-sm font-semibold text-slate-950 hover:bg-violet-100">{activeProject ? "Continuar projeto" : "Criar projeto"}</button>
-                  <button type="button" onClick={() => onNavigate?.("real-specification")} className="rounded-2xl border border-white/15 bg-white/10 px-5 py-3 text-sm font-semibold text-white hover:bg-white/15">Especificar</button>
-                  <button type="button" onClick={() => onNavigate?.("real-budget")} className="rounded-2xl border border-white/15 bg-white/10 px-5 py-3 text-sm font-semibold text-white hover:bg-white/15">Quantificar</button>
-                  <button type="button" onClick={() => onNavigate?.("real-budget")} className="rounded-2xl border border-white/15 bg-white/10 px-5 py-3 text-sm font-semibold text-white hover:bg-white/15">Orçar</button>
-                  <button type="button" onClick={() => onNavigate?.("compras")} className="rounded-2xl border border-violet-300/30 bg-violet-500/20 px-5 py-3 text-sm font-semibold text-violet-100 hover:bg-violet-500/30">Contratar / Cotar</button>
-                </div>
-              </div>
-            </div>
-            <div className="min-h-[300px] bg-slate-900">
-              {cover(activeProject) ? <img src={cover(activeProject)} alt={title(activeProject)} className="h-full min-h-[300px] w-full object-cover opacity-90" /> : <div className="flex h-full min-h-[300px] items-center justify-center"><div className="text-center"><p className="text-6xl font-semibold text-white/10">ARQDOR</p><p className="mt-3 text-sm text-slate-500">O último render do projeto aparecerá aqui</p></div></div>}
-            </div>
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3 border-y border-slate-200 py-3">
+          <div className="flex max-w-full gap-2 overflow-x-auto pb-1" role="group" aria-label="Filtrar projetos">
+            {FILTERS.map(({key, label}) => (
+              <button key={key} type="button" aria-pressed={filter === key} onClick={() => setFilter(key)}
+                className={"shrink-0 rounded-lg px-3 py-2 text-xs font-medium sm:text-sm " + (filter === key ? "bg-emerald-600 text-white" : "bg-slate-100 text-slate-800 hover:bg-slate-200")}>
+                {label} <span className="ml-1 rounded-full bg-black/5 px-1.5">{count(key)}</span>
+              </button>
+            ))}
           </div>
-        </section>
+          <div className="flex flex-wrap items-center gap-2">
+            <label htmlFor="arqdor-project-search" className="sr-only">Buscar projetos</label>
+            <input id="arqdor-project-search" value={search} onChange={(e) => setSearch(e.target.value)}
+              placeholder="Buscar projetos ou clientes…" className="min-h-10 w-44 max-w-full rounded-lg border border-slate-200 bg-white px-3 text-sm sm:w-56" />
+            <label htmlFor="arqdor-project-order" className="sr-only">Ordenação</label>
+            <select id="arqdor-project-order" value={order} onChange={(e) => setOrder(e.target.value)}
+              className="min-h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm">
+              <option value="recentes">Mais recentes</option><option value="nome">Nome A–Z</option>
+            </select>
+          </div>
+        </div>
 
-        <div className="grid gap-6 2xl:grid-cols-[1fr_350px]">
-          <main className="space-y-6">
-            <Group title="1. Pré-Projeto" subtitle="Conclua a arquitetura primeiro. Especificação é opcional e pode ser feita depois, sem travar o projeto." items={projectModules} onNavigate={onNavigate} />
-            <Group title="2. Quantificar, Orçar e Contratar" subtitle="Use a geometria para quantificar, aprofunde quando houver especificação e envie pacotes para cotação dentro da rede Vendor.ai." items={siteModules} onNavigate={onNavigate} />
-            <Group title="3. Cliente, Execução e Pós-obra" subtitle="Aprovações, contratação, execução e entrega continuam vinculadas ao mesmo projeto e aos mesmos elementos." items={clientModules} onNavigate={onNavigate} />
-
-            <section className="rounded-[32px] border border-slate-100 bg-white p-5 shadow-sm">
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <div><p className="text-xs font-semibold uppercase tracking-wide text-violet-600">Projetos</p><h2 className="mt-1 text-xl font-semibold">Projetos recentes</h2></div>
-                <span className="text-sm text-slate-500">{filteredProjects.length} encontrado(s)</span>
+        <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1fr)_292px]">
+          <main className="min-w-0">
+            {filtered.length ? (
+              <div className="grid gap-4 sm:grid-cols-2 2xl:grid-cols-3">
+                {filtered.map((project) => {
+                  const stage = projectStage(project);
+                  const pct = progress(project);
+                  return (
+                    <button type="button" key={String(project.id || title(project))} onClick={openProject}
+                      className="group min-w-0 overflow-hidden rounded-xl border border-slate-200 bg-white text-left shadow-sm transition hover:shadow-lg focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-600">
+                      <div className="relative h-36 bg-[#063a32] sm:h-40">
+                        {cover(project) ? <img src={cover(project)} alt="" className="h-full w-full object-cover" /> :
+                          <div className="flex h-full items-center justify-center text-2xl font-bold text-white/60">ARQDOR</div>}
+                        <span className="absolute left-3 top-3 rounded-md bg-white px-3 py-1.5 text-xs font-semibold text-slate-900">
+                          <span className="mr-2 inline-block h-2.5 w-2.5 rounded-full" style={{background: STAGE_COLORS[stage]}} />
+                          {STAGE_LABELS[stage]}
+                        </span>
+                      </div>
+                      <div className="space-y-2 p-4">
+                        <h2 className="truncate text-base font-bold">{title(project)}</h2>
+                        <p className="truncate text-xs text-slate-600">{client(project)} · {project.tipoObra || "Projeto"} </p>
+                        <p className="text-xs text-slate-500">{area(project)}</p>
+                        <div className="flex items-center gap-3">
+                          <div className="h-2 flex-1 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full bg-gradient-to-r from-emerald-600 to-emerald-400" style={{width: pct + "%"}} /></div>
+                          <span className="text-xs font-semibold">{Math.round(pct)}%</span>
+                        </div>
+                        <div className="flex items-center justify-between border-t border-slate-100 pt-3 text-xs text-slate-500">
+                          <span>{project.updatedAt || project.updated_at ? "Atualizado " + new Date(project.updatedAt || project.updated_at || "").toLocaleDateString("pt-BR") : "Abrir projeto"}</span>
+                          <span className="rounded-full border border-slate-200 px-2.5 py-1 text-slate-950">→</span>
+                        </div>
+                      </div>
+                    </button>
+                  );
+                })}
               </div>
-              {filteredProjects.length ? <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-3">{filteredProjects.slice(0, 6).map((project) => <ProjectCard key={String(project.id || title(project))} project={project} onOpen={() => onNavigate?.("projeto")} />)}</div> : <div className="mt-5 rounded-3xl border border-dashed border-slate-200 bg-slate-50 p-10 text-center"><p className="font-semibold">Nenhum projeto encontrado.</p><button type="button" onClick={() => onNavigate?.("projeto")} className="mt-4 rounded-2xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white">Criar projeto</button></div>}
-            </section>
+            ) : (
+              <div className="rounded-xl border border-dashed border-slate-300 bg-white p-8 text-center">
+                <h2 className="text-lg font-semibold">{projects.length ? "Nenhum projeto corresponde aos filtros" : "Nenhum projeto ainda"}</h2>
+                <p className="mt-2 text-sm text-slate-500">{projects.length ? "Altere a pesquisa ou o filtro para ver seus projetos." : "Crie seu primeiro projeto para iniciar."}</p>
+                <button onClick={() => { if (projects.length) { setSearch(""); setFilter("todos"); } else openProject(); }}
+                  className="mt-5 rounded-lg bg-emerald-600 px-5 py-2.5 text-sm font-semibold text-white">
+                  {projects.length ? "Limpar filtros" : "+ Novo projeto"}
+                </button>
+              </div>
+            )}
           </main>
 
-          <aside className="space-y-5">
-            <section className="rounded-[30px] border border-violet-100 bg-white p-5 shadow-sm">
-              <p className="text-xs font-semibold uppercase tracking-wide text-violet-600">Fluxo integrado</p>
-              <h3 className="mt-1 text-lg font-semibold">Projeto → Decisão → Execução</h3>
-              <div className="mt-5 space-y-4">
-                {["Projeto concluído", "Especificar (opcional)", "Quantificar", "Orçar", "Contratar / Cotar", "Comparar propostas", "Executar", "Entrega e pós-obra"].map((label, index) => (
-                  <div key={label} className="flex items-center gap-3"><span className="flex h-7 w-7 items-center justify-center rounded-full bg-violet-50 text-xs font-bold text-violet-700">{index + 1}</span><span className="text-sm font-medium text-slate-700">{label}</span></div>
-                ))}
+          <aside className="grid gap-3 sm:grid-cols-2 xl:grid-cols-1" aria-label="Resumo de projetos">
+            <section className="rounded-xl border border-slate-200 bg-white p-4">
+              <h2 className="mb-4 text-sm font-bold">◈ Visão geral</h2>
+              <div className="grid grid-cols-3 gap-2 text-center">
+                {[["Projetos", projects.length], ["Em andamento", count("andamento")], ["Planejamento", count("planejamento")]].map(([label, value]) =>
+                  <div key={label}><strong className="block text-2xl">{value}</strong><span className="text-[11px] text-slate-500">{label}</span></div>)}
+              </div>
+              <div className="mt-4 space-y-2 border-t border-slate-100 pt-3">
+                {FILTERS.slice(1).map(({key, label}) => <div key={key} className="flex items-center justify-between text-xs">
+                  <span><i className="mr-2 inline-block h-2.5 w-2.5 rounded-full" style={{background:STAGE_COLORS[key]}} />{label}</span><b>{count(key)}</b>
+                </div>)}
               </div>
             </section>
-
-            <section className="rounded-[30px] border border-slate-100 bg-white p-5 shadow-sm">
-              <p className="text-xs font-semibold uppercase tracking-wide text-violet-600">Copiloto da obra</p>
-              <h3 className="mt-1 text-lg font-semibold">IA com contexto do projeto</h3>
-              <p className="mt-2 text-sm leading-6 text-slate-500">A estrutura passa a trabalhar sobre o mesmo projeto para cruzar materiais, orçamento, execução, compras, aprovações e entrega.</p>
-              <button type="button" onClick={() => onNavigate?.("construction")} className="mt-4 w-full rounded-2xl bg-violet-600 px-4 py-3 text-sm font-semibold text-white hover:bg-violet-700">Abrir Construction Hub</button>
+            <section className="rounded-xl border border-slate-200 bg-white p-4">
+              <h2 className="mb-3 text-sm font-bold">◈ Ações rápidas</h2>
+              <div className="grid gap-2">
+                {[["＋ Novo projeto","projeto"],["⇧ Importar arquivo","projeto"],["▣ Biblioteca","biblioteca"],["♧ Convidar equipe","office"]].map(([label,module]) =>
+                  <button key={label} type="button" onClick={() => onNavigate?.(module)}
+                    className={actionClass + " justify-start bg-white text-left"}>{label}</button>)}
+              </div>
+            </section>
+            <section className="rounded-xl border border-slate-200 bg-white p-4">
+              <h2 className="mb-3 text-sm font-bold">◈ Projetos recentes</h2>
+              {recent.length ? recent.map((p) =>
+                <button key={String(p.id || title(p))} type="button" onClick={openProject}
+                  className="flex w-full items-center gap-3 border-t border-slate-100 py-2 text-left text-sm hover:text-emerald-700">
+                  {cover(p) ? <img src={cover(p)} alt="" className="h-9 w-12 rounded object-cover" /> : <span className="flex h-9 w-12 items-center justify-center rounded bg-emerald-950 text-white">A</span>}
+                  <span className="min-w-0"><strong className="block truncate">{title(p)}</strong><small className="text-slate-500">{status(p)}</small></span>
+                </button>) : <p className="text-xs text-slate-500">Sem projetos recentes.</p>}
             </section>
           </aside>
         </div>
