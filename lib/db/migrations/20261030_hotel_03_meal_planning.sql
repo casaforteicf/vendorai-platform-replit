@@ -155,3 +155,22 @@ CREATE POLICY hotel_weekly_supplier_quotes_tenant ON hotel_weekly_supplier_quote
  WITH CHECK (tenant_id=current_setting('app.tenant_id',true));
 -- supplier_id é validado na API contra fornecedores do mesmo tenant.
 -- 'selected' registra seleção interna; 'invited' somente após envio confirmado.
+
+CREATE TABLE IF NOT EXISTS hotel_supplier_quote_deliveries (
+ id text PRIMARY KEY,
+ tenant_id text NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+ quote_id text NOT NULL,
+ channel text NOT NULL CHECK(channel IN ('email','whatsapp')),
+ destination text NOT NULL,
+ status text NOT NULL CHECK(status IN ('pending','sent','failed')),
+ provider_message_id text,
+ error_message text,
+ created_at timestamptz NOT NULL DEFAULT now(),
+ finished_at timestamptz,
+ FOREIGN KEY(tenant_id,quote_id) REFERENCES hotel_weekly_supplier_quotes(tenant_id,id)
+);
+CREATE INDEX IF NOT EXISTS hotel_supplier_quote_deliveries_lookup ON hotel_supplier_quote_deliveries(tenant_id,quote_id);
+ALTER TABLE hotel_supplier_quote_deliveries ENABLE ROW LEVEL SECURITY;
+CREATE POLICY hotel_supplier_quote_deliveries_tenant ON hotel_supplier_quote_deliveries
+ USING(tenant_id=current_setting('app.tenant_id',true))
+ WITH CHECK(tenant_id=current_setting('app.tenant_id',true));
