@@ -35,7 +35,7 @@ const AIMemoryModule = lazy(() => import('./modules/AIMemoryModule').then((m) =>
 const SettingsModule = lazy(() => import('./modules/SettingsModule').then((m) => ({ default: m.SettingsModule })))
 const ArqHubView = lazy(() => import('../arqhub/ArqHubView').then((m) => ({ default: m.ArqHubView })))
 const AIEnterpriseCore = lazy(() => import('./ai-enterprise/AIEnterpriseCore'))
-const ProjectHomeV2 = lazy(() => import('./project-experience/ProjectHomeV2'))
+const ProjectHomeV2 = lazy(() => import('./project-experience/ApprovedProjectsHome'))
 const SmartProjectModule = lazy(() => import('./modules/SmartProjectModule'))
 const SmartSpecModule = lazy(() => import('./modules/SmartSpecModule').then((m) => ({ default: m.SmartSpecModule })))
 const SpecificationStudio = lazy(() => import('./specification-studio/SpecificationStudio'))
@@ -925,6 +925,7 @@ function WorkspaceInner() {
           </div>
         )}
 
+        {activeModule !== 'home' && <>
         {/* ════════════════════════════════════════════════════════════
             TOP BAR — Chrome Premium
             Branco puro, shadow sutil, ✨ CTA sempre visível.
@@ -1015,6 +1016,7 @@ function WorkspaceInner() {
 
         {/* ── MODULE SUB-STEPS (when step has extras) ── */}
         <SubStepNav activeModule={activeModule} activeFlow={activeFlow} onNavigate={setActiveModule} />
+        </>}
 
         {/* ══════════════════════════════════════════════════════════
             BODY ROW — content area + copilot sidebar side by side
