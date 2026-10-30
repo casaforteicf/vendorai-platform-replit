@@ -1,5 +1,6 @@
 import {useEffect,useState} from "react";
 import {useAuth} from "@/contexts/AuthContext";
+type ForecastDay={service_date:string;checked_in_guests:number;reserved_guests:number;occupied_or_reserved_rooms:number};
 type Room={id:string;code:string;name:string;capacity:number;status:string;housekeeping_status:string};
 type Booking={id:string;room_id:string;primary_guest_id:string;room_code:string;guest_name:string;arrival_date:string;departure_date:string;guest_count:number;status:string};
 const day=(s:string)=>String(s).slice(0,10);
@@ -12,6 +13,7 @@ export default function HotelRecepcao(){
  const [guestName,setGuestName]=useState(""),[guestEmail,setGuestEmail]=useState(""),[guestPhone,setGuestPhone]=useState("");
  const [guestId,setGuestId]=useState(""),[roomId,setRoomId]=useState(""),[arrival,setArrival]=useState(today()),[departure,setDeparture]=useState(""),[guestCount,setGuestCount]=useState(1);
  const [guests,setGuests]=useState<{id:string;full_name:string}[]>([]);
+ const [forecast,setForecast]=useState<ForecastDay[]>([]);
 
  const base=tenantId?`/api/tenants/${encodeURIComponent(tenantId)}/hotelaria/hospedagem`:"";
  async function api<T>(path:string,options?:RequestInit):Promise<T>{
@@ -26,6 +28,14 @@ export default function HotelRecepcao(){
   catch(e){setMessage(String(e));}
  }
  useEffect(()=>{void load();},[tenantId,token]);
+ async function loadForecast(){
+  if(!tenantId||!token||!date)return;
+  const d=new Date(date+"T12:00:00");d.setDate(d.getDate()+6);
+  const end=d.toISOString().slice(0,10);
+  try{const data=await api<{days:ForecastDay[]}>("/previsao-refeicoes?start="+encodeURIComponent(date)+"&end="+encodeURIComponent(end));setForecast(data.days);}
+  catch(e){setMessage(String(e));}
+ }
+ useEffect(()=>{void loadForecast();},[tenantId,token,date,bookings]);
  async function submit(path:string,body:Record<string,unknown>,success:string){
   setBusy(true);setMessage("");
   try{await api(path,{method:"POST",body:JSON.stringify(body)});await load();setMessage(success);}
@@ -94,6 +104,15 @@ export default function HotelRecepcao(){
    <div className="space-y-2">{bookings.filter(b=>["reserved","checked_in"].includes(b.status)).slice(0,60).map(b=><div key={b.id} className="flex flex-wrap items-center justify-between gap-2 border-b py-2">
     <div className="text-sm"><strong>{b.room_code} · {b.guest_name}</strong><p>{day(b.arrival_date)} a {day(b.departure_date)} · {b.guest_count} hóspede(s) · {b.status}</p></div>
     <div className="flex gap-2">{b.status==="reserved"&&<><button disabled={busy} className="rounded border px-3 py-1 text-sm" onClick={()=>void action(b.id,"checkin")}>Check-in</button><button disabled={busy} className="rounded border px-3 py-1 text-sm" onClick={()=>void action(b.id,"cancel")}>Cancelar</button></>}{b.status==="checked_in"&&<button disabled={busy} className="rounded border px-3 py-1 text-sm" onClick={()=>void action(b.id,"checkout")}>Check-out</button>}</div>
+   </div>)}</div>
+  </section>
+  <section className="rounded-lg border p-4"><h2 className="mb-3 text-lg font-medium">Previsão de hóspedes para refeições</h2>
+   <p className="mb-3 text-sm text-muted-foreground">Estimativa pelas reservas e check-ins. Não cria cardápios nem refeições automaticamente; a quantidade de pessoas que efetivamente fará cada refeição deve ser conferida.</p>
+   <div className="grid gap-2 sm:grid-cols-2 md:grid-cols-7">{forecast.map(f=><div className="rounded border p-2 text-sm" key={f.service_date}>
+    <strong>{f.service_date.slice(8,10)}/{f.service_date.slice(5,7)}</strong>
+    <p>{f.checked_in_guests} hóspedes em check-in</p>
+    <p>{f.reserved_guests} hóspedes previstos</p>
+    <p>{f.checked_in_guests+f.reserved_guests} pessoas no total</p>
    </div>)}</div>
   </section>
   <section className="rounded-lg border p-4"><h2 className="mb-3 text-lg font-medium">Ocupação nos próximos sete dias</h2>
