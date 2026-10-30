@@ -1,4 +1,5 @@
-import { ArrowLeft, Mail, MessageCircle } from "lucide-react";
+import { VendorBackButton } from "@/components/ui/back-button";
+import { Mail, MessageCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 
@@ -19,9 +20,7 @@ export default function ContactSales() {
               <a href="https://wa.me/5549988165795" target="_blank" rel="noreferrer"><MessageCircle className="h-4 w-4 mr-2" />WhatsApp</a>
             </Button>
           </div>
-          <Button asChild variant="ghost" className="px-0">
-            <a href="/dashboard"><ArrowLeft className="h-4 w-4 mr-2" />Voltar ao Vendor.ai</a>
-          </Button>
+          <VendorBackButton to="/dashboard" label="Voltar ao Vendor.ai" className="px-0" />
         </CardContent>
       </Card>
     </div>
