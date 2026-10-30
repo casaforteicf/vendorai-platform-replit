@@ -141,7 +141,7 @@ export function PipelineNav({ active }: { active: PipelineTab }) {
     || user?.userFunction === "administrador";
   const [stagesOpen, setStagesOpen] = useState(false);
 
-  const { data: stages = [] } = useQuery<PipelineStageSummary[]>({
+  const { data: stages = [], isLoading: stagesLoading, isError: stagesError, error: stagesLoadError, refetch: reloadStages } = useQuery<PipelineStageSummary[]>({
     queryKey: ["pipeline-stages", tenantId, active],
     enabled: Boolean(tenantId),
     queryFn: () => customFetch<PipelineStageSummary[]>(
@@ -473,8 +473,16 @@ function PipelineStageManager({
       </div>
 
       <div className="space-y-2">
-        {stages.length === 0 ? (
-          <p className="py-8 text-center text-sm text-muted-foreground">Nenhuma etapa encontrada.</p>
+        {stagesLoading ? (
+          <p className="py-8 text-center text-sm text-muted-foreground">Carregando etapas…</p>
+        ) : stagesError ? (
+          <div role="alert" className="space-y-2 rounded-lg border border-destructive/40 p-4 text-sm">
+            <p className="font-semibold text-destructive">Não foi possível carregar as etapas desta pipeline.</p>
+            <p className="text-muted-foreground">{stagesLoadError instanceof Error ? stagesLoadError.message : "Confira a conexão e tente novamente."}</p>
+            <Button type="button" size="sm" variant="outline" onClick={() => void reloadStages()}>Tentar novamente</Button>
+          </div>
+        ) : stages.length === 0 ? (
+          <p className="py-8 text-center text-sm text-muted-foreground">Nenhuma etapa configurada para esta pipeline.</p>
         ) : (
           stages.map((stage, index) => {
             const isEditing = editingId === stage.id;
