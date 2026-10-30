@@ -102,6 +102,8 @@ router.get("/tenants/:tenantId/hotelaria/hospedagem/disponibilidade",async(req,r
 router.post("/tenants/:tenantId/hotelaria/hospedagem/reservas",async(req,res)=>{
  const t=String(req.params.tenantId);if(!allowed(req,t,true))return res.status(403).json({error:"Forbidden"});
  const v=bookingInput.safeParse(req.body);if(!v.success||v.data.departureDate<=v.data.arrivalDate)return res.status(422).json({error:"Invalid booking dates or party"});
+ const nights=(Date.parse(v.data.departureDate+"T00:00:00Z")-Date.parse(v.data.arrivalDate+"T00:00:00Z"))/86400000;
+ if(!Number.isFinite(nights)||nights>365)return res.status(422).json({error:"Maximum 365 nights"});
  try{
   const result=await transact(t,async c=>{
    const room=await c.query("SELECT id,capacity FROM hotel_rooms WHERE tenant_id=$1 AND id=$2 AND status='active' FOR UPDATE",[t,v.data.roomId]);
@@ -129,6 +131,10 @@ router.post("/tenants/:tenantId/hotelaria/hospedagem/reservas/:id/:action",async
   const room=await c.query("SELECT status,housekeeping_status FROM hotel_rooms WHERE tenant_id=$1 AND id=$2 FOR UPDATE",[t,existing.rows[0].room_id]);
   if(!room.rowCount)return null;
   if(action==="checkin"&&(room.rows[0].status!=="active"||room.rows[0].housekeeping_status!=="clean"))return null;
+  if(action==="checkin"){
+   const already=await c.query("SELECT 1 FROM hotel_reservations WHERE tenant_id=$1 AND room_id=$2 AND id<>$3 AND status='checked_in' LIMIT 1",[t,existing.rows[0].room_id,reservationId]);
+   if(already.rowCount)return null;
+  }
   const changed=await c.query(`UPDATE hotel_reservations SET status=$3${column?", "+column+"=now()":""} WHERE tenant_id=$1 AND id=$2 AND status=$4 RETURNING id,status`,[t,reservationId,to,from]);
   if(!changed.rowCount)return null;
   if(action==="checkout"){
