@@ -339,7 +339,7 @@ export default function PublicConceptTour() {
         >
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,transparent_0%,rgba(2,6,23,.35)_55%,rgba(2,6,23,.92)_100%)]" />
           <div className="relative mx-auto w-[min(92vw,680px)] rounded-[28px] border border-white/15 bg-slate-950/70 p-6 text-center shadow-2xl backdrop-blur-xl sm:p-9">
-            <div className="mx-auto inline-flex items-center rounded-full border border-orange-400/30 bg-orange-500/10 px-3 py-1 text-[10px] font-bold uppercase tracking-[0.22em] text-orange-300">
+            <div className="mx-auto inline-flex items-center rounded-full border border-blue-400/30 bg-blue-500/10 px-3 py-1 text-[10px] font-bold uppercase tracking-[0.22em] text-blue-300">
               Arqdor Tour
             </div>
             <h1 className="mt-4 text-2xl font-black tracking-tight text-white sm:text-4xl">
@@ -361,7 +361,7 @@ export default function PublicConceptTour() {
             <button
               type="button"
               onClick={() => setStarted(true)}
-              className="mt-7 inline-flex h-12 items-center gap-2 rounded-2xl bg-orange-500 px-6 text-sm font-black text-white shadow-[0_16px_50px_rgba(249,115,22,.28)] transition hover:bg-orange-400"
+              className="mt-7 inline-flex h-12 items-center gap-2 rounded-2xl bg-blue-500 px-6 text-sm font-black text-white shadow-[0_16px_50px_rgba(37,99,235,.28)] transition hover:bg-blue-400"
             >
               <Play className="h-4 w-4 fill-current" />
               Entrar no tour
@@ -376,7 +376,7 @@ export default function PublicConceptTour() {
       {started && !controlsHidden && (
       <header className="pointer-events-none absolute left-0 right-0 top-0 z-30 flex items-start justify-between gap-4 bg-gradient-to-b from-slate-950/90 via-slate-950/50 to-transparent p-4 sm:p-6">
         <div className="min-w-0 rounded-2xl border border-white/10 bg-slate-950/55 px-4 py-3 shadow-xl backdrop-blur">
-          <div className="text-[10px] font-bold uppercase tracking-[0.22em] text-orange-400">Arqdor Tour</div>
+          <div className="text-[10px] font-bold uppercase tracking-[0.22em] text-blue-400">Arqdor Tour</div>
           <h1 className="mt-1 truncate text-lg font-bold sm:text-xl">{data.title || "Projeto residencial"}</h1>
           <div className="mt-1 text-xs text-slate-300">
             {levels.length} pavimento{levels.length === 1 ? "" : "s"} · {scenes.length} cena{scenes.length === 1 ? "" : "s"} {savedScenes.length ? "salva" : "automática"}{scenes.length === 1 ? "" : "s"}
@@ -460,7 +460,7 @@ export default function PublicConceptTour() {
                   type="button"
                   onClick={() => setActiveSceneIndex(index)}
                   className={index === activeSceneIndex
-                    ? "shrink-0 rounded-xl bg-orange-500 px-4 py-2.5 text-xs font-bold text-white"
+                    ? "shrink-0 rounded-xl bg-blue-500 px-4 py-2.5 text-xs font-bold text-white"
                     : "shrink-0 rounded-xl px-4 py-2.5 text-xs font-semibold text-slate-300 hover:bg-white/10"}
                 >
                   <span className="block">{scene.name || `Cena ${index + 1}`}</span>
