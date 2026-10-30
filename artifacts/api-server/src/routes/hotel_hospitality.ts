@@ -120,4 +120,25 @@ router.post("/tenants/:tenantId/hotelaria/hospedagem/reservas/:id/:action",async
  });if(!result)return res.status(409).json({error:"Room unavailable, not clean or invalid booking transition"});return res.json(result);}
  catch(e){return res.status(500).json({error:"Could not update booking"});}
 });
+router.get("/tenants/:tenantId/hotelaria/hospedagem/previsao-refeicoes",async(req,res)=>{
+ const t=String(req.params.tenantId);
+ if(!allowed(req,t))return res.status(403).json({error:"Forbidden"});
+ const query=z.object({start:z.iso.date(),end:z.iso.date()}).safeParse(req.query);
+ if(!query.success||query.data.end<query.data.start)return res.status(422).json({error:"Invalid date range"});
+ const start=new Date(query.data.start+"T12:00:00Z"),end=new Date(query.data.end+"T12:00:00Z");
+ if((end.getTime()-start.getTime())/86400000>30)return res.status(422).json({error:"Maximum 31 days"});
+ try{
+  const rows=await transact(t,async c=>(await c.query(
+   `SELECT gs.day::date::text AS service_date,
+       COALESCE(sum(r.guest_count) FILTER(WHERE r.status='checked_in'),0)::int AS checked_in_guests,
+       COALESCE(sum(r.guest_count) FILTER(WHERE r.status='reserved'),0)::int AS reserved_guests,
+       COALESCE(count(r.id),0)::int AS occupied_or_reserved_rooms
+    FROM generate_series($2::date,$3::date,interval '1 day') gs(day)
+    LEFT JOIN hotel_reservations r ON r.tenant_id=$1 AND r.status IN ('reserved','checked_in')
+      AND r.arrival_date<=gs.day::date AND r.departure_date>gs.day::date
+    GROUP BY gs.day ORDER BY gs.day`,[t,query.data.start,query.data.end])).rows);
+  return res.json({start:query.data.start,end:query.data.end,source:"hotel_reservations",automaticMealCreation:false,days:rows});
+ }catch(error){console.error("[hotel-04] meal occupancy",error);return res.status(500).json({error:"Unable to calculate occupancy"});}
+});
+
 export default router;
