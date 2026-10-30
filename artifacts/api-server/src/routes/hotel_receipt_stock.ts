@@ -25,6 +25,10 @@ router.post("/tenants/:tenantId/hotelaria/compras/recebimentos/:eventId/entrada-
   if(!["received","partially_received"].includes(row.status)){
    await client.query("ROLLBACK");return res.status(409).json({error:"Receipt must belong to a received order"});
   }
+  const location=await client.query(
+   "SELECT id FROM hotel_stock_locations WHERE tenant_id=$1 AND id=$2 AND active=true",
+   [tenantId,row.location_id]);
+  if(!location.rowCount){await client.query("ROLLBACK");return res.status(409).json({error:"Stock location is inactive"});}
   const posted=await client.query(
    "SELECT id FROM hotel_purchase_receipt_stock_posts WHERE tenant_id=$1 AND receipt_event_id=$2",[tenantId,eventId]);
   if(posted.rowCount){await client.query("ROLLBACK");return res.status(409).json({error:"Receipt already posted to stock"});}
