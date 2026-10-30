@@ -11,8 +11,8 @@ const input = z.object({
 router.post("/tenants/:tenantId/hotelaria/compras/semanais", async (req,res) => {
   const tenantId = String(req.params.tenantId);
   const user = req.user;
-  if (!user?.sub || user.tenantId !== tenantId ||
-      !["tenant_admin","super_admin"].includes(user.platformRole))
+  if (!user?.sub || user.tenantId !== tenantId || user.actorType==="ai" || user.actorType==="system" ||
+      !(user.platformRole==="tenant_admin" || user.role==="admin" || user.userFunction==="administrador"))
     return res.status(403).json({error:"Forbidden"});
   const parsed = input.safeParse(req.body);
   if (!parsed.success) return res.status(422).json({error:"Invalid period or location"});
