@@ -148,4 +148,78 @@ router.get("/tenants/:tenantId/hotelaria/receitas/:id/custo", async (req, res) =
   } finally { client.release(); }
 });
 
+
+const acquisitionCostInput = z.object({
+  productId: uuid,
+  unit: z.enum(["g", "kg", "ml", "l", "un"]),
+  purchaseQuantity: z.number().positive().max(100000000),
+  totalCost: z.number().nonnegative().max(1000000000),
+  sourceType: z.enum(["invoice", "receipt", "manual"]),
+  sourceReference: z.string().max(200).optional(),
+}).strict();
+
+router.post("/tenants/:tenantId/hotelaria/ingredientes/custos", async (req, res) => {
+  const tenantId = String(req.params.tenantId);
+  if (!authorized(req, tenantId) || !editor(req)) return res.status(403).json({ error: "Forbidden" });
+  const parsed = acquisitionCostInput.safeParse(req.body);
+  if (!parsed.success) return res.status(422).json({ error: "Invalid acquisition cost", details: parsed.error.issues });
+  const v = parsed.data;
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    await client.query("SELECT set_config('app.tenant_id',$1,true)", [tenantId]);
+    const product = await client.query("SELECT id FROM produtos_catalogo WHERE tenant_id=$1 AND id=$2", [tenantId,v.productId]);
+    if (!product.rowCount) {
+      await client.query("ROLLBACK");
+      return res.status(404).json({ error: "Product not found" });
+    }
+    const id = crypto.randomUUID();
+    await client.query(
+      `INSERT INTO hotel_ingredient_costs
+       (id, tenant_id, product_id, unit, purchase_quantity, total_cost, source_type, source_reference)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+       [id,tenantId,v.productId,v.unit,v.purchaseQuantity,v.totalCost,v.sourceType,v.sourceReference ?? null]
+    );
+    await client.query("COMMIT");
+    return res.status(201).json({ id, productId: v.productId });
+  } catch (err) {
+    await client.query("ROLLBACK");
+    console.error("[hotel-recipes] acquisition cost failed", err);
+    return res.status(500).json({ error: "Failed to register acquisition cost" });
+  } finally { client.release(); }
+});
+
+router.post("/tenants/:tenantId/hotelaria/receitas/:id/aprovar", async (req, res) => {
+  const tenantId = String(req.params.tenantId);
+  if (!authorized(req, tenantId) || !editor(req)) return res.status(403).json({ error: "Forbidden" });
+  const recipeId = String(req.params.id);
+  if (!uuid.safeParse(recipeId).success) return res.status(422).json({ error: "Invalid recipe id" });
+  const actorId = req.user?.sub;
+  if (!actorId) return res.status(403).json({ error: "User identity required" });
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    await client.query("SELECT set_config('app.tenant_id',$1,true)", [tenantId]);
+    const result = await client.query(
+      `UPDATE hotel_recipe_cards r
+         SET status='approved', approved_by=$3, approved_at=now(), updated_at=now()
+       WHERE r.tenant_id=$1 AND r.id=$2 AND r.status='draft'
+         AND EXISTS (SELECT 1 FROM hotel_recipe_ingredients i WHERE i.tenant_id=r.tenant_id AND i.recipe_id=r.id)
+         AND EXISTS (SELECT 1 FROM users u WHERE u.tenant_id=$1 AND u.id=$3 AND u.active=true)
+       RETURNING id, status, approved_at`,
+      [tenantId,recipeId,actorId]
+    );
+    if (!result.rowCount) {
+      await client.query("ROLLBACK");
+      return res.status(409).json({ error: "Recipe not eligible for approval" });
+    }
+    await client.query("COMMIT");
+    return res.json(result.rows[0]);
+  } catch (err) {
+    await client.query("ROLLBACK");
+    console.error("[hotel-recipes] approval failed", err);
+    return res.status(500).json({ error: "Failed to approve recipe" });
+  } finally { client.release(); }
+});
+
 export default router;
