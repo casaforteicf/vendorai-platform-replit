@@ -1,3 +1,4 @@
+import HotelModulesNav from "./HotelModulesNav";
 import {useEffect,useState} from "react";
 import {useAuth} from "@/contexts/AuthContext";
 type ForecastDay={service_date:string;checked_in_guests:number;reserved_guests:number;occupied_or_reserved_rooms:number};
@@ -63,6 +64,7 @@ export default function HotelRecepcao(){
  const visible=bookings.filter(b=>day(b.arrival_date)<=date&&day(b.departure_date)>date&&["reserved","checked_in"].includes(b.status));
  const gridDays=Array.from({length:7},(_,i)=>{const d=new Date(date+"T12:00:00");d.setDate(d.getDate()+i);return d.toLocaleDateString("pt-BR",{day:"2-digit",month:"2-digit"});});
  return <main className="space-y-5 p-4 md:p-6">
+    <HotelModulesNav />
   <header><h1 className="text-2xl font-semibold">Recepção · Hotelaria</h1><p className="text-sm text-muted-foreground">Mapa de ocupação, reservas e movimentações. Dados do hotel atual.</p></header>
   {message&&<div role="status" className="rounded-md border p-3 text-sm">{message}</div>}
   <div className="flex flex-wrap items-center gap-3"><label htmlFor="hotel-occupancy-date">Data de consulta</label><input id="hotel-occupancy-date" className="rounded-md border p-2" type="date" value={date} onChange={e=>setDate(e.target.value)}/><span className="text-sm text-muted-foreground">{visible.length} apartamento(s) ocupado(s) ou reservado(s) · {rooms.length} cadastrados</span></div>

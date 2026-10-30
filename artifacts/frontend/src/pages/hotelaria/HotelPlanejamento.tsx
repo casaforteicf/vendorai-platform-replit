@@ -1,3 +1,4 @@
+import HotelModulesNav from "./HotelModulesNav";
 import { useEffect, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
@@ -227,6 +228,7 @@ export default function HotelPlanejamento() {
     }catch(e){setMessage(String(e));}finally{setBusy(false);}
   }
   return <main className="mx-auto max-w-6xl space-y-5 p-4 sm:p-8">
+    <HotelModulesNav />
     <header><a href="/hotelaria/receitas" className="text-sm text-blue-700 hover:underline">← Voltar às fichas técnicas</a>
       <h1 className="mt-2 text-2xl font-semibold">Hotelaria · Planejamento semanal</h1>
       <p className="text-sm text-muted-foreground">Cinco refeições por dia. Demanda consolidada, sem baixar estoque nem gerar pedidos.</p>

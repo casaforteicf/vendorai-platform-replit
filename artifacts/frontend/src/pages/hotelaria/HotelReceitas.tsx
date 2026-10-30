@@ -1,3 +1,4 @@
+import HotelModulesNav from "./HotelModulesNav";
 import { useEffect, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
@@ -85,6 +86,7 @@ export default function HotelReceitas() {
   }
 
   return <main className="mx-auto max-w-5xl space-y-5 p-4 sm:p-8">
+    <HotelModulesNav />
     <div><a href="/estoque" className="text-sm text-blue-700 hover:underline">← Voltar ao estoque</a>
       <h1 className="mt-2 text-2xl font-semibold">Hotelaria · Fichas técnicas</h1>
       <p className="text-sm text-muted-foreground">Receitas e custo por porção, separados por estabelecimento.</p></div>
