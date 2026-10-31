@@ -42,3 +42,6 @@ Estados separados: planejado, em implementação, implementado sem validação, 
 - Informar precisamente: **lote, versão, commits/PR, resultado validado e o que falta**.
 - Evitar solicitar ao usuário decisões já tomadas; links diretos para os artefatos e PRs sempre que possível.
 - Não dizer que está trabalhando em background depois do término da interação; para recorrência fora da sessão, é necessária automação própria.
+
+## Pendências de escopo registradas
+- **A&B / Cargos (AB-01, 2026-10-31):** API entregue com `GET`, `POST` e `PATCH` em `/api/tenants/:tenantId/ab/cargos`. **`DELETE` (ou soft-delete via campo `ativo`) fica para o próximo lote** — até lá, remoção de cargo é feita por SQL direto, em operação assistida. Motivo: escopo do lote AB-01 fechado em cadastro/consulta; o contrato de exclusão precisa de decisão (físico vs. lógico) e de definição sobre histórico/auditoria.
