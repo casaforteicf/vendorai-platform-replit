@@ -1,1 +1,102 @@
-aW1wb3J0IHsNCiAgcGdUYWJsZSwNCiAgdmFyY2hhciwNCiAgdGV4dCwNCiAgdGltZXN0YW1wLA0KICBudW1lcmljLA0KICBpbnRlZ2VyLA0KICBib29sZWFuLA0KICBqc29uYiwNCn0gZnJvbSAiZHJpenpsZS1vcm0vcGctY29yZSI7DQppbXBvcnQgeyBjcmVhdGVJbnNlcnRTY2hlbWEsIGNyZWF0ZVNlbGVjdFNjaGVtYSB9IGZyb20gImRyaXp6bGUtem9kIjsNCmltcG9ydCB7IHogfSBmcm9tICJ6b2QvdjQiOw0KaW1wb3J0IHsgdGVuYW50c1RhYmxlIH0gZnJvbSAiLi90ZW5hbnRzIjsNCmltcG9ydCB7IGxlYWRzVGFibGUgfSBmcm9tICIuL2xlYWRzIjsNCmltcG9ydCB7IGRlYWxzVGFibGUgfSBmcm9tICIuL2RlYWxzIjsNCmltcG9ydCB7IHByb3Bvc3Rhc1RhYmxlIH0gZnJvbSAiLi9wcm9wb3N0YXMiOw0KaW1wb3J0IHsgb2JyYXNUYWJsZSB9IGZyb20gIi4vb2JyYXMiOw0KDQpleHBvcnQgY29uc3QgYXJjaFByb2pldG9zVGFibGUgPSBwZ1RhYmxlKCJhcmNoX3Byb2pldG9zIiwgew0KICBpZDogdGV4dCgiaWQiKQ0KICAgIC5wcmltYXJ5S2V5KCkNCiAgICAuJGRlZmF1bHRGbigoKSA9PiBjcnlwdG8ucmFuZG9tVVVJRCgpKSwNCiAgdGVuYW50SWQ6IHRleHQoInRlbmFudF9pZCIpDQogICAgLm5vdE51bGwoKQ0KICAgIC5yZWZlcmVuY2VzKCgpID0+IHRlbmFudHNUYWJsZS5pZCwgeyBvbkRlbGV0ZTogImNhc2NhZGUiIH0pLA0KICAvLyBWw61uY3Vsb3MgY29tIG8gbsO6Y2xlbyBWZW5kb3IuYWkuIFPDo28gb3BjaW9uYWlzIHBhcmEgcHJlc2VydmFyIHByb2pldG9zDQogIC8vIGxlZ2Fkb3MsIG1hcyBxdWFuZG8gcHJlZW5jaGlkb3MgYXBvbnRhbSBwYXJhIG9zIHJlZ2lzdHJvcyBjYW7DtG5pY29zIGRvDQogIC8vIENSTS9jb21lcmNpYWwvb2JyYXMgZW0gdmV6IGRlIGNyaWFyIGNhZGFzdHJvcyBwYXJhbGVsb3Mgbm8gQXJxZG9yLg0KICBsZWFkSWQ6IHRleHQoImxlYWRfaWQiKS5yZWZlcmVuY2VzKCgpID0+IGxlYWRzVGFibGUuaWQsIHsgb25EZWxldGU6ICJzZXQgbnVsbCIgfSksDQogIGRlYWxJZDogdGV4dCgiZGVhbF9pZCIpLnJlZmVyZW5jZXMoKCkgPT4gZGVhbHNUYWJsZS5pZCwgeyBvbkRlbGV0ZTogInNldCBudWxsIiB9KSwNCiAgcHJvcG9zdGFJZDogdGV4dCgicHJvcG9zdGFfaWQiKS5yZWZlcmVuY2VzKCgpID0+IHByb3Bvc3Rhc1RhYmxlLmlkLCB7IG9uRGVsZXRlOiAic2V0IG51bGwiIH0pLA0KICBvYnJhSWQ6IHRleHQoIm9icmFfaWQiKS5yZWZlcmVuY2VzKCgpID0+IG9icmFzVGFibGUuaWQsIHsgb25EZWxldGU6ICJzZXQgbnVsbCIgfSksDQogIGNsaWVudGVOb21lOiAgICAgICAgICAgdmFyY2hhcigiY2xpZW50ZV9ub21lIiwgICAgICAgICAgIHsgbGVuZ3RoOiAyNTUgfSksDQogIGNsaWVudGVFbWFpbDogICAgICAgICAgdmFyY2hhcigiY2xpZW50ZV9lbWFpbCIsICAgICAgICAgIHsgbGVuZ3RoOiAyNTUgfSksDQogIGNsaWVudGVUZWxlZm9uZTogICAgICAgdmFyY2hhcigiY2xpZW50ZV90ZWxlZm9uZSIsICAgICAgIHsgbGVuZ3RoOiAyMCAgfSksDQogIHRpdHVsbzogICAgICAgICAgICAgICAgdmFyY2hhcigidGl0dWxvIiwgICAgICAgICAgICAgICAgIHsgbGVuZ3RoOiAyNTUgfSkubm90TnVsbCgpLA0KICBkZXNjcmljYW86ICAgICAgICAgICAgIHRleHQoImRlc2NyaWNhbyIpLA0KICBzdGF0dXM6ICAgICAgICAgICAgICAgIHZhcmNoYXIoInN0YXR1cyIsICAgICAgICAgICAgICAgICB7IGxlbmd0aDogMzAgIH0pLmRlZmF1bHQoImJyaWVmaW5nIiksDQogIHBpcGVsaW5lU3RhZ2U6ICAgICAgICAgdGV4dCgicGlwZWxpbmVfc3RhZ2UiKS5kZWZhdWx0KCJsZWFkIiksDQogIHRpcG9PYnJhOiAgICAgICAgICAgICAgdmFyY2hhcigidGlwb19vYnJhIiwgICAgICAgICAgICAgIHsgbGVuZ3RoOiA1MCAgfSksDQogIGVzY29wb09yY2FtZW50bzogICAgICAgICBqc29uYigiZXNjb3BvX29yY2FtZW50byIpLiR0eXBlPHsNCiAgICB0aXBvczogc3RyaW5nW107DQogICAgb2JzZXJ2YWNvZXM/OiBzdHJpbmc7DQogICAgdHJhdGFtZW50b0V4aXN0ZW50ZXM/OiAiYXZhbGlhcl9pbmRpdmlkdWFsbWVudGUiIHwgIm1hbnRlciIgfCAic3Vic3RpdHVpciI7DQogIH0+KCksDQogIC8vIERvc3Npw6ogY2VudHJhbCBkbyBwcm9qZXRvLiDDiSBleGliaWRvIGRlbnRybyBkZSBjYWRhIGFtYmllbnRlIHBhcmEgcXVlIG8NCiAgLy8gdXN1w6FyaW8gZW5jb250cmUgYnJpZWZpbmcsIG1lZGlkYXMgZSB0b2RvcyBvcyBhcnF1aXZvcyBzZW0gZHVwbGljYXIgZGFkb3MuDQogIGRvc3NpZVByb2pldG86IGpzb25iKCJkb3NzaWVfcHJvamV0byIpLiR0eXBlPHsNCiAgICBwcm9qZWN0U2V0dXA/OiB7DQogICAgICBkaXNjaXBsaW5hOiAiQXJxdWl0ZXR1cmEiIHwgIkludGVyaW9yZXMiIHwgIsOBcmVhIEV4dGVybmEiOw0KICAgICAgc2l0dWFjYW9JbW92ZWw6ICJub3ZvIiB8ICJleGlzdGVudGUiIHwgImVtX29icmEiOw0KICAgICAgYWJyYW5nZW5jaWE6ICJjb21wbGV0byIgfCAiYW1iaWVudGVzIiB8ICJhcmVhIjsNCiAgICAgIGRpc2NpcGxpbmFzRXh0cmFzOiBBcnJheTwiQXJxdWl0ZXR1cmEiIHwgIkludGVyaW9yZXMiIHwgIsOBcmVhIEV4dGVybmEiPjsNCiAgICAgIGFtYmllbnRlc1NlbGVjaW9uYWRvcz86IHN0cmluZ1tdOw0KICAgICAgYXJlYUVzcGVjaWZpY2E/OiBzdHJpbmc7DQogICAgfTsNCiAgICBicmllZmluZz86IHN0cmluZzsNCiAgICBtZWRpZGFzPzogQXJyYXk8ew0KICAgICAgaWQ/OiBzdHJpbmc7DQogICAgICBsYWJlbDogc3RyaW5nOw0KICAgICAgdmFsdWU6IHN0cmluZzsNCiAgICAgIHVuaXQ/OiBzdHJpbmc7DQogICAgICBhbWJpZW50ZUlkPzogc3RyaW5nIHwgbnVsbDsNCiAgICB9PjsNCiAgICBhcnF1aXZvcz86IEFycmF5PHsNCiAgICAgIGlkOiBzdHJpbmc7DQogICAgICBub21lOiBzdHJpbmc7DQogICAgICB1cmw6IHN0cmluZzsNCiAgICAgIHRpcG86ICJza3AiIHwgImR4ZiIgfCAiaWZjIiB8ICJwZGYiIHwgImZvdG8iIHwgImltYWdlbSIgfCAiZG9jdW1lbnRvIiB8ICJvdXRybyI7DQogICAgICBtaW1lVHlwZT86IHN0cmluZzsNCiAgICAgIHNpemU/OiBudW1iZXI7DQogICAgICBhbWJpZW50ZUlkPzogc3RyaW5nIHwgbnVsbDsNCiAgICAgIGNyZWF0ZWRBdD86IHN0cmluZzsNCiAgICB9PjsNCiAgfT4oKS5kZWZhdWx0KHt9KSwNCiAgYXJlYU0yOiAgICAgICAgICAgICAgICBudW1lcmljKCJhcmVhX20yIiwgICAgICAgICAgICAgICAgeyBwcmVjaXNpb246IDgsICBzY2FsZTogMiB9KSwNCiAgb3JjYW1lbnRvVG90YWw6ICAgICAgICBudW1lcmljKCJvcmNhbWVudG9fdG90YWwiLCAgICAgICAgeyBwcmVjaXNpb246IDEyLCBzY2FsZTogMiB9KSwNCiAgcHJhem9Fc3RpbWFkbzogICAgICAgICBpbnRlZ2VyKCJwcmF6b19lc3RpbWFkbyIpLA0KICBhcnF1aXRldG9SZXNwb25zYXZlbDogIHZhcmNoYXIoImFycXVpdGV0b19yZXNwb25zYXZlbCIsICB7IGxlbmd0aDogMjU1IH0pLA0KICBwb3J0YWxUb2tlbjogICAgICAgICAgIHZhcmNoYXIoInBvcnRhbF90b2tlbiIsICAgICAgICAgICB7IGxlbmd0aDogNjQgIH0pLA0KICBwb3J0YWxBdGl2bzogICAgICAgICAgIGJvb2xlYW4oInBvcnRhbF9hdGl2byIpLmRlZmF1bHQoZmFsc2UpLA0KICBjcmVhdGVkQXQ6ICAgICAgICAgICAgIHRpbWVzdGFtcCgiY3JlYXRlZF9hdCIpLm5vdE51bGwoKS5kZWZhdWx0Tm93KCksDQogIHVwZGF0ZWRBdDogICAgICAgICAgICAgdGltZXN0YW1wKCJ1cGRhdGVkX2F0Iikubm90TnVsbCgpLmRlZmF1bHROb3coKSwNCn0pOw0KDQpleHBvcnQgY29uc3QgaW5zZXJ0QXJjaFByb2pldG9TY2hlbWEgPSBjcmVhdGVJbnNlcnRTY2hlbWEoYXJjaFByb2pldG9zVGFibGUsIHsNCiAgYXJlYU0yOiAgICAgICAgIHouY29lcmNlLm51bWJlcigpLm5vbm5lZ2F0aXZlKCkub3B0aW9uYWwoKSwNCiAgb3JjYW1lbnRvVG90YWw6IHouY29lcmNlLm51bWJlcigpLm5vbm5lZ2F0aXZlKCkub3B0aW9uYWwoKSwNCiAgcHJhem9Fc3RpbWFkbzogIHouY29lcmNlLm51bWJlcigpLmludCgpLm5vbm5lZ2F0aXZlKCkub3B0aW9uYWwoKSwNCn0pLm9taXQoeyBpZDogdHJ1ZSwgY3JlYXRlZEF0OiB0cnVlLCB1cGRhdGVkQXQ6IHRydWUgfSk7DQoNCmV4cG9ydCBjb25zdCB1cGRhdGVBcmNoUHJvamV0b1NjaGVtYSA9IGNyZWF0ZVNlbGVjdFNjaGVtYShhcmNoUHJvamV0b3NUYWJsZSwgew0KICBhcmVhTTI6ICAgICAgICAgei5jb2VyY2UubnVtYmVyKCkubm9ubmVnYXRpdmUoKS5vcHRpb25hbCgpLA0KICBvcmNhbWVudG9Ub3RhbDogei5jb2VyY2UubnVtYmVyKCkubm9ubmVnYXRpdmUoKS5vcHRpb25hbCgpLA0KICBwcmF6b0VzdGltYWRvOiAgei5jb2VyY2UubnVtYmVyKCkuaW50KCkubm9ubmVnYXRpdmUoKS5vcHRpb25hbCgpLA0KfSkNCiAgLm9taXQoeyBpZDogdHJ1ZSwgdGVuYW50SWQ6IHRydWUsIGNyZWF0ZWRBdDogdHJ1ZSwgdXBkYXRlZEF0OiB0cnVlIH0pDQogIC5wYXJ0aWFsKCk7DQoNCmV4cG9ydCB0eXBlIEluc2VydEFyY2hQcm9qZXRvID0gei5pbmZlcjx0eXBlb2YgaW5zZXJ0QXJjaFByb2pldG9TY2hlbWE+Ow0KZXhwb3J0IHR5cGUgVXBkYXRlQXJjaFByb2pldG8gPSB6LmluZmVyPHR5cGVvZiB1cGRhdGVBcmNoUHJvamV0b1NjaGVtYT47DQpleHBvcnQgdHlwZSBBcmNoUHJvamV0byA9IHR5cGVvZiBhcmNoUHJvamV0b3NUYWJsZS4kaW5mZXJTZWxlY3Q7DQo=
+import {
+  pgTable,
+  varchar,
+  text,
+  timestamp,
+  numeric,
+  integer,
+  boolean,
+  jsonb,
+} from "drizzle-orm/pg-core";
+import { createInsertSchema, createSelectSchema } from "drizzle-zod";
+import { z } from "zod/v4";
+import { tenantsTable } from "./tenants";
+import { leadsTable } from "./leads";
+import { dealsTable } from "./deals";
+import { propostasTable } from "./propostas";
+import { obrasTable } from "./obras";
+
+export const archProjetosTable = pgTable("arch_projetos", {
+  id: text("id")
+    .primaryKey()
+    .$defaultFn(() => crypto.randomUUID()),
+  tenantId: text("tenant_id")
+    .notNull()
+    .references(() => tenantsTable.id, { onDelete: "cascade" }),
+  // Vínculos com o núcleo Vendor.ai. São opcionais para preservar projetos
+  // legados, mas quando preenchidos apontam para os registros canônicos do
+  // CRM/comercial/obras em vez de criar cadastros paralelos no Arqdor.
+  leadId: text("lead_id").references(() => leadsTable.id, { onDelete: "set null" }),
+  dealId: text("deal_id").references(() => dealsTable.id, { onDelete: "set null" }),
+  propostaId: text("proposta_id").references(() => propostasTable.id, { onDelete: "set null" }),
+  obraId: text("obra_id").references(() => obrasTable.id, { onDelete: "set null" }),
+  clienteNome:           varchar("cliente_nome",           { length: 255 }),
+  clienteEmail:          varchar("cliente_email",          { length: 255 }),
+  clienteTelefone:       varchar("cliente_telefone",       { length: 20  }),
+  titulo:                varchar("titulo",                 { length: 255 }).notNull(),
+  descricao:             text("descricao"),
+  status:                varchar("status",                 { length: 30  }).default("briefing"),
+  pipelineStage:         text("pipeline_stage").default("lead"),
+  tipoObra:              varchar("tipo_obra",              { length: 50  }),
+  escopoOrcamento:         jsonb("escopo_orcamento").$type<{
+    tipos: string[];
+    observacoes?: string;
+    tratamentoExistentes?: "avaliar_individualmente" | "manter" | "substituir";
+  }>(),
+  // Dossiê central do projeto. É exibido dentro de cada ambiente para que o
+  // usuário encontre briefing, medidas e todos os arquivos sem duplicar dados.
+  dossieProjeto: jsonb("dossie_projeto").$type<{
+    projectSetup?: {
+      disciplina: "Arquitetura" | "Interiores" | "Área Externa";
+      situacaoImovel: "novo" | "existente" | "em_obra";
+      abrangencia: "completo" | "ambientes" | "area";
+      disciplinasExtras: Array<"Arquitetura" | "Interiores" | "Área Externa">;
+      ambientesSelecionados?: string[];
+      areaEspecifica?: string;
+    };
+    briefing?: string;
+    medidas?: Array<{
+      id?: string;
+      label: string;
+      value: string;
+      unit?: string;
+      ambienteId?: string | null;
+    }>;
+    arquivos?: Array<{
+      id: string;
+      nome: string;
+      url: string;
+      tipo: "skp" | "dxf" | "ifc" | "pdf" | "foto" | "imagem" | "documento" | "outro";
+      mimeType?: string;
+      size?: number;
+      ambienteId?: string | null;
+      createdAt?: string;
+    }>;
+  }>().default({}),
+  areaM2:                numeric("area_m2",                { precision: 8,  scale: 2 }),
+  orcamentoTotal:        numeric("orcamento_total",        { precision: 12, scale: 2 }),
+  prazoEstimado:         integer("prazo_estimado"),
+  arquitetoResponsavel:  varchar("arquiteto_responsavel",  { length: 255 }),
+  portalToken:           varchar("portal_token",           { length: 64  }),
+  portalAtivo:           boolean("portal_ativo").default(false),
+  createdAt:             timestamp("created_at").notNull().defaultNow(),
+  updatedAt:             timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const insertArchProjetoSchema = createInsertSchema(archProjetosTable, {
+  areaM2:         z.coerce.number().nonnegative().optional(),
+  orcamentoTotal: z.coerce.number().nonnegative().optional(),
+  prazoEstimado:  z.coerce.number().int().nonnegative().optional(),
+}).omit({ id: true, createdAt: true, updatedAt: true });
+
+export const updateArchProjetoSchema = createSelectSchema(archProjetosTable, {
+  areaM2:         z.coerce.number().nonnegative().optional(),
+  orcamentoTotal: z.coerce.number().nonnegative().optional(),
+  prazoEstimado:  z.coerce.number().int().nonnegative().optional(),
+})
+  .omit({ id: true, tenantId: true, createdAt: true, updatedAt: true })
+  .partial();
+
+export type InsertArchProjeto = z.infer<typeof insertArchProjetoSchema>;
+export type UpdateArchProjeto = z.infer<typeof updateArchProjetoSchema>;
+export type ArchProjeto = typeof archProjetosTable.$inferSelect;
