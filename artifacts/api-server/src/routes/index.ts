@@ -77,6 +77,7 @@ import hotelMenuPdfRouter from "./hotel_menu_pdf";
 import hotelWeeklyPurchasesRouter from "./hotel_weekly_purchases";
 import hotelMealsRouter from "./hotel_meals";
 import hotelRecipesRouter from "./hotel_recipes";
+import abCargosRouter from "./ab_cargos";
 import siteConfigRouter, { publicSiteRouter } from "./site_config";
 import segmentTemplatesRouter, { publicSegmentTemplatesRouter } from "./segment_templates";
 import invitesRouter, { invitesProtectedRouter } from "./invites";
@@ -483,6 +484,8 @@ router.use(hotelMenuPdfRouter);
 router.use(hotelWeeklyPurchasesRouter);
 router.use(hotelMealsRouter);
 router.use(hotelRecipesRouter);
+// A&B (Alimentos & Bebidas) — aba dentro do módulo de Hotelaria.
+router.use(abCargosRouter);
 router.use(erpRouter);
 router.use(financeIntegrationsRouter);
 router.use(customIntegrationsRouter);
