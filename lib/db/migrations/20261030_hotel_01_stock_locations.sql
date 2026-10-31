@@ -217,7 +217,7 @@ $$;
 
 -- Itens de transferências não podem ser editados depois que deixam rascunho/solicitado.
 CREATE OR REPLACE FUNCTION hotel_stock_guard_transfer_items()
-RETURNS trigger LANGUAGE plpgsql SECURITY INVOKER AS $
+RETURNS trigger LANGUAGE plpgsql SECURITY INVOKER AS $$
 DECLARE v_status text;
 BEGIN
   SELECT status INTO v_status FROM hotel_stock_transfer_requests
@@ -228,7 +228,7 @@ BEGIN
   END IF;
   RETURN COALESCE(NEW, OLD);
 END;
-$;
+$$;
 CREATE TRIGGER hotel_stock_guard_transfer_items_trg
 BEFORE INSERT OR UPDATE OR DELETE ON hotel_stock_transfer_items
 FOR EACH ROW EXECUTE FUNCTION hotel_stock_guard_transfer_items();
