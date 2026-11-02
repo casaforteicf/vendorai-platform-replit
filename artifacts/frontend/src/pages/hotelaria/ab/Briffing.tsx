@@ -21,6 +21,7 @@ import {
   type CardapioDia,
   type ResultadoBriffing,
 } from "@/lib/ab/briffing";
+import { formatarDataBR, hojeISO } from "@/lib/ab/datas";
 
 /**
  * Briffing — resumo de produção de A&B.
@@ -30,11 +31,6 @@ import {
  * de API acontece aqui — o cálculo é 100% local, o que permite conferir o número
  * contra a planilha antes de plugar dado de produção.
  */
-
-function hojeISO(): string {
-  const agora = new Date();
-  return new Date(agora.getTime() - agora.getTimezoneOffset() * 60_000).toISOString().slice(0, 10);
-}
 
 const CARDAPIO_EXEMPLO: CardapioDia = {
   data: hojeISO(),
@@ -153,7 +149,7 @@ export default function Briffing() {
     return resultado?.porPrato.find((prato) => prato.pratoId === pratoId)?.porcoesTotais ?? null;
   }
 
-  const dataFormatada = new Date(`${CARDAPIO_EXEMPLO.data}T12:00:00`).toLocaleDateString("pt-BR");
+  const dataFormatada = formatarDataBR(CARDAPIO_EXEMPLO.data);
 
   return (
     <main className="mx-auto max-w-5xl space-y-5 p-4 sm:p-8">
