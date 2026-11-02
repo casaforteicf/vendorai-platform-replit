@@ -127,5 +127,4 @@ export type OperacaoModelador =
   | OperacaoMaterial
   | OperacaoImportacao;
 
-/** Conteúdo de um passo de undo do modelador (alias histórico da Parte 29). */
-export type PassoUndo = OperacaoModelador[];
+/* PassoUndo vive em transacao.ts: o passo pode carregar operações de vários escopos. */

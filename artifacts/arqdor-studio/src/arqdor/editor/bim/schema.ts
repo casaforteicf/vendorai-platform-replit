@@ -114,9 +114,27 @@ export interface ElementoBim {
  * E8: excluir móvel NÃO gera `remover_elemento_bim`; gera
  *     `atualizar_elemento_bim` com `modeladorSolidoId` ausente.
  */
+/** E11: furo como abertura paramétrica da parede. */
+export interface OperacaoAdicionarAbertura {
+  tipo: 'adicionar_abertura';
+  elementoId: string;
+  abertura: AberturaFuro;
+}
+
+export interface OperacaoRemoverAbertura {
+  tipo: 'remover_abertura';
+  elementoId: string;
+  abertura: AberturaFuro;
+}
+
+/**
+ * Operações do BIM Core.
+ * E8: excluir móvel NÃO gera `remover_elemento_bim`; gera `atualizar_elemento_bim`
+ *     com `modeladorSolidoId` ausente.
+ */
 export type OperacaoBIM =
   | { tipo: 'criar_elemento_bim'; elemento: ElementoBim }
   | { tipo: 'atualizar_elemento_bim'; antes: ElementoBim; depois: ElementoBim }
   | { tipo: 'remover_elemento_bim'; elemento: ElementoBim }
-  | { tipo: 'adicionar_abertura'; elementoId: string; abertura: AberturaFuro }
-  | { tipo: 'remover_abertura'; elementoId: string; abertura: AberturaFuro };
+  | OperacaoAdicionarAbertura
+  | OperacaoRemoverAbertura;

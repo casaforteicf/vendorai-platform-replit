@@ -25,6 +25,23 @@ export interface OperacoesPorEscopo {
   moveis?: OperacaoMovel[];
 }
 
+/** Operações de qualquer escopo — forma "achatada" usada pela documentação v1.1. */
+export type OperacaoQualquer =
+  | OperacaoModelador
+  | OperacaoMEP
+  | OperacaoBIM
+  | OperacaoMovel;
+
+/**
+ * Conteúdo de um passo de undo.
+ *
+ * É CONTEÚDO, não entrada de log: não carrega `escopo` nem `ordem`. O histórico
+ * continua guardando `Passo` (abaixo) porque sem `ordem` não há como reverter na
+ * sequência correta entre stores, e sem `escopo` o Transaction Log não sabe o que
+ * a transação tocou (necessário para sync incremental e auditoria).
+ */
+export type PassoUndo = OperacaoQualquer[];
+
 export interface PassoModelador {
   escopo: 'modelador';
   id: string;

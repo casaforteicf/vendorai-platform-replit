@@ -69,13 +69,27 @@ export interface RenderVideo {
  * Contrato do codificador. `enviarFrame` DEVE respeitar backpressure
  * (não retornar antes de o encoder aceitar o próximo frame).
  */
+/** Quadro pronto para codificar. Quem recebe o quadro é dono de chamar `fechar()`. */
+export interface QuadroVideo {
+  readonly largura: number;
+  readonly altura: number;
+  /** Libera o buffer nativo. Obrigatório: sem isso o decoder/encoder vaza memória. */
+  fechar(): void;
+}
+
 export interface CodificadorVideo {
   readonly tipo: EstrategiaCodificacao['tipo'];
+  /** Frames aceitos e ainda não codificados (métrica de backpressure). */
+  readonly emVoo: number;
   iniciar(opcoes: OpcoesRenderVideo): Promise<void>;
-  enviarFrame(
-    frame: OffscreenCanvas | HTMLCanvasElement,
-    timestampUs: number,
-  ): Promise<void>;
+  /**
+   * Entrega um frame. Resolve apenas quando o encoder aceitou (nunca antes de
+   * `emVoo < maxFramesEmVoo`). A implementação chama `frame.fechar()` sempre —
+   * inclusive em erro.
+   */
+  enviarFrame(frame: QuadroVideo, timestampUs: number): Promise<void>;
+  /** Espera `emVoo` chegar a zero. Obrigatório antes de `finalizar()`. */
+  drenar(): Promise<void>;
   finalizar(): Promise<Blob>;
   cancelar(): Promise<void>;
 }
