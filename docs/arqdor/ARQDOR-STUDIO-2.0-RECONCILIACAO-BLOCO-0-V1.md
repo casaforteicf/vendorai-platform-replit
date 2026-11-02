@@ -113,3 +113,24 @@ _prova-guarda.ts(10,35): error TS2344: Type 'true' does not satisfy the constrai
 
 Enquanto o código base não existir, `estado máximo = especificado` para os 14 documentos.
 Contratos verdes **não** são implementação verde.
+---
+
+## 7. Defeitos descobertos ao IMPLEMENTAR (D1–D4)
+
+Contratos que pareciam corretos na leitura e só quebraram quando o código foi escrito.
+Nenhum destes seria pego por typecheck ou pela suíte negativa — os tipos aceitam as duas coisas;
+o que eles não permitem é **desfazer** ou **decidir**.
+
+| ID | Onde | Defeito | Correção aplicada no código |
+|---|---|---|---|
+| **D1** | `OperacaoMaterial` | `depois: MaterialFace \| undefined` — **não invertível**. Pintar N faces com materiais diferentes: a inversa precisa restaurar N valores, e o tipo só guarda um | `depois` virou `(MaterialFace \| undefined)[]`, na mesma ordem de `faceIds` |
+| **D2** | `OperacaoModelador` | `criar_vertice` / `criar_aresta` / `criar_face` **não têm `solidoId`** — são operações sem contexto de sólido; o store não sabe onde aplicar | rejeitadas com `OPERACAO_FORA_DE_CONTEXTO`; se forem usadas, o contrato precisa de `solidoId` |
+| **D3** | `hitTest` (implementação) | `pontoNoRaio` com fórmula invertida (`sub(scale(dir,-d), scale(origem,-1))`) | `add(origem, scale(dir, d))` |
+| **D4** | `Camada` × `ModoVisualizacao` | **duas verdades de visibilidade**: `camada.visivel` e `modo.camadasVisiveis` podiam divergir sem ninguém notar | fonte única = `camada.visivel`; modo é **preset** que reescreve as flags; toggle manual desmarca o modo (`modoAtivoId = null`) |
+
+**O que o DeepSeek precisa atualizar na documentação:**
+
+1. `OperacaoMaterial.depois` passa a ser array (Bloco 7).
+2. `criar_vertice`/`criar_aresta`/`criar_face` ganham `solidoId` **ou** são declaradas como operações internas de construção (nunca aplicadas direto no estado).
+3. Doc de camadas (Bloco 4) precisa dizer que o modo é preset e que o toggle manual sai do preset.
+4. `Removidos` da booleana continua `Solido[]` (snapshot) — divergência com a v3 **mantida de propósito**.

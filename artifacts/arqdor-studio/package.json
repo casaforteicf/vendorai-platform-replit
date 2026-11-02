@@ -9,7 +9,8 @@
     "start": "next start --port 5180",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "typecheck:contracts": "tsc -p tsconfig.contracts.json",
-    "typecheck:contracts-tests": "tsc -p tsconfig.contracts-tests.json"
+    "typecheck:contracts-tests": "tsc -p tsconfig.contracts-tests.json",
+    "test:camadas": "tsc -p tsconfig.check.json && node tests/camadas/run.mjs"
   },
   "dependencies": {
     "@thatopen/components": "^3.6.0",

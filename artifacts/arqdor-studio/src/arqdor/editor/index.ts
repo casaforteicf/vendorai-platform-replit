@@ -16,6 +16,7 @@ export * from './modelador/ferramentas/retangulo';
 export * from './modelador/ferramentas/circulo';
 export * from './modelador/ferramentas/arco';
 export * from './bim/schema';
+export * from './bim/camadas';
 export * from './mep/schema';
 export * from './transacao';
 export * from './ia/schema';
