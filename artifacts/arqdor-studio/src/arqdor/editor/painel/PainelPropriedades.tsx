@@ -32,6 +32,8 @@ export interface PropsPainelPropriedades {
   /** Não-nulo quando o sólido selecionado já é uma PAREDE no BIM. */
   paredeId: string | null;
   vaosExistentes: number;
+  aoTransformar: (transformacao: { posicao: [number, number, number]; escala: [number, number, number] }) => void;
+  aoExcluir: () => void;
   aoAbrirVao: (tipo: 'porta' | 'janela', medidas: { offset: number; largura: number; altura: number; peitoril: number }) => void;
 }
 
@@ -90,6 +92,48 @@ function SecaoVaos(props: {
     </div>
   );
 }
+
+function CamposTransformacao(props: {
+  solido: Solido;
+  aoTransformar: (transformacao: { posicao: [number, number, number]; escala: [number, number, number] }) => void;
+}) {
+  const [px, setPx] = useState(String(props.solido.transformacao.posicao[0]));
+  const [py, setPy] = useState(String(props.solido.transformacao.posicao[1]));
+  const [pz, setPz] = useState(String(props.solido.transformacao.posicao[2]));
+  const [ex, setEx] = useState(String(props.solido.transformacao.escala[0]));
+  const [ey, setEy] = useState(String(props.solido.transformacao.escala[1]));
+  const [ez, setEz] = useState(String(props.solido.transformacao.escala[2]));
+
+  const numero = (valor: string): number => Number(valor.replace(',', '.'));
+
+  const confirmar = (): void => {
+    const valores = [px, py, pz, ex, ey, ez].map(numero);
+    if (!valores.every((valor) => Number.isFinite(valor))) return;
+    const [a, b, c, d, e, f] = valores;
+    props.aoTransformar({ posicao: [a, b, c], escala: [d === 0 ? 1 : d, e === 0 ? 1 : e, f === 0 ? 1 : f] });
+  };
+
+  const aoTeclar = (evento: React.KeyboardEvent<HTMLInputElement>): void => {
+    if (evento.key === 'Enter') confirmar();
+  };
+
+  return (
+    <>
+      <div className="arq-transf-titulo">Posição (m)</div>
+      <div className="arq-transf">
+        <input className="arq-field" value={px} onChange={(e) => setPx(e.target.value)} onBlur={confirmar} onKeyDown={aoTeclar} aria-label="Posição X" />
+        <input className="arq-field" value={py} onChange={(e) => setPy(e.target.value)} onBlur={confirmar} onKeyDown={aoTeclar} aria-label="Posição Y" />
+        <input className="arq-field" value={pz} onChange={(e) => setPz(e.target.value)} onBlur={confirmar} onKeyDown={aoTeclar} aria-label="Posição Z" />
+      </div>
+      <div className="arq-transf-titulo">Escala</div>
+      <div className="arq-transf">
+        <input className="arq-field" value={ex} onChange={(e) => setEx(e.target.value)} onBlur={confirmar} onKeyDown={aoTeclar} aria-label="Escala X" />
+        <input className="arq-field" value={ey} onChange={(e) => setEy(e.target.value)} onBlur={confirmar} onKeyDown={aoTeclar} aria-label="Escala Y" />
+        <input className="arq-field" value={ez} onChange={(e) => setEz(e.target.value)} onBlur={confirmar} onKeyDown={aoTeclar} aria-label="Escala Z" />
+      </div>
+    </>
+  );
+}
 export function PainelPropriedades(props: PropsPainelPropriedades) {
   const { solido, face, previa } = props;
 
@@ -119,13 +163,20 @@ export function PainelPropriedades(props: PropsPainelPropriedades) {
             <span>{String(solido.arestas.length)} arestas</span>
             <span>{String(solido.faces.length)} faces</span>
           </div>
-          <div className="arq-muted" style={{ marginTop: 6, lineHeight: 1.6 }}>
-            pos ({numero(solido.transformacao.posicao[0])}, {numero(solido.transformacao.posicao[1])}, {numero(solido.transformacao.posicao[2])})
-            <br />
-            rot ({numero(solido.transformacao.rotacao[0])}, {numero(solido.transformacao.rotacao[1])}, {numero(solido.transformacao.rotacao[2])})
-            <br />
-            esc ({numero(solido.transformacao.escala[0])}, {numero(solido.transformacao.escala[1])}, {numero(solido.transformacao.escala[2])})
-          </div>
+          <CamposTransformacao
+            key={solido.id + ':' + solido.transformacao.posicao.join(',') + ':' + solido.transformacao.escala.join(',')}
+            solido={solido}
+            aoTransformar={props.aoTransformar}
+          />
+          <button
+            type="button"
+            className="arq-btn arq-btn-perigo"
+            style={{ width: '100%', justifyContent: 'center', height: 34, marginTop: 10 }}
+            onClick={props.aoExcluir}
+          >
+            <Icone nome="lixeira" tamanho={15} />
+            Excluir sólido
+          </button>
         </div>
       )}
 

@@ -18,6 +18,8 @@ import type { Vetor3 } from './modelador/schema';
 import { ModeladorCanvas } from './modeladorcanvas/ModeladorCanvas';
 import { ToolbarModelador } from './modeladorcanvas/ToolbarModelador';
 import { PainelCamadas } from './painel/PainelCamadas';
+import { ModalInserir } from './painel/ModalInserir';
+import type { MedidasInsercao } from './painel/ModalInserir';
 import { PainelPropriedades } from './painel/PainelPropriedades';
 import type { FaceEscolhida, PreviaBim } from './painel/PainelPropriedades';
 import { calcularPushPull } from './modelador/pushpull';
@@ -43,6 +45,7 @@ export function EditorShell() {
   const [carregado, setCarregado] = useState(false);
   const [aba, setAba] = useState<'modelo' | 'planta' | 'conflitos'>('modelo');
   const [mep, setMep] = useState<ElementoMEP[]>([]);
+  const [modalInserir, setModalInserir] = useState(false);
   const [aviso, setAviso] = useState('Clique em "Novo sólido" e depois no plano.');
   const [projeto, setProjeto] = useState<{ id: string; nome: string; criadoEm: string } | null>(null);
   const [salvoEm, setSalvoEm] = useState<string | null>(null);
@@ -55,6 +58,8 @@ export function EditorShell() {
   const indice = useModeladorStore((s) => s.indice);
   const totalPassos = useModeladorStore((s) => s.historico.length);
   const criarSolido = useModeladorStore((s) => s.criarSolido);
+  const inserirCaixa = useModeladorStore((s) => s.inserirCaixa);
+  const removerSolido = useModeladorStore((s) => s.removerSolido);
   const aplicar = useModeladorStore((s) => s.aplicar);
   const desfazer = useModeladorStore((s) => s.desfazer);
   const refazer = useModeladorStore((s) => s.refazer);
@@ -241,6 +246,36 @@ export function EditorShell() {
     } else {
       setAviso('Este elemento já está atualizado no BIM.');
     }
+  };
+
+  const inserir = (medidas: MedidasInsercao): void => {
+    inserirCaixa(medidas);
+    setModalInserir(false);
+    setAba('modelo');
+    setAviso(
+      medidas.nome +
+        ' inserido em (' + medidas.posicao.join(', ') + ') com ' +
+        String(medidas.dimensoes.largura) + ' × ' + String(medidas.dimensoes.altura) + ' × ' + String(medidas.dimensoes.profundidade) + ' m.',
+    );
+  };
+
+  const excluirSelecionado = (): void => {
+    if (solidoSelecionado === undefined) return;
+    const vinculo = elementos.find((el) => el.id === 'el_' + solidoSelecionado.id);
+    aplicarBim(vinculo === undefined ? [] : [{ tipo: 'remover_elemento_bim', elemento: vinculo }]);
+    removerSolido(solidoSelecionado.id);
+    setAviso('"' + solidoSelecionado.nome + '" excluído. Ctrl+Z desfaz.');
+  };
+
+  const transformarSelecionado = (transformacao: { posicao: [number, number, number]; escala: [number, number, number] }): void => {
+    if (solidoSelecionado === undefined) return;
+    aplicar([
+      {
+        tipo: 'atualizar_solido',
+        antes: solidoSelecionado,
+        depois: { ...solidoSelecionado, transformacao: { ...solidoSelecionado.transformacao, ...transformacao } },
+      },
+    ]);
   };
 
   const adicionarMep = (elemento: ElementoMEP): void => {
@@ -448,6 +483,7 @@ export function EditorShell() {
           ferramenta={ferramenta}
           aoEscolher={setFerramenta}
           aoNovoSolido={criarSolido}
+          aoAbrirInsercao={() => setModalInserir(true)}
           aoDesfazer={desfazer}
           aoRefazer={refazer}
           podeDesfazer={indice > 0}
@@ -508,6 +544,8 @@ export function EditorShell() {
             paredeId={paredeDoSolido === undefined ? null : paredeDoSolido.id}
             vaosExistentes={vaosDoSolido.length}
             aoAbrirVao={abrirVaoNaParede}
+            aoTransformar={transformarSelecionado}
+            aoExcluir={excluirSelecionado}
           />
           <div style={{ height: 1, background: '#e5e7eb', margin: '14px 0' }} />
           <PainelCamadas
@@ -532,6 +570,7 @@ export function EditorShell() {
         <span style={{ marginLeft: 'auto' }}>S/L/R/C/A · P push/pull · M/O/E gizmo · Ctrl+Z</span>
       </div>
       </div>
+      <ModalInserir aberto={modalInserir} aoFechar={() => setModalInserir(false)} aoInserir={inserir} />
     </AppShell>
   );
 }

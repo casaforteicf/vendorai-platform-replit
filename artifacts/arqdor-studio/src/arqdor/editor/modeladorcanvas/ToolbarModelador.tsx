@@ -9,6 +9,7 @@ export interface PropsToolbar {
   ferramenta: FerramentaModelador;
   aoEscolher: (ferramenta: FerramentaModelador) => void;
   aoNovoSolido: () => void;
+  aoAbrirInsercao: () => void;
   aoDesfazer: () => void;
   aoRefazer: () => void;
   podeDesfazer: boolean;
@@ -61,6 +62,7 @@ export function ToolbarModelador(props: PropsToolbar) {
   return (
     <div className="arq-editor-rail" role="toolbar" aria-label="Ferramentas de modelagem">
       <div className="arq-rail-label">Sólido</div>
+      {botao('inserir', 'Inserir medidas', 'retangulo', false, false, props.aoAbrirInsercao, 'Cria um sólido digitando posição e dimensões')}
       {botao('novo', 'Novo sólido', 'mais', false, false, props.aoNovoSolido, 'Cria um sólido vazio')}
 
       <div className="arq-rail-label">Ferramentas</div>

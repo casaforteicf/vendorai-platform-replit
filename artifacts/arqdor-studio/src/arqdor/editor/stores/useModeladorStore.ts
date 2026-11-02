@@ -2,9 +2,11 @@
 
 /** Store do modelador — casca fina sobre o motor puro (nenhuma regra de geometria aqui). */
 
+import { criarCaixa } from '../modelador/caixa';
+import type { DimensoesCaixa } from '../modelador/caixa';
 import { create } from 'zustand';
 import type { FerramentaModelador } from '../modelador/desenho';
-import type { OperacaoModelador, Solido, Transformacao } from '../modelador/schema';
+import type { OperacaoModelador, Solido, Transformacao, Vetor3 } from '../modelador/schema';
 import type { ErroStore, EstadoModelador } from '../modelador/store-core';
 import { ESTADO_INICIAL, aplicarPasso, novoSolidoId } from '../modelador/store-core';
 
@@ -18,6 +20,10 @@ export interface ModeladorState {
   solidoSelecionadoId: string | null;
   ultimoErro: ErroStore | null;
   criarSolido: () => void;
+  /** Insere um sólido com medidas exatas (canto mínimo + dimensões). */
+  inserirCaixa: (entrada: { nome: string; posicao: Vetor3; dimensoes: DimensoesCaixa }) => void;
+  /** Remove o sólido (e a seleção). Undo restaura. */
+  removerSolido: (solidoId: string) => void;
   aplicar: (operacoes: OperacaoModelador[]) => void;
   desfazer: () => void;
   refazer: () => void;
@@ -56,6 +62,47 @@ export const useModeladorStore = create<ModeladorState>((set, get) => ({
       historico: [...historico.slice(0, indice + 1), novo],
       indice: indice + 1,
       solidoSelecionadoId: id,
+      ultimoErro: null,
+    });
+  },
+
+  inserirCaixa: (entrada) => {
+    const { estado, historico, indice } = get();
+    const { id, proximoSolidoN } = novoSolidoId(estado);
+    const caixa = criarCaixa({ id, nome: entrada.nome, posicao: entrada.posicao, dimensoes: entrada.dimensoes });
+    if (!caixa.ok) {
+      set({ ultimoErro: { codigo: 'ESTADO_INCONSISTENTE', detalhe: caixa.erro.codigo } });
+      return;
+    }
+    const resultado = aplicarPasso(estado, [{ tipo: 'criar_solido', solido: caixa.solido }], 'direta');
+    if (!resultado.ok) {
+      set({ ultimoErro: resultado.erro });
+      return;
+    }
+    const novo: EstadoModelador = { ...resultado.estado, proximoSolidoN };
+    set({
+      estado: novo,
+      historico: [...historico.slice(0, indice + 1), novo],
+      indice: indice + 1,
+      solidoSelecionadoId: id,
+      ultimoErro: null,
+    });
+  },
+
+  removerSolido: (solidoId) => {
+    const { estado, historico, indice, solidoSelecionadoId } = get();
+    const alvo = estado.solidos.find((item) => item.id === solidoId);
+    if (alvo === undefined) return;
+    const resultado = aplicarPasso(estado, [{ tipo: 'remover_solido', solido: alvo }], 'direta');
+    if (!resultado.ok) {
+      set({ ultimoErro: resultado.erro });
+      return;
+    }
+    set({
+      estado: resultado.estado,
+      historico: [...historico.slice(0, indice + 1), resultado.estado],
+      indice: indice + 1,
+      solidoSelecionadoId: solidoSelecionadoId === solidoId ? null : solidoSelecionadoId,
       ultimoErro: null,
     });
   },

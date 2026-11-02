@@ -326,3 +326,51 @@ button { font-family: inherit; }
 .arq-conflitos-mep li { display: flex; align-items: center; gap: 8px; font-size: 11px; }
 .arq-conflitos-mep .ponto { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
 .arq-conflitos-mep button { margin-left: auto; }
+/* ============ LAYOUT v5 — editor em grade, canvas contido ============ */
+.arq-editor-body {
+  display: grid;
+  grid-template-columns: 168px minmax(0, 1fr) 320px;
+  min-height: 0;
+}
+.arq-editor-body > .arq-editor-rail { width: auto; }
+.arq-editor-body > .arq-editor-aside { width: auto; }
+.arq-editor-canvas {
+  position: relative;
+  overflow: hidden;      /* sem isto o canvas WebGL vaza e cobre o inspetor */
+  min-width: 0;
+  min-height: 0;
+}
+.arq-editor-canvas > canvas { display: block; width: 100% !important; height: 100% !important; }
+/* aba Conflitos ocupa a linha inteira (rail e inspetor ocultos) */
+.arq-editor-body:has(.arq-conflitos) { grid-template-columns: minmax(0, 1fr); }
+
+/* alinhamento das abas */
+.arq-editor-toolbar > div[role="tablist"] { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+.arq-editor-toolbar .arq-tool { height: 30px; }
+
+/* ============ inserção paramétrica (modal) ============ */
+.arq-modal-fundo {
+  position: fixed; inset: 0; z-index: 60;
+  background: rgba(8, 20, 16, 0.55);
+  display: grid; place-items: center;
+}
+.arq-modal {
+  width: min(520px, 92vw);
+  background: #fff; border-radius: 14px; padding: 16px;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.28);
+}
+.arq-modal-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; font-size: 14px; }
+.arq-modal-presets { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
+.arq-modal-presets .arq-btn { height: 30px; padding: 0 10px; font-size: 11.5px; }
+.arq-modal > label { display: flex; flex-direction: column; gap: 3px; font-size: 10.5px; text-transform: uppercase; letter-spacing: .3px; }
+.arq-modal-grade { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-top: 8px; }
+.arq-modal-grade label { display: flex; flex-direction: column; gap: 3px; font-size: 10.5px; text-transform: uppercase; letter-spacing: .3px; }
+.arq-modal-grade .arq-field { text-align: right; font-variant-numeric: tabular-nums; }
+.arq-modal-acoes { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
+
+/* ============ transformação editável + excluir ============ */
+.arq-transf-titulo { font-size: 10px; text-transform: uppercase; letter-spacing: .4px; color: var(--arq-texto-suave); margin: 8px 0 4px; }
+.arq-transf { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+.arq-transf .arq-field { height: 30px; font-size: 11.5px; text-align: right; font-variant-numeric: tabular-nums; }
+.arq-btn-perigo { border-color: #fecaca; background: #fef2f2; color: #b91c1c; }
+.arq-btn-perigo:hover { background: #fee2e2; border-color: #fca5a5; }
