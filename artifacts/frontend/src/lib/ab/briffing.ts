@@ -210,3 +210,31 @@ export function formatarQuantidade(quantidadeBase: number, unidade: UnidadeBase)
   }
   return `${FORMATO_NUMERO.format(quantidadeBase)} ${unidade}`;
 }
+
+export type OcupacaoValidada = { ok: true; valor: number } | { ok: false; erro: string };
+
+/**
+ * Valida a ocupação digitada antes de chamar o motor.
+ *
+ * Vive aqui (e não na tela) porque é a porta de entrada do cálculo: um `<input
+ * type="number">` no navegador deixa o usuário digitar "12.5", e um número
+ * fracionário de hóspedes quase sempre é digitação errada — melhor recusar com
+ * mensagem do que calcular meia pessoa.
+ */
+export function validarOcupacao(bruto: string, maximo = 10_000): OcupacaoValidada {
+  const texto = bruto.trim();
+  if (!texto) return { ok: false, erro: "Informe a ocupação em hóspedes." };
+
+  const valor = Number(texto.replace(",", "."));
+  if (!Number.isFinite(valor)) return { ok: false, erro: "A ocupação precisa ser um número." };
+  if (!Number.isInteger(valor) || valor < 0) {
+    return { ok: false, erro: "A ocupação deve ser um número inteiro de hóspedes (0 ou mais)." };
+  }
+  if (valor > maximo) {
+    return {
+      ok: false,
+      erro: `Ocupação acima de ${FORMATO_NUMERO.format(maximo)} hóspedes — confira o valor.`,
+    };
+  }
+  return { ok: true, valor };
+}

@@ -5,6 +5,7 @@ const links=[
  {href:"/hotelaria/planejamento",name:"Refeições e compras"},
  {href:"/hotelaria/tarifas",name:"Tarifas e diárias"},
  {href:"/hotelaria/ab/cargos",name:"Cargos e setores"},
+ {href:"/hotelaria/ab/briffing",name:"Briffing"},
 ] as const;
 export default function HotelModulesNav(){
  const [location]=useLocation();

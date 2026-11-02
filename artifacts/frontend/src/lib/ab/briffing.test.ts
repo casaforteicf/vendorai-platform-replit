@@ -3,6 +3,7 @@ import {
   calcularBriffing,
   consolidarBriffings,
   formatarQuantidade,
+  validarOcupacao,
   type CardapioDia,
   type Prato,
 } from "./briffing";
@@ -238,5 +239,41 @@ describe("formatarQuantidade", () => {
 
   it("mostra fração de unidade", () => {
     expect(formatarQuantidade(1.5, "g")).toBe("1,5 g");
+  });
+});
+
+describe("validarOcupacao", () => {
+  it("aceita inteiro positivo, inclusive com espaços", () => {
+    expect(validarOcupacao("150")).toEqual({ ok: true, valor: 150 });
+    expect(validarOcupacao("  150  ")).toEqual({ ok: true, valor: 150 });
+    expect(validarOcupacao("0")).toEqual({ ok: true, valor: 0 });
+  });
+
+  it("aceita vírgula decimal em valor inteiro (pt-BR)", () => {
+    expect(validarOcupacao("150,0")).toEqual({ ok: true, valor: 150 });
+  });
+
+  it("rejeita vazio e não numérico", () => {
+    expect(validarOcupacao("")).toEqual({ ok: false, erro: "Informe a ocupação em hóspedes." });
+    expect(validarOcupacao("   ")).toEqual({ ok: false, erro: "Informe a ocupação em hóspedes." });
+    expect(validarOcupacao("abc")).toEqual({ ok: false, erro: "A ocupação precisa ser um número." });
+  });
+
+  it("rejeita fração de hóspede", () => {
+    const resultado = validarOcupacao("12.5");
+    expect(resultado.ok).toBe(false);
+    expect(resultado.ok === false && resultado.erro).toMatch(/inteiro de hóspedes/);
+  });
+
+  it("rejeita negativo", () => {
+    const resultado = validarOcupacao("-3");
+    expect(resultado.ok).toBe(false);
+    expect(resultado.ok === false && resultado.erro).toMatch(/inteiro de hóspedes/);
+  });
+
+  it("recusa ocupação absurda como proteção contra digitação errada", () => {
+    const resultado = validarOcupacao("10001");
+    expect(resultado.ok).toBe(false);
+    expect(resultado.ok === false && resultado.erro).toContain("10.000");
   });
 });
