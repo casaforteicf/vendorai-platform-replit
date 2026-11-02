@@ -83,6 +83,10 @@ export interface GeometriaMobiliario {
   modeladorSolidoId?: string;
   dimensoes: { largura: number; altura: number; profundidade: number };
   categoria?: string;
+  /** D5: posicao em planta (m). Sem ela o movel nao pode ser derivado em 2D. */
+  posicao?: [number, number];
+  /** D5: rotacao em planta (graus), sentido anti-horario. */
+  rotacaoGraus?: number;
 }
 
 export interface GeometriaTelhado {

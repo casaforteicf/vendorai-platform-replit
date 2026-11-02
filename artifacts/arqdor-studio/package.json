@@ -10,7 +10,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "typecheck:contracts": "tsc -p tsconfig.contracts.json",
     "typecheck:contracts-tests": "tsc -p tsconfig.contracts-tests.json",
-    "test:camadas": "tsc -p tsconfig.check.json && node tests/camadas/run.mjs"
+    "test:camadas": "tsc -p tsconfig.check.json && node tests/run-all.mjs"
   },
   "dependencies": {
     "@thatopen/components": "^3.6.0",

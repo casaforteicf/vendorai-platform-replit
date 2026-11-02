@@ -134,3 +134,17 @@ o que eles não permitem é **desfazer** ou **decidir**.
 2. `criar_vertice`/`criar_aresta`/`criar_face` ganham `solidoId` **ou** são declaradas como operações internas de construção (nunca aplicadas direto no estado).
 3. Doc de camadas (Bloco 4) precisa dizer que o modo é preset e que o toggle manual sai do preset.
 4. `Removidos` da booleana continua `Solido[]` (snapshot) — divergência com a v3 **mantida de propósito**.
+### 7.1 Addendum — D5 (mobiliário sem posição) e instrução D4 para a doc
+
+| ID | Onde | Defeito | Correção |
+|---|---|---|---|
+| **D5** | `GeometriaMobiliario` | só tinha `dimensiones`; **sem `posicao` nem rotação** não há como desenhar o móvel em planta — o `derivar2d` não saberia onde | adicionados `posicao?: [number, number]` e `rotacaoGraus?: number` (opcionais, retrocompatível). Sem `posicao`, o móvel **não é derivado** (declarado, não silencioso) |
+
+**Instrução específica para o DeepSeek (D4):** o documento de camadas precisa trocar o tipo
+`modoAtivoId: string` por `modoAtivoId: string | null` e explicar que:
+
+1. `camada.visivel` é a **fonte única** de visibilidade;
+2. `ModoVisualizacao` é **preset**: aplicar reescreve as flags de todas as camadas;
+3. alternar um checkbox manualmente seta `modoAtivoId = null` (a UI mostra "custom").
+
+Sem isso, a UI vai reintroduzir o estado inconsistente que o D4 fechou.
