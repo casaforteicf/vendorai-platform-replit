@@ -172,3 +172,11 @@ Sem isso, a UI vai reintroduzir o estado inconsistente que o D4 fechou.
 2. que o contato intencional (tomada/interruptor ancorado na própria parede) é **ignorado com motivo**, não descartado em silêncio;
 3. que a margem padrão é **5 cm** e que o resultado vem **ordenado por volume de interseção** (o pedreiro resolve o maior primeiro);
 4. que AABB é aproximação do MVP e o SAT entra quando houver falso positivo confirmado (D11).
+### 7.4 Addendum — D8 (arco de 3 pontos perdia o terceiro clique)
+
+| ID | Onde | Defeito | Correção |
+|---|---|---|---|
+| **D8** | `desenho.ts` | a máquina tinha fases fixas (`ocioso`/`um_ponto`/`dois_pontos`). No arco, o **terceiro clique sobrescrevia o segundo** e o ponto C nunca chegava ao `criarArco` — o arco por 3 pontos era inalcançável pela UI | `EstadoDesenho` passou a guardar `pontos: Vetor3[]`; a quantidade vem de `cliquesNecessarios(ferramenta)`. O teste de `desenho` que faltava é o que teria pego isso |
+
+Lição registrada: o defeito sobreviveu a 141 asserções porque **nenhuma delas exercitava o fluxo de cliques** —
+só a função `criarArco` isolada. Ligar a UI foi o teste que faltava.
