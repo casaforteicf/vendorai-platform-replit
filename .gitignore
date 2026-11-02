@@ -72,3 +72,7 @@ Thumbs.db
 
 # harness E2E local (playwright-core + perfil de navegador)
 .e2e/
+
+# artefatos de build/verificacao do app
+.next/
+.check-out/
