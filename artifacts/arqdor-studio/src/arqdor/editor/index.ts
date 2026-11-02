@@ -1,12 +1,20 @@
 /**
  * ARQDOR STUDIO 2.0 — entrada do domínio do editor.
- *
- * Barrels para que `tsc -p tsconfig.contracts.json` compile o grafo inteiro
- * a partir de um único ponto. Sem efeito colateral em runtime.
+ * Barrels para `tsc -p tsconfig.contracts.json` compilar o grafo inteiro.
  */
 
 export * from './modelador/schema';
 export * from './modelador/snap';
+export * from './modelador/plano';
+export * from './modelador/hitTest';
+export * from './modelador/pushpull';
+export * from './modelador/gizmo';
+export * from './modelador/store-core';
+export * from './modelador/desenho';
+export * from './modelador/ferramentas/linha';
+export * from './modelador/ferramentas/retangulo';
+export * from './modelador/ferramentas/circulo';
+export * from './modelador/ferramentas/arco';
 export * from './bim/schema';
 export * from './mep/schema';
 export * from './transacao';
@@ -16,4 +24,4 @@ export * from './moveis/schema';
 export * from './portal/schema';
 export * from './video/schema';
 
-export const ARQDOR_STUDIO_VERSAO = '2.0.0-alpha.1';
+export const ARQDOR_STUDIO_VERSAO = '2.0.0-alpha.2';

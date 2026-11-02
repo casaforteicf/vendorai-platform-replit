@@ -116,9 +116,10 @@ export interface OperacaoMaterial {
   tipo: 'pintar_face';
   solidoId: string;
   faceIds: string[];
-  /** Mesma ordem de `faceIds`. */
+  /** Mesma ordem de faceIds. */
   antes: (MaterialFace | undefined)[];
-  depois: MaterialFace | undefined;
+  /** Mesma ordem de faceIds. Array porque a inversa precisa restaurar cada valor original. */
+  depois: (MaterialFace | undefined)[];
 }
 
 export interface OperacaoImportacao {
