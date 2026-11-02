@@ -62,6 +62,7 @@ export function EditorShell() {
   const novaCamada = useBIMStore((s) => s.novaCamada);
   const removerCamada = useBIMStore((s) => s.removerCamada);
   const revelarTodos = useBIMStore((s) => s.revelarTodos);
+  const carregarExemplo = useBIMStore((s) => s.carregarExemplo);
   const carregarBim = useBIMStore((s) => s.carregar);
 
   const [desenho, setDesenho] = useState<EstadoDesenho>(() => iniciar('linha'));
@@ -326,6 +327,17 @@ export function EditorShell() {
           ) : (
             <Viewport2D linhas={linhasPlanta} selecionadoId={selecionadoId} />
           )}
+          {aba === 'planta' && elementos.length === 0 ? (
+            <div className="arq-vazio-overlay">
+              <p>
+                Nenhum elemento BIM ainda. A planta 2D é derivada de paredes, lajes e esquadrias — o
+                modelador 3D cria sólidos, e eles ainda não viram elementos.
+              </p>
+              <button type="button" className="arq-btn" onClick={carregarExemplo}>
+                Carregar modelo de exemplo
+              </button>
+            </div>
+          ) : null}
         </div>
 
         <aside className="arq-editor-aside">

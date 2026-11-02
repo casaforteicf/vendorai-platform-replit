@@ -256,3 +256,11 @@ button { font-family: inherit; }
 .arq-statusbar { flex-wrap: nowrap; overflow: hidden; gap: 14px; }
 .arq-statusbar > span { white-space: nowrap; flex-shrink: 0; }
 .arq-statusbar > span:last-child { flex-shrink: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+/* estado vazio honesto do viewport (ação real, não texto solto) */
+.arq-editor-canvas { position: relative; }
+.arq-vazio-overlay {
+  position: absolute; inset: 0; display: flex; flex-direction: column; gap: 12px;
+  align-items: center; justify-content: center; text-align: center; padding: 24px;
+  background: rgba(15, 22, 24, 0.88); color: #cfe0da; font-size: 12px;
+}
+.arq-vazio-overlay p { margin: 0; max-width: 380px; line-height: 1.5; }

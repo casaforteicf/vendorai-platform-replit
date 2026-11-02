@@ -46,7 +46,7 @@ export function Viewport2D({ linhas, selecionadoId }: PropsViewport2D) {
     if (linhas.length === 0) {
       ctx.fillStyle = '#aab8b5';
       ctx.font = '14px system-ui, sans-serif';
-      ctx.fillText('Sem geometria. Use "Carregar exemplo" para ver a planta.', 24, 36);
+      ctx.fillText('Sem elementos BIM.', 24, 36);
       return;
     }
 
