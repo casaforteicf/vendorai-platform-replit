@@ -171,6 +171,31 @@ export function ModeladorCanvas(props: PropsModeladorCanvas) {
     cameraRef.current = camera;
     gizmoRef.current = controle;
 
+    // Seam de teste (só em desenvolvimento): projeta a ponta de um eixo do gizmo para
+    // que o teste E2E consiga arrastar o ponto certo em vez de adivinhar coordenadas.
+    if (process.env.NODE_ENV !== 'production') {
+      const janelaTeste = window as unknown as { __arqTeste?: unknown };
+      janelaTeste.__arqTeste = {
+        pontaEixo: (eixo: 'x' | 'y' | 'z', fracao: number): { x: number; y: number } | null => {
+          const alvo = selecionadoRef.current;
+          const grupo = alvo === null ? undefined : grupos.children.find((filho) => filho.userData.solidoId === alvo);
+          if (grupo === undefined) return null;
+          const distancia = grupo.position.distanceTo(camera.position);
+          const escala = distancia * (0.9 / 7);
+          const ponto = grupo.position.clone();
+          if (eixo === 'x') ponto.x += escala * fracao;
+          if (eixo === 'y') ponto.y += escala * fracao;
+          if (eixo === 'z') ponto.z += escala * fracao;
+          ponto.project(camera);
+          const caixaTela = renderer.domElement.getBoundingClientRect();
+          return {
+            x: caixaTela.left + ((ponto.x + 1) / 2) * caixaTela.width,
+            y: caixaTela.top + ((1 - ponto.y) / 2) * caixaTela.height,
+          };
+        },
+      };
+    }
+
     let vivo = true;
     const animar = (): void => {
       if (!vivo) return;
