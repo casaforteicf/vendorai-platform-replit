@@ -41,11 +41,19 @@ export interface MaterialFace {
   offset?: [number, number];
 }
 
+/** Diferença máxima de normal para considerar duas faces coplanares (graus). */
+export const TOLERANCIA_COPLANARIDADE_GRAUS = 0.5;
+
 export interface Face {
   id: string;
   vertices: string[];
   material?: MaterialFace;
-  /** Marcada quando a face veio de triangulação (booleana/import GLB). */
+  /**
+   * E10 (decidido): `mergeCoplanares` fica.
+   * Regiões planas viram UMA face lógica; regiões com variação de normal viram triângulos
+   * (e aí esta flag é true). Quem consome não pode assumir "sempre triangular" nem
+   * "sempre quadrangular".
+   */
   triangulada?: boolean;
 }
 
@@ -67,11 +75,17 @@ export interface Solido {
 export type TipoBooleana = 'uniao' | 'diferenca' | 'intersecao';
 
 /**
- * Booleana.
+ * Booleana entre dois sólidos.
  *
- * Correção aplicada: `removidos` carrega o SNAPSHOT completo dos sólidos consumidos,
- * nunca apenas ids — undo não reconstrói geometria a partir de id.
- * `antes` existe para o redo poder recalcular sem reprocessar o motor.
+ * E9 (decidido): o sólido B é CONSUMIDO — não permanece na cena.
+ * E o resultado HERDA o id de A, de propósito: preserva referências externas
+ * (`ElementoBim.geometria.modeladorSolidoId`, seleção, camada). Por isso A não
+ * aparece em `removidos` — ele é substituído no lugar.
+ *
+ * Invariantes:
+ *  - `depois.resultado.id === solidoA`
+ *  - `removidos` = os sólidos que saem da cena além dessa substituição (hoje `[antes.solidoB]`)
+ *  - undo: `depois.resultado` → `antes.solidoA`; reinserir `antes.solidoB`
  */
 export interface OperacaoBooleana {
   tipo: 'aplicar_booleana';

@@ -2,11 +2,14 @@
  * ARQDOR STUDIO 2.0 — BIM Core (contrato).
  *
  * Decisão E18: `porta` e `janela` continuam sendo TIPOS (Parte 29).
- * `esquadria` deixou de ser tipo e virou CATEGORIA de porta/janela — assim o vão
- * contábil, o render e o Bloco 10 não quebram.
+ * `esquadria` deixou de ser tipo e virou CATEGORIA — o vão contábil, o render e o
+ * Bloco 10 continuam válidos.
  *
  * Decisão E11: furo de MEP é ABERTURA PARAMÉTRICA da parede, não booleana.
- * A parede continua paramétrica; a geometria do furo é derivada e o orçamento desconta.
+ *
+ * Decisão E8: o móvel é dono do VÍNCULO, não do elemento. Excluir o móvel no Modelador
+ * zera `modeladorSolidoId` (geometria estática permanece) — o `ElementoBim` NÃO é apagado,
+ * porque orçamento e render dependem dele.
  */
 
 export type TipoElemento =
@@ -69,10 +72,17 @@ export interface GeometriaLaje {
   espessura: number;
 }
 
-/** Mobiliário do modelador referenciado por id (fonte: `arch_modelador_solidos`). */
+/**
+ * Mobiliário no BIM.
+ *
+ * E8: `modeladorSolidoId` é OPCIONAL porque a exclusão do móvel no Modelador só
+ * desfaz o vínculo. Sem ele, o elemento continua existindo e renderizável pelas
+ * `dimensoes` (geometria estática) — B10-10.
+ */
 export interface GeometriaMobiliario {
-  modeladorSolidoId: string;
+  modeladorSolidoId?: string;
   dimensoes: { largura: number; altura: number; profundidade: number };
+  categoria?: string;
 }
 
 export interface GeometriaTelhado {
@@ -101,7 +111,8 @@ export interface ElementoBim {
 /**
  * Operações do BIM Core.
  * E11: `adicionar_abertura`/`remover_abertura` substituem a booleana em parede.
- * Toda op carrega snapshot para o undo (padrão do projeto).
+ * E8: excluir móvel NÃO gera `remover_elemento_bim`; gera
+ *     `atualizar_elemento_bim` com `modeladorSolidoId` ausente.
  */
 export type OperacaoBIM =
   | { tipo: 'criar_elemento_bim'; elemento: ElementoBim }
