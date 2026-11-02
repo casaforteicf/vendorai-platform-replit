@@ -21,6 +21,7 @@ export * from './bim/store-core';
 export * from './bim/derivar2d';
 export * from './orcamento/quantitativos';
 export * from './documentacao/memorial';
+export * from './persistencia/documento';
 export * from './mep/schema';
 export * from './mep/colisao';
 export * from './transacao';
