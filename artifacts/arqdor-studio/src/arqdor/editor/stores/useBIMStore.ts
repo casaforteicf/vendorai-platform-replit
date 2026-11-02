@@ -28,6 +28,7 @@ export interface BIMState {
   revelarTodos: () => void;
   aplicar: (operacoes: OperacaoBIM[]) => void;
   carregarExemplo: () => void;
+  carregar: (camadas: EstadoCamadas, elementos: ElementoBim[]) => void;
 }
 
 export const useBIMStore = create<BIMState>((set, get) => ({
@@ -72,6 +73,8 @@ export const useBIMStore = create<BIMState>((set, get) => ({
     const r = aplicarPassoBim(get().bim, operacoes, 'direta');
     if (r.ok) set({ bim: r.estado });
   },
+
+  carregar: (camadas, elementos) => set({ camadas, bim: { elementos } }),
 
   carregarExemplo: () => {
     const projetoId = 'projeto-exemplo';

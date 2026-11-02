@@ -34,7 +34,7 @@ function construirSolido(solido: Solido, selecionado: boolean): THREE.Group {
     geometria.setAttribute('position', new THREE.Float32BufferAttribute(posicoes, 3));
     geometria.computeVertexNormals();
     const material = new THREE.MeshStandardMaterial({
-      color: selecionado ? 0x2e7d32 : 0xb9c7b9,
+      color: selecionado ? 0x4ac59a : 0x303a3d,
       side: THREE.DoubleSide,
       flatShading: true,
       roughness: 0.85,
@@ -51,7 +51,7 @@ function construirSolido(solido: Solido, selecionado: boolean): THREE.Group {
   if (arestas.length > 0) {
     const geometriaArestas = new THREE.BufferGeometry();
     geometriaArestas.setAttribute('position', new THREE.Float32BufferAttribute(arestas, 3));
-    grupo.add(new THREE.LineSegments(geometriaArestas, new THREE.LineBasicMaterial({ color: 0x1b5e20 })));
+    grupo.add(new THREE.LineSegments(geometriaArestas, new THREE.LineBasicMaterial({ color: 0x6fbfa2 })));
   }
 
   return grupo;
@@ -81,7 +81,7 @@ export function ModeladorCanvas({ solidos, selecionadoId, aoClicarNoPlano }: Pro
     if (container === null) return undefined;
 
     const cena = new THREE.Scene();
-    cena.background = new THREE.Color(0xf5f7f5);
+    cena.background = new THREE.Color(0x171f22);
 
     const camera = new THREE.PerspectiveCamera(50, container.clientWidth / Math.max(1, container.clientHeight), 0.05, 500);
     camera.position.set(7, 6, 8);
@@ -99,7 +99,7 @@ export function ModeladorCanvas({ solidos, selecionadoId, aoClicarNoPlano }: Pro
     const sol = new THREE.DirectionalLight(0xffffff, 1.4);
     sol.position.set(6, 12, 8);
     cena.add(sol);
-    cena.add(new THREE.GridHelper(20, 40, 0x2e7d32, 0xc8d6c8));
+    cena.add(new THREE.GridHelper(20, 40, 0x176d59, 0x3a4649));
 
     const grupos = new THREE.Group();
     cena.add(grupos);

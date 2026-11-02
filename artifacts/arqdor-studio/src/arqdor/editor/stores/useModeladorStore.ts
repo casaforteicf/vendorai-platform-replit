@@ -23,6 +23,7 @@ export interface ModeladorState {
   refazer: () => void;
   setFerramenta: (ferramenta: FerramentaModelador) => void;
   selecionar: (id: string | null) => void;
+  carregar: (estado: EstadoModelador) => void;
 }
 
 export const useModeladorStore = create<ModeladorState>((set, get) => ({
@@ -89,4 +90,6 @@ export const useModeladorStore = create<ModeladorState>((set, get) => ({
 
   setFerramenta: (ferramenta) => set({ ferramenta }),
   selecionar: (id) => set({ solidoSelecionadoId: id }),
+
+  carregar: (estado) => set({ estado, historico: [estado], indice: 0, solidoSelecionadoId: null, ultimoErro: null }),
 }));

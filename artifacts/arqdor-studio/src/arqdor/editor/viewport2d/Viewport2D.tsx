@@ -6,12 +6,12 @@ import { useEffect, useRef } from 'react';
 import type { Linha2D, TipoLinha2D } from '../bim/derivar2d';
 
 const COR: Record<TipoLinha2D, string> = {
-  parede: '#2e7d32',
-  abertura: '#d97706',
-  esquadria: '#1565c0',
-  laje: '#9ca3af',
-  mobiliario: '#7c3aed',
-  telhado: '#b45309',
+  parede: '#4ac59a',
+  abertura: '#e0a24a',
+  esquadria: '#6ba6e8',
+  laje: '#8fa3a0',
+  mobiliario: '#b28ce8',
+  telhado: '#d08a4a',
 };
 
 export interface PropsViewport2D {
@@ -40,11 +40,11 @@ export function Viewport2D({ linhas, selecionadoId }: PropsViewport2D) {
     if (ctx === null) return;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, largura, altura);
-    ctx.fillStyle = '#ffffff';
+    ctx.fillStyle = '#171f22';
     ctx.fillRect(0, 0, largura, altura);
 
     if (linhas.length === 0) {
-      ctx.fillStyle = '#6b7280';
+      ctx.fillStyle = '#aab8b5';
       ctx.font = '14px system-ui, sans-serif';
       ctx.fillText('Sem geometria. Use "Carregar exemplo" para ver a planta.', 24, 36);
       return;
@@ -74,7 +74,7 @@ export function Viewport2D({ linhas, selecionadoId }: PropsViewport2D) {
       const [x2, y2] = paraTela(l.x2, l.y2);
       ctx.beginPath();
       ctx.setLineDash(l.tracejada === true ? [6, 4] : []);
-      ctx.strokeStyle = l.elementoId === selecionadoId ? '#2e7d32' : COR[l.tipo];
+      ctx.strokeStyle = l.elementoId === selecionadoId ? '#4ac59a' : COR[l.tipo];
       ctx.lineWidth = l.tipo === 'parede' ? 3 : l.tipo === 'laje' ? 1.5 : 2;
       ctx.moveTo(x1, y1);
       ctx.lineTo(x2, y2);
@@ -82,7 +82,7 @@ export function Viewport2D({ linhas, selecionadoId }: PropsViewport2D) {
     }
     ctx.setLineDash([]);
 
-    ctx.fillStyle = '#374151';
+    ctx.fillStyle = '#aab8b5';
     ctx.font = '12px system-ui, sans-serif';
     ctx.fillText('escala: ' + escala.toFixed(0) + ' px/m', 12, altura - 12);
   }, [linhas, selecionadoId]);

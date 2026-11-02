@@ -1,13 +1,156 @@
+/* ARQDOR Studio 2.0 — identidade oficial (docs/arqdor-studio-2-design-system.md, aprovado 2026-10-11)
+   Tokens e primitivas espelham artifacts/frontend/.../arqdor-studio-primitives.css. */
+
 * { box-sizing: border-box; }
 
 html, body {
   margin: 0;
   padding: 0;
   height: 100%;
-  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-  background: #f5f7f5;
-  color: #1f2933;
+  background: #171f22;
+  color: #eef2ef;
 }
 
-button { font-family: inherit; }
+.arqdor-studio-ui {
+  --arq2-bg: #171f22;
+  --arq2-surface: #20282a;
+  --arq2-panel: #263034;
+  --arq2-raised: #303a3d;
+  --arq2-border: #3a4649;
+  --arq2-text: #eef2ef;
+  --arq2-muted: #aab8b5;
+  --arq2-accent: #176d59;
+  --arq2-accent-hover: #21856c;
+  --arq2-focus: #4ac59a;
+  --arq2-danger: #ea7373;
+  --arq2-header: 52px;
+  --arq2-nav: 156px;
+  --arq2-aside: 300px;
+  font-family: Inter, "IBM Plex Sans", "Segoe UI", sans-serif;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  background: var(--arq2-bg);
+  color: var(--arq2-text);
+  min-height: 100vh;
+}
+
+.arq-shell { display: flex; flex-direction: column; min-height: 100vh; }
+
+.arq-header {
+  height: var(--arq2-header);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 14px;
+  background: var(--arq2-surface);
+  border-bottom: 1px solid var(--arq2-border);
+  flex-shrink: 0;
+}
+
+.arq-brand { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; letter-spacing: 0.2px; }
+.arq-brand-mark {
+  width: 22px; height: 22px; border-radius: 5px;
+  background: var(--arq2-accent);
+  display: grid; place-items: center; font-size: 12px; font-weight: 700; color: #fff;
+}
+
+.arq-header-project { font-size: 12px; color: var(--arq2-muted); }
+.arq-header-project strong { color: var(--arq2-text); font-weight: 600; }
+.arq-header-spacer { flex: 1; }
+
+.arq-body { display: flex; flex: 1; min-height: 0; }
+
+.arq-nav {
+  width: var(--arq2-nav);
+  flex-shrink: 0;
+  background: var(--arq2-surface);
+  border-right: 1px solid var(--arq2-border);
+  padding: 8px 0;
+}
+
+.arq-nav-item {
+  display: flex; align-items: center; gap: 8px;
+  width: 100%;
+  min-height: 34px;
+  padding: 7px 12px;
+  border: 0;
+  border-left: 2px solid transparent;
+  background: transparent;
+  color: var(--arq2-muted);
+  font: inherit; font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+.arq-nav-item:hover:not(:disabled) { background: var(--arq2-raised); color: var(--arq2-text); }
+.arq-nav-item[aria-current="page"] { border-left-color: var(--arq2-accent); background: rgba(23, 109, 89, 0.15); color: var(--arq2-text); font-weight: 600; }
+.arq-nav-item:disabled { opacity: 0.38; cursor: not-allowed; }
+.arq-nav-item:focus-visible { outline: 2px solid var(--arq2-focus); outline-offset: -2px; }
+.arq-nav-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.6px; color: var(--arq2-muted); padding: 10px 12px 4px; }
+.arq-nav-item > span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 11.5px; }
+
+.arq-main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+
+.arq2-panel { background: var(--arq2-panel); color: var(--arq2-text); border: 1px solid var(--arq2-border); border-radius: 8px; }
+.arq2-toolbar { display: flex; gap: 6px; align-items: center; min-height: 40px; padding: 5px 8px; background: var(--arq2-surface); color: var(--arq2-text); border-bottom: 1px solid var(--arq2-border); }
+.arq2-panel-title { font-size: 13px; font-weight: 600; line-height: 1.4; }
+.arq2-label { color: var(--arq2-muted); font-size: 11px; line-height: 1.4; }
+
+.arq2-tool-button {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  min-height: 32px; padding: 5px 10px;
+  border-radius: 6px; border: 1px solid transparent;
+  color: var(--arq2-text); background: transparent;
+  font: inherit; font-size: 12px; cursor: pointer;
+}
+.arq2-tool-button:hover:not(:disabled) { background: var(--arq2-raised); }
+.arq2-tool-button[aria-pressed="true"] { color: #fff; background: var(--arq2-accent); }
+.arq2-tool-button:disabled { opacity: 0.4; cursor: not-allowed; }
+.arq2-tool-button:focus-visible, .arq2-field:focus-visible, .arq-card:focus-visible, .arq-primary:focus-visible {
+  outline: 2px solid var(--arq2-focus); outline-offset: 2px;
+}
+
+.arq2-field {
+  min-height: 32px; border: 1px solid var(--arq2-border); border-radius: 6px;
+  background: var(--arq2-surface); color: var(--arq2-text);
+  padding: 5px 8px; font: inherit; font-size: 12px;
+}
+.arq2-field::placeholder { color: var(--arq2-muted); }
+
+.arq-primary {
+  display: inline-flex; align-items: center; gap: 6px;
+  min-height: 32px; padding: 6px 12px;
+  border: 1px solid var(--arq2-accent); border-radius: 6px;
+  background: var(--arq2-accent); color: #fff;
+  font: inherit; font-size: 12px; font-weight: 600; cursor: pointer;
+}
+.arq-primary:hover { background: var(--arq2-accent-hover); }
+.arq-primary:disabled { opacity: 0.45; cursor: not-allowed; }
+
+/* Dashboard — cards permitidos FORA do editor (a baseline proíbe cards dentro do editor). */
+.arq-dashboard { padding: 24px; overflow-y: auto; }
+.arq-dashboard-title { font-size: 16px; font-weight: 600; margin: 0 0 4px; }
+.arq-dashboard-sub { color: var(--arq2-muted); font-size: 12px; margin: 0 0 20px; }
+.arq-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
+.arq-card {
+  display: flex; flex-direction: column; gap: 8px;
+  padding: 14px; text-align: left;
+  background: var(--arq2-panel); border: 1px solid var(--arq2-border); border-radius: 8px;
+  color: var(--arq2-text); font: inherit; cursor: pointer;
+}
+.arq-card:hover { border-color: var(--arq2-accent); background: var(--arq2-raised); }
+.arq-card-name { font-size: 13px; font-weight: 600; }
+.arq-card-meta { font-size: 11px; color: var(--arq2-muted); }
+.arq-empty { border: 1px dashed var(--arq2-border); border-radius: 8px; padding: 20px; color: var(--arq2-muted); font-size: 12px; }
+
+.arq-status {
+  display: flex; gap: 14px; align-items: center;
+  min-height: 26px; padding: 4px 10px;
+  background: var(--arq2-surface); border-top: 1px solid var(--arq2-border);
+  color: var(--arq2-muted); font-size: 11px;
+}
+
+.arq-tool-rail { width: 156px; flex-shrink: 0; background: var(--arq2-surface); border-right: 1px solid var(--arq2-border); padding: 8px; }
+.arq-aside { width: var(--arq2-aside); flex-shrink: 0; background: var(--arq2-surface); border-left: 1px solid var(--arq2-border); padding: 12px; overflow-y: auto; }
+
 canvas { display: block; }
+button { font-family: inherit; }

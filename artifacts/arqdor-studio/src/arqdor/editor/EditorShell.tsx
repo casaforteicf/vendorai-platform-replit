@@ -1,7 +1,8 @@
 'use client';
 
-/** Casca visual do editor: toolbar + viewport + painel de camadas. Toda regra vem do motor puro. */
+/** Ambiente "Modelagem 2D/3D" — rail de ferramentas, viewport dominante e inspetor à direita. */
 
+import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import { objetoVisivel } from './bim/camadas';
 import { derivar2d } from './bim/derivar2d';
@@ -12,6 +13,10 @@ import type { Vetor3 } from './modelador/schema';
 import { ModeladorCanvas } from './modeladorcanvas/ModeladorCanvas';
 import { ToolbarModelador } from './modeladorcanvas/ToolbarModelador';
 import { PainelCamadas } from './painel/PainelCamadas';
+import type { DocumentoArqdor } from './persistencia/documento';
+import { VERSAO_DOCUMENTO } from './persistencia/documento';
+import { obterProjeto, projetoAtivoId, salvarProjeto } from './persistencia/localStore';
+import { AppShell } from './shell/AppShell';
 import { useBIMStore } from './stores/useBIMStore';
 import { useModeladorStore } from './stores/useModeladorStore';
 import { Viewport2D } from './viewport2d/Viewport2D';
@@ -23,20 +28,23 @@ function aposGrade(valor: number): number {
 }
 
 export function EditorShell() {
-  const [aba, setAba] = useState<'modelador' | 'planta'>('modelador');
-  const [aviso, setAviso] = useState<string | null>('Crie um sólido e clique no plano para desenhar.');
+  const [carregado, setCarregado] = useState(false);
+  const [aba, setAba] = useState<'modelo' | 'planta'>('modelo');
+  const [aviso, setAviso] = useState('Clique em "Novo sólido" e depois no plano.');
+  const [projeto, setProjeto] = useState<{ id: string; nome: string; criadoEm: string } | null>(null);
+  const [salvoEm, setSalvoEm] = useState<string | null>(null);
 
-  const solidos = useModeladorStore((s) => s.estado.solidos);
+  const estadoModelador = useModeladorStore((s) => s.estado);
   const ferramenta = useModeladorStore((s) => s.ferramenta);
   const setFerramenta = useModeladorStore((s) => s.setFerramenta);
   const selecionadoId = useModeladorStore((s) => s.solidoSelecionadoId);
-  const selecionar = useModeladorStore((s) => s.selecionar);
   const indice = useModeladorStore((s) => s.indice);
   const totalPassos = useModeladorStore((s) => s.historico.length);
   const criarSolido = useModeladorStore((s) => s.criarSolido);
   const aplicar = useModeladorStore((s) => s.aplicar);
   const desfazer = useModeladorStore((s) => s.desfazer);
   const refazer = useModeladorStore((s) => s.refazer);
+  const carregarModelador = useModeladorStore((s) => s.carregar);
   const ultimoErro = useModeladorStore((s) => s.ultimoErro);
 
   const camadas = useBIMStore((s) => s.camadas);
@@ -46,7 +54,7 @@ export function EditorShell() {
   const novaCamada = useBIMStore((s) => s.novaCamada);
   const removerCamada = useBIMStore((s) => s.removerCamada);
   const revelarTodos = useBIMStore((s) => s.revelarTodos);
-  const carregarExemplo = useBIMStore((s) => s.carregarExemplo);
+  const carregarBim = useBIMStore((s) => s.carregar);
 
   const [desenho, setDesenho] = useState<EstadoDesenho>(() => iniciar('linha'));
 
@@ -54,7 +62,41 @@ export function EditorShell() {
     setDesenho(iniciar(ferramenta));
   }, [ferramenta]);
 
-  const linhas = useMemo(
+  useEffect(() => {
+    const id = projetoAtivoId();
+    const documento = id !== null ? obterProjeto(id) : null;
+    if (documento !== null) {
+      carregarModelador(documento.modelador);
+      carregarBim({ ...documento.camadas, objetosOcultosIds: [] }, documento.bim);
+      setProjeto({ id: documento.projeto.id, nome: documento.projeto.nome, criadoEm: documento.projeto.criadoEm });
+    }
+    setCarregado(true);
+  }, [carregarModelador, carregarBim]);
+
+  useEffect(() => {
+    if (!carregado || projeto === null) return undefined;
+    const temporizador = setTimeout(() => {
+      const documento: DocumentoArqdor = {
+        versao: VERSAO_DOCUMENTO,
+        projeto: { ...projeto, atualizadoEm: new Date().toISOString() },
+        camadas: {
+          camadas: camadas.camadas,
+          modos: camadas.modos,
+          camadaAtivaId: camadas.camadaAtivaId,
+          modoAtivoId: camadas.modoAtivoId,
+        },
+        bim: elementos,
+        modelador: estadoModelador,
+        mep: [],
+      };
+      salvarProjeto(documento);
+      setSalvoEm(new Date().toLocaleTimeString('pt-BR'));
+    }, 700);
+    return () => clearTimeout(temporizador);
+  }, [carregado, projeto, camadas, elementos, estadoModelador]);
+
+  const solidos = estadoModelador.solidos;
+  const linhasPlanta = useMemo(
     () => derivar2d(elementos.filter((el) => objetoVisivel(camadas, el))),
     [elementos, camadas],
   );
@@ -63,26 +105,22 @@ export function EditorShell() {
 
   const aoClicarNoPlano = (ponto: Vetor3): void => {
     if (solidoSelecionado === undefined) {
-      setAviso('Crie um sólido ("+ Novo sólido") antes de desenhar.');
+      setAviso('Crie um sólido ("Novo sólido") antes de desenhar.');
       return;
     }
     const p: Vetor3 = [aposGrade(ponto[0]), 0, aposGrade(ponto[2])];
     const resultado = clicar(desenho, p);
 
     if (!resultado.pronto) {
-      const faltam = resultado.estado.pontos.length;
       setDesenho(resultado.estado);
-      setAviso('Ponto ' + String(faltam) + ' registrado. Clique no próximo ponto.');
+      setAviso('Ponto ' + String(resultado.estado.pontos.length) + ' registrado.');
       return;
     }
 
     const operacoes = operacoesDoComando(resultado.estado, { solido: solidoSelecionado, plano: PLANO_CHAO });
     if (!operacoes.ok) {
       setAviso('Não foi possível desenhar: ' + operacoes.erro.codigo + '.');
-      setDesenho(iniciar(ferramenta));
-      return;
-    }
-    if (operacoes.operacoes.length === 0) {
+    } else if (operacoes.operacoes.length === 0) {
       setAviso('Pontos coincidentes — nada foi criado.');
     } else {
       aplicar(operacoes.operacoes);
@@ -95,7 +133,6 @@ export function EditorShell() {
     const aoTeclar = (evento: KeyboardEvent): void => {
       const alvo = evento.target as HTMLElement | null;
       if (alvo !== null && (alvo.tagName === 'INPUT' || alvo.tagName === 'TEXTAREA')) return;
-
       if ((evento.ctrlKey || evento.metaKey) && evento.key.toLowerCase() === 'z') {
         evento.preventDefault();
         if (evento.shiftKey) refazer();
@@ -110,43 +147,42 @@ export function EditorShell() {
     return () => window.removeEventListener('keydown', aoTeclar);
   }, [desfazer, refazer, setFerramenta]);
 
-  const abaBotao = (id: 'modelador' | 'planta', rotulo: string): React.ReactElement => (
-    <button
-      type="button"
-      onClick={() => setAba(id)}
-      style={{
-        padding: '8px 16px',
-        fontSize: 13,
-        border: 'none',
-        borderBottom: '2px solid ' + (aba === id ? '#2e7d32' : 'transparent'),
-        background: 'transparent',
-        color: aba === id ? '#1b5e20' : '#52605a',
-        fontWeight: aba === id ? 600 : 500,
-        cursor: 'pointer',
-      }}
-    >
-      {rotulo}
-    </button>
-  );
+  if (!carregado) {
+    return (
+      <AppShell>
+        <div className="arq-dashboard arq2-label">Carregando projeto…</div>
+      </AppShell>
+    );
+  }
+
+  if (projeto === null) {
+    return (
+      <AppShell>
+        <div className="arq-dashboard">
+          <h1 className="arq-dashboard-title">Nenhum projeto ativo</h1>
+          <p className="arq-dashboard-sub">Abra um projeto na área de Projetos para começar a modelar.</p>
+          <Link className="arq-primary" href="/">
+            Ir para Projetos
+          </Link>
+        </div>
+      </AppShell>
+    );
+  }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', background: '#f5f7f5', color: '#1f2933' }}>
-      <header style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '0 16px', borderBottom: '1px solid #e2e8e2', background: '#ffffff' }}>
-        <strong style={{ fontSize: 15, color: '#2e7d32', letterSpacing: 0.3 }}>ARQDOR Studio 2.0</strong>
-        <nav style={{ display: 'flex', marginLeft: 12 }}>
-          {abaBotao('modelador', 'Modelador 3D')}
-          {abaBotao('planta', 'Planta 2D')}
-        </nav>
-        <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
-          <button
-            type="button"
-            onClick={carregarExemplo}
-            style={{ padding: '6px 12px', fontSize: 12, borderRadius: 6, border: '1px solid #d5ddd5', background: '#fff', cursor: 'pointer' }}
-          >
-            Carregar exemplo
+    <AppShell projeto={projeto.nome} acoes={<span className="arq2-label">{salvoEm !== null ? 'salvo às ' + salvoEm : 'salvamento automático ativo'}</span>}>
+      <div className="arq2-toolbar">
+        <div style={{ display: 'flex', gap: 4 }} role="tablist" aria-label="Vista">
+          <button type="button" role="tab" className="arq2-tool-button" aria-pressed={aba === 'modelo'} onClick={() => setAba('modelo')}>
+            Modelo 3D
+          </button>
+          <button type="button" role="tab" className="arq2-tool-button" aria-pressed={aba === 'planta'} onClick={() => setAba('planta')}>
+            Planta 2D
           </button>
         </div>
-      </header>
+        <div className="arq-header-spacer" />
+        <span className="arq2-label">{aviso}</span>
+      </div>
 
       <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
         <ToolbarModelador
@@ -160,38 +196,34 @@ export function EditorShell() {
           temSolido={solidoSelecionado !== undefined}
         />
 
-        <main style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
-          <div style={{ flex: 1, minHeight: 0, background: '#ffffff' }}>
-            {aba === 'modelador' ? (
-              <ModeladorCanvas solidos={solidos} selecionadoId={selecionadoId} aoClicarNoPlano={aoClicarNoPlano} />
-            ) : (
-              <Viewport2D linhas={linhas} selecionadoId={selecionadoId} />
-            )}
-          </div>
+        <div style={{ flex: 1, minWidth: 0, background: '#171f22' }}>
+          {aba === 'modelo' ? (
+            <ModeladorCanvas solidos={solidos} selecionadoId={selecionadoId} aoClicarNoPlano={aoClicarNoPlano} />
+          ) : (
+            <Viewport2D linhas={linhasPlanta} selecionadoId={selecionadoId} />
+          )}
+        </div>
 
-          <div style={{ padding: '6px 12px', fontSize: 12, borderTop: '1px solid #e2e8e2', background: '#ffffff', display: 'flex', gap: 16 }}>
-            <span>{aviso ?? ''}</span>
-            {ultimoErro !== null ? <span style={{ color: '#b91c1c' }}>erro: {ultimoErro.codigo}</span> : null}
-            <span style={{ marginLeft: 'auto', color: '#52605a' }}>
-              {String(solidos.length)} sólido(s) · {String(elementos.length)} elemento(s) · {String(linhas.length)} linha(s)
-            </span>
-          </div>
-        </main>
-
-        <PainelCamadas
-          camadas={camadas}
-          totalObjetos={elementos.length}
-          aoAplicarModo={setModo}
-          aoAlternarCamada={toggleCamada}
-          aoCriarCamada={novaCamada}
-          aoRemoverCamada={removerCamada}
-          aoRevelarTodos={revelarTodos}
-        />
+        <aside className="arq-aside">
+          <PainelCamadas
+            camadas={camadas}
+            totalObjetos={elementos.length}
+            aoAplicarModo={setModo}
+            aoAlternarCamada={toggleCamada}
+            aoCriarCamada={novaCamada}
+            aoRemoverCamada={removerCamada}
+            aoRevelarTodos={revelarTodos}
+          />
+        </aside>
       </div>
 
-      <div style={{ padding: '4px 12px', fontSize: 11, color: '#6b7280', borderTop: '1px solid #e2e8e2', background: '#fbfcfb' }}>
-        atalhos: L linha · R retângulo · C círculo · A arco · Ctrl+Z desfazer · Ctrl+Shift+Z refazer · selecionado: {solidoSelecionado?.nome ?? 'nenhum'}
+      <div className="arq-status">
+        <span>{String(solidos.length)} sólido(s)</span>
+        <span>{String(elementos.length)} elemento(s)</span>
+        <span>selecionado: {solidoSelecionado?.nome ?? 'nenhum'}</span>
+        {ultimoErro !== null ? <span style={{ color: '#ea7373' }}>erro: {ultimoErro.codigo}</span> : null}
+        <span style={{ marginLeft: 'auto' }}>L linha · R retângulo · C círculo · A arco · Ctrl+Z desfazer</span>
       </div>
-    </div>
+    </AppShell>
   );
 }

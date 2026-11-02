@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import type { EstadoCamadas } from '../bim/camadas';
+import { Icone } from '../design/icones';
 
 export interface PropsPainelCamadas {
   camadas: EstadoCamadas;
@@ -13,43 +14,34 @@ export interface PropsPainelCamadas {
   aoRevelarTodos: () => void;
 }
 
+/** Conteúdo do inspetor direito (300px) — sem wrapper próprio. */
 export function PainelCamadas(props: PropsPainelCamadas) {
   const [nome, setNome] = useState('');
   const { camadas } = props;
 
   return (
-    <aside style={{ width: 250, padding: 12, borderLeft: '1px solid #e2e8e2', background: '#fbfcfb', overflowY: 'auto' }}>
-      <h2 style={{ fontSize: 13, textTransform: 'uppercase', letterSpacing: 0.5, color: '#52605a', margin: '0 0 8px' }}>
-        Modos
-      </h2>
-      <div style={{ display: 'flex', gap: 6, marginBottom: 14 }}>
-        {camadas.modos.map((modo) => {
-          const ativo = camadas.modoAtivoId === modo.id;
-          return (
-            <button
-              key={modo.id}
-              type="button"
-              onClick={() => props.aoAplicarModo(modo.id)}
-              style={{
-                flex: 1,
-                padding: '6px 4px',
-                fontSize: 12,
-                borderRadius: 6,
-                border: '1px solid ' + (ativo ? '#2e7d32' : '#d5ddd5'),
-                background: ativo ? '#e8f5e9' : '#ffffff',
-                color: ativo ? '#1b5e20' : '#1f2933',
-                cursor: 'pointer',
-              }}
-            >
-              {modo.nome}
-            </button>
-          );
-        })}
+    <div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+        <Icone nome="camadas" />
+        <span className="arq2-panel-title">Camadas</span>
       </div>
 
-      <h2 style={{ fontSize: 13, textTransform: 'uppercase', letterSpacing: 0.5, color: '#52605a', margin: '0 0 8px' }}>
-        Camadas
-      </h2>
+      <div className="arq2-label" style={{ marginBottom: 4 }}>Modos</div>
+      <div style={{ display: 'flex', gap: 6, marginBottom: 14 }}>
+        {camadas.modos.map((modo) => (
+          <button
+            key={modo.id}
+            type="button"
+            className="arq2-tool-button"
+            style={{ flex: 1 }}
+            aria-pressed={camadas.modoAtivoId === modo.id}
+            onClick={() => props.aoAplicarModo(modo.id)}
+          >
+            {modo.nome}
+          </button>
+        ))}
+      </div>
+
       <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
         {camadas.camadas.map((camada) => (
           <li
@@ -57,11 +49,11 @@ export function PainelCamadas(props: PropsPainelCamadas) {
             style={{
               display: 'flex',
               alignItems: 'center',
-              gap: 6,
-              padding: '6px 8px',
+              gap: 8,
+              minHeight: 30,
+              padding: '2px 6px',
               borderRadius: 6,
-              background: camadas.camadaAtivaId === camada.id ? '#e8f5e9' : 'transparent',
-              marginBottom: 2,
+              background: camadas.camadaAtivaId === camada.id ? 'rgba(23,109,89,0.15)' : 'transparent',
             }}
           >
             <input
@@ -69,14 +61,18 @@ export function PainelCamadas(props: PropsPainelCamadas) {
               checked={camada.visivel}
               onChange={() => props.aoAlternarCamada(camada.id)}
               aria-label={'Visibilidade de ' + camada.nome}
+              style={{ accentColor: '#176d59' }}
             />
-            <span style={{ flex: 1, fontSize: 13, color: '#1f2933' }}>{camada.nome}</span>
-            {camada.padrao ? null : (
+            <span style={{ flex: 1, fontSize: 12 }}>{camada.nome}</span>
+            {camada.padrao ? (
+              <span className="arq2-label">padrão</span>
+            ) : (
               <button
                 type="button"
                 onClick={() => props.aoRemoverCamada(camada.id)}
                 title="Remover camada"
-                style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: '#b91c1c', fontSize: 14 }}
+                aria-label={'Remover camada ' + camada.nome}
+                style={{ border: 0, background: 'transparent', color: '#ea7373', cursor: 'pointer', fontSize: 15 }}
               >
                 ×
               </button>
@@ -94,32 +90,27 @@ export function PainelCamadas(props: PropsPainelCamadas) {
         style={{ display: 'flex', gap: 6, marginTop: 10 }}
       >
         <input
+          className="arq2-field"
           value={nome}
           onChange={(evento) => setNome(evento.target.value)}
           placeholder="Nova camada"
-          style={{ flex: 1, padding: '6px 8px', fontSize: 12, borderRadius: 6, border: '1px solid #d5ddd5' }}
+          aria-label="Nome da nova camada"
+          style={{ flex: 1 }}
         />
-        <button
-          type="submit"
-          style={{ padding: '6px 10px', fontSize: 12, borderRadius: 6, border: '1px solid #2e7d32', background: '#2e7d32', color: '#fff', cursor: 'pointer' }}
-        >
-          +
+        <button type="submit" className="arq2-tool-button" aria-label="Criar camada" style={{ border: '1px solid #3a4649' }}>
+          <Icone nome="mais" />
         </button>
       </form>
 
-      <div style={{ marginTop: 16, fontSize: 12, color: '#52605a' }}>
-        <div>{camadas.objetosOcultosIds.length} objeto(s) oculto(s)</div>
+      <div className="arq2-label" style={{ marginTop: 16, display: 'flex', flexDirection: 'column', gap: 6 }}>
+        <span>{camadas.objetosOcultosIds.length} objeto(s) oculto(s)</span>
         {camadas.objetosOcultosIds.length > 0 ? (
-          <button
-            type="button"
-            onClick={props.aoRevelarTodos}
-            style={{ marginTop: 6, padding: '5px 8px', fontSize: 12, borderRadius: 6, border: '1px solid #d5ddd5', background: '#fff', cursor: 'pointer' }}
-          >
+          <button type="button" className="arq2-tool-button" style={{ border: '1px solid #3a4649' }} onClick={props.aoRevelarTodos}>
             Revelar todos
           </button>
         ) : null}
-        <div style={{ marginTop: 10 }}>{props.totalObjetos} objeto(s) no modelo</div>
+        <span>{props.totalObjetos} objeto(s) no modelo</span>
       </div>
-    </aside>
+    </div>
   );
 }
