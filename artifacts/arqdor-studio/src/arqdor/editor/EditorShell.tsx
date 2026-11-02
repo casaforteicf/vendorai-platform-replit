@@ -150,7 +150,7 @@ export function EditorShell() {
   if (!carregado) {
     return (
       <AppShell>
-        <div className="arq-dashboard arq2-label">Carregando projeto…</div>
+        <div className="arq-page-pad arq-muted">Carregando projeto…</div>
       </AppShell>
     );
   }
@@ -158,10 +158,10 @@ export function EditorShell() {
   if (projeto === null) {
     return (
       <AppShell>
-        <div className="arq-dashboard">
+        <div className="arq-page-pad">
           <h1 className="arq-dashboard-title">Nenhum projeto ativo</h1>
           <p className="arq-dashboard-sub">Abra um projeto na área de Projetos para começar a modelar.</p>
-          <Link className="arq-primary" href="/">
+          <Link className="arq-btn arq-btn-primary" href="/">
             Ir para Projetos
           </Link>
         </div>
@@ -170,21 +170,21 @@ export function EditorShell() {
   }
 
   return (
-    <AppShell projeto={projeto.nome} acoes={<span className="arq2-label">{salvoEm !== null ? 'salvo às ' + salvoEm : 'salvamento automático ativo'}</span>}>
+    <AppShell projeto={projeto.nome} salvo={salvoEm !== null}>
       <div className="arq2-toolbar">
         <div style={{ display: 'flex', gap: 4 }} role="tablist" aria-label="Vista">
-          <button type="button" role="tab" className="arq2-tool-button" aria-pressed={aba === 'modelo'} onClick={() => setAba('modelo')}>
+          <button type="button" role="tab" className="arq-tool" aria-pressed={aba === 'modelo'} onClick={() => setAba('modelo')}>
             Modelo 3D
           </button>
-          <button type="button" role="tab" className="arq2-tool-button" aria-pressed={aba === 'planta'} onClick={() => setAba('planta')}>
+          <button type="button" role="tab" className="arq-tool" aria-pressed={aba === 'planta'} onClick={() => setAba('planta')}>
             Planta 2D
           </button>
         </div>
         <div className="arq-header-spacer" />
-        <span className="arq2-label">{aviso}</span>
+        <span className="arq-muted">{aviso}</span>
       </div>
 
-      <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
+      <div className="arq-editor">
         <ToolbarModelador
           ferramenta={ferramenta}
           aoEscolher={setFerramenta}
@@ -196,7 +196,7 @@ export function EditorShell() {
           temSolido={solidoSelecionado !== undefined}
         />
 
-        <div style={{ flex: 1, minWidth: 0, background: '#171f22' }}>
+        <div className="arq-editor-canvas">
           {aba === 'modelo' ? (
             <ModeladorCanvas solidos={solidos} selecionadoId={selecionadoId} aoClicarNoPlano={aoClicarNoPlano} />
           ) : (
@@ -204,7 +204,7 @@ export function EditorShell() {
           )}
         </div>
 
-        <aside className="arq-aside">
+        <aside className="arq-editor-aside">
           <PainelCamadas
             camadas={camadas}
             totalObjetos={elementos.length}
@@ -217,7 +217,7 @@ export function EditorShell() {
         </aside>
       </div>
 
-      <div className="arq-status">
+      <div className="arq-statusbar">
         <span>{String(solidos.length)} sólido(s)</span>
         <span>{String(elementos.length)} elemento(s)</span>
         <span>selecionado: {solidoSelecionado?.nome ?? 'nenhum'}</span>

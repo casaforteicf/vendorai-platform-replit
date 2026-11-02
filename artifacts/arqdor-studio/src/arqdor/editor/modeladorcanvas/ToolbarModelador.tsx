@@ -25,19 +25,19 @@ const FERRAMENTAS: ReadonlyArray<{ id: FerramentaModelador; rotulo: string; icon
 /** Rail de ferramentas do módulo — itens compactos com tooltip (baseline visual). */
 export function ToolbarModelador(props: PropsToolbar) {
   return (
-    <div className="arq-tool-rail" role="toolbar" aria-label="Ferramentas de modelagem">
-      <div className="arq-nav-label">Sólido</div>
-      <button type="button" className="arq2-tool-button" style={{ width: '100%', justifyContent: 'flex-start' }} onClick={props.aoNovoSolido}>
+    <div className="arq-editor-rail" role="toolbar" aria-label="Ferramentas de modelagem">
+      <div className="arq-rail-label">Sólido</div>
+      <button type="button" className="arq-tool" style={{ width: '100%', justifyContent: 'flex-start' }} onClick={props.aoNovoSolido}>
         <Icone nome="mais" />
         <span>Novo sólido</span>
       </button>
 
-      <div className="arq-nav-label">Ferramentas</div>
+      <div className="arq-rail-label">Ferramentas</div>
       {FERRAMENTAS.map((f) => (
         <button
           key={f.id}
           type="button"
-          className="arq2-tool-button"
+          className="arq-tool"
           style={{ width: '100%', justifyContent: 'flex-start' }}
           aria-pressed={props.ferramenta === f.id}
           disabled={!props.temSolido}
@@ -49,10 +49,10 @@ export function ToolbarModelador(props: PropsToolbar) {
         </button>
       ))}
 
-      <div className="arq-nav-label">Histórico</div>
+      <div className="arq-rail-label">Histórico</div>
       <button
         type="button"
-        className="arq2-tool-button"
+        className="arq-tool"
         style={{ width: '100%', justifyContent: 'flex-start' }}
         disabled={!props.podeDesfazer}
         onClick={props.aoDesfazer}
@@ -63,7 +63,7 @@ export function ToolbarModelador(props: PropsToolbar) {
       </button>
       <button
         type="button"
-        className="arq2-tool-button"
+        className="arq-tool"
         style={{ width: '100%', justifyContent: 'flex-start' }}
         disabled={!props.podeRefazer}
         onClick={props.aoRefazer}

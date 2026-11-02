@@ -34,7 +34,7 @@ function construirSolido(solido: Solido, selecionado: boolean): THREE.Group {
     geometria.setAttribute('position', new THREE.Float32BufferAttribute(posicoes, 3));
     geometria.computeVertexNormals();
     const material = new THREE.MeshStandardMaterial({
-      color: selecionado ? 0x4ac59a : 0x303a3d,
+      color: selecionado ? 0x4ac59a : 0x6b7f79,
       side: THREE.DoubleSide,
       flatShading: true,
       roughness: 0.85,

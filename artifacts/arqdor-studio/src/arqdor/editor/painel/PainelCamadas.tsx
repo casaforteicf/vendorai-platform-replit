@@ -23,16 +23,16 @@ export function PainelCamadas(props: PropsPainelCamadas) {
     <div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
         <Icone nome="camadas" />
-        <span className="arq2-panel-title">Camadas</span>
+        <span className="arq-panel-title">Camadas</span>
       </div>
 
-      <div className="arq2-label" style={{ marginBottom: 4 }}>Modos</div>
+      <div className="arq-muted" style={{ marginBottom: 4 }}>Modos</div>
       <div style={{ display: 'flex', gap: 6, marginBottom: 14 }}>
         {camadas.modos.map((modo) => (
           <button
             key={modo.id}
             type="button"
-            className="arq2-tool-button"
+            className="arq-tool"
             style={{ flex: 1 }}
             aria-pressed={camadas.modoAtivoId === modo.id}
             onClick={() => props.aoAplicarModo(modo.id)}
@@ -65,7 +65,7 @@ export function PainelCamadas(props: PropsPainelCamadas) {
             />
             <span style={{ flex: 1, fontSize: 12 }}>{camada.nome}</span>
             {camada.padrao ? (
-              <span className="arq2-label">padrão</span>
+              <span className="arq-muted">padrão</span>
             ) : (
               <button
                 type="button"
@@ -90,22 +90,22 @@ export function PainelCamadas(props: PropsPainelCamadas) {
         style={{ display: 'flex', gap: 6, marginTop: 10 }}
       >
         <input
-          className="arq2-field"
+          className="arq-field"
           value={nome}
           onChange={(evento) => setNome(evento.target.value)}
           placeholder="Nova camada"
           aria-label="Nome da nova camada"
           style={{ flex: 1 }}
         />
-        <button type="submit" className="arq2-tool-button" aria-label="Criar camada" style={{ border: '1px solid #3a4649' }}>
+        <button type="submit" className="arq-tool" aria-label="Criar camada" style={{ border: '1px solid #3a4649' }}>
           <Icone nome="mais" />
         </button>
       </form>
 
-      <div className="arq2-label" style={{ marginTop: 16, display: 'flex', flexDirection: 'column', gap: 6 }}>
+      <div className="arq-muted" style={{ marginTop: 16, display: 'flex', flexDirection: 'column', gap: 6 }}>
         <span>{camadas.objetosOcultosIds.length} objeto(s) oculto(s)</span>
         {camadas.objetosOcultosIds.length > 0 ? (
-          <button type="button" className="arq2-tool-button" style={{ border: '1px solid #3a4649' }} onClick={props.aoRevelarTodos}>
+          <button type="button" className="arq-tool" style={{ border: '1px solid #3a4649' }} onClick={props.aoRevelarTodos}>
             Revelar todos
           </button>
         ) : null}
