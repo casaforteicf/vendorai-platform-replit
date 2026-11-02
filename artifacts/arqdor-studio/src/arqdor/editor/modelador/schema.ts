@@ -96,6 +96,22 @@ export interface OperacaoBooleana {
   depois: { resultado: Solido; removidos: Solido[] };
 }
 
+/**
+ * Resultado tipado de uma booleana (adotado da entrega v2 do DeepSeek).
+ * Fecha o caminho de erro do motor: sem isso o chamador só tinha exceção.
+ */
+export type BooleanaErro =
+  | { codigo: 'NAO_MANIFOLD'; solidoId: string; detalhe: string }
+  | { codigo: 'WASM_NAO_CARREGADO' }
+  | { codigo: 'OPERACAO_INVALIDA'; detalhe: string }
+  | { codigo: 'TEMPO_EXCEDIDO'; ms: number; limite: number }
+  | { codigo: 'LIMITE_TRIANGULOS'; total: number; limite: number }
+  | { codigo: 'CANCELADO_PELO_USUARIO' };
+
+export type BooleanaResultado =
+  | { ok: true; solido: Solido; operacao: OperacaoBooleana }
+  | { ok: false; erro: BooleanaErro };
+
 export interface OperacaoMaterial {
   tipo: 'pintar_face';
   solidoId: string;
