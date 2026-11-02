@@ -110,6 +110,8 @@ export interface ElementoBim {
   geometria: Geometria;
   propriedades: Record<string, unknown>;
   camadaId: string;
+  /** D6: referencia o catálogo de materiais. Sem isto não há agrupamento de orçamento. */
+  materialId?: string;
 }
 
 /**

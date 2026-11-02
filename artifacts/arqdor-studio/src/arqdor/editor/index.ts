@@ -19,6 +19,7 @@ export * from './bim/schema';
 export * from './bim/camadas';
 export * from './bim/store-core';
 export * from './bim/derivar2d';
+export * from './orcamento/quantitativos';
 export * from './mep/schema';
 export * from './transacao';
 export * from './ia/schema';

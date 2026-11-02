@@ -148,3 +148,15 @@ o que eles não permitem é **desfazer** ou **decidir**.
 3. alternar um checkbox manualmente seta `modoAtivoId = null` (a UI mostra "custom").
 
 Sem isso, a UI vai reintroduzir o estado inconsistente que o D4 fechou.
+### 7.2 Addendum — D6 (material do elemento) e o que o orçamento exige
+
+| ID | Onde | Defeito | Correção |
+|---|---|---|---|
+| **D6** | `ElementoBim` | não tinha `materialId`. O Pilar 4 precisa **agrupar por material**, e o material não existia em lugar nenhum do BIM Core (só nas geometrias do rascunho v3) | `materialId?: string` no `ElementoBim` (opcional, retrocompatível). Sem ele, `quantitativos()` agrupa por categoria — e o orçamento perde a distinção entre dois revestimentos |
+
+**Instrução para o DeepSeek (Pilar 4):** o documento de quantitativos precisa declarar que
+
+1. a unidade (`m2`, `m3`, `un`) faz parte da **chave de agrupamento** — 10 m² e 3 m³ do mesmo material nunca somam;
+2. o coeficiente de perda tem três níveis de precedência: **material > categoria > padrão**;
+3. o código Praça.ai é resolvido por **materialId quando existir**, senão por categoria, e cai em `PRC-INDEFINIDO` quando não há mapeamento (nunca lança);
+4. a banda de sanidade do preço cotado é **0,5× a 3×** a referência, com motivo tipado (`ABAIXO_DO_PISO`/`ACIMA_DO_TETO`).
