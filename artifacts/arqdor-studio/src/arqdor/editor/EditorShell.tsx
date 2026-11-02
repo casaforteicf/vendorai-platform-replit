@@ -23,7 +23,8 @@ import type { ModoGizmo, TransformacaoLida } from './modeladorcanvas/ModeladorCa
 import type { OperacaoModelador } from './modelador/schema';
 import type { DocumentoArqdor } from './persistencia/documento';
 import { VERSAO_DOCUMENTO } from './persistencia/documento';
-import { obterProjeto, projetoAtivoId, salvarProjeto } from './persistencia/localStore';
+import { obterProjeto, salvarProjeto } from './persistencia/apiStore';
+import { projetoAtivoId } from './persistencia/localStore';
 import { AppShell } from './shell/AppShell';
 import { useBIMStore } from './stores/useBIMStore';
 import { useModeladorStore } from './stores/useModeladorStore';
@@ -77,14 +78,32 @@ export function EditorShell() {
   }, [ferramenta]);
 
   useEffect(() => {
+    let vivo = true;
     const id = projetoAtivoId();
-    const documento = id !== null ? obterProjeto(id) : null;
-    if (documento !== null) {
-      carregarModelador(documento.modelador);
-      carregarBim({ ...documento.camadas, objetosOcultosIds: [] }, documento.bim);
-      setProjeto({ id: documento.projeto.id, nome: documento.projeto.nome, criadoEm: documento.projeto.criadoEm });
+    if (id === null) {
+      setCarregado(true);
+      return () => {
+        vivo = false;
+      };
     }
-    setCarregado(true);
+    void obterProjeto(id)
+      .then((documento) => {
+        if (!vivo) return;
+        if (documento !== null) {
+          carregarModelador(documento.modelador);
+          carregarBim({ ...documento.camadas, objetosOcultosIds: [] }, documento.bim);
+          setProjeto({ id: documento.projeto.id, nome: documento.projeto.nome, criadoEm: documento.projeto.criadoEm });
+        }
+        setCarregado(true);
+      })
+      .catch((erro: unknown) => {
+        if (!vivo) return;
+        setAviso('Servidor indisponível: ' + (erro instanceof Error ? erro.message : String(erro)));
+        setCarregado(true);
+      });
+    return () => {
+      vivo = false;
+    };
   }, [carregarModelador, carregarBim]);
 
   useEffect(() => {
@@ -103,8 +122,12 @@ export function EditorShell() {
         modelador: estadoModelador,
         mep: [],
       };
-      salvarProjeto(documento);
-      setSalvoEm(new Date().toLocaleTimeString('pt-BR'));
+      void salvarProjeto(documento)
+        .then(() => setSalvoEm(new Date().toLocaleTimeString('pt-BR')))
+        .catch((erro: unknown) => {
+          setSalvoEm(null);
+          setAviso('Não salvou: ' + (erro instanceof Error ? erro.message : String(erro)));
+        });
     }, 700);
     return () => clearTimeout(temporizador);
   }, [carregado, projeto, camadas, elementos, estadoModelador]);
@@ -124,8 +147,12 @@ export function EditorShell() {
       modelador: estadoModelador,
       mep: [],
     };
-    salvarProjeto(documento);
-    setSalvoEm(new Date().toLocaleTimeString('pt-BR'));
+    void salvarProjeto(documento)
+      .then(() => setSalvoEm(new Date().toLocaleTimeString('pt-BR')))
+      .catch((erro: unknown) => {
+        setSalvoEm(null);
+        setAviso('Não salvou: ' + (erro instanceof Error ? erro.message : String(erro)));
+      });
   };
 
   const solidos = estadoModelador.solidos;

@@ -76,3 +76,6 @@ Thumbs.db
 # artefatos de build/verificacao do app
 .next/
 .check-out/
+
+.data/
+.tmp-arqdor/

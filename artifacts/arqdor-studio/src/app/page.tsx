@@ -7,8 +7,9 @@
 import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
 import { Icone } from '../arqdor/editor/design/icones';
-import { criarProjeto, definirAtivo, listarProjetos, projetoAtivoId } from '../arqdor/editor/persistencia/localStore';
-import type { ResumoProjeto } from '../arqdor/editor/persistencia/localStore';
+import { criarProjeto, listarProjetos } from '../arqdor/editor/persistencia/apiStore';
+import { definirAtivo, novoDocumento, projetoAtivoId } from '../arqdor/editor/persistencia/localStore';
+import type { ResumoProjeto } from '../lib/db/tipos';
 import { AppShell } from '../arqdor/editor/shell/AppShell';
 
 type Status = 'Em andamento' | 'Planejamento' | 'Proposta' | 'Concluído' | 'Arquivado';
@@ -113,15 +114,30 @@ export default function PaginaProjetos() {
   const [aba, setAba] = useState<'todos' | Status>('todos');
   const [busca, setBusca] = useState('');
   const [pronto, setPronto] = useState(false);
+  const [backend, setBackend] = useState<'postgres' | 'arquivo' | null>(null);
+  const [erro, setErro] = useState<string | null>(null);
   const [ativo, setAtivo] = useState<ResumoProjeto | null>(null);
   const router = useRouter();
 
   useEffect(() => {
-    const lista = listarProjetos();
-    setReais(lista);
-    const idAtivo = projetoAtivoId();
-    setAtivo(idAtivo !== null ? lista.find((item) => item.id === idAtivo) ?? null : null);
-    setPronto(true);
+    let vivo = true;
+    void listarProjetos()
+      .then(({ backend, projetos }) => {
+        if (!vivo) return;
+        setReais(projetos);
+        setBackend(backend);
+        const idAtivo = projetoAtivoId();
+        setAtivo(idAtivo !== null ? projetos.find((item) => item.id === idAtivo) ?? null : null);
+        setPronto(true);
+      })
+      .catch((falha: unknown) => {
+        if (!vivo) return;
+        setErro('Servidor indisponível: ' + (falha instanceof Error ? falha.message : String(falha)));
+        setPronto(true);
+      });
+    return () => {
+      vivo = false;
+    };
   }, []);
 
   const cartoes = useMemo<Cartao[]>(() => {
@@ -158,11 +174,16 @@ export default function PaginaProjetos() {
   const planejamento = cartoes.filter((c) => c.status === 'Planejamento').length;
   const usandoExemplo = cartoes.length > 0 && cartoes.every((c) => c.exemplo);
 
-  const novoProjeto = (): void => {
-    const nomePadrao = 'Projeto ' + new Date().toLocaleDateString('pt-BR');
-    const documento = criarProjeto(nomePadrao);
-    setReais(listarProjetos());
-    router.push('/modelagem?projeto=' + documento.projeto.id);
+  const novoProjeto = async (): Promise<void> => {
+    setErro(null);
+    try {
+      const documento = novoDocumento('Projeto ' + new Date().toLocaleDateString('pt-BR'));
+      const salvo = await criarProjeto(documento);
+      definirAtivo(salvo.projeto.id);
+      router.push('/modelagem');
+    } catch (falha: unknown) {
+      setErro('Não foi possível criar o projeto: ' + (falha instanceof Error ? falha.message : String(falha)));
+    }
   };
 
   const abrir = (id: string): void => {
@@ -221,6 +242,10 @@ export default function PaginaProjetos() {
               Mais recentes ▾
             </button>
           </div>
+
+          {erro !== null ? (
+            <p style={{ margin: '0 0 10px', fontSize: 11, color: '#b91c1c' }}>{erro}</p>
+          ) : null}
 
           {usandoExemplo ? (
             <p style={{ margin: '0 0 10px', fontSize: 11, color: '#6b7280' }}>

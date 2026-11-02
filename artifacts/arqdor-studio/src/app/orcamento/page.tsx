@@ -14,7 +14,8 @@ import type { Memorial } from '../../arqdor/editor/documentacao/memorial';
 import { gerarMemorial } from '../../arqdor/editor/documentacao/memorial';
 import type { ResumoQuantitativo, Unidade } from '../../arqdor/editor/orcamento/quantitativos';
 import { paraPraca, quantitativos } from '../../arqdor/editor/orcamento/quantitativos';
-import { obterProjeto, projetoAtivoId } from '../../arqdor/editor/persistencia/localStore';
+import { obterProjeto } from '../../arqdor/editor/persistencia/apiStore';
+import { projetoAtivoId } from '../../arqdor/editor/persistencia/localStore';
 import { AppShell } from '../../arqdor/editor/shell/AppShell';
 
 interface Dados {
@@ -35,9 +36,17 @@ export default function PaginaOrcamento() {
   const [carregado, setCarregado] = useState(false);
 
   useEffect(() => {
+    let vivo = true;
     const id = projetoAtivoId();
-    const documento = id !== null ? obterProjeto(id) : null;
-    if (documento !== null) {
+    if (id === null) {
+      setCarregado(true);
+      return () => {
+        vivo = false;
+      };
+    }
+    void obterProjeto(id).then((documento) => {
+      if (!vivo) return;
+      if (documento !== null) {
       const resumo = quantitativos(documento.bim);
       const memorial = gerarMemorial({
         projeto: { nome: documento.projeto.nome },
@@ -46,8 +55,12 @@ export default function PaginaOrcamento() {
         geradoEm: new Date().toISOString(),
       });
       setDados({ projeto: documento.projeto.nome, elementos: documento.bim, resumo, memorial });
-    }
-    setCarregado(true);
+      }
+      setCarregado(true);
+    });
+    return () => {
+      vivo = false;
+    };
   }, []);
 
   if (!carregado) {

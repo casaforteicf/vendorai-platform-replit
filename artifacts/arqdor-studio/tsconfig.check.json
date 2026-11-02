@@ -5,6 +5,7 @@
     "module": "commonjs",
     "moduleResolution": "node10",
     "outDir": ".check-out",
+    "types": ["node"],
     "declaration": false,
     "sourceMap": false
   },

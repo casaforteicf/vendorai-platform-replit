@@ -12,6 +12,10 @@ const saida = join(app, '.check-out');
 
 writeFileSync(join(saida, 'package.json'), JSON.stringify({ type: 'commonjs' }));
 
-for (const modulo of ['camadas', 'bim', 'orcamento', 'colisao', 'memorial', 'persistencia', 'editor', 'materializacao']) {
-  await import(pathToFileURL(join(saida, 'tests', modulo, 'check.js')).href);
+const modulos = ['camadas', 'bim', 'orcamento', 'colisao', 'memorial', 'persistencia', 'editor', 'materializacao', 'persistencia-remota'];
+
+for (const modulo of modulos) {
+  const carregado = await import(pathToFileURL(join(saida, 'tests', modulo, 'check.js')).href);
+  // Testes assíncronos (I/O em disco) exportam executar e precisam ser aguardados.
+  if (typeof carregado.executar === 'function') await carregado.executar();
 }
