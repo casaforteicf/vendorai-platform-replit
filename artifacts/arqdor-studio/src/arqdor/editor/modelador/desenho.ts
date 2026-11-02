@@ -12,7 +12,7 @@ import { criarCirculo } from './ferramentas/circulo';
 import { criarLinha } from './ferramentas/linha';
 import { criarRetangulo } from './ferramentas/retangulo';
 
-export type FerramentaModelador = 'selecionar' | 'linha' | 'retangulo' | 'circulo' | 'arco';
+export type FerramentaModelador = 'selecionar' | 'linha' | 'retangulo' | 'circulo' | 'arco' | 'pushpull';
 
 export interface EstadoDesenho {
   ferramenta: FerramentaModelador;
@@ -33,6 +33,7 @@ export function cliquesNecessarios(ferramenta: FerramentaModelador): number {
     case 'arco':
       return 3;
     case 'selecionar':
+    case 'pushpull':
       return 0;
   }
 }
@@ -112,6 +113,7 @@ export function operacoesDoComando(
     }
 
     case 'selecionar':
+    case 'pushpull':
       return { ok: false, erro: { codigo: 'FERRAMENTA_SEM_DESENHO', ferramenta: estado.ferramenta } };
   }
 }

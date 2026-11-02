@@ -180,3 +180,11 @@ Sem isso, a UI vai reintroduzir o estado inconsistente que o D4 fechou.
 
 Lição registrada: o defeito sobreviveu a 141 asserções porque **nenhuma delas exercitava o fluxo de cliques** —
 só a função `criarArco` isolada. Ligar a UI foi o teste que faltava.
+### 7.5 Addendum — D9 (push/pull abria o sólido) e D10 (ferramenta travada)
+
+| ID | Onde | Defeito | Correção |
+|---|---|---|---|
+| **D9** | `pushpull.ts` | a extrusão **removia a face-base**, então a caixa saía com 5 faces em vez de 6 — sólido aberto embaixo (inútil para orçamento e render) | a face-base é preservada; o teste `caixa FECHADA tem 6 faces` trava a regra |
+| **D10** | `ToolbarModelador` | todas as ferramentas ficavam `disabled` enquanto não houvesse sólido selecionado — inclusive **Selecionar**, que é justamente o caminho para selecionar. Resultado: beco sem saída na UI | só as ferramentas de **desenho** exigem sólido; `selecionar` e `pushpull` ficam sempre ativas |
+
+Lição: D9 passou por 141 asserções e por dois screenshots sem ser notado porque **nenhum teste contava as faces depois da extrusão** e a caixa "parecia" fechada de fora. Contagem de topologia é o teste que faltava.

@@ -13,6 +13,12 @@ import type { Vetor3 } from './modelador/schema';
 import { ModeladorCanvas } from './modeladorcanvas/ModeladorCanvas';
 import { ToolbarModelador } from './modeladorcanvas/ToolbarModelador';
 import { PainelCamadas } from './painel/PainelCamadas';
+import { PainelPropriedades } from './painel/PainelPropriedades';
+import type { FaceEscolhida } from './painel/PainelPropriedades';
+import { calcularPushPull } from './modelador/pushpull';
+import { gerarOpEscalar, gerarOpMover, gerarOpRotacionar } from './modelador/gizmo';
+import type { ModoGizmo, TransformacaoLida } from './modeladorcanvas/ModeladorCanvas';
+import type { OperacaoModelador } from './modelador/schema';
 import type { DocumentoArqdor } from './persistencia/documento';
 import { VERSAO_DOCUMENTO } from './persistencia/documento';
 import { obterProjeto, projetoAtivoId, salvarProjeto } from './persistencia/localStore';
@@ -38,6 +44,7 @@ export function EditorShell() {
   const ferramenta = useModeladorStore((s) => s.ferramenta);
   const setFerramenta = useModeladorStore((s) => s.setFerramenta);
   const selecionadoId = useModeladorStore((s) => s.solidoSelecionadoId);
+  const selecionar = useModeladorStore((s) => s.selecionar);
   const indice = useModeladorStore((s) => s.indice);
   const totalPassos = useModeladorStore((s) => s.historico.length);
   const criarSolido = useModeladorStore((s) => s.criarSolido);
@@ -57,6 +64,9 @@ export function EditorShell() {
   const carregarBim = useBIMStore((s) => s.carregar);
 
   const [desenho, setDesenho] = useState<EstadoDesenho>(() => iniciar('linha'));
+  const [gizmo, setGizmo] = useState<ModoGizmo>(null);
+  const [face, setFace] = useState<FaceEscolhida | null>(null);
+  const [altura, setAltura] = useState('2.8');
 
   useEffect(() => {
     setDesenho(iniciar(ferramenta));
@@ -103,6 +113,69 @@ export function EditorShell() {
 
   const solidoSelecionado = solidos.find((s) => s.id === selecionadoId);
 
+  const renomearSolido = (nome: string): void => {
+    if (solidoSelecionado === undefined) return;
+    aplicar([{ tipo: 'atualizar_solido', antes: solidoSelecionado, depois: { ...solidoSelecionado, nome } }]);
+  };
+
+  const aplicarPushPull = (): void => {
+    if (face === null) return;
+    const alvo = solidos.find((s) => s.id === face.solidoId);
+    if (alvo === undefined) {
+      setAviso('O sólido desta face não existe mais.');
+      setFace(null);
+      return;
+    }
+    const alturaNum = Number(altura.replace(',', '.'));
+    if (!Number.isFinite(alturaNum) || alturaNum === 0) {
+      setAviso('Altura inválida — informe um número diferente de zero.');
+      return;
+    }
+    const resultado = calcularPushPull(alvo, face.faceId, alturaNum);
+    if (!resultado.ok) {
+      setAviso('Push/Pull recusado: ' + resultado.erro.codigo + '.');
+      return;
+    }
+    aplicar(resultado.operacoes);
+    setAviso('Push/Pull de ' + String(alturaNum) + ' m aplicado em "' + alvo.nome + '".');
+    setFace(null);
+  };
+
+  const transformarSolido = (solidoId: string, alvoTransformado: TransformacaoLida): void => {
+    const alvo = solidos.find((s) => s.id === solidoId);
+    if (alvo === undefined || gizmo === null) return;
+    const atual = alvo.transformacao;
+    const operacoes: OperacaoModelador[] = [];
+
+    if (gizmo === 'mover') {
+      const delta: Vetor3 = [
+        alvoTransformado.posicao[0] - atual.posicao[0],
+        alvoTransformado.posicao[1] - atual.posicao[1],
+        alvoTransformado.posicao[2] - atual.posicao[2],
+      ];
+      if (Math.hypot(delta[0], delta[1], delta[2]) < 1e-6) return;
+      operacoes.push(gerarOpMover(alvo, delta));
+    } else if (gizmo === 'rotacionar') {
+      const delta: Vetor3 = [
+        alvoTransformado.rotacao[0] - atual.rotacao[0],
+        alvoTransformado.rotacao[1] - atual.rotacao[1],
+        alvoTransformado.rotacao[2] - atual.rotacao[2],
+      ];
+      if (Math.hypot(delta[0], delta[1], delta[2]) < 1e-6) return;
+      operacoes.push(gerarOpRotacionar(alvo, delta));
+    } else {
+      const fator: Vetor3 = [
+        atual.escala[0] === 0 ? 1 : alvoTransformado.escala[0] / atual.escala[0],
+        atual.escala[1] === 0 ? 1 : alvoTransformado.escala[1] / atual.escala[1],
+        atual.escala[2] === 0 ? 1 : alvoTransformado.escala[2] / atual.escala[2],
+      ];
+      if (Math.abs(fator[0] - 1) < 1e-6 && Math.abs(fator[1] - 1) < 1e-6 && Math.abs(fator[2] - 1) < 1e-6) return;
+      operacoes.push(gerarOpEscalar(alvo, fator));
+    }
+
+    aplicar(operacoes);
+  };
+
   const aoClicarNoPlano = (ponto: Vetor3): void => {
     if (solidoSelecionado === undefined) {
       setAviso('Crie um sólido ("Novo sólido") antes de desenhar.');
@@ -139,7 +212,14 @@ export function EditorShell() {
         else desfazer();
         return;
       }
-      const mapa: Record<string, FerramentaModelador> = { l: 'linha', r: 'retangulo', c: 'circulo', a: 'arco' };
+      const mapa: Record<string, FerramentaModelador> = {
+        s: 'selecionar',
+        l: 'linha',
+        r: 'retangulo',
+        c: 'circulo',
+        a: 'arco',
+        p: 'pushpull',
+      };
       const escolhida = mapa[evento.key.toLowerCase()];
       if (escolhida !== undefined) setFerramenta(escolhida);
     };
@@ -194,17 +274,41 @@ export function EditorShell() {
           podeDesfazer={indice > 0}
           podeRefazer={indice < totalPassos - 1}
           temSolido={solidoSelecionado !== undefined}
+          gizmo={gizmo}
+          aoGizmo={setGizmo}
         />
 
         <div className="arq-editor-canvas">
           {aba === 'modelo' ? (
-            <ModeladorCanvas solidos={solidos} selecionadoId={selecionadoId} aoClicarNoPlano={aoClicarNoPlano} />
+            <ModeladorCanvas
+              solidos={solidos}
+              selecionadoId={selecionadoId}
+              modo={ferramenta === 'pushpull' ? 'pushpull' : ferramenta === 'selecionar' ? 'selecionar' : 'desenho'}
+              gizmo={gizmo}
+              aoClicarNoPlano={aoClicarNoPlano}
+              aoSelecionar={selecionar}
+              aoEscolherFace={(solidoId, faceId) => {
+                setFace({ solidoId, faceId });
+                setAviso('Face selecionada — informe a altura e aplique o Push/Pull.');
+              }}
+              aoTransformar={transformarSolido}
+            />
           ) : (
             <Viewport2D linhas={linhasPlanta} selecionadoId={selecionadoId} />
           )}
         </div>
 
         <aside className="arq-editor-aside">
+          <PainelPropriedades
+            solido={solidoSelecionado ?? null}
+            face={face}
+            altura={altura}
+            aoMudarAltura={setAltura}
+            aoAplicarPushPull={aplicarPushPull}
+            aoCancelarFace={() => setFace(null)}
+            aoRenomear={renomearSolido}
+          />
+          <div style={{ height: 1, background: '#e5e7eb', margin: '14px 0' }} />
           <PainelCamadas
             camadas={camadas}
             totalObjetos={elementos.length}
@@ -222,7 +326,7 @@ export function EditorShell() {
         <span>{String(elementos.length)} elemento(s)</span>
         <span>selecionado: {solidoSelecionado?.nome ?? 'nenhum'}</span>
         {ultimoErro !== null ? <span style={{ color: '#ea7373' }}>erro: {ultimoErro.codigo}</span> : null}
-        <span style={{ marginLeft: 'auto' }}>L linha · R retângulo · C círculo · A arco · Ctrl+Z desfazer</span>
+        <span style={{ marginLeft: 'auto' }}>S selecionar · L linha · R retângulo · C círculo · A arco · P push/pull · M/O/E gizmo · Ctrl+Z desfazer</span>
       </div>
     </AppShell>
   );

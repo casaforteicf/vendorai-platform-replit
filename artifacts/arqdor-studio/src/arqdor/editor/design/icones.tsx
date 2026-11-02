@@ -10,7 +10,8 @@ export type NomeIcone =
   | 'mais' | 'camadas' | 'linha' | 'retangulo' | 'circulo' | 'arco' | 'desfazer' | 'refazer'
   | 'buscar' | 'sino' | 'sol' | 'historico' | 'salvo' | 'grade' | 'lista' | 'filtro'
   | 'calendario' | 'local' | 'estrela' | 'pasta' | 'importar' | 'lixeira' | 'etiqueta'
-  | 'visao' | 'acoes' | 'conversar' | 'pessoa';
+  | 'visao' | 'acoes' | 'conversar' | 'pessoa'
+  | 'pushpull' | 'mover' | 'rotacionar' | 'escalar' | 'selecionar';
 
 const C: Record<NomeIcone, ReactElement> = {
   projetos: <><path d="M3 10.5 12 4l9 6.5" /><path d="M5.5 9.5V20h13V9.5" /><path d="M10 20v-5h4v5" /></>,
@@ -53,6 +54,11 @@ const C: Record<NomeIcone, ReactElement> = {
   acoes: <><path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h8M16 18h4" /><circle cx="16" cy="6" r="2" /><circle cx="10" cy="12" r="2" /><circle cx="14" cy="18" r="2" /></>,
   conversar: <><path d="M4 5h16v11H9l-5 4z" /><path d="M8 10h8" /></>,
   pessoa: <><circle cx="12" cy="8" r="3.5" /><path d="M4.5 20c0-4 3.4-6.5 7.5-6.5s7.5 2.5 7.5 6.5" /></>,
+  selecionar: <><path d="M5 3l13 7.5-5.6 1.5L9.8 18z" /></>,
+  pushpull: <><path d="M4 15.5 12 11l8 4.5-8 4.5-8-4.5z" /><path d="M12 9V3M9 6l3-3 3 3" /></>,
+  mover: <><path d="M12 3v18M3 12h18" /><path d="M9 6l3-3 3 3M9 18l3 3 3-3M6 9l-3 3 3 3M18 9l3 3-3 3" /></>,
+  rotacionar: <><path d="M20 12a8 8 0 1 1-3-6.2" /><path d="M20 4v5h-5" /></>,
+  escalar: <><rect x="4" y="4" width="10" height="10" rx="1" /><path d="M14 10l6-6M20 4h-4M20 4v4" /></>,
 };
 
 export function Icone({ nome, tamanho = 18 }: { nome: NomeIcone; tamanho?: number }): ReactElement {

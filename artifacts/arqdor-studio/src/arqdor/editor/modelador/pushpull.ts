@@ -91,7 +91,8 @@ export function calcularPushPull(solido: Solido, faceId: string, altura: number)
     faces: [{ id: novoId(), vertices: topo.map((v) => v.id), material: face.material }],
   });
 
-  operacoes.push({ tipo: 'remover_faces', solidoId: solido.id, faces: [face] });
+  // A face-base PERMANECE: sem ela o sólido sai aberto (5 faces em vez de 6).
+  // D9 registrado: antes a extrusão removia a base e a caixa ficava sem fundo.
 
   return { ok: true, operacoes };
 }
