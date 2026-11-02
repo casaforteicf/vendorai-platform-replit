@@ -5,6 +5,7 @@
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import { objetoVisivel } from './bim/camadas';
+import { Icone } from './design/icones';
 import { derivar2d } from './bim/derivar2d';
 import { clicar, iniciar, operacoesDoComando } from './modelador/desenho';
 import type { EstadoDesenho, FerramentaModelador } from './modelador/desenho';
@@ -104,6 +105,25 @@ export function EditorShell() {
     }, 700);
     return () => clearTimeout(temporizador);
   }, [carregado, projeto, camadas, elementos, estadoModelador]);
+
+  const salvarAgora = (): void => {
+    if (projeto === null) return;
+    const documento: DocumentoArqdor = {
+      versao: VERSAO_DOCUMENTO,
+      projeto: { ...projeto, atualizadoEm: new Date().toISOString() },
+      camadas: {
+        camadas: camadas.camadas,
+        modos: camadas.modos,
+        camadaAtivaId: camadas.camadaAtivaId,
+        modoAtivoId: camadas.modoAtivoId,
+      },
+      bim: elementos,
+      modelador: estadoModelador,
+      mep: [],
+    };
+    salvarProjeto(documento);
+    setSalvoEm(new Date().toLocaleTimeString('pt-BR'));
+  };
 
   const solidos = estadoModelador.solidos;
   const linhasPlanta = useMemo(
@@ -250,8 +270,18 @@ export function EditorShell() {
   }
 
   return (
-    <AppShell projeto={projeto.nome} salvo={salvoEm !== null}>
-      <div className="arq2-toolbar">
+    <AppShell
+      projeto={projeto.nome}
+      salvo={salvoEm !== null}
+      acoes={
+        <button type="button" className="arq-btn" onClick={salvarAgora}>
+          <Icone nome="salvo" tamanho={16} />
+          Salvar
+        </button>
+      }
+    >
+      <div className="arq-editor-page">
+      <div className="arq-editor-toolbar">
         <div style={{ display: 'flex', gap: 4 }} role="tablist" aria-label="Vista">
           <button type="button" role="tab" className="arq-tool" aria-pressed={aba === 'modelo'} onClick={() => setAba('modelo')}>
             Modelo 3D
@@ -261,10 +291,10 @@ export function EditorShell() {
           </button>
         </div>
         <div className="arq-header-spacer" />
-        <span className="arq-muted">{aviso}</span>
+        <span className="arq-muted">Modelagem de sólidos</span>
       </div>
 
-      <div className="arq-editor">
+      <div className="arq-editor-body">
         <ToolbarModelador
           ferramenta={ferramenta}
           aoEscolher={setFerramenta}
@@ -325,8 +355,10 @@ export function EditorShell() {
         <span>{String(solidos.length)} sólido(s)</span>
         <span>{String(elementos.length)} elemento(s)</span>
         <span>selecionado: {solidoSelecionado?.nome ?? 'nenhum'}</span>
+        <span style={{ color: '#52605a' }}>{aviso}</span>
         {ultimoErro !== null ? <span style={{ color: '#ea7373' }}>erro: {ultimoErro.codigo}</span> : null}
-        <span style={{ marginLeft: 'auto' }}>S selecionar · L linha · R retângulo · C círculo · A arco · P push/pull · M/O/E gizmo · Ctrl+Z desfazer</span>
+        <span style={{ marginLeft: 'auto' }}>S/L/R/C/A · P push/pull · M/O/E gizmo · Ctrl+Z</span>
+      </div>
       </div>
     </AppShell>
   );

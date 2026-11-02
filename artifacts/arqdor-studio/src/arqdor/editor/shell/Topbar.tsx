@@ -1,15 +1,17 @@
 'use client';
 
+import type { ReactNode } from 'react';
 import { Icone } from '../design/icones';
 
 export interface PropsTopbar {
   projeto?: string;
   salvo?: boolean;
+  acoes?: ReactNode;
   busca?: string;
   aoBuscar?: (valor: string) => void;
 }
 
-export function Topbar({ projeto, salvo, busca, aoBuscar }: PropsTopbar) {
+export function Topbar({ projeto, salvo, acoes, busca, aoBuscar }: PropsTopbar) {
   return (
     <header className="arq-topbar">
       <div className="arq-search">
@@ -32,6 +34,7 @@ export function Topbar({ projeto, salvo, busca, aoBuscar }: PropsTopbar) {
       </button>
 
       <div className="arq-topbar-right">
+        {acoes !== undefined ? <div className="arq-topbar-acoes">{acoes}</div> : null}
         {salvo === true ? (
           <span className="arq-salvo">
             <Icone nome="salvo" tamanho={16} />

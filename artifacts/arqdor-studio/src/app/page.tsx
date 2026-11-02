@@ -213,7 +213,7 @@ export default function PaginaProjetos() {
               </button>
             ))}
             <div className="arq-tabs-spacer" />
-            <button type="button" className="arq-btn" disabled title="Filtros avançados">
+            <button type="button" className="arq-btn" disabled title="Filtros avançados" style={{ marginLeft: 'auto' }}>
               <Icone nome="filtro" tamanho={15} />
               Filtros
             </button>

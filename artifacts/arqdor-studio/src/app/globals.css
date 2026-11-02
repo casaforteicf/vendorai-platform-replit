@@ -190,3 +190,69 @@ button { font-family: inherit; }
 .arq-muted { color: var(--arq-texto-suave); font-size: 11px; }
 .arq-panel-title { font-size: 13px; font-weight: 700; }
 .arq-page-pad { padding: 24px; }
+/* ============ LAYOUT RÍGIDO (v2) ============
+   Grade fixa: sidebar | (header sobre conteúdo). Nada solto entre as regiões. */
+
+.arq-app {
+  display: grid;
+  grid-template-columns: var(--arq-sidebar-w) minmax(0, 1fr);
+  height: 100vh;
+  overflow: hidden;
+}
+
+.arq-sidebar { position: relative; height: 100vh; overflow-y: auto; }
+
+.arq-content-area {
+  display: grid;
+  grid-template-rows: var(--arq-topbar-h) minmax(0, 1fr);
+  height: 100vh;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.arq-topbar { height: var(--arq-topbar-h); gap: 12px; }
+
+.arq-topbar-acoes { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+
+.arq-content { min-height: 0; overflow-y: auto; background: var(--arq-cinza); }
+
+/* dashboard: cabeçalho sem quebra, abas em uma linha, coluna direita mais estreita */
+.arq-page-head { flex-wrap: nowrap; align-items: flex-start; }
+.arq-page-head > div:first-child { min-width: 0; flex: 1 1 auto; }
+.arq-page-head .arq-head-actions { flex: 0 0 auto; flex-wrap: nowrap; }
+.arq-page-sub { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.arq-tabs { flex-wrap: nowrap; overflow-x: auto; }
+.arq-tab { height: 32px; padding: 0 10px; font-size: 11.5px; }
+.arq-aside-col { width: 300px; }
+.arq-workspace { padding: 20px; }
+
+/* editor: página em três faixas (toolbar, corpo, status) dentro do conteúdo */
+.arq-editor-page { display: flex; flex-direction: column; height: 100%; min-height: 0; }
+.arq-editor-toolbar {
+  display: flex; align-items: center; gap: 10px; height: 44px; padding: 0 14px;
+  background: #fff; border-bottom: 1px solid var(--arq-borda); flex-shrink: 0;
+}
+.arq-editor-body { flex: 1; display: flex; min-height: 0; }
+.arq-editor-canvas { flex: 1; min-width: 0; background: #0f1618; }
+.arq-editor-aside { width: 300px; flex-shrink: 0; background: #fff; border-left: 1px solid var(--arq-borda); padding: 14px; overflow-y: auto; }
+.arq-statusbar { flex-shrink: 0; }
+/* ============ AJUSTES v3 ============ */
+.arq-tabs { flex-wrap: wrap; overflow: visible; row-gap: 8px; }
+.arq-tabs > .arq-btn { flex-shrink: 0; }
+.arq-nav-item { min-height: 34px; padding: 5px 12px; }
+.arq-sidebar-logo { padding: 10px 14px 8px; }
+.arq-vendi { margin: 6px 12px; padding: 10px; }
+.arq-nav-divider { margin: 6px 10px; }
+/* ============ AJUSTES v4 — toolbar/status do editor ============ */
+.arq-editor-toolbar .arq-tool {
+  width: auto;
+  flex-shrink: 0;
+  white-space: nowrap;
+  justify-content: center;
+  padding: 0 12px;
+}
+.arq-editor-toolbar .arq-muted { white-space: nowrap; }
+
+.arq-statusbar { flex-wrap: nowrap; overflow: hidden; gap: 14px; }
+.arq-statusbar > span { white-space: nowrap; flex-shrink: 0; }
+.arq-statusbar > span:last-child { flex-shrink: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
