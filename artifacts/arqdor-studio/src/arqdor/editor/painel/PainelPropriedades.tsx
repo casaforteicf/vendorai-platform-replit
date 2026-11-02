@@ -8,6 +8,13 @@ export interface FaceEscolhida {
   faceId: string;
 }
 
+export interface PreviaBim {
+  /** 'Parede' | 'Laje' | 'Telhado' | 'Mobiliário' | 'Não conversível' */
+  titulo: string;
+  detalhe: string;
+  conversivel: boolean;
+}
+
 export interface PropsPainelPropriedades {
   solido: Solido | null;
   face: FaceEscolhida | null;
@@ -16,6 +23,11 @@ export interface PropsPainelPropriedades {
   aoAplicarPushPull: () => void;
   aoCancelarFace: () => void;
   aoRenomear: (nome: string) => void;
+  /** O que o sólido selecionado viraria no BIM (regra D12). */
+  previa: PreviaBim | null;
+  /** Já existe elemento BIM para este sólido? */
+  materializado: boolean;
+  aoMaterializar: () => void;
 }
 
 function numero(valor: number): string {
@@ -23,7 +35,7 @@ function numero(valor: number): string {
 }
 
 export function PainelPropriedades(props: PropsPainelPropriedades) {
-  const { solido, face } = props;
+  const { solido, face, previa } = props;
 
   return (
     <div>
@@ -61,6 +73,7 @@ export function PainelPropriedades(props: PropsPainelPropriedades) {
         </div>
       )}
 
+      {/* Push/Pull — só com face escolhida */}
       {face !== null ? (
         <div style={{ borderTop: '1px solid #e5e7eb', paddingTop: 10 }}>
           <div className="arq-panel-title" style={{ marginBottom: 6 }}>Push/Pull</div>
@@ -83,6 +96,46 @@ export function PainelPropriedades(props: PropsPainelPropriedades) {
               Cancelar
             </button>
           </div>
+        </div>
+      ) : null}
+
+      {/* BIM — só aparece com sólido selecionado, e depois que o volume existe */}
+      {solido !== null ? (
+        <div style={{ borderTop: '1px solid #e5e7eb', marginTop: 12, paddingTop: 10 }}>
+          <div className="arq-panel-title" style={{ marginBottom: 6 }}>BIM</div>
+
+          {props.materializado ? (
+            <>
+              <span className="arq-badge-bim">
+                <Icone nome="modelagem" tamanho={13} />
+                BIM · {previa === null ? 'elemento' : previa.titulo}
+              </span>
+              <p className="arq-muted" style={{ margin: '8px 0', lineHeight: 1.5 }}>
+                Este sólido já é um elemento do modelo. Se a geometria mudar, converta de novo para
+                atualizar o orçamento.
+              </p>
+              <button type="button" className="arq-btn" style={{ width: '100%', justifyContent: 'center', height: 34 }} onClick={props.aoMaterializar}>
+                Atualizar no BIM
+              </button>
+            </>
+          ) : (
+            <>
+              <p className="arq-muted" style={{ margin: '0 0 8px', lineHeight: 1.55 }}>
+                {previa === null
+                  ? 'Selecione um sólido com volume.'
+                  : <><span>Vai virar </span><strong>{previa.titulo}</strong>{previa.detalhe.length > 0 ? <><br />{previa.detalhe}</> : null}</>}
+              </p>
+              <button
+                type="button"
+                className="arq-btn arq-btn-primary"
+                style={{ width: '100%', justifyContent: 'center', height: 34 }}
+                disabled={previa === null || !previa.conversivel}
+                onClick={props.aoMaterializar}
+              >
+                Converter em {previa === null ? 'BIM' : previa.titulo}
+              </button>
+            </>
+          )}
         </div>
       ) : null}
     </div>

@@ -288,3 +288,10 @@ button { font-family: inherit; }
   padding: 24px; display: flex; flex-direction: column; gap: 12px; align-items: flex-start;
 }
 .arq-vazio p { margin: 0; line-height: 1.6; color: var(--arq-texto-suave); font-size: 12px; }
+/* selo de elemento já convertido (azul BIM) */
+.arq-badge-bim {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 4px 10px; border-radius: 999px;
+  background: rgba(47, 111, 208, 0.12); color: #2f6fd0;
+  font-size: 11px; font-weight: 600;
+}

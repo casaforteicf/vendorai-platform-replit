@@ -101,6 +101,14 @@ const soFace = aplicarPasso(
 const faceSolta = soFace.ok ? materializarSolido(soFace.estado.solidos[0], { ...OPCOES, espessuraLajeM: 0.15 }) : null;
 ok(faceSolta !== null && faceSolta.ok && faceSolta.elemento.tipo === 'laje', 'laje: face solta vira laje');
 
+const faceSoltaPadrao = soFace.ok ? materializarSolido(soFace.estado.solidos[0], OPCOES) : null;
+ok(
+  faceSoltaPadrao !== null && faceSoltaPadrao.ok && 'espessura' in faceSoltaPadrao.elemento.geometria
+    ? perto(faceSoltaPadrao.elemento.geometria.espessura, 0.12)
+    : false,
+  'laje: face solta sem parâmetro usa 0,12 m (nunca espessura zero)',
+);
+
 // ---------- 3. MOBILIARIO ----------
 const movelSolido = caixa([0, 0], [1, 0.8], 0.75);
 const movel = materializarSolido(movelSolido, OPCOES);

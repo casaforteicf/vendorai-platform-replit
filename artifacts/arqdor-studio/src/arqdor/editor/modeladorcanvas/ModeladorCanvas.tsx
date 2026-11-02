@@ -20,6 +20,8 @@ export interface TransformacaoLida {
 export interface PropsModeladorCanvas {
   solidos: readonly Solido[];
   selecionadoId: string | null;
+  /** Ids dos sólidos que já viraram elemento BIM — renderizados em azul. */
+  solidosMaterializados: readonly string[];
   modo: ModoInteracao;
   gizmo: ModoGizmo;
   aoClicarNoPlano: (ponto: Vetor3) => void;
@@ -34,7 +36,7 @@ const MODO_GIZMO: Record<Exclude<ModoGizmo, null>, 'translate' | 'rotate' | 'sca
   escalar: 'scale',
 };
 
-function construirSolido(solido: Solido, selecionado: boolean): THREE.Group {
+function construirSolido(solido: Solido, selecionado: boolean, materializado: boolean): THREE.Group {
   const grupo = new THREE.Group();
   grupo.name = solido.id;
   grupo.userData.solidoId = solido.id;
@@ -60,7 +62,8 @@ function construirSolido(solido: Solido, selecionado: boolean): THREE.Group {
     geometria.setAttribute('position', new THREE.Float32BufferAttribute(posicoes, 3));
     geometria.computeVertexNormals();
     const material = new THREE.MeshStandardMaterial({
-      color: selecionado ? 0x4ac59a : 0x6b7f79,
+      // Azul = já é BIM (parede/laje oficial). Verde = sólido de desenho selecionado.
+      color: materializado ? (selecionado ? 0x7cb3ff : 0x2f6fd0) : selecionado ? 0x4ac59a : 0x6b7f79,
       side: THREE.DoubleSide,
       flatShading: true,
       roughness: 0.85,
@@ -113,11 +116,13 @@ export function ModeladorCanvas(props: PropsModeladorCanvas) {
   const faceRef = useRef(props.aoEscolherFace);
   const transformarRef = useRef(props.aoTransformar);
   const modoRef = useRef(props.modo);
+  const gizmoAtivoRef = useRef(false);
   cliqueRef.current = props.aoClicarNoPlano;
   selecionarRef.current = props.aoSelecionar;
   faceRef.current = props.aoEscolherFace;
   transformarRef.current = props.aoTransformar;
   modoRef.current = props.modo;
+  gizmoAtivoRef.current = props.gizmo !== null;
 
   useEffect(() => {
     const container = containerRef.current;
@@ -148,7 +153,7 @@ export function ModeladorCanvas(props: PropsModeladorCanvas) {
     cena.add(grupos);
 
     const controle = new TransformControls(camera, renderer.domElement);
-    controle.setSize(0.9);
+    controle.setSize(1.5);
     const helper = (controle as unknown as { getHelper?: () => THREE.Object3D }).getHelper?.();
     cena.add(helper ?? (controle as unknown as THREE.Object3D));
     controle.addEventListener('dragging-changed', (evento) => {
@@ -258,7 +263,9 @@ export function ModeladorCanvas(props: PropsModeladorCanvas) {
             return;
           }
         }
-        if (modo === 'selecionar') {
+        // Com o gizmo ativo, clique no vazio NÃO desmarca: errar a seta por pouco não pode
+        // matar a seleção (era isso que fazia o arrasto "não segurar").
+        if (modo === 'selecionar' && !gizmoAtivoRef.current) {
           selecionarRef.current(null);
           return;
         }
@@ -299,11 +306,12 @@ export function ModeladorCanvas(props: PropsModeladorCanvas) {
       const filho = grupos.children[0];
       grupos.remove(filho);
     }
+    const materializados = new Set(props.solidosMaterializados);
     for (const solido of props.solidos) {
-      grupos.add(construirSolido(solido, solido.id === props.selecionadoId));
+      grupos.add(construirSolido(solido, solido.id === props.selecionadoId, materializados.has(solido.id)));
     }
     selecionadoRef.current = props.selecionadoId;
-  }, [props.solidos, props.selecionadoId]);
+  }, [props.solidos, props.selecionadoId, props.solidosMaterializados]);
 
   useEffect(() => {
     const controle = gizmoRef.current;

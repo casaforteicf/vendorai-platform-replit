@@ -7,7 +7,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { objetoVisivel } from './bim/camadas';
 import { Icone } from './design/icones';
 import { derivar2d } from './bim/derivar2d';
-import { materializarSolidos } from './bim/materializar';
+import { classificarSolido, materializarSolidos } from './bim/materializar';
 import { clicar, iniciar, operacoesDoComando } from './modelador/desenho';
 import type { EstadoDesenho, FerramentaModelador } from './modelador/desenho';
 import { PLANO_CHAO } from './modelador/schema';
@@ -16,7 +16,7 @@ import { ModeladorCanvas } from './modeladorcanvas/ModeladorCanvas';
 import { ToolbarModelador } from './modeladorcanvas/ToolbarModelador';
 import { PainelCamadas } from './painel/PainelCamadas';
 import { PainelPropriedades } from './painel/PainelPropriedades';
-import type { FaceEscolhida } from './painel/PainelPropriedades';
+import type { FaceEscolhida, PreviaBim } from './painel/PainelPropriedades';
 import { calcularPushPull } from './modelador/pushpull';
 import { gerarOpEscalar, gerarOpMover, gerarOpRotacionar } from './modelador/gizmo';
 import type { ModoGizmo, TransformacaoLida } from './modeladorcanvas/ModeladorCanvas';
@@ -136,22 +136,75 @@ export function EditorShell() {
 
   const solidoSelecionado = solidos.find((s) => s.id === selecionadoId);
 
-  const materializar = (): void => {
-    if (projeto === null) return;
+  /** Ids de sólidos que já viraram elemento BIM (prefixo `el_`). */
+  const solidosMaterializados = useMemo<string[]>(
+    () => elementos.filter((elemento) => elemento.id.startsWith('el_')).map((elemento) => elemento.id.slice(3)),
+    [elementos],
+  );
+  const selecionadoMaterializado =
+    solidoSelecionado !== undefined && solidosMaterializados.includes(solidoSelecionado.id);
+
+  /** Prévia da regra D12 — o painel diz no que o sólido vai virar antes de converter. */
+  const previa = useMemo<PreviaBim | null>(() => {
+    if (solidoSelecionado === undefined || projeto === null) return null;
+    const resultado = classificarSolido(solidoSelecionado, {
+      projetoId: projeto.id,
+      camadaId: camadas.camadaAtivaId,
+    });
+    if (!resultado.ok) {
+      return { titulo: 'Não conversível', detalhe: resultado.erro.codigo, conversivel: false };
+    }
+    const { tipo, geometria, metricas } = resultado.classificacao;
+    const m = (valor: number): string => valor.toFixed(2).replace('.', ',') + ' m';
+    if (tipo === 'parede') {
+      const g = geometria as { ponto_a: [number, number]; ponto_b: [number, number]; altura: number; espessura: number };
+      const comprimento = Math.hypot(g.ponto_b[0] - g.ponto_a[0], g.ponto_b[1] - g.ponto_a[1]);
+      return {
+        titulo: 'Parede',
+        detalhe: m(comprimento) + ' de comprimento · ' + m(g.altura) + ' de altura · ' + m(g.espessura) + ' de espessura',
+        conversivel: true,
+      };
+    }
+    if (tipo === 'laje') {
+      const g = geometria as { espessura: number };
+      return {
+        titulo: 'Laje',
+        detalhe: metricas.areaPlanta.toFixed(2).replace('.', ',') + ' m² de área · ' + m(g.espessura) + ' de espessura',
+        conversivel: true,
+      };
+    }
+    if (tipo === 'telhado') {
+      const g = geometria as { inclinacaoGraus: number };
+      return {
+        titulo: 'Telhado',
+        detalhe: g.inclinacaoGraus.toFixed(1).replace('.', ',') + '° de inclinação',
+        conversivel: true,
+      };
+    }
+    return {
+      titulo: 'Mobiliário',
+      detalhe: m(metricas.larguraX) + ' × ' + m(metricas.profundidadeZ) + ' × ' + m(metricas.altura),
+      conversivel: true,
+    };
+  }, [solidoSelecionado, projeto, camadas.camadaAtivaId]);
+
+  const materializarSelecionado = (): void => {
+    if (projeto === null || solidoSelecionado === undefined) return;
     const lote = materializarSolidos(
-      solidos,
+      [solidoSelecionado],
       { projetoId: projeto.id, camadaId: camadas.camadaAtivaId },
       elementos,
     );
-    if (lote.operacoes.length > 0) aplicarBim(lote.operacoes);
     if (lote.erros.length > 0) {
-      setAviso(
-        'Materializado: ' + String(lote.elementos.length) + ' elemento(s); ' + String(lote.erros.length) + ' sólido(s) recusado(s) (' + lote.erros[0].codigo + ').',
-      );
-    } else {
-      setAviso('Materializado: ' + String(lote.elementos.length) + ' elemento(s) BIM a partir de ' + String(solidos.length) + ' sólido(s).');
+      setAviso('Não foi possível converter "' + solidoSelecionado.nome + '": ' + lote.erros[0].codigo + '.');
+      return;
     }
-    setAba('planta');
+    if (lote.operacoes.length > 0) {
+      aplicarBim(lote.operacoes);
+      setAviso('"' + solidoSelecionado.nome + '" agora é ' + (previa === null ? 'elemento BIM' : previa.titulo) + '.');
+    } else {
+      setAviso('Este elemento já está atualizado no BIM.');
+    }
   };
 
   const renomearSolido = (nome: string): void => {
@@ -327,8 +380,6 @@ export function EditorShell() {
           temSolido={solidoSelecionado !== undefined}
           gizmo={gizmo}
           aoGizmo={setGizmo}
-          aoMaterializar={materializar}
-          podeMaterializar={solidos.length > 0}
         />
 
         <div className="arq-editor-canvas">
@@ -336,6 +387,7 @@ export function EditorShell() {
             <ModeladorCanvas
               solidos={solidos}
               selecionadoId={selecionadoId}
+              solidosMaterializados={solidosMaterializados}
               modo={ferramenta === 'pushpull' ? 'pushpull' : ferramenta === 'selecionar' ? 'selecionar' : 'desenho'}
               gizmo={gizmo}
               aoClicarNoPlano={aoClicarNoPlano}
@@ -371,6 +423,9 @@ export function EditorShell() {
             aoAplicarPushPull={aplicarPushPull}
             aoCancelarFace={() => setFace(null)}
             aoRenomear={renomearSolido}
+            previa={previa}
+            materializado={selecionadoMaterializado}
+            aoMaterializar={materializarSelecionado}
           />
           <div style={{ height: 1, background: '#e5e7eb', margin: '14px 0' }} />
           <PainelCamadas

@@ -57,6 +57,8 @@ export const PADROES_MATERIALIZACAO = {
   alturaMinimaParedeM: 1.0,
   espessuraMaximaParedeM: 0.6,
   alturaMaximaLajeM: 0.4,
+  /** Espessura padrão quando a face é solta (sem volume) e o usuário não informou. */
+  espessuraLajePadraoM: 0.12,
   inclinacaoMinimaTelhadoGraus: 5,
   inclinacaoMaximaTelhadoGraus: 80,
 } as const;
@@ -256,7 +258,9 @@ export function classificarSolido(
     if (baseContorno.length < 3 || areaPlanta <= EPS) {
       return { ok: false, erro: { codigo: 'SOLIDO_DEGENERADO', solidoId: solido.id, detalhe: 'contorno de laje inválido' } };
     }
-    const espessura = opcoes.espessuraLajeM ?? Math.max(alturaTotal, 0);
+    // Face solta (sem volume) não pode virar laje de espessura zero: volume zero
+    // contaminaria o orçamento. Cai no padrão construtivo.
+    const espessura = opcoes.espessuraLajeM ?? (alturaTotal > EPS ? alturaTotal : PADROES_MATERIALIZACAO.espessuraLajePadraoM);
     const geometria: GeometriaLaje = { contorno: baseContorno, espessura };
     return { ok: true, classificacao: { tipo: 'laje', geometria, metricas } };
   }
