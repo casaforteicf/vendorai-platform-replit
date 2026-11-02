@@ -15,6 +15,8 @@ export interface PropsToolbar {
   podeRefazer: boolean;
   temSolido: boolean;
   gizmo: ModoGizmo;
+  aoMaterializar: () => void;
+  podeMaterializar: boolean;
   aoGizmo: (modo: ModoGizmo) => void;
 }
 
@@ -80,6 +82,9 @@ export function ToolbarModelador(props: PropsToolbar) {
       {GIZMOS.map((g) =>
         botao(g.id, g.rotulo, g.icone, props.gizmo === g.id, !props.temSolido, () => props.aoGizmo(props.gizmo === g.id ? null : g.id), g.rotulo + ' (' + g.tecla + ')'),
       )}
+
+      <div className="arq-rail-label">BIM</div>
+      {botao('materializar', 'Materializar', 'modelagem', false, !props.podeMaterializar, props.aoMaterializar, 'Converte os sólidos do modelador em elementos BIM')}
 
       <div className="arq-rail-label">Histórico</div>
       {botao('desfazer', 'Desfazer', 'desfazer', false, !props.podeDesfazer, props.aoDesfazer, 'Desfazer (Ctrl+Z)')}

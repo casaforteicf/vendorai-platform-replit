@@ -13,7 +13,7 @@ const PRINCIPAIS: readonly ItemNav[] = [
   { id: 'materiais', rotulo: 'Materiais', icone: 'materiais', href: null },
   { id: 'render', rotulo: 'Render', icone: 'render', href: null },
   { id: 'especificacoes', rotulo: 'Especificações', icone: 'especificacoes', href: null },
-  { id: 'orcamento', rotulo: 'Orçamento', icone: 'orcamento', href: null },
+  { id: 'orcamento', rotulo: 'Orçamento', icone: 'orcamento', href: '/orcamento' },
   { id: 'entrega', rotulo: 'Entrega', icone: 'entrega', href: null },
 ];
 

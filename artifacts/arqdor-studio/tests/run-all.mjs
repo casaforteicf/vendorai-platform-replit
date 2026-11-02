@@ -12,6 +12,6 @@ const saida = join(app, '.check-out');
 
 writeFileSync(join(saida, 'package.json'), JSON.stringify({ type: 'commonjs' }));
 
-for (const modulo of ['camadas', 'bim', 'orcamento', 'colisao', 'memorial', 'persistencia', 'editor']) {
+for (const modulo of ['camadas', 'bim', 'orcamento', 'colisao', 'memorial', 'persistencia', 'editor', 'materializacao']) {
   await import(pathToFileURL(join(saida, 'tests', modulo, 'check.js')).href);
 }

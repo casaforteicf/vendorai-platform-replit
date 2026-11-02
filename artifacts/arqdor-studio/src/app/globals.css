@@ -264,3 +264,27 @@ button { font-family: inherit; }
   background: rgba(15, 22, 24, 0.88); color: #cfe0da; font-size: 12px;
 }
 .arq-vazio-overlay p { margin: 0; max-width: 380px; line-height: 1.5; }
+/* ============ tabelas e resumo (orçamento) ============ */
+.arq-tabela { width: 100%; border-collapse: collapse; font-size: 12px; }
+.arq-tabela th {
+  text-align: left; font-weight: 600; color: var(--arq-texto-suave);
+  font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.4px;
+  padding: 6px 8px; border-bottom: 1px solid var(--arq-borda);
+}
+.arq-tabela td { padding: 7px 8px; border-bottom: 1px solid #f1f3f2; }
+.arq-tabela tr:last-child td { border-bottom: 0; }
+.arq-tabela .num { text-align: right; font-variant-numeric: tabular-nums; }
+
+.arq-resumo { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-bottom: 16px; }
+.arq-resumo-card {
+  background: #fff; border: 1px solid var(--arq-borda); border-radius: 12px;
+  padding: 12px 14px; box-shadow: var(--arq-sombra);
+}
+.arq-resumo-card .rotulo { display: block; font-size: 10.5px; color: var(--arq-texto-suave); text-transform: uppercase; letter-spacing: 0.4px; }
+.arq-resumo-card strong { display: block; font-size: 22px; font-weight: 700; margin-top: 4px; font-variant-numeric: tabular-nums; }
+
+.arq-vazio {
+  background: #fff; border: 1px dashed var(--arq-borda); border-radius: 12px;
+  padding: 24px; display: flex; flex-direction: column; gap: 12px; align-items: flex-start;
+}
+.arq-vazio p { margin: 0; line-height: 1.6; color: var(--arq-texto-suave); font-size: 12px; }

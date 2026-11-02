@@ -19,6 +19,7 @@ export * from './bim/schema';
 export * from './bim/camadas';
 export * from './bim/store-core';
 export * from './bim/derivar2d';
+export * from './bim/materializar';
 export * from './orcamento/quantitativos';
 export * from './documentacao/memorial';
 export * from './persistencia/documento';

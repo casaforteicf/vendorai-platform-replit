@@ -7,6 +7,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { objetoVisivel } from './bim/camadas';
 import { Icone } from './design/icones';
 import { derivar2d } from './bim/derivar2d';
+import { materializarSolidos } from './bim/materializar';
 import { clicar, iniciar, operacoesDoComando } from './modelador/desenho';
 import type { EstadoDesenho, FerramentaModelador } from './modelador/desenho';
 import { PLANO_CHAO } from './modelador/schema';
@@ -63,6 +64,7 @@ export function EditorShell() {
   const removerCamada = useBIMStore((s) => s.removerCamada);
   const revelarTodos = useBIMStore((s) => s.revelarTodos);
   const carregarExemplo = useBIMStore((s) => s.carregarExemplo);
+  const aplicarBim = useBIMStore((s) => s.aplicar);
   const carregarBim = useBIMStore((s) => s.carregar);
 
   const [desenho, setDesenho] = useState<EstadoDesenho>(() => iniciar('linha'));
@@ -133,6 +135,24 @@ export function EditorShell() {
   );
 
   const solidoSelecionado = solidos.find((s) => s.id === selecionadoId);
+
+  const materializar = (): void => {
+    if (projeto === null) return;
+    const lote = materializarSolidos(
+      solidos,
+      { projetoId: projeto.id, camadaId: camadas.camadaAtivaId },
+      elementos,
+    );
+    if (lote.operacoes.length > 0) aplicarBim(lote.operacoes);
+    if (lote.erros.length > 0) {
+      setAviso(
+        'Materializado: ' + String(lote.elementos.length) + ' elemento(s); ' + String(lote.erros.length) + ' sólido(s) recusado(s) (' + lote.erros[0].codigo + ').',
+      );
+    } else {
+      setAviso('Materializado: ' + String(lote.elementos.length) + ' elemento(s) BIM a partir de ' + String(solidos.length) + ' sólido(s).');
+    }
+    setAba('planta');
+  };
 
   const renomearSolido = (nome: string): void => {
     if (solidoSelecionado === undefined) return;
@@ -307,6 +327,8 @@ export function EditorShell() {
           temSolido={solidoSelecionado !== undefined}
           gizmo={gizmo}
           aoGizmo={setGizmo}
+          aoMaterializar={materializar}
+          podeMaterializar={solidos.length > 0}
         />
 
         <div className="arq-editor-canvas">
