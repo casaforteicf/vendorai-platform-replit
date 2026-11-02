@@ -160,3 +160,15 @@ Sem isso, a UI vai reintroduzir o estado inconsistente que o D4 fechou.
 2. o coeficiente de perda tem três níveis de precedência: **material > categoria > padrão**;
 3. o código Praça.ai é resolvido por **materialId quando existir**, senão por categoria, e cai em `PRC-INDEFINIDO` quando não há mapeamento (nunca lança);
 4. a banda de sanidade do preço cotado é **0,5× a 3×** a referência, com motivo tipado (`ABAIXO_DO_PISO`/`ACIMA_DO_TETO`).
+### 7.3 Addendum — D7 (nível sem altura) na compatibilização
+
+| ID | Onde | Defeito | Correção / decisão |
+|---|---|---|---|
+| **D7** | `ElementoBim.nivel` | é um **inteiro sem cota**. Para detectar choque vertical (tubo × laje do pavimento superior) é preciso saber a altura do nível — que não existe no contrato | no MVP a cota é **estimada** (`nivel × alturaNivelPadraoM`, padrão 3,00 m), parâmetro explícito em `OpcoesColisao`. Documentado como limitação no próprio memorial (seção 5) |
+
+**Instrução para o DeepSeek (compatibilização):** o documento do Bloco 17 precisa declarar
+
+1. que a cota do nível é **estimada** até existir `alturaNivel` no BIM Core (evita prometer precisão vertical);
+2. que o contato intencional (tomada/interruptor ancorado na própria parede) é **ignorado com motivo**, não descartado em silêncio;
+3. que a margem padrão é **5 cm** e que o resultado vem **ordenado por volume de interseção** (o pedreiro resolve o maior primeiro);
+4. que AABB é aproximação do MVP e o SAT entra quando houver falso positivo confirmado (D11).
