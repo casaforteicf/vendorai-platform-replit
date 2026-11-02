@@ -1,8 +1,19 @@
 /**
- * ARQDOR STUDIO 2.0 — entrada do editor.
+ * ARQDOR STUDIO 2.0 — entrada do domínio do editor.
  *
- * Placeholder de toolchain: existe para que `tsc -p tsconfig.json` tenha pelo menos
- * uma entrada enquanto o Bloco 0 (recriação dos Blocos 1–4) não está implementado.
- * Pode ser substituído quando o EditorShell real chegar.
+ * Barrels para que `tsc -p tsconfig.contracts.json` compile o grafo inteiro
+ * a partir de um único ponto. Sem efeito colateral em runtime.
  */
-export const ARQDOR_STUDIO_VERSAO = "2.0.0-alpha.0";
+
+export * from './modelador/schema';
+export * from './modelador/snap';
+export * from './bim/schema';
+export * from './mep/schema';
+export * from './transacao';
+export * from './ia/schema';
+export * from './interiores/biblioteca';
+export * from './moveis/schema';
+export * from './portal/schema';
+export * from './video/schema';
+
+export const ARQDOR_STUDIO_VERSAO = '2.0.0-alpha.1';
