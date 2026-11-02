@@ -121,15 +121,15 @@ function CamposTransformacao(props: {
     <>
       <div className="arq-transf-titulo">Posição (m)</div>
       <div className="arq-transf">
-        <input className="arq-field" value={px} onChange={(e) => setPx(e.target.value)} onBlur={confirmar} onKeyDown={aoTeclar} aria-label="Posição X" />
-        <input className="arq-field" value={py} onChange={(e) => setPy(e.target.value)} onBlur={confirmar} onKeyDown={aoTeclar} aria-label="Posição Y" />
-        <input className="arq-field" value={pz} onChange={(e) => setPz(e.target.value)} onBlur={confirmar} onKeyDown={aoTeclar} aria-label="Posição Z" />
+        <input type="number" step="0.01" className="arq-field" value={px} onFocus={(e) => e.currentTarget.select()} onChange={(e) => setPx(e.target.value)} onBlur={confirmar} onKeyDown={aoTeclar} aria-label="Posição X" />
+        <input type="number" step="0.01" className="arq-field" value={py} onFocus={(e) => e.currentTarget.select()} onChange={(e) => setPy(e.target.value)} onBlur={confirmar} onKeyDown={aoTeclar} aria-label="Posição Y" />
+        <input type="number" step="0.01" className="arq-field" value={pz} onFocus={(e) => e.currentTarget.select()} onChange={(e) => setPz(e.target.value)} onBlur={confirmar} onKeyDown={aoTeclar} aria-label="Posição Z" />
       </div>
       <div className="arq-transf-titulo">Escala</div>
       <div className="arq-transf">
-        <input className="arq-field" value={ex} onChange={(e) => setEx(e.target.value)} onBlur={confirmar} onKeyDown={aoTeclar} aria-label="Escala X" />
-        <input className="arq-field" value={ey} onChange={(e) => setEy(e.target.value)} onBlur={confirmar} onKeyDown={aoTeclar} aria-label="Escala Y" />
-        <input className="arq-field" value={ez} onChange={(e) => setEz(e.target.value)} onBlur={confirmar} onKeyDown={aoTeclar} aria-label="Escala Z" />
+        <input type="number" step="0.01" className="arq-field" value={ex} onFocus={(e) => e.currentTarget.select()} onChange={(e) => setEx(e.target.value)} onBlur={confirmar} onKeyDown={aoTeclar} aria-label="Escala X" />
+        <input type="number" step="0.01" className="arq-field" value={ey} onFocus={(e) => e.currentTarget.select()} onChange={(e) => setEy(e.target.value)} onBlur={confirmar} onKeyDown={aoTeclar} aria-label="Escala Y" />
+        <input type="number" step="0.01" className="arq-field" value={ez} onFocus={(e) => e.currentTarget.select()} onChange={(e) => setEz(e.target.value)} onBlur={confirmar} onKeyDown={aoTeclar} aria-label="Escala Z" />
       </div>
     </>
   );
@@ -142,6 +142,7 @@ export function PainelPropriedades(props: PropsPainelPropriedades) {
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 10 }}>
         <Icone nome="modelagem" tamanho={16} />
         <span className="arq-panel-title">Propriedades</span>
+
       </div>
 
       {solido === null ? (
@@ -163,20 +164,21 @@ export function PainelPropriedades(props: PropsPainelPropriedades) {
             <span>{String(solido.arestas.length)} arestas</span>
             <span>{String(solido.faces.length)} faces</span>
           </div>
+          <button
+            type="button"
+            className="arq-btn arq-btn-perigo"
+            style={{ width: '100%', justifyContent: 'center', height: 32, marginTop: 8 }}
+            onClick={props.aoExcluir}
+          >
+            <Icone nome="lixeira" tamanho={14} />
+            Excluir sólido
+          </button>
           <CamposTransformacao
             key={solido.id + ':' + solido.transformacao.posicao.join(',') + ':' + solido.transformacao.escala.join(',')}
             solido={solido}
             aoTransformar={props.aoTransformar}
           />
-          <button
-            type="button"
-            className="arq-btn arq-btn-perigo"
-            style={{ width: '100%', justifyContent: 'center', height: 34, marginTop: 10 }}
-            onClick={props.aoExcluir}
-          >
-            <Icone nome="lixeira" tamanho={15} />
-            Excluir sólido
-          </button>
+
         </div>
       )}
 

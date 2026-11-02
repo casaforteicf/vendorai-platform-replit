@@ -481,7 +481,11 @@ export function EditorShell() {
         {aba === 'conflitos' ? null : (
         <ToolbarModelador
           ferramenta={ferramenta}
-          aoEscolher={setFerramenta}
+          aoEscolher={(escolhida) => {
+            // Ferramenta de desenho é desenho livre: jamais abre o modal por tabela.
+            setModalInserir(false);
+            setFerramenta(escolhida);
+          }}
           aoNovoSolido={criarSolido}
           aoAbrirInsercao={() => setModalInserir(true)}
           aoDesfazer={desfazer}

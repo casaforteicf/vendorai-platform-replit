@@ -374,3 +374,10 @@ button { font-family: inherit; }
 .arq-transf .arq-field { height: 30px; font-size: 11.5px; text-align: right; font-variant-numeric: tabular-nums; }
 .arq-btn-perigo { border-color: #fecaca; background: #fef2f2; color: #b91c1c; }
 .arq-btn-perigo:hover { background: #fee2e2; border-color: #fca5a5; }
+/* campos numéricos do inspetor: digitação manda, sem setinha que muda valor sem querer */
+.arq-transf input[type="number"] { appearance: textfield; -moz-appearance: textfield; }
+.arq-transf input[type="number"]::-webkit-outer-spin-button,
+.arq-transf input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.arq-modal-grade input[type="number"] { appearance: textfield; -moz-appearance: textfield; }
+.arq-modal-grade input[type="number"]::-webkit-outer-spin-button,
+.arq-modal-grade input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
