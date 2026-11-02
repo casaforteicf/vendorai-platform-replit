@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import type { Solido } from '../modelador/schema';
 import { Icone } from '../design/icones';
 
@@ -28,12 +29,67 @@ export interface PropsPainelPropriedades {
   /** Já existe elemento BIM para este sólido? */
   materializado: boolean;
   aoMaterializar: () => void;
+  /** Não-nulo quando o sólido selecionado já é uma PAREDE no BIM. */
+  paredeId: string | null;
+  vaosExistentes: number;
+  aoAbrirVao: (tipo: 'porta' | 'janela', medidas: { offset: number; largura: number; altura: number; peitoril: number }) => void;
 }
 
 function numero(valor: number): string {
   return Math.abs(valor) < 1e-9 ? '0' : valor.toFixed(2);
 }
 
+
+function SecaoVaos(props: {
+  paredeId: string;
+  vaosExistentes: number;
+  aoAbrirVao: (tipo: 'porta' | 'janela', medidas: { offset: number; largura: number; altura: number; peitoril: number }) => void;
+}) {
+  const [offset, setOffset] = useState('0.30');
+  const [largura, setLargura] = useState('0.80');
+  const [alturaVao, setAlturaVao] = useState('2.10');
+  const [peitoril, setPeitoril] = useState('1.00');
+
+  const numero = (valor: string): number => Number(valor.replace(',', '.'));
+  const medidas = (comPeitoril: boolean) => ({
+    offset: numero(offset),
+    largura: numero(largura),
+    altura: numero(alturaVao),
+    peitoril: comPeitoril ? numero(peitoril) : 0,
+  });
+
+  return (
+    <div style={{ borderTop: '1px solid #e5e7eb', marginTop: 12, paddingTop: 10 }}>
+      <div className="arq-panel-title" style={{ marginBottom: 6 }}>Vãos</div>
+      <p className="arq-muted" style={{ margin: '0 0 8px', lineHeight: 1.5 }}>
+        Parede {props.paredeId} · {String(props.vaosExistentes)} vão(s). O vão é contábil: desconta
+        da área de alvenaria e aparece na planta.
+      </p>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
+        <label className="arq-muted">Offset (m)
+          <input className="arq-field" style={{ width: '100%', marginTop: 3 }} value={offset} onChange={(e) => setOffset(e.target.value)} inputMode="decimal" />
+        </label>
+        <label className="arq-muted">Largura (m)
+          <input className="arq-field" style={{ width: '100%', marginTop: 3 }} value={largura} onChange={(e) => setLargura(e.target.value)} inputMode="decimal" />
+        </label>
+        <label className="arq-muted">Altura (m)
+          <input className="arq-field" style={{ width: '100%', marginTop: 3 }} value={alturaVao} onChange={(e) => setAlturaVao(e.target.value)} inputMode="decimal" />
+        </label>
+        <label className="arq-muted">Peitoril (m)
+          <input className="arq-field" style={{ width: '100%', marginTop: 3 }} value={peitoril} onChange={(e) => setPeitoril(e.target.value)} inputMode="decimal" />
+        </label>
+      </div>
+      <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
+        <button type="button" className="arq-btn arq-btn-primary" style={{ flex: 1, justifyContent: 'center', height: 34 }} onClick={() => props.aoAbrirVao('porta', medidas(false))}>
+          Porta
+        </button>
+        <button type="button" className="arq-btn" style={{ flex: 1, justifyContent: 'center', height: 34 }} onClick={() => props.aoAbrirVao('janela', medidas(true))}>
+          Janela
+        </button>
+      </div>
+    </div>
+  );
+}
 export function PainelPropriedades(props: PropsPainelPropriedades) {
   const { solido, face, previa } = props;
 
@@ -137,6 +193,10 @@ export function PainelPropriedades(props: PropsPainelPropriedades) {
             </>
           )}
         </div>
+      ) : null}
+
+      {props.paredeId !== null ? (
+        <SecaoVaos paredeId={props.paredeId} vaosExistentes={props.vaosExistentes} aoAbrirVao={props.aoAbrirVao} />
       ) : null}
     </div>
   );

@@ -7,7 +7,10 @@ import { useEffect, useMemo, useState } from 'react';
 import { objetoVisivel } from './bim/camadas';
 import { Icone } from './design/icones';
 import { derivar2d } from './bim/derivar2d';
+import { abrirVao, vaosDaParede } from './bim/esquadrias';
 import { classificarSolido, materializarSolidos } from './bim/materializar';
+import { PainelConflitos } from './conflitos/PainelConflitos';
+import type { ElementoMEP } from './mep/schema';
 import { clicar, iniciar, operacoesDoComando } from './modelador/desenho';
 import type { EstadoDesenho, FerramentaModelador } from './modelador/desenho';
 import { PLANO_CHAO } from './modelador/schema';
@@ -38,7 +41,8 @@ function aposGrade(valor: number): number {
 
 export function EditorShell() {
   const [carregado, setCarregado] = useState(false);
-  const [aba, setAba] = useState<'modelo' | 'planta'>('modelo');
+  const [aba, setAba] = useState<'modelo' | 'planta' | 'conflitos'>('modelo');
+  const [mep, setMep] = useState<ElementoMEP[]>([]);
   const [aviso, setAviso] = useState('Clique em "Novo sólido" e depois no plano.');
   const [projeto, setProjeto] = useState<{ id: string; nome: string; criadoEm: string } | null>(null);
   const [salvoEm, setSalvoEm] = useState<string | null>(null);
@@ -92,6 +96,7 @@ export function EditorShell() {
         if (documento !== null) {
           carregarModelador(documento.modelador);
           carregarBim({ ...documento.camadas, objetosOcultosIds: [] }, documento.bim);
+          setMep(documento.mep);
           setProjeto({ id: documento.projeto.id, nome: documento.projeto.nome, criadoEm: documento.projeto.criadoEm });
         }
         setCarregado(true);
@@ -120,7 +125,7 @@ export function EditorShell() {
         },
         bim: elementos,
         modelador: estadoModelador,
-        mep: [],
+        mep,
       };
       void salvarProjeto(documento)
         .then(() => setSalvoEm(new Date().toLocaleTimeString('pt-BR')))
@@ -130,7 +135,7 @@ export function EditorShell() {
         });
     }, 700);
     return () => clearTimeout(temporizador);
-  }, [carregado, projeto, camadas, elementos, estadoModelador]);
+  }, [carregado, projeto, camadas, elementos, estadoModelador, mep]);
 
   const salvarAgora = (): void => {
     if (projeto === null) return;
@@ -145,7 +150,7 @@ export function EditorShell() {
       },
       bim: elementos,
       modelador: estadoModelador,
-      mep: [],
+      mep,
     };
     void salvarProjeto(documento)
       .then(() => setSalvoEm(new Date().toLocaleTimeString('pt-BR')))
@@ -162,6 +167,10 @@ export function EditorShell() {
   );
 
   const solidoSelecionado = solidos.find((s) => s.id === selecionadoId);
+  const paredeDoSolido = solidoSelecionado === undefined
+    ? undefined
+    : elementos.find((el) => el.id === 'el_' + solidoSelecionado.id && el.tipo === 'parede');
+  const vaosDoSolido = paredeDoSolido === undefined ? [] : vaosDaParede(elementos, paredeDoSolido.id);
 
   /** Ids de sólidos que já viraram elemento BIM (prefixo `el_`). */
   const solidosMaterializados = useMemo<string[]>(
@@ -232,6 +241,41 @@ export function EditorShell() {
     } else {
       setAviso('Este elemento já está atualizado no BIM.');
     }
+  };
+
+  const adicionarMep = (elemento: ElementoMEP): void => {
+    setMep((atual) => [...atual, elemento]);
+    setAviso('Tubo ' + elemento.camada + ' adicionado — confira a lista de conflitos.');
+  };
+
+  const removerMep = (id: string): void => {
+    setMep((atual) => atual.filter((item) => item.id !== id));
+  };
+
+  const abrirVaoNaParede = (
+    tipo: 'porta' | 'janela',
+    medidas: { offset: number; largura: number; altura: number; peitoril: number },
+  ): void => {
+    if (projeto === null || solidoSelecionado === undefined) return;
+    const parede = elementos.find((el) => el.id === 'el_' + solidoSelecionado.id && el.tipo === 'parede');
+    if (parede === undefined) {
+      setAviso('Converta o sólido em Parede antes de abrir vão.');
+      return;
+    }
+    const resultado = abrirVao(parede, tipo, medidas, {
+      projetoId: projeto.id,
+      camadaId: camadas.camadaAtivaId,
+    });
+    if (!resultado.ok) {
+      const erro = resultado.erro;
+      setAviso('Vão recusado: ' + erro.codigo + ('detalhe' in erro ? ' — ' + erro.detalhe : ''));
+      return;
+    }
+    aplicarBim([{ tipo: 'criar_elemento_bim', elemento: resultado.elemento }]);
+    setAviso(
+      (tipo === 'porta' ? 'Porta' : 'Janela') +
+        ' adicionada (' + String(medidas.largura) + ' × ' + String(medidas.altura) + ' m).',
+    );
   };
 
   const renomearSolido = (nome: string): void => {
@@ -390,12 +434,16 @@ export function EditorShell() {
           <button type="button" role="tab" className="arq-tool" aria-pressed={aba === 'planta'} onClick={() => setAba('planta')}>
             Planta 2D
           </button>
+          <button type="button" role="tab" className="arq-tool" aria-pressed={aba === 'conflitos'} onClick={() => setAba('conflitos')}>
+            Conflitos
+          </button>
         </div>
         <div className="arq-header-spacer" />
         <span className="arq-muted">Modelagem de sólidos</span>
       </div>
 
       <div className="arq-editor-body">
+        {aba === 'conflitos' ? null : (
         <ToolbarModelador
           ferramenta={ferramenta}
           aoEscolher={setFerramenta}
@@ -408,9 +456,12 @@ export function EditorShell() {
           gizmo={gizmo}
           aoGizmo={setGizmo}
         />
+        )}
 
         <div className="arq-editor-canvas">
-          {aba === 'modelo' ? (
+          {aba === 'conflitos' ? (
+            <PainelConflitos elementos={elementos} mep={mep} aoAdicionar={adicionarMep} aoRemover={removerMep} />
+          ) : aba === 'modelo' ? (
             <ModeladorCanvas
               solidos={solidos}
               selecionadoId={selecionadoId}
@@ -441,6 +492,7 @@ export function EditorShell() {
           ) : null}
         </div>
 
+        {aba === 'conflitos' ? null : (
         <aside className="arq-editor-aside">
           <PainelPropriedades
             solido={solidoSelecionado ?? null}
@@ -453,6 +505,9 @@ export function EditorShell() {
             previa={previa}
             materializado={selecionadoMaterializado}
             aoMaterializar={materializarSelecionado}
+            paredeId={paredeDoSolido === undefined ? null : paredeDoSolido.id}
+            vaosExistentes={vaosDoSolido.length}
+            aoAbrirVao={abrirVaoNaParede}
           />
           <div style={{ height: 1, background: '#e5e7eb', margin: '14px 0' }} />
           <PainelCamadas
@@ -465,6 +520,7 @@ export function EditorShell() {
             aoRevelarTodos={revelarTodos}
           />
         </aside>
+        )}
       </div>
 
       <div className="arq-statusbar">

@@ -295,3 +295,34 @@ button { font-family: inherit; }
   background: rgba(47, 111, 208, 0.12); color: #2f6fd0;
   font-size: 11px; font-weight: 600;
 }
+/* ============ compatibilização (aba Conflitos) ============ */
+.arq-conflitos {
+  display: grid;
+  grid-template-columns: 320px minmax(240px, 1fr) 340px;
+  gap: 16px;
+  align-items: start;
+  padding: 16px;
+  height: 100%;
+  overflow: auto;
+  background: #fff;
+}
+.arq-conflitos-form, .arq-conflitos-lista {
+  border: 1px solid var(--arq-borda);
+  border-radius: 10px;
+  padding: 12px;
+  background: #fff;
+}
+.arq-conflitos-campos { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.arq-conflitos-campos label { display: flex; flex-direction: column; gap: 3px; font-size: 10.5px; color: var(--arq-texto-suave); text-transform: uppercase; letter-spacing: .3px; }
+.arq-conflitos-campos button { grid-column: 1 / -1; }
+.arq-conflitos-planta {
+  border: 1px solid var(--arq-borda);
+  border-radius: 10px;
+  background: #f8faf9;
+  height: 360px;
+  overflow: hidden;
+}
+.arq-conflitos-mep { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.arq-conflitos-mep li { display: flex; align-items: center; gap: 8px; font-size: 11px; }
+.arq-conflitos-mep .ponto { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
+.arq-conflitos-mep button { margin-left: auto; }
