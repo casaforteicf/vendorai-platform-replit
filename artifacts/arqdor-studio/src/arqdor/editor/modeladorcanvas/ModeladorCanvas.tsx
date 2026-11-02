@@ -7,6 +7,9 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { TransformControls } from 'three/examples/jsm/controls/TransformControls.js';
 import type { Solido, Vetor3 } from '../modelador/schema';
+import { calcularSnap } from '../modelador/snap';
+import type { CandidatoSnap } from '../modelador/snap';
+import { paraMundo } from '../bim/materializar';
 
 export type ModoGizmo = 'mover' | 'rotacionar' | 'escalar' | null;
 export type ModoInteracao = 'desenho' | 'selecionar' | 'pushpull';
@@ -117,6 +120,9 @@ export function ModeladorCanvas(props: PropsModeladorCanvas) {
   const transformarRef = useRef(props.aoTransformar);
   const modoRef = useRef(props.modo);
   const gizmoAtivoRef = useRef(false);
+  const snapRef = useRef<Vetor3 | null>(null);
+  const solidoAtual = useRef(new Map<string, Solido>());
+  const marcadorRef = useRef<HTMLDivElement | null>(null);
   cliqueRef.current = props.aoClicarNoPlano;
   selecionarRef.current = props.aoSelecionar;
   faceRef.current = props.aoEscolherFace;
@@ -148,6 +154,22 @@ export function ModeladorCanvas(props: PropsModeladorCanvas) {
     sol.position.set(6, 12, 8);
     cena.add(sol);
     cena.add(new THREE.GridHelper(20, 40, 0x1f7a5f, 0x253230));
+
+    // marcador do snap (HTML sobre o canvas — não consome GPU e é fácil de posicionar)
+    const marcador = document.createElement('div');
+    marcador.style.position = 'absolute';
+    marcador.style.width = '10px';
+    marcador.style.height = '10px';
+    marcador.style.marginLeft = '-5px';
+    marcador.style.marginTop = '-5px';
+    marcador.style.border = '2px solid #4ac59a';
+    marcador.style.borderRadius = '2px';
+    marcador.style.background = 'rgba(74,197,154,0.25)';
+    marcador.style.pointerEvents = 'none';
+    marcador.style.display = 'none';
+    marcador.style.zIndex = '5';
+    container.appendChild(marcador);
+    marcadorRef.current = marcador;
 
     const grupos = new THREE.Group();
     cena.add(grupos);
@@ -226,6 +248,68 @@ export function ModeladorCanvas(props: PropsModeladorCanvas) {
       inicioY = evento.clientY;
     };
 
+    const projetarTela = (ponto: Vetor3): { x: number; y: number } | null => {
+      const v = new THREE.Vector3(ponto[0], ponto[1], ponto[2]).project(camera);
+      if (v.z > 1) return null;
+      const caixaTela = renderer.domElement.getBoundingClientRect();
+      return {
+        x: caixaTela.left + ((v.x + 1) / 2) * caixaTela.width,
+        y: caixaTela.top + ((1 - v.y) / 2) * caixaTela.height,
+      };
+    };
+
+    const candidatosSnap = (): CandidatoSnap[] => {
+      const saida: CandidatoSnap[] = [];
+      for (const grupo of grupos.children) {
+        const solidoId = grupo.userData.solidoId as string | undefined;
+        if (solidoId === undefined) continue;
+        const solido = solidoAtual.current.get(solidoId);
+        if (solido === undefined) continue;
+        const mundo = new Map<string, Vetor3>();
+        for (const vertice of solido.vertices) {
+          const p = paraMundo(vertice.posicao, solido);
+          mundo.set(vertice.id, p);
+          saida.push({ tipo: 'vertice', solidoId, verticeId: vertice.id, posicao: p });
+        }
+        for (const aresta of solido.arestas) {
+          const a = mundo.get(aresta.verticeA);
+          const b = mundo.get(aresta.verticeB);
+          if (a === undefined || b === undefined) continue;
+          saida.push({ tipo: 'aresta_ponto', solidoId, arestaId: aresta.id, a, b });
+        }
+      }
+      return saida;
+    };
+
+    const aoMover = (evento: PointerEvent): void => {
+      if (gizmoAtivoRef.current) {
+        snapRef.current = null;
+        marcador.style.display = 'none';
+        return;
+      }
+      const resultado = calcularSnap({
+        ponteiro: { x: evento.clientX, y: evento.clientY },
+        projetar: projetarTela,
+        candidatos: candidatosSnap(),
+      });
+      if (resultado === null || resultado.tipo === 'grade') {
+        snapRef.current = null;
+        marcador.style.display = 'none';
+        return;
+      }
+      snapRef.current = resultado.posicao;
+      const tela = projetarTela(resultado.posicao);
+      if (tela === null) {
+        marcador.style.display = 'none';
+        return;
+      }
+      const caixaTela = renderer.domElement.getBoundingClientRect();
+      marcador.style.left = String(tela.x - caixaTela.left) + 'px';
+      marcador.style.top = String(tela.y - caixaTela.top) + 'px';
+      marcador.style.display = 'block';
+      marcador.title = resultado.tipo;
+    };
+
     const aoSoltar = (evento: PointerEvent): void => {
       const mexeu = Math.abs(evento.clientX - inicioX) > 4 || Math.abs(evento.clientY - inicioY) > 4;
       if (mexeu) return;
@@ -274,16 +358,22 @@ export function ModeladorCanvas(props: PropsModeladorCanvas) {
       const plano = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
       const alvoPlano = new THREE.Vector3();
       const acertou = raio.ray.intersectPlane(plano, alvoPlano);
-      if (acertou !== null) cliqueRef.current([alvoPlano.x, alvoPlano.y, alvoPlano.z]);
+      if (acertou !== null) {
+        const comSnap = snapRef.current;
+        cliqueRef.current(comSnap ?? [alvoPlano.x, alvoPlano.y, alvoPlano.z]);
+      }
     };
 
     renderer.domElement.addEventListener('pointerdown', aoPressionar);
+    renderer.domElement.addEventListener('pointermove', aoMover);
     renderer.domElement.addEventListener('pointerup', aoSoltar);
 
     return () => {
       vivo = false;
       observador.disconnect();
       renderer.domElement.removeEventListener('pointerdown', aoPressionar);
+      renderer.domElement.removeEventListener('pointermove', aoMover);
+      marcador.remove();
       renderer.domElement.removeEventListener('pointerup', aoSoltar);
       controle.detach();
       controle.dispose();
@@ -306,6 +396,7 @@ export function ModeladorCanvas(props: PropsModeladorCanvas) {
       const filho = grupos.children[0];
       grupos.remove(filho);
     }
+    solidoAtual.current = new Map(props.solidos.map((s) => [s.id, s]));
     const materializados = new Set(props.solidosMaterializados);
     for (const solido of props.solidos) {
       grupos.add(construirSolido(solido, solido.id === props.selecionadoId, materializados.has(solido.id)));

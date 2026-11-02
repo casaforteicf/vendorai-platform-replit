@@ -95,13 +95,15 @@ export function criarCaixa(opcoes: OpcoesCaixa): ResultadoCaixa {
   ];
 
   /** Ordem antihorária vista de fora — a normal aponta para fora da caixa. */
+  // Winding verificado por produto vetorial: normal aponta para FORA em todas as 6 faces.
+  // (A primeira versão estava invertida em todas — o sólido saía "do avesso" e a booleana errava.)
   const faces: Face[] = [
-    { id: opcoes.id + '_f_base', vertices: [v.v1, v.v4, v.v3, v.v2] },
-    { id: opcoes.id + '_f_topo', vertices: [v.v5, v.v6, v.v7, v.v8] },
-    { id: opcoes.id + '_f_frente', vertices: [v.v1, v.v2, v.v6, v.v5] },
-    { id: opcoes.id + '_f_fundo', vertices: [v.v4, v.v8, v.v7, v.v3] },
-    { id: opcoes.id + '_f_esquerda', vertices: [v.v1, v.v5, v.v8, v.v4] },
-    { id: opcoes.id + '_f_direita', vertices: [v.v2, v.v3, v.v7, v.v6] },
+    { id: opcoes.id + '_f_base', vertices: [v.v1, v.v2, v.v3, v.v4] },
+    { id: opcoes.id + '_f_topo', vertices: [v.v5, v.v8, v.v7, v.v6] },
+    { id: opcoes.id + '_f_frente', vertices: [v.v1, v.v5, v.v6, v.v2] },
+    { id: opcoes.id + '_f_fundo', vertices: [v.v4, v.v3, v.v7, v.v8] },
+    { id: opcoes.id + '_f_esquerda', vertices: [v.v1, v.v4, v.v8, v.v5] },
+    { id: opcoes.id + '_f_direita', vertices: [v.v2, v.v6, v.v7, v.v3] },
   ];
 
   return {

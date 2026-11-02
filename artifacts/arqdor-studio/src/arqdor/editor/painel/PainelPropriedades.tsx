@@ -34,6 +34,11 @@ export interface PropsPainelPropriedades {
   vaosExistentes: number;
   aoTransformar: (transformacao: { posicao: [number, number, number]; escala: [number, number, number] }) => void;
   aoExcluir: () => void;
+  /** Outros sólidos disponíveis para a booleana. */
+  outrosSolidos: ReadonlyArray<{ id: string; nome: string }>;
+  booleanaPronta: boolean;
+  aoCarregarBooleana: () => void;
+  aoBooleana: (outroId: string, operacao: 'uniao' | 'diferenca' | 'intersecao') => void;
   aoAbrirVao: (tipo: 'porta' | 'janela', medidas: { offset: number; largura: number; altura: number; peitoril: number }) => void;
 }
 
@@ -134,6 +139,59 @@ function CamposTransformacao(props: {
     </>
   );
 }
+
+function SecaoBooleanas(props: {
+  outros: ReadonlyArray<{ id: string; nome: string }>;
+  pronta: boolean;
+  aoCarregar: () => void;
+  aoBooleana: (outroId: string, operacao: 'uniao' | 'diferenca' | 'intersecao') => void;
+}) {
+  const [outroId, setOutroId] = useState(props.outros.length > 0 ? props.outros[0].id : '');
+
+  return (
+    <div style={{ borderTop: '1px solid #e5e7eb', marginTop: 12, paddingTop: 10 }}>
+      <div className="arq-panel-title" style={{ marginBottom: 6 }}>Booleanas</div>
+      {!props.pronta ? (
+        <>
+          <p className="arq-muted" style={{ margin: '0 0 8px', lineHeight: 1.5 }}>
+            O motor de geometria (manifold) precisa ser carregado.
+          </p>
+          <button type="button" className="arq-btn" style={{ width: '100%', justifyContent: 'center', height: 32 }} onClick={props.aoCarregar}>
+            Carregar motor
+          </button>
+        </>
+      ) : props.outros.length === 0 ? (
+        <p className="arq-muted" style={{ margin: 0, lineHeight: 1.5 }}>
+          Precisa de um segundo sólido. Insira outro por medidas e volte aqui.
+        </p>
+      ) : (
+        <>
+          <label className="arq-muted">Com o sólido
+            <select className="arq-field" style={{ width: '100%', marginTop: 3 }} value={outroId} onChange={(e) => setOutroId(e.target.value)}>
+              {props.outros.map((item) => (
+                <option key={item.id} value={item.id}>{item.nome}</option>
+              ))}
+            </select>
+          </label>
+          <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
+            <button type="button" className="arq-btn arq-btn-primary" style={{ flex: 1, justifyContent: 'center', height: 32, fontSize: 11 }} onClick={() => props.aoBooleana(outroId, 'uniao')}>
+              União
+            </button>
+            <button type="button" className="arq-btn" style={{ flex: 1, justifyContent: 'center', height: 32, fontSize: 11 }} onClick={() => props.aoBooleana(outroId, 'diferenca')}>
+              Subtrair
+            </button>
+            <button type="button" className="arq-btn" style={{ flex: 1, justifyContent: 'center', height: 32, fontSize: 11 }} onClick={() => props.aoBooleana(outroId, 'intersecao')}>
+              Interseção
+            </button>
+          </div>
+          <p className="arq-muted" style={{ margin: '6px 0 0', fontSize: 10 }}>
+            O segundo sólido é consumido; Ctrl+Z restaura.
+          </p>
+        </>
+      )}
+    </div>
+  );
+}
 export function PainelPropriedades(props: PropsPainelPropriedades) {
   const { solido, face, previa } = props;
 
@@ -208,6 +266,14 @@ export function PainelPropriedades(props: PropsPainelPropriedades) {
         </div>
       ) : null}
 
+      {solido !== null ? (
+        <SecaoBooleanas
+          outros={props.outrosSolidos}
+          pronta={props.booleanaPronta}
+          aoCarregar={props.aoCarregarBooleana}
+          aoBooleana={props.aoBooleana}
+        />
+      ) : null}
       {/* BIM — só aparece com sólido selecionado, e depois que o volume existe */}
       {solido !== null ? (
         <div style={{ borderTop: '1px solid #e5e7eb', marginTop: 12, paddingTop: 10 }}>

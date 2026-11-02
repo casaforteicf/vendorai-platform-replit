@@ -76,3 +76,102 @@ export type CalcularSnap = <TRaio, TCamera>(entrada: {
   planoAlvo: Plano | null;
   modoGizmo: ModoGizmo;
 }) => SnapResultado | null;
+/* ------------------------------------------------------------------ */
+/* Implementação (Bloco 6)                                             */
+/* ------------------------------------------------------------------ */
+
+export interface CandidatoVertice {
+  tipo: 'vertice';
+  solidoId: string;
+  verticeId: string;
+  posicao: Vetor3;
+}
+
+export interface CandidatoAresta {
+  tipo: 'aresta_ponto';
+  solidoId: string;
+  arestaId: string;
+  a: Vetor3;
+  b: Vetor3;
+}
+
+export type CandidatoSnap = CandidatoVertice | CandidatoAresta;
+
+export interface EntradaSnap {
+  ponteiro: { x: number; y: number };
+  projetar: (ponto: Vetor3) => { x: number; y: number } | null;
+  candidatos: readonly CandidatoSnap[];
+  grade?: Vetor3;
+  raioPx?: number;
+}
+
+function distancia(a: { x: number; y: number }, b: { x: number; y: number }): number {
+  return Math.hypot(a.x - b.x, a.y - b.y);
+}
+
+function pontoSegmento(
+  p: { x: number; y: number },
+  a: { x: number; y: number },
+  b: { x: number; y: number },
+): { distancia: number; t: number } {
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const comprimento2 = dx * dx + dy * dy;
+  if (comprimento2 < 1e-9) return { distancia: distancia(p, a), t: 0 };
+  const t = Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / comprimento2));
+  return { distancia: distancia(p, { x: a.x + dx * t, y: a.y + dy * t }), t };
+}
+
+function interpolar(a: Vetor3, b: Vetor3, t: number): Vetor3 {
+  return [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t];
+}
+
+/** Melhor snap: maior PRIORIDADE; empate vai para o mais perto na tela. */
+export function calcularSnap(entrada: EntradaSnap): SnapResultado | null {
+  const raio = entrada.raioPx ?? RAIO_SNAP_PX;
+  let melhor: SnapResultado | null = null;
+
+  const considerar = (candidato: SnapResultado): void => {
+    if (candidato.distanciaTela > raio) return;
+    if (melhor === null || candidato.prioridade > melhor.prioridade) {
+      melhor = candidato;
+      return;
+    }
+    if (candidato.prioridade === melhor.prioridade && candidato.distanciaTela < melhor.distanciaTela) {
+      melhor = candidato;
+    }
+  };
+
+  for (const item of entrada.candidatos) {
+    if (item.tipo === 'vertice') {
+      const tela = entrada.projetar(item.posicao);
+      if (tela === null) continue;
+      considerar({
+        tipo: 'vertice',
+        posicao: item.posicao,
+        referencia: { solidoId: item.solidoId, verticeId: item.verticeId },
+        prioridade: PRIORIDADE_SNAP.vertice,
+        distanciaTela: distancia(entrada.ponteiro, tela),
+      });
+      continue;
+    }
+
+    const telaA = entrada.projetar(item.a);
+    const telaB = entrada.projetar(item.b);
+    if (telaA === null || telaB === null) continue;
+    const proximo = pontoSegmento(entrada.ponteiro, telaA, telaB);
+    considerar({
+      tipo: 'aresta_ponto',
+      posicao: interpolar(item.a, item.b, proximo.t),
+      referencia: { solidoId: item.solidoId, arestaId: item.arestaId, t: proximo.t },
+      prioridade: PRIORIDADE_SNAP.aresta_ponto,
+      distanciaTela: proximo.distancia,
+    });
+  }
+
+  if (melhor === null && entrada.grade !== undefined) {
+    return { tipo: 'grade', posicao: entrada.grade, referencia: {}, prioridade: PRIORIDADE_SNAP.grade, distanciaTela: 0 };
+  }
+
+  return melhor;
+}

@@ -8,6 +8,7 @@ import { objetoVisivel } from './bim/camadas';
 import { Icone } from './design/icones';
 import { derivar2d } from './bim/derivar2d';
 import { abrirVao, vaosDaParede } from './bim/esquadrias';
+import { aplicarBooleana, booleanaDisponivel, inicializarBooleana } from './modelador/booleana';
 import { classificarSolido, materializarSolidos } from './bim/materializar';
 import { PainelConflitos } from './conflitos/PainelConflitos';
 import type { ElementoMEP } from './mep/schema';
@@ -46,6 +47,7 @@ export function EditorShell() {
   const [aba, setAba] = useState<'modelo' | 'planta' | 'conflitos'>('modelo');
   const [mep, setMep] = useState<ElementoMEP[]>([]);
   const [modalInserir, setModalInserir] = useState(false);
+  const [booleanaPronta, setBooleanaPronta] = useState(false);
   const [aviso, setAviso] = useState('Clique em "Novo sólido" e depois no plano.');
   const [projeto, setProjeto] = useState<{ id: string; nome: string; criadoEm: string } | null>(null);
   const [salvoEm, setSalvoEm] = useState<string | null>(null);
@@ -85,6 +87,27 @@ export function EditorShell() {
   useEffect(() => {
     setDesenho(iniciar(ferramenta));
   }, [ferramenta]);
+
+  useEffect(() => {
+    let vivo = true;
+    if (booleanaDisponivel()) {
+      setBooleanaPronta(true);
+      return () => {
+        vivo = false;
+      };
+    }
+    void inicializarBooleana().then((resultado) => {
+      if (!vivo) return;
+      if (resultado.ok) {
+        setBooleanaPronta(true);
+      } else {
+        setAviso('Motor de booleanas indisponível: ' + resultado.erro);
+      }
+    });
+    return () => {
+      vivo = false;
+    };
+  }, []);
 
   useEffect(() => {
     let vivo = true;
@@ -276,6 +299,29 @@ export function EditorShell() {
         depois: { ...solidoSelecionado, transformacao: { ...solidoSelecionado.transformacao, ...transformacao } },
       },
     ]);
+  };
+
+  const carregarBooleana = (): void => {
+    void inicializarBooleana().then((resultado) => {
+      if (resultado.ok) setBooleanaPronta(true);
+      else setAviso('Motor de booleanas indisponível: ' + resultado.erro);
+    });
+  };
+
+  const booleanaComSelecionado = (outroId: string, operacao: 'uniao' | 'diferenca' | 'intersecao'): void => {
+    if (solidoSelecionado === undefined) return;
+    const outro = solidos.find((item) => item.id === outroId);
+    if (outro === undefined) {
+      setAviso('Sólido de referência não existe mais.');
+      return;
+    }
+    const resultado = aplicarBooleana(solidoSelecionado, outro, operacao);
+    if (!resultado.ok) {
+      setAviso('Booleana recusada: ' + resultado.erro.codigo + ('detalhe' in resultado.erro ? ' — ' + resultado.erro.detalhe : ''));
+      return;
+    }
+    aplicar([resultado.operacao]);
+    setAviso('Booleana aplicada: ' + operacao + ' (Ctrl+Z desfaz).');
   };
 
   const adicionarMep = (elemento: ElementoMEP): void => {
@@ -550,6 +596,10 @@ export function EditorShell() {
             aoAbrirVao={abrirVaoNaParede}
             aoTransformar={transformarSelecionado}
             aoExcluir={excluirSelecionado}
+            outrosSolidos={solidos.filter((item) => item.id !== selecionadoId).map((item) => ({ id: item.id, nome: item.nome }))}
+            booleanaPronta={booleanaPronta}
+            aoCarregarBooleana={carregarBooleana}
+            aoBooleana={booleanaComSelecionado}
           />
           <div style={{ height: 1, background: '#e5e7eb', margin: '14px 0' }} />
           <PainelCamadas
