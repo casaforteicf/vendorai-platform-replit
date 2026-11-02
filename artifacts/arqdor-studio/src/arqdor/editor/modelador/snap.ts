@@ -175,3 +175,55 @@ export function calcularSnap(entrada: EntradaSnap): SnapResultado | null {
 
   return melhor;
 }
+/* ------------------------------------------------------------------ */
+/* Feedback visual e trava de eixo (item 2)                            */
+/* ------------------------------------------------------------------ */
+
+/** Cor por tipo de snap — a mesma paleta que o marcador do canvas usa. */
+export const COR_SNAP: Record<SnapTipo, string> = {
+  vertice: '#00c896',      // verde: vértice
+  aresta_ponto: '#e879a6', // rosa: ao longo da aresta (ponto médio incluso)
+  face_ponto: '#8fa3a0',
+  interseccao: '#a78bfa',
+  eixo_x: '#ef4444',       // vermelho: eixo X
+  eixo_y: '#22c55e',       // verde: eixo Y
+  eixo_z: '#3b82f6',       // azul: eixo Z (vertical)
+  grade: '#94a3b8',
+};
+
+/** Cor do marcador para um resultado de snap; ponto médio ganha o rosa de aresta. */
+export function corDoSnap(resultado: SnapResultado): string {
+  if (resultado.tipo === 'aresta_ponto') return COR_SNAP.aresta_ponto;
+  return COR_SNAP[resultado.tipo];
+}
+
+/** Ponto médio da aresta? (t próximo de 0,5) — usado para rotular "meio". */
+export function ehPontoMedio(resultado: SnapResultado): boolean {
+  return resultado.tipo === 'aresta_ponto' && Math.abs(resultado.referencia.t - 0.5) < 0.05;
+}
+
+export type Eixo = 'x' | 'y' | 'z';
+
+/** Eixo dominante entre a origem (último clique) e o ponto atual. */
+export function eixoDominante(origem: Vetor3, ponto: Vetor3): Eixo {
+  const dx = Math.abs(ponto[0] - origem[0]);
+  const dy = Math.abs(ponto[1] - origem[1]);
+  const dz = Math.abs(ponto[2] - origem[2]);
+  if (dy >= dx && dy >= dz) return 'y';
+  if (dx >= dz) return 'x';
+  return 'z';
+}
+
+/** Trava o ponto no eixo, preservando a coordenada da origem nos outros eixos. */
+export function travarNoEixo(origem: Vetor3, ponto: Vetor3, eixo: Eixo): Vetor3 {
+  if (eixo === 'x') return [ponto[0], origem[1], origem[2]];
+  if (eixo === 'y') return [origem[0], ponto[1], origem[2]];
+  return [origem[0], origem[1], ponto[2]];
+}
+
+/** Distância percorrida e vetor, para o readout do gizmo (item 8). */
+export function deltaEixo(origem: Vetor3, ponto: Vetor3, eixo: Eixo): number {
+  if (eixo === 'x') return ponto[0] - origem[0];
+  if (eixo === 'y') return ponto[1] - origem[1];
+  return ponto[2] - origem[2];
+}
