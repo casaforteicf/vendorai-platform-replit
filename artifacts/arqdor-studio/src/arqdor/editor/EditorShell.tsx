@@ -8,6 +8,7 @@ import { objetoVisivel } from './bim/camadas';
 import { Icone } from './design/icones';
 import { derivar2d } from './bim/derivar2d';
 import { abrirVao, vaosDaParede } from './bim/esquadrias';
+import { formatarMedida, interpretarMedida } from './modelador/medida';
 import { aplicarBooleana, booleanaDisponivel, inicializarBooleana } from './modelador/booleana';
 import { classificarSolido, materializarSolidos } from './bim/materializar';
 import { PainelConflitos } from './conflitos/PainelConflitos';
@@ -19,6 +20,7 @@ import type { Vetor3 } from './modelador/schema';
 import { ModeladorCanvas } from './modeladorcanvas/ModeladorCanvas';
 import { ToolbarModelador } from './modeladorcanvas/ToolbarModelador';
 import { PainelCamadas } from './painel/PainelCamadas';
+import { BarraMedidas } from './painel/BarraMedidas';
 import { ModalInserir } from './painel/ModalInserir';
 import type { MedidasInsercao } from './painel/ModalInserir';
 import { PainelPropriedades } from './painel/PainelPropriedades';
@@ -324,6 +326,35 @@ export function EditorShell() {
     setAviso('Booleana aplicada: ' + operacao + ' (Ctrl+Z desfaz).');
   };
 
+  const aplicarMedidaDigitada = (texto: string): string | null => {
+    const lido = interpretarMedida(texto);
+    if (lido.tipo === 'vazio') return 'Digite uma medida.';
+    if (lido.tipo === 'invalido') return 'Medida inválida — use 2,8 ou 3x4.';
+
+    if (ferramenta === 'pushpull') {
+      if (lido.tipo !== 'escalar') return 'Push/Pull aceita um número (ex.: 2,8).';
+      if (face === null) return 'Clique na face antes de digitar a altura.';
+      aplicarPushPull(formatarMedida(lido.valor).replace(' m', '').replace('.', ','));
+      return null;
+    }
+
+    if (ferramenta === 'retangulo') {
+      if (lido.tipo !== 'dimensoes') return 'Retângulo aceita largura x profundidade (ex.: 3x4).';
+      if (solidoSelecionado === undefined) return 'Crie um sólido antes de desenhar.';
+      if (desenho.pontos.length !== 1) return 'Clique no primeiro canto no plano.';
+      const a = desenho.pontos[0];
+      const b: Vetor3 = [a[0] + lido.largura, 0, a[2] + lido.profundidade];
+      const resultado = operacoesDoComando({ ferramenta: 'retangulo', pontos: [a, b] }, { solido: solidoSelecionado, plano: PLANO_CHAO });
+      if (!resultado.ok) return 'Não foi possível desenhar: ' + resultado.erro.codigo + '.';
+      aplicar(resultado.operacoes);
+      setDesenho(iniciar('retangulo'));
+      setAviso('Retângulo de ' + String(lido.largura) + ' × ' + String(lido.profundidade) + ' m criado.');
+      return null;
+    }
+
+    return 'Esta ferramenta ainda não aceita medida digitada.';
+  };
+
   const adicionarMep = (elemento: ElementoMEP): void => {
     setMep((atual) => [...atual, elemento]);
     setAviso('Tubo ' + elemento.camada + ' adicionado — confira a lista de conflitos.');
@@ -364,7 +395,7 @@ export function EditorShell() {
     aplicar([{ tipo: 'atualizar_solido', antes: solidoSelecionado, depois: { ...solidoSelecionado, nome } }]);
   };
 
-  const aplicarPushPull = (): void => {
+  const aplicarPushPull = (alturaDigitada?: string): void => {
     if (face === null) return;
     const alvo = solidos.find((s) => s.id === face.solidoId);
     if (alvo === undefined) {
@@ -372,7 +403,7 @@ export function EditorShell() {
       setFace(null);
       return;
     }
-    const alturaNum = Number(altura.replace(',', '.'));
+    const alturaNum = Number((alturaDigitada ?? altura).replace(',', '.'));
     if (!Number.isFinite(alturaNum) || alturaNum === 0) {
       setAviso('Altura inválida — informe um número diferente de zero.');
       return;
@@ -565,6 +596,18 @@ export function EditorShell() {
           ) : (
             <Viewport2D linhas={linhasPlanta} selecionadoId={selecionadoId} />
           )}
+          {aba === 'modelo' ? (
+            <BarraMedidas
+              dica={
+                ferramenta === 'pushpull'
+                  ? 'Altura do Push/Pull (m)'
+                  : ferramenta === 'retangulo'
+                    ? 'Largura x profundidade (ex.: 3x4)'
+                    : 'Medida'
+              }
+              aoAplicar={aplicarMedidaDigitada}
+            />
+          ) : null}
           {aba === 'planta' && elementos.length === 0 ? (
             <div className="arq-vazio-overlay">
               <p>

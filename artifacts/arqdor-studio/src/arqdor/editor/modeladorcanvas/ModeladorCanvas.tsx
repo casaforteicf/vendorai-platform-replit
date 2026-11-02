@@ -7,7 +7,7 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { TransformControls } from 'three/examples/jsm/controls/TransformControls.js';
 import type { Solido, Vetor3 } from '../modelador/schema';
-import { calcularSnap } from '../modelador/snap';
+import { COR_SNAP, calcularSnap, corDoSnap, eixoDominante, travarNoEixo } from '../modelador/snap';
 import type { CandidatoSnap } from '../modelador/snap';
 import { paraMundo } from '../bim/materializar';
 
@@ -121,6 +121,8 @@ export function ModeladorCanvas(props: PropsModeladorCanvas) {
   const modoRef = useRef(props.modo);
   const gizmoAtivoRef = useRef(false);
   const snapRef = useRef<Vetor3 | null>(null);
+  const shiftRef = useRef(false);
+  const origemEixoRef = useRef<Vetor3 | null>(null);
   const solidoAtual = useRef(new Map<string, Solido>());
   const marcadorRef = useRef<HTMLDivElement | null>(null);
   cliqueRef.current = props.aoClicarNoPlano;
@@ -297,8 +299,16 @@ export function ModeladorCanvas(props: PropsModeladorCanvas) {
         marcador.style.display = 'none';
         return;
       }
-      snapRef.current = resultado.posicao;
-      const tela = projetarTela(resultado.posicao);
+      // Shift trava no eixo dominante a partir do último clique (padrão SketchUp)
+      let posicao = resultado.posicao;
+      let cor = corDoSnap(resultado);
+      if (shiftRef.current && origemEixoRef.current !== null) {
+        const eixo = eixoDominante(origemEixoRef.current, resultado.posicao);
+        posicao = travarNoEixo(origemEixoRef.current, resultado.posicao, eixo);
+        cor = eixo === 'x' ? COR_SNAP.eixo_x : eixo === 'y' ? COR_SNAP.eixo_y : COR_SNAP.eixo_z;
+      }
+      snapRef.current = posicao;
+      const tela = projetarTela(posicao);
       if (tela === null) {
         marcador.style.display = 'none';
         return;
@@ -306,8 +316,10 @@ export function ModeladorCanvas(props: PropsModeladorCanvas) {
       const caixaTela = renderer.domElement.getBoundingClientRect();
       marcador.style.left = String(tela.x - caixaTela.left) + 'px';
       marcador.style.top = String(tela.y - caixaTela.top) + 'px';
+      marcador.style.borderColor = cor;
+      marcador.style.background = cor + '40';
       marcador.style.display = 'block';
-      marcador.title = resultado.tipo;
+      marcador.title = shiftRef.current ? 'eixo travado' : resultado.tipo;
     };
 
     const aoSoltar = (evento: PointerEvent): void => {
@@ -359,11 +371,17 @@ export function ModeladorCanvas(props: PropsModeladorCanvas) {
       const alvoPlano = new THREE.Vector3();
       const acertou = raio.ray.intersectPlane(plano, alvoPlano);
       if (acertou !== null) {
+        origemEixoRef.current = snapRef.current ?? [alvoPlano.x, alvoPlano.y, alvoPlano.z];
         const comSnap = snapRef.current;
         cliqueRef.current(comSnap ?? [alvoPlano.x, alvoPlano.y, alvoPlano.z]);
       }
     };
 
+    const aoTeclaShift = (evento: KeyboardEvent): void => {
+      shiftRef.current = evento.key === 'Shift' ? evento.type === 'keydown' : shiftRef.current;
+    };
+    window.addEventListener('keydown', aoTeclaShift);
+    window.addEventListener('keyup', aoTeclaShift);
     renderer.domElement.addEventListener('pointerdown', aoPressionar);
     renderer.domElement.addEventListener('pointermove', aoMover);
     renderer.domElement.addEventListener('pointerup', aoSoltar);
@@ -373,6 +391,8 @@ export function ModeladorCanvas(props: PropsModeladorCanvas) {
       observador.disconnect();
       renderer.domElement.removeEventListener('pointerdown', aoPressionar);
       renderer.domElement.removeEventListener('pointermove', aoMover);
+      window.removeEventListener('keydown', aoTeclaShift);
+      window.removeEventListener('keyup', aoTeclaShift);
       marcador.remove();
       renderer.domElement.removeEventListener('pointerup', aoSoltar);
       controle.detach();
