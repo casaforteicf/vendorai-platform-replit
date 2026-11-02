@@ -33,6 +33,8 @@ export interface PropsModeladorCanvas {
   aoEscolherFace: (solidoId: string, faceId: string) => void;
   /** Clique em face (faceId) ou aresta (arestaId) — alimenta a seleção inteligente. */
   aoClicarPeca?: (alvo: { solidoId: string; faceId: string | null; arestaId: string | null }) => void;
+  faceSelecionada?: { solidoId: string; faceId: string } | null;
+  loopSelecionado?: { solidoId: string; arestas: readonly string[] } | null;
   aoTransformar: (solidoId: string, transformacao: TransformacaoLida) => void;
 }
 
@@ -131,6 +133,7 @@ export function ModeladorCanvas(props: PropsModeladorCanvas) {
   const solidoAtual = useRef(new Map<string, Solido>());
   const marcadorRef = useRef<HTMLDivElement | null>(null);
   const dicaRef = useRef<HTMLDivElement | null>(null);
+  const overlayRef = useRef<THREE.Group | null>(null);
   cliqueRef.current = props.aoClicarNoPlano;
   selecionarRef.current = props.aoSelecionar;
   faceRef.current = props.aoEscolherFace;
@@ -196,7 +199,10 @@ export function ModeladorCanvas(props: PropsModeladorCanvas) {
     dicaRef.current = dica;
 
     const grupos = new THREE.Group();
+    const overlay = new THREE.Group();
+    overlayRef.current = overlay;
     cena.add(grupos);
+    cena.add(overlay);
 
     const controle = new TransformControls(camera, renderer.domElement);
     controle.setSize(1.5);
@@ -513,6 +519,63 @@ export function ModeladorCanvas(props: PropsModeladorCanvas) {
     }
     selecionadoRef.current = props.selecionadoId;
   }, [props.solidos, props.selecionadoId, props.solidosMaterializados]);
+  // Overlay de seleção: face azul translúcida, loop verde.
+  useEffect(() => {
+    const overlay = overlayRef.current;
+    if (overlay === null) return;
+    while (overlay.children.length > 0) {
+      const filho = overlay.children[0];
+      overlay.remove(filho);
+      liberar(filho);
+    }
+
+    const alvoFace = props.faceSelecionada;
+    if (alvoFace !== null && alvoFace !== undefined) {
+      const solido = props.solidos.find((s) => s.id === alvoFace.solidoId);
+      const face = solido === undefined ? undefined : solido.faces.find((f) => f.id === alvoFace.faceId);
+      if (solido !== undefined && face !== undefined) {
+        const mapa = new Map(solido.vertices.map((v) => [v.id, paraMundo(v.posicao, solido)]));
+        const pontos: Vetor3[] = [];
+        for (const id of face.vertices) {
+          const posicao = mapa.get(id);
+          if (posicao !== undefined) pontos.push(posicao);
+        }
+        if (pontos.length >= 3) {
+          const posicoes: number[] = [];
+          for (let i = 1; i < pontos.length - 1; i += 1) posicoes.push(...pontos[0], ...pontos[i], ...pontos[i + 1]);
+          const geometria = new THREE.BufferGeometry();
+          geometria.setAttribute('position', new THREE.Float32BufferAttribute(posicoes, 3));
+          const material = new THREE.MeshBasicMaterial({ color: 0x3b82f6, transparent: true, opacity: 0.38, side: THREE.DoubleSide, depthWrite: false });
+          const malha = new THREE.Mesh(geometria, material);
+          malha.renderOrder = 3;
+          overlay.add(malha);
+        }
+      }
+    }
+
+    const alvoLoop = props.loopSelecionado;
+    if (alvoLoop !== null && alvoLoop !== undefined) {
+      const solido = props.solidos.find((s) => s.id === alvoLoop.solidoId);
+      if (solido !== undefined) {
+        const mapa = new Map(solido.vertices.map((v) => [v.id, paraMundo(v.posicao, solido)]));
+        const posicoes: number[] = [];
+        for (const id of alvoLoop.arestas) {
+          const aresta = solido.arestas.find((a) => a.id === id);
+          if (aresta === undefined) continue;
+          const a = mapa.get(aresta.verticeA);
+          const b = mapa.get(aresta.verticeB);
+          if (a !== undefined && b !== undefined) posicoes.push(...a, ...b);
+        }
+        if (posicoes.length > 0) {
+          const geometria = new THREE.BufferGeometry();
+          geometria.setAttribute('position', new THREE.Float32BufferAttribute(posicoes, 3));
+          const linhas = new THREE.LineSegments(geometria, new THREE.LineBasicMaterial({ color: 0x22c55e }));
+          linhas.renderOrder = 4;
+          overlay.add(linhas);
+        }
+      }
+    }
+  }, [props.solidos, props.faceSelecionada, props.loopSelecionado]);
 
   useEffect(() => {
     const controle = gizmoRef.current;

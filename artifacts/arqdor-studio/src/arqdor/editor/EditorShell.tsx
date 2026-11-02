@@ -51,7 +51,7 @@ export function EditorShell() {
   const [mep, setMep] = useState<ElementoMEP[]>([]);
   const [modalInserir, setModalInserir] = useState(false);
   const [booleanaPronta, setBooleanaPronta] = useState(false);
-  const [selecaoNivel, setSelecaoNivel] = useState<{ nivel: string; arestas: number } | null>(null);
+  const [selecaoNivel, setSelecaoNivel] = useState<{ nivel: string; arestas: number; ids: string[]; solidoId: string; faceId: string | null } | null>(null);
   const [aviso, setAviso] = useState('Clique em "Novo sólido" e depois no plano.');
   const [projeto, setProjeto] = useState<{ id: string; nome: string; criadoEm: string } | null>(null);
   const [salvoEm, setSalvoEm] = useState<string | null>(null);
@@ -377,19 +377,19 @@ export function EditorShell() {
     if (solido === undefined) return;
 
     if (cliquesRef.current >= 3) {
-      setSelecaoNivel({ nivel: 'sólido', arestas: solido.arestas.length });
+      setSelecaoNivel({ nivel: 'sólido', arestas: solido.arestas.length, ids: [], solidoId: info.solidoId, faceId: info.faceId });
       setAviso('Sólido inteiro: ' + String(solido.vertices.length) + ' vértices, ' + String(solido.faces.length) + ' faces.');
       return;
     }
 
     if (cliquesRef.current === 2) {
       const arestas = info.faceId !== null ? loopDaFace(solido, info.faceId) : info.arestaId !== null ? loopDeAresta(solido, info.arestaId) : [];
-      setSelecaoNivel({ nivel: 'loop', arestas: arestas.length });
+      setSelecaoNivel({ nivel: 'loop', arestas: arestas.length, ids: arestas, solidoId: info.solidoId, faceId: info.faceId });
       setAviso('Loop selecionado: ' + String(arestas.length) + ' aresta(s).');
       return;
     }
 
-    setSelecaoNivel({ nivel: info.faceId !== null ? 'face' : 'aresta', arestas: 0 });
+    setSelecaoNivel({ nivel: info.faceId !== null ? 'face' : 'aresta', arestas: 0, ids: [], solidoId: info.solidoId, faceId: info.faceId });
     setAviso(info.faceId !== null ? 'Face selecionada.' : 'Aresta selecionada.');
   };
 
@@ -631,6 +631,16 @@ export function EditorShell() {
               }}
               aoTransformar={transformarSolido}
               aoClicarPeca={registrarAlvo}
+              faceSelecionada={
+                selecaoNivel !== null && selecaoNivel.nivel === 'face' && selecaoNivel.faceId !== null
+                  ? { solidoId: selecaoNivel.solidoId, faceId: selecaoNivel.faceId }
+                  : null
+              }
+              loopSelecionado={
+                selecaoNivel !== null && selecaoNivel.nivel === 'loop' && selecaoNivel.ids.length > 0
+                  ? { solidoId: selecaoNivel.solidoId, arestas: selecaoNivel.ids }
+                  : null
+              }
             />
           ) : (
             <Viewport2D linhas={linhasPlanta} selecionadoId={selecionadoId} />
