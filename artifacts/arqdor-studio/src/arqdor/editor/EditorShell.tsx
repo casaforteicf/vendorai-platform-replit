@@ -3,12 +3,13 @@
 /** Ambiente "Modelagem 2D/3D" — rail de ferramentas, viewport dominante e inspetor à direita. */
 
 import Link from 'next/link';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { objetoVisivel } from './bim/camadas';
 import { Icone } from './design/icones';
 import { derivar2d } from './bim/derivar2d';
 import { abrirVao, vaosDaParede } from './bim/esquadrias';
 import { formatarMedida, interpretarMedida } from './modelador/medida';
+import { loopDaFace, loopDeAresta } from './modelador/loop';
 import { aplicarBooleana, booleanaDisponivel, inicializarBooleana } from './modelador/booleana';
 import { classificarSolido, materializarSolidos } from './bim/materializar';
 import { PainelConflitos } from './conflitos/PainelConflitos';
@@ -50,6 +51,7 @@ export function EditorShell() {
   const [mep, setMep] = useState<ElementoMEP[]>([]);
   const [modalInserir, setModalInserir] = useState(false);
   const [booleanaPronta, setBooleanaPronta] = useState(false);
+  const [selecaoNivel, setSelecaoNivel] = useState<{ nivel: string; arestas: number } | null>(null);
   const [aviso, setAviso] = useState('Clique em "Novo sólido" e depois no plano.');
   const [projeto, setProjeto] = useState<{ id: string; nome: string; criadoEm: string } | null>(null);
   const [salvoEm, setSalvoEm] = useState<string | null>(null);
@@ -355,6 +357,42 @@ export function EditorShell() {
     return 'Esta ferramenta ainda não aceita medida digitada.';
   };
 
+  const cliquesRef = useRef(0);
+  const ultimoAlvoRef = useRef<string | null>(null);
+  const tempoCliqueRef = useRef(0);
+
+  /** 1 clique = face/aresta · 2 = loop · 3 = sólido inteiro. */
+  const registrarAlvo = (info: { solidoId: string; faceId: string | null; arestaId: string | null }): void => {
+    const chave = info.solidoId + '|' + String(info.faceId) + '|' + String(info.arestaId);
+    const agora = Date.now();
+    if (ultimoAlvoRef.current === chave && agora - tempoCliqueRef.current < 450) {
+      cliquesRef.current += 1;
+    } else {
+      cliquesRef.current = 1;
+    }
+    ultimoAlvoRef.current = chave;
+    tempoCliqueRef.current = agora;
+
+    const solido = solidos.find((item) => item.id === info.solidoId);
+    if (solido === undefined) return;
+
+    if (cliquesRef.current >= 3) {
+      setSelecaoNivel({ nivel: 'sólido', arestas: solido.arestas.length });
+      setAviso('Sólido inteiro: ' + String(solido.vertices.length) + ' vértices, ' + String(solido.faces.length) + ' faces.');
+      return;
+    }
+
+    if (cliquesRef.current === 2) {
+      const arestas = info.faceId !== null ? loopDaFace(solido, info.faceId) : info.arestaId !== null ? loopDeAresta(solido, info.arestaId) : [];
+      setSelecaoNivel({ nivel: 'loop', arestas: arestas.length });
+      setAviso('Loop selecionado: ' + String(arestas.length) + ' aresta(s).');
+      return;
+    }
+
+    setSelecaoNivel({ nivel: info.faceId !== null ? 'face' : 'aresta', arestas: 0 });
+    setAviso(info.faceId !== null ? 'Face selecionada.' : 'Aresta selecionada.');
+  };
+
   const adicionarMep = (elemento: ElementoMEP): void => {
     setMep((atual) => [...atual, elemento]);
     setAviso('Tubo ' + elemento.camada + ' adicionado — confira a lista de conflitos.');
@@ -592,6 +630,7 @@ export function EditorShell() {
                 setAviso('Face selecionada — informe a altura e aplique o Push/Pull.');
               }}
               aoTransformar={transformarSolido}
+              aoClicarPeca={registrarAlvo}
             />
           ) : (
             <Viewport2D linhas={linhasPlanta} selecionadoId={selecionadoId} />
@@ -662,6 +701,7 @@ export function EditorShell() {
         <span>{String(solidos.length)} sólido(s)</span>
         <span>{String(elementos.length)} elemento(s)</span>
         <span>selecionado: {solidoSelecionado?.nome ?? 'nenhum'}</span>
+        <span>nível: {selecaoNivel === null ? '—' : selecaoNivel.nivel}{selecaoNivel !== null && selecaoNivel.arestas > 0 ? ' (' + String(selecaoNivel.arestas) + ' arestas)' : ''}</span>
         <span style={{ color: '#52605a' }}>{aviso}</span>
         {ultimoErro !== null ? <span style={{ color: '#ea7373' }}>erro: {ultimoErro.codigo}</span> : null}
         <span style={{ marginLeft: 'auto' }}>S/L/R/C/A · P push/pull · M/O/E gizmo · Ctrl+Z</span>

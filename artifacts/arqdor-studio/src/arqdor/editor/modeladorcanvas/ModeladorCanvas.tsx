@@ -8,6 +8,7 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { TransformControls } from 'three/examples/jsm/controls/TransformControls.js';
 import type { Solido, Vetor3 } from '../modelador/schema';
 import { COR_SNAP, calcularSnap, corDoSnap, eixoDominante, travarNoEixo } from '../modelador/snap';
+import { metricasAresta, metricasFace } from '../modelador/metricas';
 import type { CandidatoSnap } from '../modelador/snap';
 import { paraMundo } from '../bim/materializar';
 
@@ -30,6 +31,8 @@ export interface PropsModeladorCanvas {
   aoClicarNoPlano: (ponto: Vetor3) => void;
   aoSelecionar: (solidoId: string | null) => void;
   aoEscolherFace: (solidoId: string, faceId: string) => void;
+  /** Clique em face (faceId) ou aresta (arestaId) — alimenta a seleção inteligente. */
+  aoClicarPeca?: (alvo: { solidoId: string; faceId: string | null; arestaId: string | null }) => void;
   aoTransformar: (solidoId: string, transformacao: TransformacaoLida) => void;
 }
 
@@ -118,17 +121,21 @@ export function ModeladorCanvas(props: PropsModeladorCanvas) {
   const selecionarRef = useRef(props.aoSelecionar);
   const faceRef = useRef(props.aoEscolherFace);
   const transformarRef = useRef(props.aoTransformar);
+  const clicarPecaRef = useRef(props.aoClicarPeca);
   const modoRef = useRef(props.modo);
   const gizmoAtivoRef = useRef(false);
   const snapRef = useRef<Vetor3 | null>(null);
   const shiftRef = useRef(false);
+  const arestaSnapRef = useRef<string | null>(null);
   const origemEixoRef = useRef<Vetor3 | null>(null);
   const solidoAtual = useRef(new Map<string, Solido>());
   const marcadorRef = useRef<HTMLDivElement | null>(null);
+  const dicaRef = useRef<HTMLDivElement | null>(null);
   cliqueRef.current = props.aoClicarNoPlano;
   selecionarRef.current = props.aoSelecionar;
   faceRef.current = props.aoEscolherFace;
   transformarRef.current = props.aoTransformar;
+  clicarPecaRef.current = props.aoClicarPeca;
   modoRef.current = props.modo;
   gizmoAtivoRef.current = props.gizmo !== null;
 
@@ -172,6 +179,21 @@ export function ModeladorCanvas(props: PropsModeladorCanvas) {
     marcador.style.zIndex = '5';
     container.appendChild(marcador);
     marcadorRef.current = marcador;
+
+    const dica = document.createElement('div');
+    dica.style.position = 'absolute';
+    dica.style.padding = '3px 7px';
+    dica.style.borderRadius = '6px';
+    dica.style.background = 'rgba(10, 20, 17, 0.94)';
+    dica.style.border = '1px solid #2c3f39';
+    dica.style.color = '#dfe9e5';
+    dica.style.font = '11px Montserrat, Segoe UI, sans-serif';
+    dica.style.whiteSpace = 'nowrap';
+    dica.style.pointerEvents = 'none';
+    dica.style.display = 'none';
+    dica.style.zIndex = '6';
+    container.appendChild(dica);
+    dicaRef.current = dica;
 
     const grupos = new THREE.Group();
     cena.add(grupos);
@@ -308,6 +330,7 @@ export function ModeladorCanvas(props: PropsModeladorCanvas) {
         cor = eixo === 'x' ? COR_SNAP.eixo_x : eixo === 'y' ? COR_SNAP.eixo_y : COR_SNAP.eixo_z;
       }
       snapRef.current = posicao;
+      arestaSnapRef.current = resultado.tipo === 'aresta_ponto' ? resultado.referencia.arestaId : null;
       const tela = projetarTela(posicao);
       if (tela === null) {
         marcador.style.display = 'none';
@@ -320,6 +343,64 @@ export function ModeladorCanvas(props: PropsModeladorCanvas) {
       marcador.style.background = cor + '40';
       marcador.style.display = 'block';
       marcador.title = shiftRef.current ? 'eixo travado' : resultado.tipo;
+
+      // Tooltip: face (largura × altura · área) ou aresta (comprimento · ângulo)
+      // (caixaTela já foi calculada acima para o marcador)
+      const ndc = new THREE.Vector2(
+        ((evento.clientX - caixaTela.left) / caixaTela.width) * 2 - 1,
+        -(((evento.clientY - caixaTela.top) / caixaTela.height) * 2 - 1),
+      );
+      const raioHover = new THREE.Raycaster();
+      raioHover.setFromCamera(ndc, camera);
+      let texto: string | null = null;
+
+      const acertos = raioHover.intersectObjects(grupos.children, true).filter((a) => (a.object as THREE.Mesh).isMesh === true);
+      const primeiro = acertos[0];
+      if (primeiro !== undefined) {
+        let alvo: THREE.Object3D | null = primeiro.object;
+        while (alvo !== null && alvo.userData.solidoId === undefined) alvo = alvo.parent;
+        const solidoId = alvo === null ? undefined : (alvo.userData.solidoId as string | undefined);
+        const solido = solidoId === undefined ? undefined : solidoAtual.current.get(solidoId);
+        const mapaFaces = (primeiro.object as THREE.Mesh).userData.mapaFaces as string[] | undefined;
+        const faceId = mapaFaces !== undefined && primeiro.faceIndex !== null && primeiro.faceIndex !== undefined ? mapaFaces[primeiro.faceIndex] : undefined;
+        const face = solido !== undefined && faceId !== undefined ? solido.faces.find((f) => f.id === faceId) : undefined;
+        if (solido !== undefined && face !== undefined) {
+          const mapa = new Map(solido.vertices.map((v) => [v.id, v.posicao]));
+          const pontos: Vetor3[] = [];
+          for (const id of face.vertices) {
+            const posicao = mapa.get(id);
+            if (posicao !== undefined) pontos.push(paraMundo(posicao, solido));
+          }
+          if (pontos.length >= 3) {
+            const m = metricasFace(pontos);
+            texto = m.largura.toFixed(2) + ' × ' + m.altura.toFixed(2) + ' m · ' + m.area.toFixed(2) + ' m²';
+          }
+        }
+      } else if (resultado.tipo === 'aresta_ponto') {
+        const solido = solidoAtual.current.get(resultado.referencia.solidoId);
+        const aresta = solido === undefined ? undefined : solido.arestas.find((a) => a.id === resultado.referencia.arestaId);
+        if (solido !== undefined && aresta !== undefined) {
+          const mapa = new Map(solido.vertices.map((v) => [v.id, v.posicao]));
+          const a = mapa.get(aresta.verticeA);
+          const b = mapa.get(aresta.verticeB);
+          if (a !== undefined && b !== undefined) {
+            const m = metricasAresta(paraMundo(a, solido), paraMundo(b, solido));
+            texto = m.comprimento.toFixed(2) + ' m · ' + m.anguloGraus.toFixed(1) + '°';
+          }
+        }
+      }
+
+      if (texto === null) {
+        dica.style.display = 'none';
+      } else {
+        dica.textContent = texto;
+        dica.style.display = 'block';
+        // mantém a dica dentro do viewport do canvas (senão a área é cortada na borda)
+        const desejadoX = evento.clientX - caixaTela.left + 16;
+        const limiteX = caixaTela.width - dica.offsetWidth - 8;
+        dica.style.left = String(Math.max(8, Math.min(desejadoX, limiteX))) + 'px';
+        dica.style.top = String(evento.clientY - caixaTela.top + 14) + 'px';
+      }
     };
 
     const aoSoltar = (evento: PointerEvent): void => {
@@ -348,6 +429,14 @@ export function ModeladorCanvas(props: PropsModeladorCanvas) {
           const solidoId = alvo !== null ? (alvo.userData.solidoId as string | undefined) : undefined;
           if (solidoId !== undefined) {
             selecionarRef.current(solidoId);
+            {
+              const mapa = (primeiro.object as THREE.Mesh).userData.mapaFaces as string[] | undefined;
+              const indice = primeiro.faceIndex;
+              const faceId = mapa !== undefined && indice !== null && indice !== undefined ? (mapa[indice] ?? null) : null;
+              const aresta = arestaSnapRef.current;
+              clicarPecaRef.current?.({ solidoId, faceId, arestaId: aresta });
+              arestaSnapRef.current = null;
+            }
             if (modo === 'pushpull') {
               const mapaFaces = (primeiro.object as THREE.Mesh).userData.mapaFaces as string[] | undefined;
               const indice = primeiro.faceIndex;
@@ -394,6 +483,7 @@ export function ModeladorCanvas(props: PropsModeladorCanvas) {
       window.removeEventListener('keydown', aoTeclaShift);
       window.removeEventListener('keyup', aoTeclaShift);
       marcador.remove();
+      dica.remove();
       renderer.domElement.removeEventListener('pointerup', aoSoltar);
       controle.detach();
       controle.dispose();
