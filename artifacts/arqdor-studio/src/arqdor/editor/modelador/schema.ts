@@ -138,6 +138,7 @@ export type OperacaoModelador =
   | { tipo: 'adicionar_faces'; solidoId: string; faces: Face[] }
   | { tipo: 'remover_faces'; solidoId: string; faces: Face[] }
   | { tipo: 'remover_vertices'; solidoId: string; vertices: Vertice[] }
+  | { tipo: 'remover_arestas'; solidoId: string; arestas: Aresta[] }
   | { tipo: 'remover_solido'; solido: Solido }
   | OperacaoBooleana
   | OperacaoMaterial

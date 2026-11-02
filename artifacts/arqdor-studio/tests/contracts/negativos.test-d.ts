@@ -69,6 +69,10 @@ export const r3b: SnapResultado = { tipo: 'interseccao', posicao: [0, 0, 0], ref
 export const r3c: SnapResultado = { tipo: 'eixo_x', posicao: [0, 0, 0], referencia: { solidoId: 'a', verticeId: 'v' }, prioridade: 30, distanciaTela: 1 };
 
 // ------------------------------------------------------------------
+// @ts-expect-error R3: eixo_x com eixo z (a v3 aceitava esta troca)
+export const r3d: SnapResultado = { tipo: 'eixo_x', posicao: [0, 0, 0], referencia: { eixo: 'z' }, prioridade: 30, distanciaTela: 1 };
+
+// ------------------------------------------------------------------
 // Regra 6 — nenhum contrato público pode virar `any`
 // ------------------------------------------------------------------
 
