@@ -109,6 +109,7 @@ const HotelReceitas = lazy(() => import("@/pages/hotelaria/HotelReceitas"));
 const HotelTarifas = lazy(() => import("@/pages/hotelaria/HotelTarifas"));
 const HotelRecepcao = lazy(() => import("@/pages/hotelaria/HotelRecepcao"));
 const HotelPlanejamento = lazy(() => import("@/pages/hotelaria/HotelPlanejamento"));
+const AbCargos = lazy(() => import("@/pages/hotelaria/ab/AbCargos"));
 const GestaoErp          = lazy(() => import("@/pages/GestaoErp"));
 const ErpCapture         = lazy(() => import("@/pages/erp"));
 const Content            = lazy(() => import("@/pages/ContentHub"));
@@ -713,6 +714,7 @@ function AppRoutes() {
         <Route path="/hotelaria/tarifas">{() => <ProtectedRoute component={HotelTarifas} />}</Route>
         <Route path="/hotelaria/recepcao">{() => <ProtectedRoute component={HotelRecepcao} />}</Route>
         <Route path="/hotelaria/planejamento">{() => <ProtectedRoute component={HotelPlanejamento} />}</Route>
+        <Route path="/hotelaria/ab/cargos">{() => <ProtectedRoute component={AbCargos} />}</Route>
         <Route path="/erp/captura">{() => <ProtectedRoute component={ErpCapture} />}</Route>
         <Route path="/erp">{() => <ProtectedRoute component={GestaoErp} />}</Route>
         <Route path="/faturamento"><RedirectPage to="/configuracoes" /></Route>
