@@ -634,6 +634,127 @@ button { font-family: inherit; }
 .arq-editor-body[data-aside="fechado"] { grid-template-columns: 56px minmax(0, 1fr) 0; }
 .arq-editor-body[data-aside="fechado"] > .arq-editor-aside { display: none; }
 
+/* =========================================================================
+   EDITOR v2 — shell do DeepSeek (escopo `.arq-ed-v2`, só a página do editor)
+   Substitui o VISUAL do editor sem tocar nas outras telas nem nos painéis
+   compartilhados (que continuam usando as regras globais acima).
+   ========================================================================= */
+.arq-ed-v2 { background: #0A1915; color: #e5e7eb; }
+
+.arq-ed-v2 .arq-editor-body { display: grid; grid-template-columns: 64px minmax(0, 1fr) 320px; }
+.arq-ed-v2 .arq-editor-body[data-aside="fechado"] { grid-template-columns: 64px minmax(0, 1fr) 0; }
+
+/* rail */
+.arq-ed-v2 .arq-editor-rail {
+  width: 64px; padding: 16px 0; gap: 8px;
+  display: flex; flex-direction: column; align-items: center;
+  background: #0A1915;
+  border-right: 1px solid rgba(255, 255, 255, .05);
+}
+.arq-ed-v2 .arq-editor-rail .arq-tool {
+  width: 44px; height: 44px; padding: 0;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 12px; border: 0; background: transparent; color: #9ca3af;
+}
+.arq-ed-v2 .arq-editor-rail .arq-tool svg { width: 22px; height: 22px; }
+.arq-ed-v2 .arq-editor-rail .arq-tool:hover:not(:disabled) { background: rgba(255, 255, 255, .05); color: #00C896; }
+.arq-ed-v2 .arq-editor-rail .arq-tool[aria-pressed="true"] { background: rgba(0, 200, 150, .14); color: #fff; }
+.arq-ed-v2 .arq-editor-rail .arq-tool:disabled { opacity: .35; }
+.arq-ed-v2 .arq-editor-rail .arq-rail-sep { width: 28px; height: 1px; background: rgba(255, 255, 255, .06); margin: 6px 0; flex: 0 0 auto; }
+
+/* inspetor */
+.arq-ed-v2 .arq-editor-aside {
+  display: flex; flex-direction: column; min-height: 0;
+  background: #0F1F1A;
+  border-left: 1px solid rgba(255, 255, 255, .05);
+}
+.arq-ed-v2 .arq-editor-aside .arq-painel { background: transparent; border: 0; padding: 16px 20px; }
+.arq-ed-v2 .arq-editor-aside .arq-painel + .arq-painel { border-top: 1px solid rgba(255, 255, 255, .05); }
+.arq-ed-v2 .arq-editor-aside .arq-painel-title {
+  color: #00C896; font-size: 11px; font-weight: 700;
+  letter-spacing: .15em; text-transform: uppercase;
+}
+.arq-ed-v2 .arq-editor-aside .arq-painel-head svg { color: #00C896; }
+.arq-ed-v2 .arq-editor-aside .arq-field {
+  height: 38px; padding: 8px 12px;
+  color: #fff; background: rgba(0, 0, 0, .3);
+  border: 1px solid rgba(255, 255, 255, .1); border-radius: 8px;
+}
+.arq-ed-v2 .arq-editor-aside .arq-field:focus { border-color: rgba(0, 200, 150, .6); box-shadow: 0 0 0 3px rgba(0, 200, 150, .15); }
+.arq-ed-v2 .arq-editor-aside .arq-muted,
+.arq-ed-v2 .arq-editor-aside .arq-rail-label { color: #6b7280; }
+.arq-ed-v2 .arq-editor-aside .arq-btn {
+  color: #d1d5db; background: rgba(0, 0, 0, .2);
+  border: 1px solid rgba(255, 255, 255, .1); border-radius: 8px;
+}
+.arq-ed-v2 .arq-editor-aside .arq-btn:hover { border-color: rgba(0, 200, 150, .4); color: #00C896; }
+.arq-ed-v2 .arq-editor-aside .arq-btn-salvar,
+.arq-ed-v2 .arq-editor-aside .arq-btn-primary {
+  color: #0A1915; background: #00C896; border: 0; font-weight: 700;
+  box-shadow: 0 8px 20px rgba(0, 200, 150, .2);
+}
+.arq-ed-v2 .arq-editor-aside .arq-btn-primary:hover { background: #00b386; color: #0A1915; }
+.arq-ed-v2 .arq-editor-aside .arq-sep { border-top: 1px solid rgba(255, 255, 255, .05); }
+
+/* canvas + statusbar */
+.arq-ed-v2 .arq-editor-canvas { background: #07120F; }
+.arq-ed-v2 .arq-statusbar {
+  display: flex; align-items: center; gap: 18px;
+  min-height: 30px; padding: 0 16px; flex-shrink: 0;
+  background: #0A1915; color: #6b7280;
+  border-top: 1px solid rgba(255, 255, 255, .05);
+  font-size: 11px; line-height: 1; overflow: hidden; white-space: nowrap;
+}
+.arq-ed-v2 .arq-statusbar span { color: #6b7280; }
+
+/* topbar do editor (a Topbar comum do dashboard não é afetada) */
+.arq-topbar-ed { height: 64px; padding: 0 24px; gap: 16px; background: #0B3D2E; border-bottom: 1px solid rgba(0, 0, 0, .2); }
+.arq-topbar-ed .arq-menu-btn {
+  width: 36px; height: 36px; border-radius: 8px;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(0, 0, 0, .2); color: #00C896;
+}
+.arq-topbar-ed .arq-menu-btn:hover { background: rgba(0, 0, 0, .4); }
+.arq-topbar-ed .arq-projeto-ativo {
+  background: rgba(0, 0, 0, .2);
+  border: 1px solid rgba(255, 255, 255, .1); border-radius: 8px;
+  padding: 6px 12px 6px 8px;
+}
+.arq-topbar-ed .arq-projeto-ativo:hover { border-color: rgba(0, 200, 150, .4); }
+.arq-topbar-ed .arq-projeto-ativo .capa {
+  width: 32px; height: 32px; border-radius: 6px;
+  background: linear-gradient(135deg, #065f46, #0A1915);
+  border: 1px solid rgba(255, 255, 255, .1);
+}
+.arq-topbar-ed .arq-projeto-ativo strong { font-size: 12px; font-weight: 600; color: #fff; }
+.arq-topbar-ed .arq-projeto-ativo .txt > span {
+  font-size: 9px; letter-spacing: .1em; text-transform: uppercase;
+  color: rgba(167, 243, 208, .5);
+}
+.arq-topbar-ed .arq-topbar-acoes .arq-btn {
+  padding: 8px 12px; font-size: 12px; font-weight: 600;
+  color: #00C896; background: rgba(0, 200, 150, .1);
+  border: 1px solid rgba(0, 200, 150, .3); border-radius: 8px;
+}
+.arq-topbar-ed .arq-topbar-acoes .arq-btn:hover { background: rgba(0, 200, 150, .2); }
+.arq-topbar-ed .arq-topbar-acoes .arq-btn-salvar {
+  color: #0A1915; background: #00C896; border: 0; font-weight: 700;
+  font-size: 14px; padding: 8px 16px;
+  box-shadow: 0 8px 20px rgba(0, 200, 150, .2);
+  display: flex; align-items: center; gap: 8px;
+}
+.arq-topbar-ed .arq-topbar-acoes .arq-btn-salvar:hover { background: #00b386; }
+.arq-topbar-ed .arq-salvo { color: rgba(167, 243, 208, .5); }
+.arq-topbar-ed .arq-icon-btn { color: rgba(167, 243, 208, .7); }
+.arq-topbar-ed .arq-icon-btn:hover { color: #00C896; }
+.arq-topbar-ed .arq-avatar {
+  width: 36px; height: 36px; border-radius: 50%;
+  background: linear-gradient(135deg, #00C896, #047857); color: #fff;
+  font-size: 12px; font-weight: 700;
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, .1);
+}
+
+
 /* barra de status */
 .arq-editor-page .arq-statusbar {
   background: var(--arq-ed-base);

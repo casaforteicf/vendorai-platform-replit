@@ -778,7 +778,7 @@ export function EditorShell() {
         </div>
       }
     >
-      <div className="arq-editor-page">
+      <div className="arq-editor-page arq-ed-v2">
       <div className="arq-editor-toolbar">
         <div style={{ display: 'flex', gap: 4 }} role="tablist" aria-label="Vista">
           <button type="button" role="tab" className="arq-tool" aria-pressed={aba === 'modelo'} onClick={() => setAba('modelo')}>
