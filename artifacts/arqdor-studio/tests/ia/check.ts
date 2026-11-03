@@ -8,6 +8,7 @@ import { listarFerramentas } from '../../src/arqdor/editor/ia/ferramentas';
 import type { EstadoIa } from '../../src/arqdor/editor/ia/ferramentas';
 import { resumirDocumento } from '../../src/arqdor/editor/ia/contexto';
 import { mensagemDoResultado, montarPlanoDoChat } from '../../src/arqdor/editor/ia/chat-core';
+import { interpretarComandoLocal } from '../../src/arqdor/editor/ia/comando-local';
 import { ESTADO_INICIAL } from '../../src/arqdor/editor/modelador/store-core';
 import { catalogoPadrao, obterMaterial } from '../../src/arqdor/editor/materiais/catalogo';
 import { FAMILIAS_PADRAO } from '../../src/arqdor/editor/biblioteca/familias';
@@ -209,6 +210,20 @@ const mensagemLeitura = mensagemDoResultado(cotacao);
 ok(mensagemLeitura.tipo === 'leitura', 'chat: leitura não diz que alterou o projeto');
 const mensagemOk = mensagemDoResultado(caixa);
 ok(mensagemOk.tipo === 'ok' && mensagemOk.texto.includes('criar_caixa'), 'chat: aplicação cita a ferramenta');
+
+// ---------- 12. modo local (sem chave de API) ----------
+const paredeLocal = interpretarComandoLocal('crie uma parede de 4x2,8');
+ok(paredeLocal !== null && paredeLocal.toolCalls[0].nome === 'criar_caixa', 'local: parede vira criar_caixa');
+const argsLocal: Record<string, unknown> = paredeLocal === null ? {} : paredeLocal.toolCalls[0].argumentos;
+ok(
+  argsLocal['largura'] === 4 && argsLocal['altura'] === 2.8 && argsLocal['profundidade'] === 0.15,
+  'local: 4x2,8 → 4 × 2,8 × 0,15',
+);
+const caixaLocal = interpretarComandoLocal('caixa de 2x2x2');
+ok(caixaLocal !== null && caixaLocal.toolCalls[0].argumentos['profundidade'] === 2, 'local: caixa 2x2x2 tem três medidas');
+ok(interpretarComandoLocal('qual a cor do céu?') === null, 'local: comando sem volume não é interpretado');
+const paredeEspessa = interpretarComandoLocal('parede de 5;2,8;0,2');
+ok(paredeEspessa !== null && paredeEspessa.toolCalls[0].argumentos['profundidade'] === 0.2, 'local: separador ";" e espessura explícita');
 
 console.log('');
 console.log('resultado: ' + String(passou) + ' passaram, ' + String(falhou) + ' falharam');

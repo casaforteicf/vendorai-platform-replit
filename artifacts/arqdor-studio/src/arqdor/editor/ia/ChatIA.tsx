@@ -19,6 +19,8 @@ import { resumirDocumento } from './contexto';
 import { executarPlano } from './executor';
 import type { EstadoIa } from './ferramentas';
 import { aplicarPassoDaIA } from './integracao';
+import { interpretarComandoLocal } from './comando-local';
+import type { ToolCallIA } from './schema';
 
 interface Linha {
   papel: 'usuario' | 'ia' | 'erro';
@@ -71,6 +73,30 @@ export function ChatIA() {
         familias: estado.familias,
       }).texto;
 
+      // Caminho único de aplicação (modelo e modo local passam por aqui).
+      const aplicarToolCalls = (toolCalls: readonly ToolCallIA[]): void => {
+        const plano = montarPlanoDoChat({ texto: null, toolCalls }, texto);
+        if (plano === null) {
+          adicionar('ia', 'Nenhuma ação para aplicar.');
+          return;
+        }
+        const resultado = executarPlano(plano, estado);
+        if (!resultado.ok) {
+          adicionar('erro', mensagemDoResultado(resultado).texto);
+          return;
+        }
+        if (resultado.passo === null) {
+          adicionar('ia', mensagemDoResultado(resultado).texto);
+          return;
+        }
+        const aplicado = aplicarPassoDaIA(resultado.passo);
+        if (!aplicado.ok) {
+          adicionar('erro', 'Aplicação recusada: ' + aplicado.erro + '.');
+          return;
+        }
+        adicionar('ia', mensagemDoResultado(resultado).texto);
+      };
+
       const resposta = await fetch('/api/ia/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -80,12 +106,24 @@ export function ChatIA() {
       if (!resposta.ok) {
         const corpo = (await resposta.json().catch(() => ({}))) as { erro?: unknown };
         const erro = typeof corpo.erro === 'string' ? corpo.erro : 'API_INDISPONIVEL';
-        adicionar(
-          'erro',
-          erro === 'IA_NAO_CONFIGURADA'
-            ? 'IA não configurada: defina DEEPSEEK_API_KEY em artifacts/arqdor-studio/.env.local e reinicie o dev.'
-            : 'Assistente indisponível: ' + erro + '.',
-        );
+
+        // Sem chave: interpreta localmente para o motor continuar testável. A UI deixa claro
+        // que NÃO foi o modelo — e o caminho DeepSeek não foi alterado.
+        if (erro === 'IA_NAO_CONFIGURADA') {
+          const local = interpretarComandoLocal(texto);
+          if (local === null) {
+            adicionar(
+              'erro',
+              'IA não configurada (defina DEEPSEEK_API_KEY em artifacts/arqdor-studio/.env.local) e este comando não é reconhecido pelo modo local. Ex.: "crie uma parede de 4x2,8".',
+            );
+            return;
+          }
+          adicionar('ia', 'Modo local (sem IA): ' + local.resumo + '.');
+          aplicarToolCalls(local.toolCalls);
+          return;
+        }
+
+        adicionar('erro', 'Assistente indisponível: ' + erro + '.');
         return;
       }
 
@@ -93,32 +131,12 @@ export function ChatIA() {
       const textoModelo = typeof dados.texto === 'string' ? dados.texto : null;
       if (textoModelo !== null && textoModelo.trim().length > 0) adicionar('ia', textoModelo);
 
-      const plano = montarPlanoDoChat(
-        { texto: textoModelo, toolCalls: Array.isArray(dados.toolCalls) ? dados.toolCalls : [] },
-        texto,
-      );
-      if (plano === null) {
+      const calls = Array.isArray(dados.toolCalls) ? dados.toolCalls : [];
+      if (calls.length === 0) {
         if (textoModelo === null) adicionar('ia', 'O assistente não propôs nenhuma ação.');
         return;
       }
-
-      const resultado = executarPlano(plano, estado);
-      if (!resultado.ok) {
-        adicionar('erro', mensagemDoResultado(resultado).texto);
-        return;
-      }
-
-      if (resultado.passo === null) {
-        adicionar('ia', mensagemDoResultado(resultado).texto);
-        return;
-      }
-
-      const aplicado = aplicarPassoDaIA(resultado.passo);
-      if (!aplicado.ok) {
-        adicionar('erro', 'Aplicação recusada: ' + aplicado.erro + '.');
-        return;
-      }
-      adicionar('ia', mensagemDoResultado(resultado).texto);
+      aplicarToolCalls(calls);
     } catch (erro) {
       adicionar('erro', 'Falha no chat: ' + (erro instanceof Error ? erro.message : String(erro)));
     } finally {

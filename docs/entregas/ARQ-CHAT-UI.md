@@ -72,7 +72,33 @@ chave. O contrato do cliente e a conversão de `toolCalls` já estão cobertos p
 `tests/ia` ganhou 5 asserts de chat (plano a partir de tool call, conversa sem tool call, mensagem de
 erro/leitura/aplicação). Total: **25 suítes · 615 asserts · 0 falhas**.
 
-## 8. Pendências
+## 9. Modo local (sem chave) — para testar o motor hoje
+
+Quando a rota responde `IA_NAO_CONFIGURADA`, o chat tenta um **interpretador local** de comandos
+(`ia/comando-local.ts`) e avisa na própria mensagem: *"Modo local (sem IA): …"*.
+
+- `crie uma parede de 4x2,8` → `criar_caixa` 4 × 2,8 × **0,15** (parede);
+- `parede de 5;2,8;0,2` → espessura explícita;
+- `caixa de 2x2x2` → três medidas;
+- `laje de 5x4` → 5 × 0,15 × 4;
+- qualquer outra frase → mensagem de configuração, sem inventar ação.
+
+O caminho do modelo **não foi alterado**: com a chave presente, a rota responde e o modo local nem é
+consultado. O interpretador existe só para o motor ser testável sem custo de API — e é rotulado na UI.
+
+### UAT feito no navegador (sem chave)
+
+| Passo | Resultado |
+|---|---|
+| clicar "Vendi IA" na topbar | painel abre |
+| enviar "crie uma parede de 4x2,8" | "Modo local (sem IA): Parede 4 × 2,8 × 0,15 m." |
+| aplicação | "Aplicado no projeto: criar_caixa." |
+| status bar | **5 → 6 sólidos** (o sólido nasceu no documento) |
+
+**O que segue não verificado:** a chamada real à DeepSeek. Com a chave em `.env.local`, o modo local
+deixa de ser usado e o teste passa a ser do modelo.
+
+## 10. Pendências
 
 - chave real no `.env.local` e teste de ponta a ponta ("crie uma parede de 4x2,8" deve criar caixa
   4 × 2,8 × 0,15);
