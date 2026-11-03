@@ -11,6 +11,8 @@ import { COR_SNAP, calcularSnap, corDoSnap, eixoDominante, travarNoEixo } from '
 import { metricasAresta, metricasFace } from '../modelador/metricas';
 import type { CandidatoSnap } from '../modelador/snap';
 import { paraMundo } from '../bim/materializar';
+import { textoDoArrasto } from '../modelador/gizmo-hud';
+import type { ModoArrasto, TransformacaoGizmo } from '../modelador/gizmo-hud';
 
 export type ModoGizmo = 'mover' | 'rotacionar' | 'escalar' | null;
 export type ModoInteracao = 'desenho' | 'selecionar' | 'pushpull';
@@ -132,6 +134,9 @@ export function ModeladorCanvas(props: PropsModeladorCanvas) {
   const duploCliqueRef = useRef(props.aoDuploCliqueFace);
   const ultimoFaceRef = useRef<string | null>(null);
   const ultimoFaceTempoRef = useRef(0);
+  const hudRef = useRef<HTMLDivElement | null>(null);
+  const inicioGizmoRef = useRef<TransformacaoGizmo | null>(null);
+  const modoGizmoRef = useRef<ModoArrasto>(null);
   const modoRef = useRef(props.modo);
   const gizmoAtivoRef = useRef(false);
   const snapRef = useRef<Vetor3 | null>(null);
@@ -150,6 +155,7 @@ export function ModeladorCanvas(props: PropsModeladorCanvas) {
   duploCliqueRef.current = props.aoDuploCliqueFace;
   modoRef.current = props.modo;
   gizmoAtivoRef.current = props.gizmo !== null;
+  modoGizmoRef.current = props.gizmo;
 
   useEffect(() => {
     const container = containerRef.current;
@@ -167,8 +173,20 @@ export function ModeladorCanvas(props: PropsModeladorCanvas) {
     container.appendChild(renderer.domElement);
 
     const orbitais = new OrbitControls(camera, renderer.domElement);
+    // Navegação padrão SketchUp: botão do MEIO = PAN, DIREITO = ORBIT, RODA = ZOOM.
+    orbitais.mouseButtons.LEFT = THREE.MOUSE.ROTATE;
+    orbitais.mouseButtons.MIDDLE = THREE.MOUSE.PAN;
+    orbitais.mouseButtons.RIGHT = THREE.MOUSE.ROTATE;
+    orbitais.enableZoom = true;
+    orbitais.enablePan = true;
+    orbitais.zoomSpeed = 1.2;
+    orbitais.panSpeed = 0.9;
     orbitais.target.set(2.5, 0.6, 2);
     orbitais.update();
+
+    // O botão direito é ORBIT: sem isso o menu do navegador abre no meio do gesto.
+    const semMenuContexto = (evento: Event): void => evento.preventDefault();
+    renderer.domElement.addEventListener('contextmenu', semMenuContexto);
 
     cena.add(new THREE.HemisphereLight(0xffffff, 0x9fbf9f, 1.15));
     const sol = new THREE.DirectionalLight(0xffffff, 1.4);
@@ -207,6 +225,25 @@ export function ModeladorCanvas(props: PropsModeladorCanvas) {
     container.appendChild(dica);
     dicaRef.current = dica;
 
+    // HUD do gizmo: distância/ângulo/fator em tempo real durante o arrasto.
+    const hud = document.createElement('div');
+    hud.style.position = 'absolute';
+    hud.style.left = '12px';
+    hud.style.top = '12px';
+    hud.style.padding = '5px 9px';
+    hud.style.borderRadius = '8px';
+    hud.style.background = 'rgba(10, 20, 17, 0.94)';
+    hud.style.border = '1px solid #2c3f39';
+    hud.style.color = '#7cf3c8';
+    hud.style.font = '12px Montserrat, Segoe UI, sans-serif';
+    hud.style.fontWeight = '600';
+    hud.style.whiteSpace = 'nowrap';
+    hud.style.pointerEvents = 'none';
+    hud.style.display = 'none';
+    hud.style.zIndex = '7';
+    container.appendChild(hud);
+    hudRef.current = hud;
+
     const grupos = new THREE.Group();
     const overlay = new THREE.Group();
     overlayRef.current = overlay;
@@ -217,19 +254,59 @@ export function ModeladorCanvas(props: PropsModeladorCanvas) {
     controle.setSize(1.5);
     const helper = (controle as unknown as { getHelper?: () => THREE.Object3D }).getHelper?.();
     cena.add(helper ?? (controle as unknown as THREE.Object3D));
+    const transformacaoAtual = (objeto: THREE.Object3D): TransformacaoGizmo => ({
+      posicao: [objeto.position.x, objeto.position.y, objeto.position.z],
+      rotacao: [objeto.rotation.x, objeto.rotation.y, objeto.rotation.z],
+      escala: [objeto.scale.x, objeto.scale.y, objeto.scale.z],
+    });
+
+    const esconderHud = (): void => {
+      const hud = hudRef.current;
+      if (hud === null) return;
+      hud.style.display = 'none';
+      hud.textContent = '';
+    };
+
     controle.addEventListener('dragging-changed', (evento) => {
       const valor = (evento as unknown as { value: boolean }).value;
       orbitais.enabled = !valor;
     });
+
+    // Início do arrasto: guarda a transformação de referência para medir o delta.
+    controle.addEventListener('mouseDown', () => {
+      const objeto = controle.object;
+      if (objeto === null || objeto === undefined) return;
+      inicioGizmoRef.current = transformacaoAtual(objeto);
+      esconderHud();
+    });
+
+    // Durante o arrasto: distância (mover), ângulo (rotacionar) e fator (escalar) ao vivo.
+    controle.addEventListener('objectChange', () => {
+      const objeto = controle.object;
+      const antes = inicioGizmoRef.current;
+      if (objeto === null || objeto === undefined || antes === null) return;
+      const hud = hudRef.current;
+      if (hud === null) return;
+      const texto = textoDoArrasto(modoGizmoRef.current, antes, transformacaoAtual(objeto));
+      if (texto === null) return;
+      hud.textContent = texto;
+      hud.style.display = 'block';
+    });
+
     controle.addEventListener('mouseUp', () => {
       const objeto = controle.object;
+      inicioGizmoRef.current = null;
       const id = objeto !== null && objeto !== undefined ? (objeto.userData.solidoId as string | undefined) : undefined;
-      if (id === undefined) return;
+      if (id === undefined) {
+        esconderHud();
+        return;
+      }
       transformarRef.current(id, {
         posicao: [objeto.position.x, objeto.position.y, objeto.position.z],
         rotacao: [objeto.rotation.x, objeto.rotation.y, objeto.rotation.z],
         escala: [objeto.scale.x, objeto.scale.y, objeto.scale.z],
       });
+      esconderHud();
     });
 
     cenaRef.current = cena;
@@ -508,6 +585,8 @@ export function ModeladorCanvas(props: PropsModeladorCanvas) {
       window.removeEventListener('keyup', aoTeclaShift);
       marcador.remove();
       dica.remove();
+      hud.remove();
+      renderer.domElement.removeEventListener('contextmenu', semMenuContexto);
       renderer.domElement.removeEventListener('pointerup', aoSoltar);
       controle.detach();
       controle.dispose();

@@ -10,6 +10,8 @@ import { metricasAresta, metricasFace } from '../../src/arqdor/editor/modelador/
 import { offsetDaFace, offsetPoligono } from '../../src/arqdor/editor/modelador/offset';
 import type { Ponto2D } from '../../src/arqdor/editor/modelador/offset';
 import type { Solido } from '../../src/arqdor/editor/modelador/schema';
+import { textoDoArrasto, textoEscalar, textoMover, textoRotacionar } from '../../src/arqdor/editor/modelador/gizmo-hud';
+import type { TransformacaoGizmo } from '../../src/arqdor/editor/modelador/gizmo-hud';
 import type { Vetor3 } from '../../src/arqdor/editor';
 
 let passou = 0;
@@ -149,13 +151,33 @@ const paredeVertical: Solido = {
   faces: [{ id: 'f2', vertices: ['v0', 'v1', 'v5', 'v4'] }],
 };
 const vertical = offsetDaFace(paredeVertical, 'f2', 0.15);
-ok(!vertical.ok && vertical.erro === 'FACE_VERTICAL', 'face vertical recusada com motivo');
+ok(vertical.ok, 'offset em face VERTICAL executa');
+if (vertical.ok) {
+  ok(vertical.vertices.length === 4, 'face vertical: 4 vértices na borda paralela');
+  ok(vertical.vertices.every((v) => perto(v.posicao[2], 0)), 'borda paralela mantém o plano da face (z = 0)');
+  ok(perto(vertical.areaInterna, 3.7 * 2.5), 'área interna da face vertical = 9,25 m²');
+}
 
 const inexistente = offsetDaFace(laje, 'nao-existe', 0.15);
 ok(!inexistente.ok && inexistente.erro === 'FACE_INEXISTENTE', 'face inexistente → erro tipado');
 
 const colapsoFace = offsetDaFace(laje, 'f1', 2.5);
 ok(!colapsoFace.ok && colapsoFace.erro === 'OFFSET_COLAPSOU', 'offset que atravessa a face → colapso');
+
+// ---------- 9. readout do gizmo (mover / rotacionar / escalar) ----------
+ok(textoMover([0, 0, 0], [3, 0, 0]).includes('X +3,00 m'), 'mover: eixo dominante X +3,00 m');
+ok(textoMover([0, 0, 0], [0, 2.5, 0]).includes('Y +2,50 m'), 'mover: eixo dominante Y +2,50 m');
+ok(textoMover([0, 0, 0], [3, 0, 4]).includes('5,00 m'), 'mover: distância real percorrida (3-4-5)');
+ok(textoRotacionar([0, 0, 0], [0, Math.PI / 2, 0]).includes('Y +90,0°'), 'rotacionar: 90° no eixo Y');
+ok(textoRotacionar([0, 0, 0], [Math.PI / 4, 0, 0]).includes('X +45,0°'), 'rotacionar: 45° no eixo X');
+ok(textoEscalar([1, 1, 1], [2, 1, 1]).includes('X × 2,00'), 'escalar: fator 2 no eixo X');
+
+const t0: TransformacaoGizmo = { posicao: [0, 0, 0], rotacao: [0, 0, 0], escala: [1, 1, 1] };
+ok(textoDoArrasto(null, t0, t0) === null, 'sem gizmo ativo → sem readout');
+ok(
+  (textoDoArrasto('mover', t0, { ...t0, posicao: [0, 0, 3] }) ?? '').includes('Z +3,00 m'),
+  'readout despacha pelo modo ativo (mover → Z)',
+);
 
 console.log('');
 console.log('resultado: ' + String(passou) + ' passaram, ' + String(falhou) + ' falharam');

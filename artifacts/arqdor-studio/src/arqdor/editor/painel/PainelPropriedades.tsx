@@ -49,7 +49,7 @@ function numero(valor: number): string {
 }
 
 
-/** Offset de face (padrão SketchUp): borda paralela interna na face horizontal. */
+/** Offset de face (padrão SketchUp): borda paralela interna, em qualquer plano da face. */
 function SecaoOffset(props: { aoOffset: (distancia: string) => string | null }) {
   const [texto, setTexto] = useState('0,15');
   const [erro, setErro] = useState<string | null>(null);
@@ -57,7 +57,7 @@ function SecaoOffset(props: { aoOffset: (distancia: string) => string | null }) 
     <div style={{ borderTop: '1px solid var(--arq-ed-linha)', marginTop: 12, paddingTop: 10 }}>
       <div className="arq-panel-title" style={{ marginBottom: 6 }}>Offset</div>
       <p className="arq-muted" style={{ margin: '0 0 8px', lineHeight: 1.5 }}>
-        Borda paralela para dentro da face horizontal. Depois puxe o miolo com Push/Pull.
+        Borda paralela para dentro da face selecionada (horizontal ou vertical).
       </p>
       <div style={{ display: 'flex', gap: 6 }}>
         <input

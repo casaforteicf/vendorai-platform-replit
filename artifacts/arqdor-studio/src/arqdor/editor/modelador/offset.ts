@@ -12,9 +12,6 @@ import type { Aresta, Solido, Vertice, Vetor3 } from './schema';
 
 const EPS = 1e-9;
 
-/** Folga para considerar a face horizontal (normal ±Y). */
-const TOLERANCIA_HORIZONTAL = 1e-6;
-
 export type Ponto2D = [number, number];
 
 /** Área assinada: positiva em CCW (no plano X,Z). */
@@ -108,7 +105,6 @@ export function offsetPoligono(pontos: readonly Ponto2D[], distancia: number): O
 
 export type OffsetFaceErro =
   | 'FACE_INEXISTENTE'
-  | 'FACE_VERTICAL'
   | 'FACE_DEGENERADA'
   | 'OFFSET_COLAPSOU'
   | 'POLIGONO_INVALIDO';
@@ -117,12 +113,55 @@ export type OffsetFaceResultado =
   | { ok: true; vertices: Vertice[]; arestas: Aresta[]; areaInterna: number; contorno: Ponto2D[] }
   | { ok: false; erro: OffsetFaceErro };
 
+function produto(a: Vetor3, b: Vetor3): number {
+  return a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+}
+
+function normalizar(v: Vetor3): Vetor3 | null {
+  const comprimento = Math.hypot(v[0], v[1], v[2]);
+  if (comprimento < EPS) return null;
+  return [v[0] / comprimento, v[1] / comprimento, v[2] / comprimento];
+}
+
+/** Normal pelo método de Newell — vale para polígono em qualquer orientação. */
+function normalDaFace(pontos: readonly Vetor3[]): Vetor3 | null {
+  let x = 0;
+  let y = 0;
+  let z = 0;
+  for (let i = 0; i < pontos.length; i += 1) {
+    const a = pontos[i];
+    const b = pontos[(i + 1) % pontos.length];
+    x += (a[1] - b[1]) * (a[2] + b[2]);
+    y += (a[2] - b[2]) * (a[0] + b[0]);
+    z += (a[0] - b[0]) * (a[1] + b[1]);
+  }
+  return normalizar([x, y, z]);
+}
+
+/** Base ortonormal do plano da face: origem + u (primeira aresta) + v (normal × u). */
+function baseDaFace(pontos: readonly Vetor3[]): { origem: Vetor3; u: Vetor3; v: Vetor3 } | null {
+  const normal = normalDaFace(pontos);
+  if (normal === null) return null;
+  const primeira = pontos[1];
+  const u = normalizar([
+    primeira[0] - pontos[0][0],
+    primeira[1] - pontos[0][1],
+    primeira[2] - pontos[0][2],
+  ]);
+  if (u === null) return null;
+  const v = normalizar([
+    normal[1] * u[2] - normal[2] * u[1],
+    normal[2] * u[0] - normal[0] * u[2],
+    normal[0] * u[1] - normal[1] * u[0],
+  ]);
+  if (v === null) return null;
+  return { origem: pontos[0], u, v };
+}
+
 /**
- * Liga a face de um sólido ao `offsetPoligono`: devolve os vértices e as arestas da
- * borda paralela, prontos para as operações `adicionar_vertices` / `adicionar_arestas`.
- *
- * Só face **horizontal** (piso/laje) — o offset é resolvido em planta (X, Z). Face
- * vertical é recusada com motivo explícito em vez de gerar contorno degenerado.
+ * Offset de face em QUALQUER plano — o contorno é resolvido na base da própria face
+ * (u = primeira aresta, v = normal × u), não mais só em planta (X, Z). Face vertical
+ * deixou de ser recusada.
  *
  * Ids determinísticos: repetir o mesmo offset devolve os mesmos ids, então undo/redo e
  * reaplicação não duplicam geometria invisível.
@@ -145,13 +184,18 @@ export function offsetDaFace(
   }
   if (pontos.length < 3) return { ok: false, erro: 'FACE_DEGENERADA' };
 
-  const altura = pontos[0][1];
-  if (pontos.some((ponto) => Math.abs(ponto[1] - altura) > TOLERANCIA_HORIZONTAL)) {
-    return { ok: false, erro: 'FACE_VERTICAL' };
-  }
+  const base = baseDaFace(pontos);
+  if (base === null) return { ok: false, erro: 'FACE_DEGENERADA' };
 
   const recuo = offsetPoligono(
-    pontos.map((ponto): Ponto2D => [ponto[0], ponto[2]]),
+    pontos.map((ponto): Ponto2D => {
+      const relativo: Vetor3 = [
+        ponto[0] - base.origem[0],
+        ponto[1] - base.origem[1],
+        ponto[2] - base.origem[2],
+      ];
+      return [produto(relativo, base.u), produto(relativo, base.v)];
+    }),
     distancia,
   );
   if (!recuo.ok) {
@@ -160,7 +204,11 @@ export function offsetDaFace(
 
   const vertices: Vertice[] = recuo.contorno.map((ponto, indice) => ({
     id: solido.id + '/' + faceId + '/' + prefixo + String(indice),
-    posicao: [ponto[0], altura, ponto[1]] as Vetor3,
+    posicao: [
+      base.origem[0] + base.u[0] * ponto[0] + base.v[0] * ponto[1],
+      base.origem[1] + base.u[1] * ponto[0] + base.v[1] * ponto[1],
+      base.origem[2] + base.u[2] * ponto[0] + base.v[2] * ponto[1],
+    ] as Vetor3,
   }));
   const arestas: Aresta[] = vertices.map((vertice, indice) => ({
     id: solido.id + '/' + faceId + '/' + prefixo + 'a' + String(indice),

@@ -31,6 +31,7 @@ import { offsetDaFace } from './modelador/offset';
 import { gerarOpEscalar, gerarOpMover, gerarOpRotacionar } from './modelador/gizmo';
 import type { ModoGizmo, TransformacaoLida } from './modeladorcanvas/ModeladorCanvas';
 import type { OperacaoModelador } from './modelador/schema';
+import { aplicarPasso } from './modelador/store-core';
 import type { DocumentoArqdor } from './persistencia/documento';
 import { VERSAO_DOCUMENTO } from './persistencia/documento';
 import { obterProjeto, salvarProjeto } from './persistencia/apiStore';
@@ -435,6 +436,27 @@ export function EditorShell() {
     aplicar([{ tipo: 'atualizar_solido', antes: solidoSelecionado, depois: { ...solidoSelecionado, nome } }]);
   };
 
+  /**
+   * Aplica geometria no modelador e, se o sólido já é Elemento BIM, reprojeta o elemento na
+   * hora. É isto que faz o Push/Pull de uma parede convertida virar altura da parede no modelo,
+   * sem o passo manual de "Atualizar no BIM".
+   */
+  const aplicarGeometria = (operacoes: OperacaoModelador[], solidoId: string): void => {
+    if (operacoes.length === 0) return;
+    const previsto = aplicarPasso(estadoModelador, operacoes, 'direta');
+    aplicar(operacoes);
+    if (!previsto.ok || projeto === null) return;
+    if (!solidosMaterializados.includes(solidoId)) return;
+    const novo = previsto.estado.solidos.find((item) => item.id === solidoId);
+    if (novo === undefined) return;
+    const lote = materializarSolidos(
+      [novo],
+      { projetoId: projeto.id, camadaId: camadas.camadaAtivaId },
+      elementos,
+    );
+    if (lote.operacoes.length > 0) aplicarBim(lote.operacoes);
+  };
+
   const aplicarPushPull = (alturaDigitada?: string): void => {
     if (face === null) return;
     const alvo = solidos.find((s) => s.id === face.solidoId);
@@ -454,12 +476,16 @@ export function EditorShell() {
       setAviso('Push/Pull recusado: ' + resultado.erro.codigo + '.');
       return;
     }
-    aplicar(resultado.operacoes);
-    setAviso('Push/Pull de ' + String(alturaNum) + ' m aplicado em "' + alvo.nome + '".');
+    const eraBim = solidosMaterializados.includes(alvo.id);
+    aplicarGeometria(resultado.operacoes, alvo.id);
+    setAviso(
+      'Push/Pull de ' + String(alturaNum) + ' m aplicado em "' + alvo.nome + '"' +
+        (eraBim ? ' — elemento BIM atualizado.' : '.'),
+    );
     setFace(null);
   };
 
-  /** Offset de face (SketchUp): borda paralela interna como vértices + arestas no sólido. */
+  /** Offset de face (SketchUp): borda paralela interna, em qualquer plano da face. */
   const aplicarOffset = (texto: string): string | null => {
     if (face === null) return 'Selecione uma face antes de aplicar o offset.';
     const alvo = solidos.find((s) => s.id === face.solidoId);
@@ -475,28 +501,34 @@ export function EditorShell() {
     const resultado = offsetDaFace(alvo, face.faceId, distancia);
     if (!resultado.ok) {
       setAviso('Offset recusado: ' + resultado.erro + '.');
-      if (resultado.erro === 'FACE_VERTICAL') return 'Só face horizontal (piso/laje).';
       if (resultado.erro === 'OFFSET_COLAPSOU') return 'Offset grande demais — encolheu até sumir.';
       return 'Não foi possível: ' + resultado.erro + '.';
     }
 
-    aplicar([
-      { tipo: 'adicionar_vertices', solidoId: alvo.id, vertices: resultado.vertices },
-      { tipo: 'adicionar_arestas', solidoId: alvo.id, arestas: resultado.arestas },
-    ]);
-    setAviso('Offset de ' + formatarMedida(distancia) + ' — borda paralela criada (Ctrl+Z desfaz).');
+    const eraBim = solidosMaterializados.includes(alvo.id);
+    aplicarGeometria(
+      [
+        { tipo: 'adicionar_vertices', solidoId: alvo.id, vertices: resultado.vertices },
+        { tipo: 'adicionar_arestas', solidoId: alvo.id, arestas: resultado.arestas },
+      ],
+      alvo.id,
+    );
+    setAviso(
+      'Offset de ' + formatarMedida(distancia) + ' — borda paralela criada' +
+        (eraBim ? ' (BIM atualizado).' : ' (Ctrl+Z desfaz).'),
+    );
     return null;
   };
 
   /**
-   * Duplo clique na face abre a medida digitada — mas só com o Push/Pull ativo.
-   * Sem ele, dois cliques continuam sendo a seleção de loop (comportamento anterior).
+   * Duplo clique numa face abre a barra de medidas com foco — em qualquer ferramenta.
+   * Se a ferramenta ativa não aceita medida, passa para Push/Pull (a medida da face é a extrusão).
    */
   const abrirMedidaDaFace = (solidoId: string, faceId: string): void => {
-    if (ferramenta !== 'pushpull') return;
     selecionar(solidoId);
     setFace({ solidoId, faceId });
     setSelecaoNivel({ nivel: 'face', arestas: 0, ids: [], solidoId, faceId });
+    if (ferramenta !== 'pushpull') setFerramenta('pushpull');
     setFocoMedida((atual) => atual + 1);
     setAviso('Face escolhida — digite a altura e Enter (Esc cancela).');
   };
@@ -533,7 +565,7 @@ export function EditorShell() {
       operacoes.push(gerarOpEscalar(alvo, fator));
     }
 
-    aplicar(operacoes);
+    aplicarGeometria(operacoes, solidoId);
   };
 
   const aoClicarNoPlano = (ponto: Vetor3): void => {
