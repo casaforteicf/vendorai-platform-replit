@@ -4,6 +4,14 @@ const links=[
  {href:"/hotelaria/receitas",name:"Receitas e custos"},
  {href:"/hotelaria/planejamento",name:"Refeições e compras"},
  {href:"/hotelaria/tarifas",name:"Tarifas e diárias"},
+ {href:"/hotelaria/ab/cargos",name:"Cargos e setores"},
+ {href:"/hotelaria/ab/fichas-tecnicas",name:"Fichas técnicas"},
+ {href:"/hotelaria/ab/briffing",name:"Briffing"},
+ {href:"/hotelaria/ab/sobras",name:"Sobras"},
+ {href:"/hotelaria/ab/mapeamento",name:"Mapeamento"},
+ {href:"/hotelaria/ab/recebimento",name:"Recebimento"},
+ {href:"/hotelaria/ab/requisicao",name:"Requisição"},
+ {href:"/hotelaria/ab/cmv",name:"CMV"},
 ] as const;
 export default function HotelModulesNav(){
  const [location]=useLocation();
