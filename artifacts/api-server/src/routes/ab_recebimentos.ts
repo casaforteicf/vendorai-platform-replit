@@ -8,6 +8,7 @@ import {
 } from "@workspace/db";
 import { abAllowed, camposInvalidos, isForeignKeyViolation, withTenantTx } from "../lib/ab/escopo.js";
 import { avaliarSanidade, classificarFefo } from "../lib/ab/fefo.js";
+import { aplicarEntradaNoEstoque } from "../lib/ab/entrada-estoque.js";
 
 const router: IRouter = Router();
 
@@ -108,6 +109,7 @@ router.post("/tenants/:tenantId/ab/recebimentos", async (req, res) => {
           etiquetaFefo,
           status: sanidade.status,
           motivoBloqueio: sanidade.motivoBloqueio,
+          locationId: dados.locationId ?? null,
           recebidoPor: req.user?.sub ?? null,
         })
         .returning();
@@ -126,10 +128,26 @@ router.post("/tenants/:tenantId/ab/recebimentos", async (req, res) => {
       });
     }
 
+    // AB-07: recebimento aprovado entra no saldo físico. Roda em transação
+    // própria de propósito — se a soma falhar, o recebimento continua gravado
+    // com o motivo e entra na fila de reprocessamento (nada de saldo fantasma).
+    const estoque =
+      resultado.recebimento.status === "aprovado"
+        ? await aplicarEntradaNoEstoque({
+            tenantId: t,
+            recebimentoId: resultado.recebimento.id,
+            produtoCatalogoId: resultado.recebimento.produtoCatalogoId,
+            quantidadeBase: Number(resultado.recebimento.quantidade),
+            unidadeBase: resultado.recebimento.unidade as "g" | "ml" | "un",
+            locationId: resultado.recebimento.locationId,
+          })
+        : { aplicado: false as const, motivo: "Recebimento bloqueado não entra em estoque" };
+
     return res.status(201).json({
       ...resultado.recebimento,
       produtoNome: resultado.produto?.nome ?? null,
       categoria: resultado.produto?.categoriaNome ?? null,
+      estoque,
     });
   } catch (e) {
     if (isForeignKeyViolation(e)) {

@@ -2,6 +2,7 @@ import { Router, type IRouter } from "express";
 import { z } from "zod/v4";
 import { executarMotorPreditivo } from "../jobs/abEstoquePreditivo.js";
 import { sincronizarSaldosAb } from "../jobs/abEstoqueSync.js";
+import { reprocessarRecebimentosPendentes } from "../lib/ab/entrada-estoque.js";
 
 const router: IRouter = Router();
 
@@ -84,5 +85,39 @@ router.post("/internal/ab/estoque/sync", requireInternalKey, async (req, res) =>
     return res.status(500).json({ error: "Não foi possível sincronizar os saldos" });
   }
 });
+
+/**
+ * Reprocessa recebimentos aprovados que não entraram no saldo físico (AB-07).
+ * Serve para quando o cadastro que faltava é corrigido (item de estoque, local,
+ * fator de embalagem): a fila é reaplicada sem tocar nos recebimentos.
+ */
+const corpoReprocesso = z
+  .object({
+    tenantIds: z.array(z.string().min(1)).max(500).optional(),
+    limite: z.number().int().min(1).max(2000).optional(),
+  })
+  .strict();
+
+router.post(
+  "/internal/ab/estoque/reprocessar-recebimentos",
+  requireInternalKey,
+  async (req, res) => {
+    const parsed = corpoReprocesso.safeParse(req.body ?? {});
+    if (!parsed.success) {
+      return res.status(422).json({
+        error: "Parâmetros inválidos",
+        fields: parsed.error.issues.map((issue) => issue.path.join(".") || "(corpo)"),
+      });
+    }
+
+    try {
+      const resumo = await reprocessarRecebimentosPendentes(parsed.data);
+      return res.json(resumo);
+    } catch (erro) {
+      console.error("[ab-entrada-estoque] reprocessamento falhou", erro);
+      return res.status(500).json({ error: "Não foi possível reprocessar os recebimentos" });
+    }
+  },
+);
 
 export default router;

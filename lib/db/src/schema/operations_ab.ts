@@ -617,6 +617,12 @@ export const abRecebimentosTable = pgTable(
     etiquetaFefo: text("etiqueta_fefo").notNull(),
     status: text("status").notNull(),
     motivoBloqueio: text("motivo_bloqueio"),
+    /** Local de destino no estoque (AB-07). Nulo = usa o local padrão do hotel. */
+    locationId: text("location_id"),
+    /** Marca que a quantidade já foi somada em hotel_stock_location_balances. */
+    estoqueAplicadoEm: timestamp("estoque_aplicado_em", { withTimezone: true }),
+    /** Por que a soma falhou, quando falhou. O recebimento nunca é apagado. */
+    motivoNaoAplicado: text("motivo_nao_aplicado"),
     recebidoPor: text("recebido_por"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true })
@@ -661,6 +667,7 @@ export const insertAbRecebimentoSchema = createInsertSchema(abRecebimentosTable,
   temperaturaC: decimal.nullable().optional(),
   quantidade: decimalPositivo,
   unidade: z.enum(AB_UNIDADES),
+  locationId: z.string().uuid().nullable().optional(),
 }).omit({
   id: true,
   tenantId: true,
@@ -668,6 +675,8 @@ export const insertAbRecebimentoSchema = createInsertSchema(abRecebimentosTable,
   status: true,
   motivoBloqueio: true,
   recebidoPor: true,
+  estoqueAplicadoEm: true,
+  motivoNaoAplicado: true,
   createdAt: true,
   updatedAt: true,
 });

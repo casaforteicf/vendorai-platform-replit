@@ -159,3 +159,58 @@ export function converterParaBase(
   const convertido = (quantidade * definicaoOrigem.fatorParaBase) / definicaoDestino.fatorParaBase;
   return arredondar(convertido);
 }
+
+/**
+ * Inverso do `converterParaBase`: leva a quantidade da unidade BASE do A&B
+ * (g/ml/un) para a unidade em que o estoque do hotel controla o item (kg, saco,
+ * caixa…). É o que falta para somar um recebimento ao saldo físico.
+ *
+ * Ex.: recebimento de 20000 g de carne, item controlado em "kg" → 20.
+ * Recebimento de 20000 g, item controlado em "saco" com fator 50000 → 0,4 saco.
+ */
+export function converterDeBase(
+  quantidadeBase: number,
+  unidadeBase: UnidadeBase | string | null | undefined,
+  unidadeEstoque: string | null | undefined,
+  opcoes: OpcoesConversao = {},
+): number {
+  const base = unidadeBaseDoInsumo(unidadeBase ?? null);
+  if (!base) {
+    throw new ErroConversao(
+      `Unidade base inválida: "${unidadeBase}" (esperado g, ml ou un).`,
+      String(unidadeBase ?? ""),
+      String(unidadeEstoque ?? ""),
+    );
+  }
+  if (!Number.isFinite(quantidadeBase)) {
+    throw new ErroConversao("Quantidade inválida para conversão.", base, String(unidadeEstoque ?? ""));
+  }
+
+  const estoque = normalizarUnidade(unidadeEstoque);
+  const definicaoEstoque = UNIDADES[estoque];
+
+  if (!definicaoEstoque) {
+    const fator = opcoes.fatorEmbalagem;
+    if (typeof fator === "number" && Number.isFinite(fator) && fator > 0) {
+      return arredondar(quantidadeBase / fator);
+    }
+    throw new ErroConversao(
+      `Unidade de estoque "${unidadeEstoque ?? ""}" não é métrica e o produto não tem ` +
+        `fator de embalagem cadastrado (de-para produto → insumo).`,
+      base,
+      String(unidadeEstoque ?? ""),
+    );
+  }
+
+  const definicaoBase = UNIDADES[base]!;
+  if (definicaoBase.familia !== definicaoEstoque.familia) {
+    throw new ErroConversao(
+      `Não é possível converter ${base} (${definicaoBase.familia}) para ${estoque} ` +
+        `(${definicaoEstoque.familia}) sem densidade.`,
+      base,
+      estoque,
+    );
+  }
+
+  return arredondar(quantidadeBase / definicaoEstoque.fatorParaBase);
+}

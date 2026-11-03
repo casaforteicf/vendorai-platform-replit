@@ -99,9 +99,12 @@ export default function Recebimento() {
   const [form, setForm] = useState<Formulario>(FORM_VAZIO);
   const [enviando, setEnviando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
-  const [salvo, setSalvo] = useState<{ etiqueta: EtiquetaFefo; status: string; motivo: string | null } | null>(
-    null,
-  );
+  const [salvo, setSalvo] = useState<{
+    etiqueta: EtiquetaFefo;
+    status: string;
+    motivo: string | null;
+    estoque?: { aplicado: boolean; motivo?: string; quantidadeEstoque?: number; unidadeEstoque?: string } | null;
+  } | null>(null);
 
   const produto = PRODUTOS_MOCK.find((p) => p.produtoCatalogoId === form.produtoCatalogoId);
   const temperatura = paraNumero(form.temperatura);
@@ -176,6 +179,7 @@ export default function Recebimento() {
         etiqueta: (criado.etiquetaFefo as EtiquetaFefo) ?? etiquetaPrevista,
         status: criado.status,
         motivo: criado.motivoBloqueio ?? null,
+        estoque: criado.estoque ?? null,
       });
       setForm(FORM_VAZIO);
     } catch (falha) {
@@ -398,6 +402,17 @@ export default function Recebimento() {
               <p className="font-medium">
                 Status: {salvo.status === "aprovado" ? "Aprovado" : "Bloqueado"}
                 {salvo.motivo ? ` — ${salvo.motivo}` : ""}
+              </p>
+            )}
+            {salvo?.estoque?.aplicado && (
+              <p className="font-medium">
+                Estoque atualizado: +{salvo.estoque.quantidadeEstoque} {salvo.estoque.unidadeEstoque}
+              </p>
+            )}
+            {salvo?.estoque && !salvo.estoque.aplicado && (
+              <p className="font-medium">
+                Não entrou no estoque: {salvo.estoque.motivo ?? "motivo não informado"} — o
+                recebimento ficou registrado e pode ser reprocessado.
               </p>
             )}
             {!salvo && sanidade.status === "bloqueado" && (

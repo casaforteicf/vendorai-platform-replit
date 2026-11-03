@@ -406,6 +406,13 @@ export type Recebimento = {
   createdAt: string;
   produtoNome?: string | null;
   categoria?: string | null;
+  /** Resultado da entrada em estoque (AB-07). Ausente no GET de listagem. */
+  estoque?: {
+    aplicado: boolean;
+    motivo?: string;
+    quantidadeEstoque?: number;
+    unidadeEstoque?: string;
+  } | null;
 };
 
 export type RecebimentoInput = {
