@@ -78,3 +78,25 @@ seu teste manual. O clique de seleção e as teclas são verificáveis e foram e
 Duplo clique (400 ms) e a contagem de 1/2/3 cliques convivem: dois cliques rápidos selecionam o loop
 antes de o duplo clique abrir a medida. Continua sendo decisão de projeto — se o loop incomodar no uso
 real, o caminho é movê-lo para Alt+clique.
+
+## Bug encontrado no teste ao vivo (corrigido)
+
+O teste no navegador mostrou que **Espaço focava a barra de medidas**: a regex do atalho "digite um
+número em qualquer lugar" incluía `\s`, e o espaço caía nela. Resultado: depois de Espaço, o foco ia
+para o input e **todos os atalhos seguintes eram ignorados** (a guarda de teclado descarta eventos com
+foco em `INPUT`).
+
+Correção em `painel/BarraMedidas.tsx`: espaço sai da regex e é ignorado explicitamente. Verificado no
+navegador: `L` → Linha, `Espaço` → Selecionar, sem foco no campo.
+
+## Verificação no navegador (dev :5183)
+
+| Passo | Resultado |
+|---|---|
+| Abrir `/modelagem` | ferramenta **Selecionar** já ativa no rail |
+| Clicar no sólido | status "selecionado: Parede" · "nível: face" · inspetor com Propriedades |
+| Tecla `L` | rail muda para **Linha** |
+| Tecla `Espaço` | volta para **Selecionar**, sem roubar foco |
+
+Não verificável por automação: Ctrl/Shift no clique (o clique sintético não carrega modificador) e os
+gestos de arrasto (pan/orbit/zoom/gizmo).

@@ -29,7 +29,10 @@ export function BarraMedidas(props: PropsBarraMedidas) {
       const alvo = evento.target as HTMLElement | null;
       if (alvo !== null && (alvo.tagName === 'INPUT' || alvo.tagName === 'TEXTAREA' || alvo.tagName === 'SELECT')) return;
       if (evento.ctrlKey || evento.metaKey || evento.altKey) return;
-      if (!/^[0-9.,x;\-\s]$/i.test(evento.key)) return;
+      // Espaço é o Select do SketchUp: NÃO pode roubar o foco para a barra de medidas,
+      // senão os atalhos seguintes caem no input e são ignorados.
+      if (evento.key === ' ') return;
+      if (!/^[0-9.,x;\-]$/i.test(evento.key)) return;
       entradaRef.current?.focus();
     };
     window.addEventListener('keydown', aoTeclar);
