@@ -8,6 +8,7 @@ const links=[
  {href:"/hotelaria/ab/fichas-tecnicas",name:"Fichas técnicas"},
  {href:"/hotelaria/ab/briffing",name:"Briffing"},
  {href:"/hotelaria/ab/sobras",name:"Sobras"},
+ {href:"/hotelaria/ab/mapeamento",name:"Mapeamento"},
 ] as const;
 export default function HotelModulesNav(){
  const [location]=useLocation();

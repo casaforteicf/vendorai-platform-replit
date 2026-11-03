@@ -327,3 +327,62 @@ export async function listarFichas(auth: AbAuth): Promise<FichaTecnica[]> {
   );
   return resposta.fichas ?? [];
 }
+
+// ─── Catálogo de insumos e mapa produto → insumo (AB-05) ─────────────────────
+
+export type InsumoCatalogo = {
+  id: string;
+  nome: string;
+  unidade: string;
+  codigo: string | null;
+};
+
+export type MapeamentoInsumoProduto = {
+  id: string;
+  insumoId: string;
+  produtoCatalogoId: string;
+  fatorEmbalagem: string | null;
+  insumoNome: string | null;
+  insumoUnidade: string | null;
+  produtoNome: string | null;
+  produtoSku: string | null;
+  produtoUnidade: string | null;
+};
+
+export type MapeamentoInput = {
+  produtoCatalogoId: string;
+  insumoId: string;
+  /** Quantas unidades base do insumo há em 1 unidade de estoque. Nulo = métrica. */
+  fatorEmbalagem?: number | null;
+};
+
+export async function listarInsumos(auth: AbAuth): Promise<InsumoCatalogo[]> {
+  const resposta = await requisitar<{ insumos: InsumoCatalogo[] }>(auth, urlAb(auth, "/insumos"));
+  return resposta.insumos ?? [];
+}
+
+export async function listarMapeamentos(auth: AbAuth): Promise<MapeamentoInsumoProduto[]> {
+  const resposta = await requisitar<{ mapeamentos: MapeamentoInsumoProduto[] }>(
+    auth,
+    urlAb(auth, "/insumo-produto"),
+  );
+  return resposta.mapeamentos ?? [];
+}
+
+export async function salvarMapeamento(
+  auth: AbAuth,
+  entrada: MapeamentoInput,
+): Promise<MapeamentoInsumoProduto> {
+  return requisitar<MapeamentoInsumoProduto>(auth, urlAb(auth, "/insumo-produto"), {
+    method: "POST",
+    body: JSON.stringify(entrada),
+  });
+}
+
+export async function removerMapeamento(auth: AbAuth, produtoCatalogoId: string): Promise<void> {
+  await requisitar<null>(
+    auth,
+    urlAb(auth, `/insumo-produto/${encodeURIComponent(produtoCatalogoId)}`),
+    { method: "DELETE" },
+  );
+}
