@@ -136,6 +136,8 @@ export interface ElementoBim {
   camadaId: string;
   /** D6: referencia o catálogo de materiais. Sem isto não há agrupamento de orçamento. */
   materialId?: string;
+  /** Composição de serviço (insumos). Quando presente, o orçamento prefere o serviço. */
+  servicoId?: string;
 }
 
 /**

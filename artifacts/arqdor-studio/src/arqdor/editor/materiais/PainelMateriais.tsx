@@ -70,6 +70,9 @@ export function PainelMateriais({ aberto, aoFechar, inline }: PainelMateriaisPro
   const [insumoId, setInsumoId] = useState('');
   const [insumoQtd, setInsumoQtd] = useState('');
   const composicoesRef = useRef<HTMLInputElement | null>(null);
+  const elementos = useBIMStore((s) => s.bim.elementos);
+  const [elementoAlvoId, setElementoAlvoId] = useState('');
+  const [composicaoAlvoId, setComposicaoAlvoId] = useState('');
   const arquivoRef = useRef<HTMLInputElement | null>(null);
   const [novo, setNovo] = useState<{ nome: string; categoria: Categoria; unidade: Unidade; preco: string }>({
     nome: '',
@@ -225,6 +228,21 @@ export function PainelMateriais({ aberto, aoFechar, inline }: PainelMateriaisPro
     link.click();
     URL.revokeObjectURL(url);
     setAviso(String(composicoes.length) + ' composição(ões) exportada(s).');
+  };
+
+  const aplicarComposicao = (): void => {
+    const elemento = elementos.find((item) => item.id === elementoAlvoId);
+    if (elemento === undefined) {
+      setAviso('Escolha um elemento BIM.');
+      return;
+    }
+    const composicao = composicoes.find((item) => item.id === composicaoAlvoId);
+    if (composicao === undefined) {
+      setAviso('Escolha uma composição.');
+      return;
+    }
+    useBIMStore.getState().aplicar([{ tipo: 'atualizar_elemento_bim', antes: elemento, depois: { ...elemento, servicoId: composicao.id } }]);
+    setAviso('Composição "' + composicao.nome + '" aplicada ao elemento ' + elemento.id + '.');
   };
 
   const campo = {
@@ -484,6 +502,45 @@ export function PainelMateriais({ aberto, aoFechar, inline }: PainelMateriaisPro
               );
             })}
           </ul>
+
+          <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid rgba(255,255,255,.08)' }}>
+            <div style={{ fontSize: 10.5, color: '#8fa39c', marginBottom: 6 }}>Aplicar composição ao elemento</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <select
+                value={elementoAlvoId}
+                onChange={(evento) => setElementoAlvoId(evento.target.value)}
+                aria-label="Elemento BIM"
+                style={campo}
+              >
+                <option value="">Elemento BIM…</option>
+                {elementos.map((elemento) => (
+                  <option key={elemento.id} value={elemento.id}>
+                    {elemento.tipo} · {elemento.id}
+                  </option>
+                ))}
+              </select>
+              <select
+                value={composicaoAlvoId}
+                onChange={(evento) => setComposicaoAlvoId(evento.target.value)}
+                aria-label="Composição"
+                style={campo}
+              >
+                <option value="">Composição…</option>
+                {composicoes.map((composicao) => (
+                  <option key={composicao.id} value={composicao.id}>
+                    {composicao.nome}
+                  </option>
+                ))}
+              </select>
+              <button
+                type="button"
+                onClick={aplicarComposicao}
+                style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid rgba(0,200,150,.35)', background: 'rgba(0,200,150,.12)', color: '#00c896', fontWeight: 700, fontSize: 11.5, cursor: 'pointer' }}
+              >
+                Aplicar Composição ao Elemento
+              </button>
+            </div>
+          </div>
 
           <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid rgba(255,255,255,.08)' }}>
             <div style={{ fontSize: 10.5, color: '#8fa39c', marginBottom: 6 }}>Nova composição</div>
