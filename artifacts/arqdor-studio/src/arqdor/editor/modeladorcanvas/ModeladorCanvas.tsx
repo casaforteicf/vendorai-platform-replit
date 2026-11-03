@@ -231,6 +231,7 @@ export function ModeladorCanvas(props: PropsModeladorCanvas) {
     sol.position.set(6, 12, 8);
     cena.add(sol);
     const grade = new THREE.GridHelper(20, 40, 0x1f7a5f, 0x253230);
+    grade.visible = props.ocultarGrade !== true;
     cena.add(grade);
     gradeRef.current = grade;
 

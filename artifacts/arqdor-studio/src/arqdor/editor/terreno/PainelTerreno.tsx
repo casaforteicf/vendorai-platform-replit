@@ -76,8 +76,8 @@ export function PainelTerreno({ aberto, aoFechar, aoCriar }: PainelTerrenoProps)
         position: 'fixed',
         left: 16,
         bottom: 16,
-        width: 588,
-        maxHeight: '86vh',
+        width: 516,
+        maxHeight: '80vh',
         overflowY: 'auto',
         background: '#0f1f1a',
         border: '1px solid rgba(255,255,255,.12)',
@@ -86,7 +86,7 @@ export function PainelTerreno({ aberto, aoFechar, aoCriar }: PainelTerrenoProps)
         zIndex: 70,
         fontFamily: 'Montserrat, Segoe UI, sans-serif',
         color: '#e6eeea',
-        padding: 12,
+        padding: 10,
       }}
       role="dialog"
       aria-label="Terreno por mapa"
@@ -129,6 +129,8 @@ export function PainelTerreno({ aberto, aoFechar, aoCriar }: PainelTerrenoProps)
 
       <MapaTerreno
         inicial={INICIAL}
+        larguraPx={496}
+        alturaPx={250}
         aoEscolher={criar}
         loteMetros={
           loteLargura > 0 && loteProfundidade > 0

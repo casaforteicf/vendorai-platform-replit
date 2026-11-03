@@ -27,8 +27,8 @@ const ZOOM_MAX = 19;
 
 export function MapaTerreno({ inicial, larguraPx = 540, alturaPx = 320, loteMetros, aoEscolher }: MapaTerrenoProps) {
   const [centro, setCentro] = useState<LocalizacaoMapa>(inicial);
-  const [zoom, setZoom] = useState(17);
-  const [aviso, setAviso] = useState<string | null>(null);
+  const [zoom, setZoom] = useState(19);
+  const [avisoGeo, setAvisoGeo] = useState<string | null>(null);
   const arrasto = useRef<{ x: number; y: number; moveu: boolean } | null>(null);
 
   const tiles = useMemo(
@@ -55,19 +55,20 @@ export function MapaTerreno({ inicial, larguraPx = 540, alturaPx = 320, loteMetr
   };
 
   const usarMinhaLocalizacao = (): void => {
+    setAvisoGeo(null);
     if (typeof navigator === 'undefined' || navigator.geolocation === undefined) {
-      setAviso('Este navegador não expõe geolocalização.');
+      setAvisoGeo('Este navegador não expõe geolocalização.');
       return;
     }
-    setAviso('Obtendo sua localização…');
+    setAvisoGeo('Obtendo sua localização…');
     navigator.geolocation.getCurrentPosition(
       (posicao) => {
         const local = { lat: posicao.coords.latitude, lng: posicao.coords.longitude };
         setCentro(local);
-        setAviso(null);
+        setAvisoGeo(null);
         aoEscolher(local);
       },
-      () => setAviso('Permissão de localização negada. Navegue no mapa e clique no lote.'),
+      () => setAvisoGeo('Permissão negada. Navegue no mapa e clique no lote.'),
       { enableHighAccuracy: false, timeout: 8000 },
     );
   };
@@ -155,7 +156,25 @@ export function MapaTerreno({ inicial, larguraPx = 540, alturaPx = 320, loteMetr
                       boxShadow: '0 0 0 1px rgba(0,0,0,.5)',
                       pointerEvents: 'none',
                     }}
-                  />
+                  >
+                    <span
+                      style={{
+                        position: 'absolute',
+                        left: '50%',
+                        bottom: -18,
+                        transform: 'translateX(-50%)',
+                        whiteSpace: 'nowrap',
+                        padding: '2px 6px',
+                        borderRadius: 4,
+                        background: 'rgba(0,0,0,.7)',
+                        color: '#00c896',
+                        fontSize: 10,
+                        fontWeight: 700,
+                      }}
+                    >
+                      {String(Math.round(loteMetros.largura))} × {String(Math.round(loteMetros.profundidade))} m
+                    </span>
+                  </div>
                   {!cabe ? (
                     <span
                       style={{
@@ -223,7 +242,7 @@ export function MapaTerreno({ inicial, larguraPx = 540, alturaPx = 320, loteMetr
         </span>
       </div>
 
-      {aviso !== null ? <p style={{ margin: '8px 0 0', fontSize: 11.5, color: '#fca5a5' }}>{aviso}</p> : null}
+      {avisoGeo !== null ? <p style={{ margin: '8px 0 0', fontSize: 11.5, color: '#fca5a5' }}>{avisoGeo}</p> : null}
     </div>
   );
 }

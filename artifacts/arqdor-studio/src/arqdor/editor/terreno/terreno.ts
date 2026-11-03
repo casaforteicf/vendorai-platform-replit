@@ -99,7 +99,10 @@ export function criarTerreno(entrada: EntradaTerreno): ResultadoTerreno {
 
   const solido: Solido = {
     id: entrada.id,
-    nome: PREFIXO_TERRENO + lat.toFixed(5) + ',' + lng.toFixed(5) + '@' + String(zoom),
+    // O nome carrega a medida: é o que a status bar/seleção mostram ao usuário.
+    nome:
+      PREFIXO_TERRENO + lat.toFixed(5) + ',' + lng.toFixed(5) + '@' + String(zoom) +
+      ' · ' + String(Math.round(largura)) + '×' + String(Math.round(profundidade)) + ' m',
     vertices,
     arestas,
     faces,
