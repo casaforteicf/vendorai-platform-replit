@@ -866,6 +866,7 @@ export function EditorShell() {
               selecionados={selecionados}
               foco={focoCamera}
               unidade={unidade}
+              ocultarGrade={solidos.some((item) => ehTerreno(item))}
               grip={gripFace}
               aoEsticarFace={esticarFace}
               aoEscolherFace={(solidoId, faceId) => {

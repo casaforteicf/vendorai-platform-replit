@@ -18,6 +18,15 @@ import {
   contabilizaNoOrcamento,
   ehTerreno,
 } from '../../src/arqdor/editor/terreno/terreno';
+import {
+  latParaPixelY,
+  localizacaoDoPixel,
+  lonParaPixelX,
+  panCentro,
+  pixelDaLocalizacao,
+  tilesDaViewport,
+  zoomAncorado,
+} from '../../src/arqdor/editor/terreno/mapa';
 
 let passou = 0;
 let falhou = 0;
@@ -93,6 +102,27 @@ ok(!criarTerreno({ id: 'ter2', localizacao: 'texto qualquer' }).ok, 'terreno: lo
 const semChave = criarTerreno({ id: 'ter3', localizacao: '-23.55,-46.63', provedor: 'google' });
 ok(!semChave.ok && semChave.erro === 'PROVEDOR_REQUER_CHAVE', 'terreno: Google exige chave');
 ok(!criarTerreno({ id: 'ter4', localizacao: '-23.55,-46.63', largura: 0 }).ok, 'terreno: dimensão inválida recusada');
+
+// ---------- 4. mapa interativo (pixel ↔ coordenada) ----------
+ok(perto(lonParaPixelX(0, 0), 128) && perto(latParaPixelY(0, 0), 128), 'mapa: origem no mundo em z0');
+const original = { lat: -23.5505, lng: -46.6333 };
+const px = pixelDaLocalizacao(original, 17);
+const volta = localizacaoDoPixel(px.x, px.y, 17);
+ok(perto(volta.lat, original.lat) && perto(volta.lng, original.lng), 'mapa: pixel e coordenada são inversos');
+
+const visiveis = tilesDaViewport({ lat: 0, lng: 0 }, 600, 420, 2);
+ok(visiveis.length === 8, 'mapa: 8 tiles cobrem a viewport (4 × 2)');
+
+const deslocado = panCentro(original, 100, 0, 17);
+ok(deslocado.lng < original.lng && perto(deslocado.lat, original.lat), 'mapa: arrastar para a direita move o centro para oeste');
+
+const ancoraTela = { x: 400, y: 100 };
+const centroPx = pixelDaLocalizacao(original, 17);
+const localAntes = localizacaoDoPixel(centroPx.x - 300 + ancoraTela.x, centroPx.y - 160 + ancoraTela.y, 17);
+const novoCentro = zoomAncorado(original, 17, 18, ancoraTela, 600, 320);
+const novoCentroPx = pixelDaLocalizacao(novoCentro, 18);
+const localDepois = localizacaoDoPixel(novoCentroPx.x - 300 + ancoraTela.x, novoCentroPx.y - 160 + ancoraTela.y, 18);
+ok(perto(localAntes.lat, localDepois.lat, 1e-6) && perto(localAntes.lng, localDepois.lng, 1e-6), 'mapa: zoom mantém o ponto sob o cursor');
 
 console.log('');
 console.log('resultado: ' + String(passou) + ' passaram, ' + String(falhou) + ' falharam');

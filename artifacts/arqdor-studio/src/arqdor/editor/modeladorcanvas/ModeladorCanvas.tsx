@@ -40,6 +40,8 @@ export interface PropsModeladorCanvas {
   foco?: { alvo: Vetor3; versao: number; distancia?: number } | null;
   /** Unidade usada nas leituras (HUD); o motor continua em metros. */
   unidade?: Unidade;
+  /** Oculta a grade verde (o terreno de referência já é o piso). */
+  ocultarGrade?: boolean;
   /** Grip de esticar a face selecionada (losango vermelho). */
   grip?: { posicao: Vetor3; normal: Vetor3; faceId: string } | null;
   /** Soltou o grip: deslocamento ao longo da normal, em metros. */
@@ -96,7 +98,11 @@ function construirSolido(solido: Solido, selecionado: boolean, materializado: bo
     geometria.computeVertexNormals();
     const material = new THREE.MeshStandardMaterial({
       // Azul = já é BIM (parede/laje oficial). Verde = sólido de desenho selecionado.
-      color: materializado ? (selecionado ? 0x7cb3ff : 0x2f6fd0) : selecionado ? 0x4ac59a : 0x6b7f79,
+      color: materializado
+        ? (selecionado ? 0x7cb3ff : 0x2f6fd0)
+        : solido.nome.startsWith('__terreno__')
+          ? (selecionado ? 0x3f7f66 : 0x23342d)
+          : selecionado ? 0x4ac59a : 0x6b7f79,
       side: THREE.DoubleSide,
       flatShading: true,
       roughness: 0.85,
@@ -150,6 +156,7 @@ export function ModeladorCanvas(props: PropsModeladorCanvas) {
   const gripNormalRef = useRef<Vetor3 | null>(null);
   const gripDeltaRef = useRef(0);
   const unidadeRef = useRef<Unidade>(props.unidade ?? 'm');
+  const gradeRef = useRef<THREE.GridHelper | null>(null);
   const gizmoRef = useRef<TransformControls | null>(null);
   const selecionadoRef = useRef<string | null>(null);
 
@@ -223,7 +230,9 @@ export function ModeladorCanvas(props: PropsModeladorCanvas) {
     const sol = new THREE.DirectionalLight(0xffffff, 1.4);
     sol.position.set(6, 12, 8);
     cena.add(sol);
-    cena.add(new THREE.GridHelper(20, 40, 0x1f7a5f, 0x253230));
+    const grade = new THREE.GridHelper(20, 40, 0x1f7a5f, 0x253230);
+    cena.add(grade);
+    gradeRef.current = grade;
 
     // marcador do snap (HTML sobre o canvas — não consome GPU e é fácil de posicionar)
     const marcador = document.createElement('div');
@@ -828,6 +837,13 @@ export function ModeladorCanvas(props: PropsModeladorCanvas) {
     camera.position.set(x + distancia * 0.42, y + distancia * 0.55, z + distancia * 0.72);
     orbitais.update();
   }, [props.foco]);
+
+  // O terreno de referência substitui a grade: sem isso, a grade verde fica por cima do piso.
+  useEffect(() => {
+    const grade = gradeRef.current;
+    if (grade === null) return;
+    grade.visible = props.ocultarGrade !== true;
+  }, [props.ocultarGrade, props.solidos]);
 
   // Posiciona o grip na face selecionada (centro + normal).
   useEffect(() => {
