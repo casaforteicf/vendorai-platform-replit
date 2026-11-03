@@ -7,9 +7,12 @@
  * O catálogo NÃO faz parte do DocumentoArqdor — é estado de catálogo, não de projeto.
  */
 
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { adicionarMaterial, atualizarPrecoUnitario, catalogoPadrao } from './catalogo';
 import type { Catalogo } from './catalogo';
+import { exportarParaCotacao, importarCotacao, itensDeCotacao } from './cotacao';
+import { quantitativos } from '../orcamento/quantitativos';
+import { useBIMStore } from '../stores/useBIMStore';
 import type { Categoria, Unidade } from '../orcamento/quantitativos';
 import type { FontePreco, Material } from './schema';
 
@@ -48,6 +51,7 @@ export function PainelMateriais({ aberto, aoFechar }: PainelMateriaisProps) {
   const [selecionadoId, setSelecionadoId] = useState<string | null>(null);
   const [preco, setPreco] = useState('');
   const [aviso, setAviso] = useState<string | null>(null);
+  const arquivoRef = useRef<HTMLInputElement | null>(null);
   const [novo, setNovo] = useState<{ nome: string; categoria: Categoria; unidade: Unidade; preco: string }>({
     nome: '',
     categoria: 'acabamento',
@@ -105,6 +109,46 @@ export function PainelMateriais({ aberto, aoFechar }: PainelMateriaisProps) {
     setCatalogo(resultado.catalogo);
     setNovo({ nome: '', categoria: 'acabamento', unidade: 'm2', preco: '' });
     setAviso('Material criado.');
+  };
+
+  const enviarCotacao = (): void => {
+    const elementos = useBIMStore.getState().bim.elementos;
+    const resumo = quantitativos(elementos);
+    const itens = itensDeCotacao(resumo.grupos, catalogo);
+    if (itens.length === 0) {
+      setAviso('Nada a cotar: o modelo ainda não tem elemento BIM com material.');
+      return;
+    }
+    const { csv } = exportarParaCotacao(itens);
+    // BOM para o Excel pt-BR abrir em UTF-8 sem acentos quebrados.
+    const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'cotacao-arqdor.csv';
+    link.click();
+    URL.revokeObjectURL(url);
+    setAviso(String(itens.length) + ' item(ns) exportados para cotação (' + String(resumo.grupos.length) + ' grupo(s) no quantitativo).');
+  };
+
+  const importarArquivo = async (arquivo: File): Promise<void> => {
+    const texto = await arquivo.text();
+    const resultado = importarCotacao(texto, catalogo);
+    if (resultado.erro === 'CABECALHO_INVALIDO') {
+      setAviso('CSV sem as colunas obrigatórias (material_id e preço).');
+      return;
+    }
+    setCatalogo(resultado.catalogo);
+    const motivos = resultado.ignorados
+      .slice(0, 4)
+      .map((item) => item.materialId + ' (' + item.motivo + ')')
+      .join(', ');
+    setAviso(
+      String(resultado.atualizados) + ' preço(s) atualizado(s) pela cotação.' +
+        (resultado.ignorados.length > 0
+          ? ' ' + String(resultado.ignorados.length) + ' ignorado(s): ' + motivos
+          : ''),
+    );
   };
 
   const campo = {
@@ -223,6 +267,41 @@ export function PainelMateriais({ aberto, aoFechar }: PainelMateriaisProps) {
           </div>
         </div>
       ) : null}
+
+      <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid rgba(255,255,255,.08)' }}>
+        <div style={{ fontSize: 10.5, color: '#8fa39c', marginBottom: 6 }}>Cotação</div>
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+          <button
+            type="button"
+            onClick={enviarCotacao}
+            style={{ padding: '7px 12px', borderRadius: 8, border: '1px solid rgba(0,200,150,.35)', background: 'rgba(0,200,150,.12)', color: '#00c896', fontWeight: 700, fontSize: 11.5, cursor: 'pointer' }}
+          >
+            Enviar para Cotação
+          </button>
+          <button
+            type="button"
+            onClick={() => arquivoRef.current?.click()}
+            style={{ padding: '7px 12px', borderRadius: 8, border: '1px solid rgba(255,255,255,.14)', background: 'rgba(0,0,0,.25)', color: '#e6eeea', fontWeight: 600, fontSize: 11.5, cursor: 'pointer' }}
+          >
+            Importar Cotação
+          </button>
+          <input
+            ref={arquivoRef}
+            type="file"
+            accept=".csv,text/csv"
+            style={{ display: 'none' }}
+            onChange={(evento) => {
+              const arquivo = evento.target.files?.[0];
+              if (arquivo !== undefined) void importarArquivo(arquivo);
+              evento.target.value = '';
+            }}
+          />
+        </div>
+        <p style={{ margin: '6px 0 0', fontSize: 10, color: '#6b7c76', lineHeight: 1.45 }}>
+          Exporta o quantitativo do modelo (BIM) em CSV com separador &quot;;&quot;. A importação aceita o mesmo
+          formato e devolve quais linhas foram recusadas e por quê.
+        </p>
+      </div>
 
       <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid rgba(255,255,255,.08)' }}>
         <div style={{ fontSize: 10.5, color: '#8fa39c', marginBottom: 6 }}>Novo material</div>
