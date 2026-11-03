@@ -6,6 +6,8 @@
 
 import type { OperacaoModelador, Solido, Vetor3 } from './schema';
 import { add } from './plano';
+import { comporRotacao, eulerParaQuaternion, multiplicarQuaternion, quaternionParaEuler } from './gizmo-math';
+import type { Quaternion } from './gizmo-math';
 
 const RAD = Math.PI / 180;
 
@@ -23,8 +25,12 @@ export function gerarOpMover(solido: Solido, delta: Vetor3): OperacaoModelador {
   };
 }
 
+/**
+ * Aplica um DELTA de rotação compondo em quatérnion.
+ * Somar ângulos de Euler (`r + delta`) quebra assim que há mais de um eixo: o sólido escapa
+ * da seta. A composição preserva a orientação corrente.
+ */
 export function gerarOpRotacionar(solido: Solido, deltaEuler: Vetor3): OperacaoModelador {
-  const r = solido.transformacao.rotacao;
   return {
     tipo: 'atualizar_solido',
     antes: solido,
@@ -32,10 +38,23 @@ export function gerarOpRotacionar(solido: Solido, deltaEuler: Vetor3): OperacaoM
       ...solido,
       transformacao: {
         ...solido.transformacao,
-        rotacao: [r[0] + deltaEuler[0], r[1] + deltaEuler[1], r[2] + deltaEuler[2]] as Vetor3,
+        rotacao: comporRotacao(solido.transformacao.rotacao, deltaEuler),
       },
     },
   };
+}
+
+/**
+ * Leva o sólido até uma rotação ALVO (é o que o TransformControls entrega no arrasto).
+ * O delta é calculado como q_atual⁻¹ · q_alvo, não por subtração de Euler.
+ */
+export function gerarOpRotacionarPara(solido: Solido, rotacaoAlvo: Vetor3): OperacaoModelador {
+  const alvo = eulerParaQuaternion(rotacaoAlvo);
+  const atual = eulerParaQuaternion(solido.transformacao.rotacao);
+  const atualInverso: Quaternion = [-atual[0], -atual[1], -atual[2], atual[3]];
+  // delta aplicado DEPOIS: q_delta = q_alvo · q_atual⁻¹  (e compor faz q_delta · q_atual = q_alvo)
+  const delta = quaternionParaEuler(multiplicarQuaternion(alvo, atualInverso));
+  return gerarOpRotacionar(solido, delta);
 }
 
 export function gerarOpEscalar(solido: Solido, fator: Vetor3): OperacaoModelador {
