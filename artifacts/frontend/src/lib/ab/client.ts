@@ -386,3 +386,55 @@ export async function removerMapeamento(auth: AbAuth, produtoCatalogoId: string)
     { method: "DELETE" },
   );
 }
+
+// ─── Recebimentos (AB-06) ────────────────────────────────────────────────────
+
+export type Recebimento = {
+  id: string;
+  produtoCatalogoId: string;
+  notaFiscal: string;
+  fornecedor: string | null;
+  lote: string;
+  dataValidade: string;
+  temperaturaC: string | null;
+  quantidade: string;
+  unidade: string;
+  /** Calculado no servidor — nunca enviado pelo cliente. */
+  etiquetaFefo: string;
+  status: string;
+  motivoBloqueio: string | null;
+  createdAt: string;
+  produtoNome?: string | null;
+  categoria?: string | null;
+};
+
+export type RecebimentoInput = {
+  produtoCatalogoId: string;
+  notaFiscal: string;
+  fornecedor?: string | null;
+  lote: string;
+  dataValidade: string;
+  temperaturaC?: number | null;
+  quantidade: number;
+  unidade: "g" | "ml" | "un";
+};
+
+export async function criarRecebimento(
+  auth: AbAuth,
+  entrada: RecebimentoInput,
+): Promise<Recebimento> {
+  return requisitar<Recebimento>(auth, urlAb(auth, "/recebimentos"), {
+    method: "POST",
+    body: JSON.stringify(entrada),
+  });
+}
+
+export async function listarRecebimentos(
+  auth: AbAuth,
+  limite = 50,
+): Promise<{ recebimentos: Recebimento[]; resumo: Record<string, number> }> {
+  return requisitar<{ recebimentos: Recebimento[]; resumo: Record<string, number> }>(
+    auth,
+    urlAb(auth, `/recebimentos?limite=${limite}`),
+  );
+}

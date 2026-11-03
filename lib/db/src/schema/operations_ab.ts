@@ -579,3 +579,99 @@ export const insertAbInsumoProdutoSchema = createInsertSchema(abInsumoProdutoTab
 export const selectAbInsumoProdutoSchema = createSelectSchema(abInsumoProdutoTable);
 export type AbInsumoProduto = typeof abInsumoProdutoTable.$inferSelect;
 export type InsertAbInsumoProduto = typeof abInsumoProdutoTable.$inferInsert;
+
+// ─── 9) Recebimento de mercadorias com lote (AB-06) ──────────────────────────
+
+/** Etiqueta FEFO calculada no servidor a partir da validade. */
+export const AB_ETIQUETAS_FEFO = ["verde", "amarelo", "vermelho"] as const;
+export const AB_STATUS_RECEBIMENTO = ["aprovado", "bloqueado"] as const;
+
+export type AbEtiquetaFefo = (typeof AB_ETIQUETAS_FEFO)[number];
+export type AbStatusRecebimento = (typeof AB_STATUS_RECEBIMENTO)[number];
+
+/**
+ * Entrada declarada pelo recebedor.
+ *
+ * `etiqueta_fefo`, `status` e `motivo_bloqueio` são **derivados** (regra FEFO e
+ * sanidade) e gravados junto para auditoria — nunca vêm do corpo da requisição.
+ */
+export const abRecebimentosTable = pgTable(
+  "ab_recebimentos",
+  {
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
+    tenantId: text("tenant_id")
+      .notNull()
+      .references(() => tenantsTable.id, { onDelete: "cascade" }),
+    produtoCatalogoId: text("produto_catalogo_id").notNull(),
+    notaFiscal: text("nota_fiscal").notNull(),
+    fornecedor: text("fornecedor"),
+    lote: text("lote").notNull(),
+    dataValidade: date("data_validade", { mode: "string" }).notNull(),
+    /** Nulo quando o produto não exige controle de temperatura. */
+    temperaturaC: numeric("temperatura_c", { precision: 6, scale: 2 }),
+    quantidade: numeric("quantidade", { precision: 15, scale: 4 }).notNull(),
+    /** Sempre na unidade base (g/ml/un) — ver AB-04. */
+    unidade: text("unidade").notNull(),
+    etiquetaFefo: text("etiqueta_fefo").notNull(),
+    status: text("status").notNull(),
+    motivoBloqueio: text("motivo_bloqueio"),
+    recebidoPor: text("recebido_por"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
+  },
+  (table) => [
+    index("ab_recebimentos_fefo_idx").on(
+      table.tenantId,
+      table.dataValidade,
+      table.produtoCatalogoId,
+    ),
+    index("ab_recebimentos_tenant_created_idx").on(table.tenantId, table.createdAt.desc()),
+    index("ab_recebimentos_tenant_status_idx").on(table.tenantId, table.status, table.createdAt.desc()),
+    index("ab_recebimentos_lote_idx").on(table.tenantId, table.produtoCatalogoId, table.lote),
+    check("ab_recebimentos_nf_nao_vazia", sql`length(btrim(${table.notaFiscal})) > 0`),
+    check("ab_recebimentos_lote_nao_vazio", sql`length(btrim(${table.lote})) > 0`),
+    check("ab_recebimentos_quantidade_positiva", sql`${table.quantidade} > 0`),
+    check("ab_recebimentos_unidade_valida", sql`${table.unidade} IN ('g', 'ml', 'un')`),
+    check(
+      "ab_recebimentos_etiqueta_valida",
+      sql`${table.etiquetaFefo} IN ('verde', 'amarelo', 'vermelho')`,
+    ),
+    check(
+      "ab_recebimentos_status_valido",
+      sql`${table.status} IN ('aprovado', 'bloqueado')`,
+    ),
+  ],
+);
+
+/**
+ * Payload aceito pela API: enxuto de propósito — `etiquetaFefo`, `status`,
+ * `motivoBloqueio` e `recebidoPor` são calculados/preenchidos no servidor.
+ */
+export const insertAbRecebimentoSchema = createInsertSchema(abRecebimentosTable, {
+  produtoCatalogoId: z.string().uuid(),
+  notaFiscal: z.string().trim().min(1).max(60),
+  fornecedor: z.string().trim().max(120).nullable().optional(),
+  lote: z.string().trim().min(1).max(60),
+  dataValidade: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Data no formato yyyy-mm-dd"),
+  temperaturaC: decimal.nullable().optional(),
+  quantidade: decimalPositivo,
+  unidade: z.enum(AB_UNIDADES),
+}).omit({
+  id: true,
+  tenantId: true,
+  etiquetaFefo: true,
+  status: true,
+  motivoBloqueio: true,
+  recebidoPor: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const selectAbRecebimentoSchema = createSelectSchema(abRecebimentosTable);
+export type AbRecebimento = typeof abRecebimentosTable.$inferSelect;
+export type InsertAbRecebimento = typeof abRecebimentosTable.$inferInsert;

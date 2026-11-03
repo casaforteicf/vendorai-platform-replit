@@ -114,6 +114,7 @@ const AbBriffing = lazy(() => import("@/pages/hotelaria/ab/Briffing"));
 const AbSobras = lazy(() => import("@/pages/hotelaria/ab/Sobras"));
 const AbFichaTecnica = lazy(() => import("@/pages/hotelaria/ab/FichaTecnica"));
 const AbMapeamentoInsumos = lazy(() => import("@/pages/hotelaria/ab/MapeamentoInsumos"));
+const AbRecebimento = lazy(() => import("@/pages/hotelaria/ab/Recebimento"));
 const GestaoErp          = lazy(() => import("@/pages/GestaoErp"));
 const ErpCapture         = lazy(() => import("@/pages/erp"));
 const Content            = lazy(() => import("@/pages/ContentHub"));
@@ -723,6 +724,7 @@ function AppRoutes() {
         <Route path="/hotelaria/ab/sobras">{() => <ProtectedRoute component={AbSobras} />}</Route>
         <Route path="/hotelaria/ab/fichas-tecnicas">{() => <ProtectedRoute component={AbFichaTecnica} />}</Route>
         <Route path="/hotelaria/ab/mapeamento">{() => <ProtectedRoute component={AbMapeamentoInsumos} />}</Route>
+        <Route path="/hotelaria/ab/recebimento">{() => <ProtectedRoute component={AbRecebimento} />}</Route>
         <Route path="/erp/captura">{() => <ProtectedRoute component={ErpCapture} />}</Route>
         <Route path="/erp">{() => <ProtectedRoute component={GestaoErp} />}</Route>
         <Route path="/faturamento"><RedirectPage to="/configuracoes" /></Route>
