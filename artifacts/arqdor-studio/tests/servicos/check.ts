@@ -4,6 +4,9 @@
 
 import type { ElementoBim } from '../../src/arqdor/editor/bim/schema';
 import { custoDeServicos } from '../../src/arqdor/editor/orcamento/servicos';
+import { orcamentoCompleto } from '../../src/arqdor/editor/orcamento/orcamento-completo';
+import { quantitativos } from '../../src/arqdor/editor/orcamento/quantitativos';
+import { custoDoQuantitativo } from '../../src/arqdor/editor/materiais/custos';
 import { adicionarMaterial, catalogoPadrao } from '../../src/arqdor/editor/materiais/catalogo';
 import type { Catalogo } from '../../src/arqdor/editor/materiais/catalogo';
 import type { Material } from '../../src/arqdor/editor/materiais/schema';
@@ -73,6 +76,19 @@ const semPreco = custoDeServicos(
   [{ id: 'COMP-SEM', nome: 'Sem preço', unidade: 'm2', insumos: [{ materialId: 'MAT-NAO-EXISTE', quantidade: 1 }] }],
 );
 ok(semPreco.total === 0 && semPreco.linhas[0].faltando[0] === 'MAT-NAO-EXISTE', 'serviço: insumo sem preço aparece em faltando');
+
+// ---------- modelo misto: uma parede com serviço, outra sem ----------
+const comMaterial = { ...parede('el_mat'), materialId: 'MAT-S1' };
+const misto = orcamentoCompleto([comMaterial, parede('el_srv', 'COMP-ALV')], catalogo, [composicao]);
+ok(misto.excluidosDoMaterial.length === 1 && misto.excluidosDoMaterial[0] === 'el_srv', 'misto: elemento com serviço sai do quantitativo de material');
+ok(!misto.excluidosDoMaterial.includes('el_mat'), 'misto: elemento sem serviço continua no material');
+const referencia = custoDoQuantitativo(quantitativos([comMaterial]).grupos, catalogo);
+ok(misto.materiais.total === referencia.total, 'misto: material do elemento sem serviço é igual ao cálculo antigo');
+ok(misto.servicos.linhas.length === 1 && misto.servicos.linhas[0].quantidade === 11.2, 'misto: serviço usa a metragem real da parede (11,2 m²)');
+ok(misto.total === Math.round((referencia.total + 11.2 * 20) * 100) / 100, 'misto: total = material + serviço, sem dupla contagem');
+
+const semNenhumServico = orcamentoCompleto([comMaterial], catalogo, [composicao]);
+ok(semNenhumServico.servicos.total === 0 && semNenhumServico.total === referencia.total, 'regressão: modelo sem serviço mantém o total antigo');
 
 console.log('');
 console.log('resultado: ' + String(passou) + ' passaram, ' + String(falhou) + ' falharam');

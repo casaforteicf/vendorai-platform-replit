@@ -20,6 +20,7 @@ import {
   importarComposicoesCsv,
 } from './composicoes';
 import type { Composicao, InsumoComposicao } from './composicoes';
+import { orcamentoCompleto } from '../orcamento/orcamento-completo';
 import type { Categoria, Unidade } from '../orcamento/quantitativos';
 import type { FontePreco, Material } from './schema';
 
@@ -244,6 +245,11 @@ export function PainelMateriais({ aberto, aoFechar, inline }: PainelMateriaisPro
     useBIMStore.getState().aplicar([{ tipo: 'atualizar_elemento_bim', antes: elemento, depois: { ...elemento, servicoId: composicao.id } }]);
     setAviso('Composição "' + composicao.nome + '" aplicada ao elemento ' + elemento.id + '.');
   };
+
+  const orcamento = useMemo(
+    () => orcamentoCompleto(elementos, catalogo, composicoes),
+    [elementos, catalogo, composicoes],
+  );
 
   const campo = {
     padding: '7px 9px',
@@ -619,6 +625,36 @@ export function PainelMateriais({ aberto, aoFechar, inline }: PainelMateriaisPro
           </div>
         </>
       )}
+
+      <div
+        style={{
+          marginBottom: 8,
+          padding: '8px 10px',
+          borderRadius: 8,
+          background: 'rgba(0,200,150,.08)',
+          border: '1px solid rgba(0,200,150,.22)',
+          fontSize: 11,
+          lineHeight: 1.6,
+        }}
+      >
+        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+          <span style={{ color: '#8fa39c' }}>Materiais</span>
+          <span>{moeda(orcamento.materiais.total)}</span>
+        </div>
+        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+          <span style={{ color: '#8fa39c' }}>Serviços ({orcamento.excluidosDoMaterial.length} elem.)</span>
+          <span>{moeda(orcamento.servicos.total)}</span>
+        </div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 4, paddingTop: 4, borderTop: '1px solid rgba(255,255,255,.1)', fontWeight: 700 }}>
+          <span>Total</span>
+          <span style={{ color: '#00c896' }}>{moeda(orcamento.total)}</span>
+        </div>
+        {orcamento.materiais.linhasSemPreco > 0 ? (
+          <div style={{ marginTop: 4, color: '#f59e0b', fontSize: 10 }}>
+            {orcamento.materiais.linhasSemPreco} material(is) sem preço — total subestimado.
+          </div>
+        ) : null}
+      </div>
 
       {aviso !== null ? <p style={{ margin: '10px 0 0', fontSize: 11.5, color: '#8fa39c' }}>{aviso}</p> : null}
     </div>

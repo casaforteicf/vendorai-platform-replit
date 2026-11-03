@@ -11,6 +11,7 @@ import type { ElementoBim } from '../bim/schema';
 import type { Catalogo } from '../materiais/catalogo';
 import { custoComposicao } from '../materiais/composicoes';
 import type { Composicao } from '../materiais/composicoes';
+import { medirElemento, vaosPorParede } from './quantitativos';
 
 export interface LinhaServico {
   elementoId: string;
@@ -30,6 +31,31 @@ export interface CustosServico {
   total: number;
   /** Elementos que apontam para composição inexistente. */
   semComposicao: string[];
+}
+
+/**
+ * Metragem real por elemento, na unidade da composição.
+ * Sem medição compatível, cai em 1 (uma unidade de serviço).
+ */
+export function obterQuantidadesPorElemento(
+  elementos: readonly ElementoBim[],
+  composicoes: readonly Composicao[],
+): Record<string, number> {
+  const porId = new Map(composicoes.map((composicao) => [composicao.id, composicao]));
+  const vaos = vaosPorParede(elementos);
+  const quantidades: Record<string, number> = {};
+
+  for (const elemento of elementos) {
+    const servicoId = elemento.servicoId;
+    if (servicoId === undefined || servicoId.length === 0) continue;
+    const composicao = porId.get(servicoId);
+    if (composicao === undefined) continue;
+    const medicoes = medirElemento(elemento, vaos);
+    const compativel = medicoes.find((medicao) => medicao.unidade === composicao.unidade);
+    quantidades[elemento.id] = compativel?.quantidade ?? 1;
+  }
+
+  return quantidades;
 }
 
 /**
