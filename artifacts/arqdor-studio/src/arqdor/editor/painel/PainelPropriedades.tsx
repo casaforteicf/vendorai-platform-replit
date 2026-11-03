@@ -22,6 +22,8 @@ export interface PropsPainelPropriedades {
   altura: string;
   aoMudarAltura: (valor: string) => void;
   aoAplicarPushPull: () => void;
+  /** Offset de face: devolve mensagem de erro, ou null quando aplicou. */
+  aoOffset: (distancia: string) => string | null;
   aoCancelarFace: () => void;
   aoRenomear: (nome: string) => void;
   /** O que o sólido selecionado viraria no BIM (regra D12). */
@@ -47,6 +49,44 @@ function numero(valor: number): string {
 }
 
 
+/** Offset de face (padrão SketchUp): borda paralela interna na face horizontal. */
+function SecaoOffset(props: { aoOffset: (distancia: string) => string | null }) {
+  const [texto, setTexto] = useState('0,15');
+  const [erro, setErro] = useState<string | null>(null);
+  return (
+    <div style={{ borderTop: '1px solid var(--arq-ed-linha)', marginTop: 12, paddingTop: 10 }}>
+      <div className="arq-panel-title" style={{ marginBottom: 6 }}>Offset</div>
+      <p className="arq-muted" style={{ margin: '0 0 8px', lineHeight: 1.5 }}>
+        Borda paralela para dentro da face horizontal. Depois puxe o miolo com Push/Pull.
+      </p>
+      <div style={{ display: 'flex', gap: 6 }}>
+        <input
+          className="arq-field"
+          style={{ flex: 1 }}
+          value={texto}
+          onChange={(evento) => {
+            setTexto(evento.target.value);
+            setErro(null);
+          }}
+          aria-label="Distância do offset em metros"
+          inputMode="decimal"
+        />
+        <button
+          type="button"
+          className="arq-btn arq-btn-primary"
+          style={{ height: 34 }}
+          onClick={() => setErro(props.aoOffset(texto))}
+        >
+          Offset
+        </button>
+      </div>
+      {erro !== null ? (
+        <p className="arq-muted" style={{ margin: '6px 0 0', fontSize: 10.5, color: '#b91c1c' }}>{erro}</p>
+      ) : null}
+    </div>
+  );
+}
+
 function SecaoVaos(props: {
   paredeId: string;
   vaosExistentes: number;
@@ -66,7 +106,7 @@ function SecaoVaos(props: {
   });
 
   return (
-    <div style={{ borderTop: '1px solid #e5e7eb', marginTop: 12, paddingTop: 10 }}>
+    <div style={{ borderTop: '1px solid var(--arq-ed-linha)', marginTop: 12, paddingTop: 10 }}>
       <div className="arq-panel-title" style={{ marginBottom: 6 }}>Vãos</div>
       <p className="arq-muted" style={{ margin: '0 0 8px', lineHeight: 1.5 }}>
         Parede {props.paredeId} · {String(props.vaosExistentes)} vão(s). O vão é contábil: desconta
@@ -149,7 +189,7 @@ function SecaoBooleanas(props: {
   const [outroId, setOutroId] = useState(props.outros.length > 0 ? props.outros[0].id : '');
 
   return (
-    <div style={{ borderTop: '1px solid #e5e7eb', marginTop: 12, paddingTop: 10 }}>
+    <div style={{ borderTop: '1px solid var(--arq-ed-linha)', marginTop: 12, paddingTop: 10 }}>
       <div className="arq-panel-title" style={{ marginBottom: 6 }}>Booleanas</div>
       {!props.pronta ? (
         <>
@@ -242,7 +282,7 @@ export function PainelPropriedades(props: PropsPainelPropriedades) {
 
       {/* Push/Pull — só com face escolhida */}
       {face !== null ? (
-        <div style={{ borderTop: '1px solid #e5e7eb', paddingTop: 10 }}>
+        <div style={{ borderTop: '1px solid var(--arq-ed-linha)', paddingTop: 10 }}>
           <div className="arq-panel-title" style={{ marginBottom: 6 }}>Push/Pull</div>
           <p className="arq-muted" style={{ margin: '0 0 8px', lineHeight: 1.5 }}>
             Face selecionada. Informe a altura (m). Positivo puxa, negativo empurra.
@@ -266,6 +306,8 @@ export function PainelPropriedades(props: PropsPainelPropriedades) {
         </div>
       ) : null}
 
+      {face !== null ? <SecaoOffset aoOffset={props.aoOffset} /> : null}
+
       {solido !== null ? (
         <SecaoBooleanas
           outros={props.outrosSolidos}
@@ -276,7 +318,7 @@ export function PainelPropriedades(props: PropsPainelPropriedades) {
       ) : null}
       {/* BIM — só aparece com sólido selecionado, e depois que o volume existe */}
       {solido !== null ? (
-        <div style={{ borderTop: '1px solid #e5e7eb', marginTop: 12, paddingTop: 10 }}>
+        <div style={{ borderTop: '1px solid var(--arq-ed-linha)', marginTop: 12, paddingTop: 10 }}>
           <div className="arq-panel-title" style={{ marginBottom: 6 }}>BIM</div>
 
           {props.materializado ? (

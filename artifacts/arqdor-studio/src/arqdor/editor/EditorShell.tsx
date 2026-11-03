@@ -27,6 +27,7 @@ import type { MedidasInsercao } from './painel/ModalInserir';
 import { PainelPropriedades } from './painel/PainelPropriedades';
 import type { FaceEscolhida, PreviaBim } from './painel/PainelPropriedades';
 import { calcularPushPull } from './modelador/pushpull';
+import { offsetDaFace } from './modelador/offset';
 import { gerarOpEscalar, gerarOpMover, gerarOpRotacionar } from './modelador/gizmo';
 import type { ModoGizmo, TransformacaoLida } from './modeladorcanvas/ModeladorCanvas';
 import type { OperacaoModelador } from './modelador/schema';
@@ -87,6 +88,7 @@ export function EditorShell() {
   const [gizmo, setGizmo] = useState<ModoGizmo>(null);
   const [face, setFace] = useState<FaceEscolhida | null>(null);
   const [altura, setAltura] = useState('2.8');
+  const [focoMedida, setFocoMedida] = useState(0);
 
   useEffect(() => {
     setDesenho(iniciar(ferramenta));
@@ -456,6 +458,48 @@ export function EditorShell() {
     setFace(null);
   };
 
+  /** Offset de face (SketchUp): borda paralela interna como vértices + arestas no sólido. */
+  const aplicarOffset = (texto: string): string | null => {
+    if (face === null) return 'Selecione uma face antes de aplicar o offset.';
+    const alvo = solidos.find((s) => s.id === face.solidoId);
+    if (alvo === undefined) {
+      setFace(null);
+      return 'O sólido desta face não existe mais.';
+    }
+    const distancia = Number(texto.replace(',', '.'));
+    if (!Number.isFinite(distancia) || distancia === 0) {
+      return 'Distância inválida — use 0,15.';
+    }
+
+    const resultado = offsetDaFace(alvo, face.faceId, distancia);
+    if (!resultado.ok) {
+      setAviso('Offset recusado: ' + resultado.erro + '.');
+      if (resultado.erro === 'FACE_VERTICAL') return 'Só face horizontal (piso/laje).';
+      if (resultado.erro === 'OFFSET_COLAPSOU') return 'Offset grande demais — encolheu até sumir.';
+      return 'Não foi possível: ' + resultado.erro + '.';
+    }
+
+    aplicar([
+      { tipo: 'adicionar_vertices', solidoId: alvo.id, vertices: resultado.vertices },
+      { tipo: 'adicionar_arestas', solidoId: alvo.id, arestas: resultado.arestas },
+    ]);
+    setAviso('Offset de ' + formatarMedida(distancia) + ' — borda paralela criada (Ctrl+Z desfaz).');
+    return null;
+  };
+
+  /**
+   * Duplo clique na face abre a medida digitada — mas só com o Push/Pull ativo.
+   * Sem ele, dois cliques continuam sendo a seleção de loop (comportamento anterior).
+   */
+  const abrirMedidaDaFace = (solidoId: string, faceId: string): void => {
+    if (ferramenta !== 'pushpull') return;
+    selecionar(solidoId);
+    setFace({ solidoId, faceId });
+    setSelecaoNivel({ nivel: 'face', arestas: 0, ids: [], solidoId, faceId });
+    setFocoMedida((atual) => atual + 1);
+    setAviso('Face escolhida — digite a altura e Enter (Esc cancela).');
+  };
+
   const transformarSolido = (solidoId: string, alvoTransformado: TransformacaoLida): void => {
     const alvo = solidos.find((s) => s.id === solidoId);
     if (alvo === undefined || gizmo === null) return;
@@ -631,6 +675,7 @@ export function EditorShell() {
               }}
               aoTransformar={transformarSolido}
               aoClicarPeca={registrarAlvo}
+              aoDuploCliqueFace={abrirMedidaDaFace}
               faceSelecionada={
                 selecaoNivel !== null && selecaoNivel.nivel === 'face' && selecaoNivel.faceId !== null
                   ? { solidoId: selecaoNivel.solidoId, faceId: selecaoNivel.faceId }
@@ -655,6 +700,7 @@ export function EditorShell() {
                     : 'Medida'
               }
               aoAplicar={aplicarMedidaDigitada}
+              focarEm={focoMedida}
             />
           ) : null}
           {aba === 'planta' && elementos.length === 0 ? (
@@ -681,6 +727,7 @@ export function EditorShell() {
             altura={altura}
             aoMudarAltura={setAltura}
             aoAplicarPushPull={aplicarPushPull}
+            aoOffset={aplicarOffset}
             aoCancelarFace={() => setFace(null)}
             aoRenomear={renomearSolido}
             previa={previa}

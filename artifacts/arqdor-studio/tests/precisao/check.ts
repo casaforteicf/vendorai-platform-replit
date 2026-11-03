@@ -7,8 +7,9 @@ import { formatarMedida, interpretarMedida } from '../../src/arqdor/editor/model
 import { corDoSnap, deltaEixo, ehPontoMedio, eixoDominante, travarNoEixo } from '../../src/arqdor/editor/modelador/snap';
 import type { SnapResultado } from '../../src/arqdor/editor/modelador/snap';
 import { metricasAresta, metricasFace } from '../../src/arqdor/editor/modelador/metricas';
-import { offsetPoligono } from '../../src/arqdor/editor/modelador/offset';
+import { offsetDaFace, offsetPoligono } from '../../src/arqdor/editor/modelador/offset';
 import type { Ponto2D } from '../../src/arqdor/editor/modelador/offset';
+import type { Solido } from '../../src/arqdor/editor/modelador/schema';
 import type { Vetor3 } from '../../src/arqdor/editor';
 
 let passou = 0;
@@ -106,6 +107,55 @@ ok(expansao.ok && perto(expansao.areaInterna, 25), 'offset negativo expande para
 
 const degenerado = offsetPoligono([[0, 0], [1, 0]], 0.1);
 ok(!degenerado.ok && degenerado.erro === 'POLIGONO_INVALIDO', 'menos de 3 pontos → inválido');
+
+// ---------- 8. offset ligado à face do sólido (o que a UI aplica) ----------
+const laje: Solido = {
+  id: 's1',
+  nome: 'Laje',
+  vertices: [
+    { id: 'v0', posicao: [0, 0, 0] },
+    { id: 'v1', posicao: [4, 0, 0] },
+    { id: 'v2', posicao: [4, 0, 4] },
+    { id: 'v3', posicao: [0, 0, 4] },
+  ],
+  arestas: [],
+  faces: [{ id: 'f1', vertices: ['v0', 'v1', 'v2', 'v3'] }],
+  transformacao: { posicao: [0, 0, 0], rotacao: [0, 0, 0], escala: [1, 1, 1] },
+};
+
+const offsetFace = offsetDaFace(laje, 'f1', 0.15);
+ok(offsetFace.ok, 'offset da face horizontal executou');
+if (offsetFace.ok) {
+  ok(offsetFace.vertices.length === 4 && offsetFace.arestas.length === 4, 'borda interna: 4 vértices e 4 arestas');
+  ok(offsetFace.vertices.every((v) => perto(v.posicao[1], 0)), 'borda interna mantém a cota da face (y = 0)');
+  ok(perto(offsetFace.areaInterna, 3.7 * 3.7), 'área interna da face = 13,69 m²');
+  ok(offsetFace.arestas[0].verticeA === offsetFace.vertices[0].id, 'arestas fecham sobre o loop de vértices');
+}
+
+const offsetDeNovo = offsetDaFace(laje, 'f1', 0.15);
+ok(
+  offsetDeNovo.ok && offsetFace.ok && offsetDeNovo.vertices[0].id === offsetFace.vertices[0].id,
+  'ids determinísticos ao repetir o mesmo offset',
+);
+
+const paredeVertical: Solido = {
+  ...laje,
+  vertices: [
+    { id: 'v0', posicao: [0, 0, 0] },
+    { id: 'v1', posicao: [4, 0, 0] },
+    { id: 'v4', posicao: [0, 2.8, 0] },
+    { id: 'v5', posicao: [4, 2.8, 0] },
+  ],
+  faces: [{ id: 'f2', vertices: ['v0', 'v1', 'v5', 'v4'] }],
+};
+const vertical = offsetDaFace(paredeVertical, 'f2', 0.15);
+ok(!vertical.ok && vertical.erro === 'FACE_VERTICAL', 'face vertical recusada com motivo');
+
+const inexistente = offsetDaFace(laje, 'nao-existe', 0.15);
+ok(!inexistente.ok && inexistente.erro === 'FACE_INEXISTENTE', 'face inexistente → erro tipado');
+
+const colapsoFace = offsetDaFace(laje, 'f1', 2.5);
+ok(!colapsoFace.ok && colapsoFace.erro === 'OFFSET_COLAPSOU', 'offset que atravessa a face → colapso');
 
 console.log('');
 console.log('resultado: ' + String(passou) + ' passaram, ' + String(falhou) + ' falharam');

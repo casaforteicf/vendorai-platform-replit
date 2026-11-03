@@ -8,7 +8,12 @@
  * tratamento de auto-interseção, que fica registrado como limite.
  */
 
+import type { Aresta, Solido, Vertice, Vetor3 } from './schema';
+
 const EPS = 1e-9;
+
+/** Folga para considerar a face horizontal (normal ±Y). */
+const TOLERANCIA_HORIZONTAL = 1e-6;
 
 export type Ponto2D = [number, number];
 
@@ -99,4 +104,69 @@ export function offsetPoligono(pontos: readonly Ponto2D[], distancia: number): O
   }
 
   return { ok: true, contorno, areaInterna };
+}
+
+export type OffsetFaceErro =
+  | 'FACE_INEXISTENTE'
+  | 'FACE_VERTICAL'
+  | 'FACE_DEGENERADA'
+  | 'OFFSET_COLAPSOU'
+  | 'POLIGONO_INVALIDO';
+
+export type OffsetFaceResultado =
+  | { ok: true; vertices: Vertice[]; arestas: Aresta[]; areaInterna: number; contorno: Ponto2D[] }
+  | { ok: false; erro: OffsetFaceErro };
+
+/**
+ * Liga a face de um sólido ao `offsetPoligono`: devolve os vértices e as arestas da
+ * borda paralela, prontos para as operações `adicionar_vertices` / `adicionar_arestas`.
+ *
+ * Só face **horizontal** (piso/laje) — o offset é resolvido em planta (X, Z). Face
+ * vertical é recusada com motivo explícito em vez de gerar contorno degenerado.
+ *
+ * Ids determinísticos: repetir o mesmo offset devolve os mesmos ids, então undo/redo e
+ * reaplicação não duplicam geometria invisível.
+ */
+export function offsetDaFace(
+  solido: Solido,
+  faceId: string,
+  distancia: number,
+  prefixo = 'off',
+): OffsetFaceResultado {
+  const face = solido.faces.find((item) => item.id === faceId);
+  if (face === undefined) return { ok: false, erro: 'FACE_INEXISTENTE' };
+
+  const mapa = new Map(solido.vertices.map((vertice) => [vertice.id, vertice.posicao]));
+  const pontos: Vetor3[] = [];
+  for (const id of face.vertices) {
+    const posicao = mapa.get(id);
+    if (posicao === undefined) return { ok: false, erro: 'FACE_DEGENERADA' };
+    pontos.push(posicao);
+  }
+  if (pontos.length < 3) return { ok: false, erro: 'FACE_DEGENERADA' };
+
+  const altura = pontos[0][1];
+  if (pontos.some((ponto) => Math.abs(ponto[1] - altura) > TOLERANCIA_HORIZONTAL)) {
+    return { ok: false, erro: 'FACE_VERTICAL' };
+  }
+
+  const recuo = offsetPoligono(
+    pontos.map((ponto): Ponto2D => [ponto[0], ponto[2]]),
+    distancia,
+  );
+  if (!recuo.ok) {
+    return { ok: false, erro: recuo.erro === 'POLIGONO_INVALIDO' ? 'POLIGONO_INVALIDO' : 'OFFSET_COLAPSOU' };
+  }
+
+  const vertices: Vertice[] = recuo.contorno.map((ponto, indice) => ({
+    id: solido.id + '/' + faceId + '/' + prefixo + String(indice),
+    posicao: [ponto[0], altura, ponto[1]] as Vetor3,
+  }));
+  const arestas: Aresta[] = vertices.map((vertice, indice) => ({
+    id: solido.id + '/' + faceId + '/' + prefixo + 'a' + String(indice),
+    verticeA: vertice.id,
+    verticeB: vertices[(indice + 1) % vertices.length].id,
+  }));
+
+  return { ok: true, vertices, arestas, areaInterna: recuo.areaInterna, contorno: recuo.contorno };
 }

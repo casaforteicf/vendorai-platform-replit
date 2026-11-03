@@ -14,6 +14,8 @@ export interface PropsBarraMedidas {
   dica: string;
   /** Aplica a medida. Devolve mensagem de erro (ou null quando aplicou). */
   aoAplicar: (texto: string) => string | null;
+  /** Incrementar este contador foca o campo (duplo clique na face). */
+  focarEm?: number;
 }
 
 export function BarraMedidas(props: PropsBarraMedidas) {
@@ -33,6 +35,13 @@ export function BarraMedidas(props: PropsBarraMedidas) {
     window.addEventListener('keydown', aoTeclar);
     return () => window.removeEventListener('keydown', aoTeclar);
   }, []);
+
+  // duplo clique na face: foca e seleciona o campo para digitar a medida direto
+  useEffect(() => {
+    if (props.focarEm === undefined || props.focarEm === 0) return;
+    entradaRef.current?.focus();
+    entradaRef.current?.select();
+  }, [props.focarEm]);
 
   const aplicar = (): void => {
     const problema = props.aoAplicar(texto);

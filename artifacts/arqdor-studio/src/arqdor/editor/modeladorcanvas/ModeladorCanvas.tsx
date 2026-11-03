@@ -33,6 +33,8 @@ export interface PropsModeladorCanvas {
   aoEscolherFace: (solidoId: string, faceId: string) => void;
   /** Clique em face (faceId) ou aresta (arestaId) — alimenta a seleção inteligente. */
   aoClicarPeca?: (alvo: { solidoId: string; faceId: string | null; arestaId: string | null }) => void;
+  /** Duplo clique numa face — abre a medida daquela face (padrão SketchUp). */
+  aoDuploCliqueFace?: (solidoId: string, faceId: string) => void;
   faceSelecionada?: { solidoId: string; faceId: string } | null;
   loopSelecionado?: { solidoId: string; arestas: readonly string[] } | null;
   aoTransformar: (solidoId: string, transformacao: TransformacaoLida) => void;
@@ -124,6 +126,7 @@ export function ModeladorCanvas(props: PropsModeladorCanvas) {
   const faceRef = useRef(props.aoEscolherFace);
   const transformarRef = useRef(props.aoTransformar);
   const clicarPecaRef = useRef(props.aoClicarPeca);
+  const duploCliqueRef = useRef(props.aoDuploCliqueFace);
   const modoRef = useRef(props.modo);
   const gizmoAtivoRef = useRef(false);
   const snapRef = useRef<Vetor3 | null>(null);
@@ -139,6 +142,7 @@ export function ModeladorCanvas(props: PropsModeladorCanvas) {
   faceRef.current = props.aoEscolherFace;
   transformarRef.current = props.aoTransformar;
   clicarPecaRef.current = props.aoClicarPeca;
+  duploCliqueRef.current = props.aoDuploCliqueFace;
   modoRef.current = props.modo;
   gizmoAtivoRef.current = props.gizmo !== null;
 
@@ -477,15 +481,42 @@ export function ModeladorCanvas(props: PropsModeladorCanvas) {
     };
     window.addEventListener('keydown', aoTeclaShift);
     window.addEventListener('keyup', aoTeclaShift);
+    /** Duplo clique: acha a face sob o cursor e devolve para a UI abrir a medida. */
+    const aoDuploClique = (evento: MouseEvent): void => {
+      const caixa = renderer.domElement.getBoundingClientRect();
+      const ndc = new THREE.Vector2(
+        ((evento.clientX - caixa.left) / caixa.width) * 2 - 1,
+        -(((evento.clientY - caixa.top) / caixa.height) * 2 - 1),
+      );
+      const raio = new THREE.Raycaster();
+      raio.setFromCamera(ndc, camera);
+      const atingidos = raio
+        .intersectObjects(grupos.children, true)
+        .filter((acerto) => (acerto.object as THREE.Mesh).isMesh === true);
+      const primeiro = atingidos[0];
+      if (primeiro === undefined) return;
+      let alvo: THREE.Object3D | null = primeiro.object;
+      while (alvo !== null && alvo.userData.solidoId === undefined) alvo = alvo.parent;
+      const solidoId = alvo !== null ? (alvo.userData.solidoId as string | undefined) : undefined;
+      if (solidoId === undefined) return;
+      const mapa = (primeiro.object as THREE.Mesh).userData.mapaFaces as string[] | undefined;
+      const indice = primeiro.faceIndex;
+      const faceId = mapa !== undefined && indice !== null && indice !== undefined ? (mapa[indice] ?? null) : null;
+      if (faceId === null) return;
+      duploCliqueRef.current?.(solidoId, faceId);
+    };
+
     renderer.domElement.addEventListener('pointerdown', aoPressionar);
     renderer.domElement.addEventListener('pointermove', aoMover);
     renderer.domElement.addEventListener('pointerup', aoSoltar);
+    renderer.domElement.addEventListener('dblclick', aoDuploClique);
 
     return () => {
       vivo = false;
       observador.disconnect();
       renderer.domElement.removeEventListener('pointerdown', aoPressionar);
       renderer.domElement.removeEventListener('pointermove', aoMover);
+      renderer.domElement.removeEventListener('dblclick', aoDuploClique);
       window.removeEventListener('keydown', aoTeclaShift);
       window.removeEventListener('keyup', aoTeclaShift);
       marcador.remove();
