@@ -207,3 +207,21 @@ render dependem dele.
 | Render de versão velha | `documentoHash` obrigatório no pedido |
 | Material sem PBR "sumir" no render | fallback visual explícito, nunca material invisível |
 | Biblioteca inflar o bundle | LOD: caixa no viewport, asset só no render |
+
+---
+
+## 10. Decisões respondidas pelo dono (2026-11-03)
+
+| # | Decisão |
+|---|---|
+| 1 | **Escada vira `TipoElemento`** — entra no quantitativo e na planta 2D |
+| 2 | **Preço**: base SINAPI + tabela própria; preço **editável** na UI; fluxo de cotação (exportar lista → fornecedor → importar CSV/Excel para atualizar preços). **Praça.ai fica para a Fase 3** |
+| 3 | **Render**: reutilizar o worker legado da Contabo (`vendorai-prod-browser`) |
+| 4 | **IA**: modelo DeepSeek; **pode** executar ação destrutiva **com confirmação humana**, gerando **um único `PassoUndo`** (rollback total) |
+| 5 | **Biblioteca**: começar com assets gratuitos (glTF) + caixas primitivas (LOD); compra de assets depois |
+| 6 | **Ordem da UI**: começar consumindo o contrato de **Materiais (M1)** |
+| 7 | **ADR-007 (vão)**: paramétrico é a fonte da verdade (orçamento/planta); cortador de malha é o efeito 3D; "Adicionar Porta" chama os dois |
+
+Consequência imediata: o M1 (Materiais) foi implementado — ver `docs/entregas/ARQ-M1-MATERIAIS.md`.
+Próximo item pendente por esta lista: `TipoElemento = 'escada'` (BIM Core), antes de a biblioteca
+depender dele.
