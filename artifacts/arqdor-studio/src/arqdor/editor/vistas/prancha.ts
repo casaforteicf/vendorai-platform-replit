@@ -56,6 +56,8 @@ export interface DadosCarimbo {
   projeto: string;
   escala: EscalaPrancha;
   data: string;
+  /** Nome do arquiteto responsável (campo obrigatório na prancha). */
+  arquiteto: string;
   /** Maior lado do modelo em metros (para o campo "dimensão"). */
   dimensaoM?: number;
 }
@@ -66,6 +68,7 @@ export function linhasCarimbo(dados: DadosCarimbo): Array<{ rotulo: string; valo
     { rotulo: 'PROJETO', valor: dados.projeto.trim().length > 0 ? dados.projeto : '—' },
     { rotulo: 'VISTA', valor: dados.titulo },
     { rotulo: 'ESCALA', valor: '1:' + String(dados.escala) },
+    { rotulo: 'ARQUITETO', valor: dados.arquiteto.trim().length > 0 ? dados.arquiteto : '—' },
     { rotulo: 'DATA', valor: dados.data },
     ...(dados.dimensaoM === undefined
       ? []

@@ -53,8 +53,11 @@ ok(pagina50.pxPorMetro === 118, 'prancha: 1:50 dá ~118 px por metro a 150 dpi')
 ok(Math.abs(pagina50.desenhoM.largura - 10.35) < 0.01 && Math.abs(pagina50.desenhoM.altura - 9.5) < 0.01, 'prancha: área útil em 1:50 é 10,35 × 9,5 m');
 const pagina100 = calcularPagina(100);
 ok(pagina100.pxPorMetro === 59 && pagina100.desenhoM.largura > pagina50.desenhoM.largura, 'prancha: escala menor cobre mais metros');
-const carimbo = linhasCarimbo({ titulo: 'Planta baixa', projeto: '', escala: 100, data: '03/11/2026' });
+const carimbo = linhasCarimbo({ titulo: 'Planta baixa', projeto: '', escala: 100, data: '03/11/2026', arquiteto: 'Ana' });
 ok(carimbo.some((linha) => linha.rotulo === 'ESCALA' && linha.valor === '1:100'), 'prancha: carimbo traz a escala');
+ok(carimbo.some((linha) => linha.rotulo === 'ARQUITETO' && linha.valor === 'Ana'), 'prancha: carimbo traz o arquiteto');
+const semArquiteto = linhasCarimbo({ titulo: 'Planta', projeto: 'Casa', escala: 50, data: '03/11/2026', arquiteto: '   ' });
+ok(semArquiteto.some((linha) => linha.rotulo === 'ARQUITETO' && linha.valor === '—'), 'prancha: arquiteto vazio vira travessão');
 ok(carimbo.some((linha) => linha.rotulo === 'PROJETO' && linha.valor === '—'), 'prancha: projeto vazio vira travessão');
 
 console.log('');

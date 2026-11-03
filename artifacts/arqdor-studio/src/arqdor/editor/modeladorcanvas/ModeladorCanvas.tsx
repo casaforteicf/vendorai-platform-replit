@@ -185,6 +185,9 @@ export function ModeladorCanvas(props: PropsModeladorCanvas) {
   const ortoRef = useRef<{ meioAltura: number } | null>(null);
   const exportarRef = useRef<(escala: EscalaPrancha) => void>(() => undefined);
   const [escalaExport, setEscalaExport] = useState<EscalaPrancha>(50);
+  const [arquiteto, setArquiteto] = useState('');
+  const arquitetoRef = useRef('');
+  arquitetoRef.current = arquiteto;
   const gizmoRef = useRef<TransformControls | null>(null);
   const selecionadoRef = useRef<string | null>(null);
 
@@ -282,6 +285,7 @@ export function ModeladorCanvas(props: PropsModeladorCanvas) {
           projeto: props.projetoNome ?? '—',
           escala,
           data: new Date().toLocaleDateString('pt-BR'),
+          arquiteto: arquitetoRef.current,
         });
         const passo = carimboAltura / linhas.length;
         linhas.forEach((linha, indice) => {
@@ -1030,6 +1034,13 @@ export function ModeladorCanvas(props: PropsModeladorCanvas) {
           border: '1px solid rgba(0,200,150,.28)',
         }}
       >
+        <input
+          value={arquiteto}
+          onChange={(evento) => setArquiteto(evento.target.value)}
+          placeholder="Arquiteto"
+          aria-label="Nome do arquiteto para o carimbo"
+          style={{ width: 96, padding: '4px 6px', borderRadius: 6, background: 'rgba(0,0,0,.35)', color: '#e6eeea', border: '1px solid rgba(255,255,255,.14)', fontSize: 11 }}
+        />
         <select
           value={escalaExport}
           onChange={(evento) => setEscalaExport(Number(evento.target.value) as EscalaPrancha)}
