@@ -30,18 +30,28 @@ export function simbolo(unidade: Unidade): string {
 }
 
 /** Casas decimais que não escondem a medida nem enchem a tela. */
-function casas(unidade: Unidade): number {
+export function casasDecimais(unidade: Unidade): number {
   if (unidade === 'mm') return 0;
   if (unidade === 'cm') return 1;
   if (unidade === 'pol') return 2;
   return 2;
 }
 
+/** Valor na unidade, sem símbolo — para `input` (usa vírgula). */
+export function formatarValor(metros: number, unidade: Unidade): string {
+  return deMetros(metros, unidade).toFixed(casasDecimais(unidade)).replace('.', ',');
+}
+
+/** Passo do campo numérico na unidade escolhida. */
+export function passoDaUnidade(unidade: Unidade): string {
+  if (unidade === 'mm') return '1';
+  if (unidade === 'cm') return '0.1';
+  return '0.01';
+}
+
 /** Ex.: 2.8 m em cm → "280,0 cm" */
 export function formatarComUnidade(metros: number, unidade: Unidade): string {
-  const valor = deMetros(metros, unidade);
-  const texto = valor.toFixed(casas(unidade)).replace('.', ',');
-  return texto + ' ' + simbolo(unidade);
+  return formatarValor(metros, unidade) + ' ' + simbolo(unidade);
 }
 
 /**

@@ -1,8 +1,10 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { Solido } from '../modelador/schema';
 import { Icone } from '../design/icones';
+import { formatarValor, paraMetros, passoDaUnidade, simbolo } from '../modelador/unidades';
+import type { Unidade } from '../modelador/unidades';
 
 export interface FaceEscolhida {
   solidoId: string;
@@ -36,6 +38,8 @@ export interface PropsPainelPropriedades {
   /** Não-nulo quando o sólido selecionado já é uma PAREDE no BIM. */
   paredeId: string | null;
   vaosExistentes: number;
+  /** Unidade de exibição/entrada dos campos de posição (o motor grava em metros). */
+  unidade: Unidade;
   aoTransformar: (transformacao: { posicao: [number, number, number]; escala: [number, number, number] }) => void;
   aoExcluir: () => void;
   /** Outros sólidos disponíveis para a booleana. */
@@ -142,37 +146,61 @@ function SecaoVaos(props: {
 
 function CamposTransformacao(props: {
   solido: Solido;
+  unidade: Unidade;
   aoTransformar: (transformacao: { posicao: [number, number, number]; escala: [number, number, number] }) => void;
 }) {
-  const [px, setPx] = useState(String(props.solido.transformacao.posicao[0]));
-  const [py, setPy] = useState(String(props.solido.transformacao.posicao[1]));
-  const [pz, setPz] = useState(String(props.solido.transformacao.posicao[2]));
-  const [ex, setEx] = useState(String(props.solido.transformacao.escala[0]));
-  const [ey, setEy] = useState(String(props.solido.transformacao.escala[1]));
-  const [ez, setEz] = useState(String(props.solido.transformacao.escala[2]));
+  const posicao = props.solido.transformacao.posicao;
+  const escala = props.solido.transformacao.escala;
+  const [px, setPx] = useState(formatarValor(posicao[0], props.unidade));
+  const [py, setPy] = useState(formatarValor(posicao[1], props.unidade));
+  const [pz, setPz] = useState(formatarValor(posicao[2], props.unidade));
+  const [ex, setEx] = useState(String(escala[0]));
+  const [ey, setEy] = useState(String(escala[1]));
+  const [ez, setEz] = useState(String(escala[2]));
+
+  // Reexibe quando o sólido muda, quando a unidade muda ou depois de aplicar.
+  useEffect(() => {
+    setPx(formatarValor(props.solido.transformacao.posicao[0], props.unidade));
+    setPy(formatarValor(props.solido.transformacao.posicao[1], props.unidade));
+    setPz(formatarValor(props.solido.transformacao.posicao[2], props.unidade));
+    setEx(String(props.solido.transformacao.escala[0]));
+    setEy(String(props.solido.transformacao.escala[1]));
+    setEz(String(props.solido.transformacao.escala[2]));
+  }, [props.solido.id, props.solido.transformacao, props.unidade]);
 
   const numero = (valor: string): number => Number(valor.replace(',', '.'));
 
   const confirmar = (): void => {
-    const valores = [px, py, pz, ex, ey, ez].map(numero);
-    if (!valores.every((valor) => Number.isFinite(valor))) return;
-    const [a, b, c, d, e, f] = valores;
-    props.aoTransformar({ posicao: [a, b, c], escala: [d === 0 ? 1 : d, e === 0 ? 1 : e, f === 0 ? 1 : f] });
+    const pos = [px, py, pz].map(numero);
+    const esc = [ex, ey, ez].map(numero);
+    if (!pos.every(Number.isFinite) || !esc.every(Number.isFinite)) return;
+    props.aoTransformar({
+      // entrada na unidade escolhida; gravação SEMPRE em metros
+      posicao: [paraMetros(pos[0], props.unidade), paraMetros(pos[1], props.unidade), paraMetros(pos[2], props.unidade)],
+      // escala é fator adimensional — não converte
+      escala: [esc[0] === 0 ? 1 : esc[0], esc[1] === 0 ? 1 : esc[1], esc[2] === 0 ? 1 : esc[2]],
+    });
   };
 
   const aoTeclar = (evento: React.KeyboardEvent<HTMLInputElement>): void => {
     if (evento.key === 'Enter') confirmar();
   };
 
+  const passo = passoDaUnidade(props.unidade);
+
   return (
     <>
-      <div className="arq-transf-titulo">Posição (m)</div>
-      <div className="arq-transf">
-        <input type="number" step="0.01" className="arq-field" value={px} onFocus={(e) => e.currentTarget.select()} onChange={(e) => setPx(e.target.value)} onBlur={confirmar} onKeyDown={aoTeclar} aria-label="Posição X" />
-        <input type="number" step="0.01" className="arq-field" value={py} onFocus={(e) => e.currentTarget.select()} onChange={(e) => setPy(e.target.value)} onBlur={confirmar} onKeyDown={aoTeclar} aria-label="Posição Y" />
-        <input type="number" step="0.01" className="arq-field" value={pz} onFocus={(e) => e.currentTarget.select()} onChange={(e) => setPz(e.target.value)} onBlur={confirmar} onKeyDown={aoTeclar} aria-label="Posição Z" />
+      <div className="arq-transf-titulo">
+        Posição <span className="arq-unidade">{simbolo(props.unidade)}</span>
       </div>
-      <div className="arq-transf-titulo">Escala</div>
+      <div className="arq-transf">
+        <input type="number" step={passo} className="arq-field" value={px} onFocus={(e) => e.currentTarget.select()} onChange={(e) => setPx(e.target.value)} onBlur={confirmar} onKeyDown={aoTeclar} aria-label={'Posição X em ' + simbolo(props.unidade)} />
+        <input type="number" step={passo} className="arq-field" value={py} onFocus={(e) => e.currentTarget.select()} onChange={(e) => setPy(e.target.value)} onBlur={confirmar} onKeyDown={aoTeclar} aria-label={'Posição Y em ' + simbolo(props.unidade)} />
+        <input type="number" step={passo} className="arq-field" value={pz} onFocus={(e) => e.currentTarget.select()} onChange={(e) => setPz(e.target.value)} onBlur={confirmar} onKeyDown={aoTeclar} aria-label={'Posição Z em ' + simbolo(props.unidade)} />
+      </div>
+      <div className="arq-transf-titulo">
+        Escala <span className="arq-unidade">×</span>
+      </div>
       <div className="arq-transf">
         <input type="number" step="0.01" className="arq-field" value={ex} onFocus={(e) => e.currentTarget.select()} onChange={(e) => setEx(e.target.value)} onBlur={confirmar} onKeyDown={aoTeclar} aria-label="Escala X" />
         <input type="number" step="0.01" className="arq-field" value={ey} onFocus={(e) => e.currentTarget.select()} onChange={(e) => setEy(e.target.value)} onBlur={confirmar} onKeyDown={aoTeclar} aria-label="Escala Y" />
@@ -276,6 +304,7 @@ export function PainelPropriedades(props: PropsPainelPropriedades) {
           <CamposTransformacao
             key={solido.id + ':' + solido.transformacao.posicao.join(',') + ':' + solido.transformacao.escala.join(',')}
             solido={solido}
+            unidade={props.unidade}
             aoTransformar={props.aoTransformar}
           />
 

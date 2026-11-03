@@ -936,6 +936,7 @@ export function EditorShell() {
             materializado={selecionadoMaterializado}
             aoMaterializar={materializarSelecionado}
             terreno={solidoSelecionado !== undefined && ehTerreno(solidoSelecionado)}
+            unidade={unidade}
             paredeId={paredeDoSolido === undefined ? null : paredeDoSolido.id}
             vaosExistentes={vaosDoSolido.length}
             aoAbrirVao={abrirVaoNaParede}
