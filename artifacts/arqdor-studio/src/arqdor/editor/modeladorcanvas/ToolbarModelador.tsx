@@ -25,7 +25,7 @@ export interface PropsToolbar {
 }
 
 const FERRAMENTAS: ReadonlyArray<{ id: FerramentaModelador; rotulo: string; icone: NomeIcone; tecla: string }> = [
-  { id: 'selecionar', rotulo: 'Selecionar', icone: 'selecionar', tecla: 'S' },
+  { id: 'selecionar', rotulo: 'Selecionar', icone: 'selecionar', tecla: 'Espaço' },
   { id: 'linha', rotulo: 'Linha', icone: 'linha', tecla: 'L' },
   { id: 'retangulo', rotulo: 'Retângulo', icone: 'retangulo', tecla: 'R' },
   { id: 'circulo', rotulo: 'Círculo', icone: 'circulo', tecla: 'C' },
@@ -35,8 +35,8 @@ const FERRAMENTAS: ReadonlyArray<{ id: FerramentaModelador; rotulo: string; icon
 
 const GIZMOS: ReadonlyArray<{ id: Exclude<ModoGizmo, null>; rotulo: string; icone: NomeIcone; tecla: string }> = [
   { id: 'mover', rotulo: 'Mover', icone: 'mover', tecla: 'M' },
-  { id: 'rotacionar', rotulo: 'Rotacionar', icone: 'rotacionar', tecla: 'O' },
-  { id: 'escalar', rotulo: 'Escalar', icone: 'escalar', tecla: 'E' },
+  { id: 'rotacionar', rotulo: 'Rotacionar', icone: 'rotacionar', tecla: 'Q' },
+  { id: 'escalar', rotulo: 'Escalar', icone: 'escalar', tecla: 'S' },
 ];
 
 /**

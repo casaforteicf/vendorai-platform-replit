@@ -32,6 +32,7 @@ import { gerarOpEscalar, gerarOpMover, gerarOpRotacionar } from './modelador/giz
 import type { ModoGizmo, TransformacaoLida } from './modeladorcanvas/ModeladorCanvas';
 import type { OperacaoModelador } from './modelador/schema';
 import { aplicarPasso } from './modelador/store-core';
+import { resolverAtalho } from './input/atalhos';
 import type { DocumentoArqdor } from './persistencia/documento';
 import { VERSAO_DOCUMENTO } from './persistencia/documento';
 import { obterProjeto, salvarProjeto } from './persistencia/apiStore';
@@ -62,6 +63,8 @@ export function EditorShell() {
   const ferramenta = useModeladorStore((s) => s.ferramenta);
   const setFerramenta = useModeladorStore((s) => s.setFerramenta);
   const selecionadoId = useModeladorStore((s) => s.solidoSelecionadoId);
+  const selecionados = useModeladorStore((s) => s.selecionados);
+  const alternarSelecionado = useModeladorStore((s) => s.alternarSelecionado);
   const selecionar = useModeladorStore((s) => s.selecionar);
   const indice = useModeladorStore((s) => s.indice);
   const totalPassos = useModeladorStore((s) => s.historico.length);
@@ -69,7 +72,6 @@ export function EditorShell() {
   const inserirCaixa = useModeladorStore((s) => s.inserirCaixa);
   const inserirTelhado = useModeladorStore((s) => s.inserirTelhado);
   const inserirEscada = useModeladorStore((s) => s.inserirEscada);
-  const removerSolido = useModeladorStore((s) => s.removerSolido);
   const aplicar = useModeladorStore((s) => s.aplicar);
   const desfazer = useModeladorStore((s) => s.desfazer);
   const refazer = useModeladorStore((s) => s.refazer);
@@ -92,6 +94,7 @@ export function EditorShell() {
   const [face, setFace] = useState<FaceEscolhida | null>(null);
   const [altura, setAltura] = useState('2.8');
   const [focoMedida, setFocoMedida] = useState(0);
+  const [focoCamera, setFocoCamera] = useState<{ alvo: [number, number, number]; versao: number } | null>(null);
   const [painelAberto, setPainelAberto] = useState(true);
 
   useEffect(() => {
@@ -304,6 +307,16 @@ export function EditorShell() {
     }
     setModalInserir(false);
     setAba('modelo');
+    // Enquadra a câmera no centro da peça recém-criada — sem isso ela nasce "fora de vista".
+    const [px, py, pz] = medidas.posicao;
+    setFocoCamera({
+      alvo: [
+        (Number.isFinite(px) ? px : 0) + largura / 2,
+        (Number.isFinite(py) ? py : 0) + alturaMedida / 2,
+        (Number.isFinite(pz) ? pz : 0) + profundidade / 2,
+      ],
+      versao: Date.now(),
+    });
     setAviso(
       medidas.nome +
         ' inserido em (' + medidas.posicao.join(', ') + ') com ' +
@@ -311,12 +324,30 @@ export function EditorShell() {
     );
   };
 
+  /**
+   * Exclui TODA a seleção (Ctrl/Shift incluídos) num único passo de undo, e remove os
+   * elementos BIM vinculados. O aviso diz quantos saíram — exclusão silenciosa é pior.
+   */
   const excluirSelecionado = (): void => {
-    if (solidoSelecionado === undefined) return;
-    const vinculo = elementos.find((el) => el.id === 'el_' + solidoSelecionado.id);
-    aplicarBim(vinculo === undefined ? [] : [{ tipo: 'remover_elemento_bim', elemento: vinculo }]);
-    removerSolido(solidoSelecionado.id);
-    setAviso('"' + solidoSelecionado.nome + '" excluído. Ctrl+Z desfaz.');
+    const alvos = selecionados.length > 0
+      ? selecionados
+      : solidoSelecionado === undefined ? [] : [solidoSelecionado.id];
+    if (alvos.length === 0) return;
+
+    const operacoes = alvos
+      .map((id) => solidos.find((item) => item.id === id))
+      .filter((item): item is (typeof solidos)[number] => item !== undefined)
+      .map((item) => ({ tipo: 'remover_solido' as const, solido: item }));
+
+    const vinculos = alvos
+      .map((id) => elementos.find((el) => el.id === 'el_' + id))
+      .filter((el): el is (typeof elementos)[number] => el !== undefined)
+      .map((el) => ({ tipo: 'remover_elemento_bim' as const, elemento: el }));
+
+    if (vinculos.length > 0) aplicarBim(vinculos);
+    aplicar(operacoes);
+    selecionar(null);
+    setAviso(alvos.length + ' sólido(s) excluído(s). Ctrl+Z desfaz.');
   };
 
   const transformarSelecionado = (transformacao: { posicao: [number, number, number]; escala: [number, number, number] }): void => {
@@ -619,27 +650,39 @@ export function EditorShell() {
   useEffect(() => {
     const aoTeclar = (evento: KeyboardEvent): void => {
       const alvo = evento.target as HTMLElement | null;
-      if (alvo !== null && (alvo.tagName === 'INPUT' || alvo.tagName === 'TEXTAREA')) return;
-      if ((evento.ctrlKey || evento.metaKey) && evento.key.toLowerCase() === 'z') {
+      if (alvo !== null && (alvo.tagName === 'INPUT' || alvo.tagName === 'TEXTAREA' || alvo.tagName === 'SELECT')) {
+        return;
+      }
+
+      const acao = resolverAtalho(evento);
+      if (acao === null) return;
+
+      if (acao.tipo === 'desfazer') {
         evento.preventDefault();
-        if (evento.shiftKey) refazer();
+        if (acao.refazer) refazer();
         else desfazer();
         return;
       }
-      const mapa: Record<string, FerramentaModelador> = {
-        s: 'selecionar',
-        l: 'linha',
-        r: 'retangulo',
-        c: 'circulo',
-        a: 'arco',
-        p: 'pushpull',
-      };
-      const escolhida = mapa[evento.key.toLowerCase()];
-      if (escolhida !== undefined) setFerramenta(escolhida);
+      if (acao.tipo === 'ferramenta') {
+        // Espaço é o Select do SketchUp; preventDefault evita rolar a página.
+        if (evento.code === 'Space' || evento.key === ' ') evento.preventDefault();
+        setFerramenta(acao.ferramenta);
+        return;
+      }
+      if (acao.tipo === 'gizmo') {
+        setGizmo((atual) => (atual === acao.modo ? null : acao.modo));
+        return;
+      }
+      if (acao.tipo === 'offset') {
+        setPainelAberto(true);
+        setAviso('Offset: escolha a face e informe a distância no inspetor.');
+        return;
+      }
+      excluirSelecionado();
     };
     window.addEventListener('keydown', aoTeclar);
     return () => window.removeEventListener('keydown', aoTeclar);
-  }, [desfazer, refazer, setFerramenta]);
+  }, [desfazer, refazer, setFerramenta, excluirSelecionado]);
 
   if (!carregado) {
     return (
@@ -739,7 +782,16 @@ export function EditorShell() {
               modo={ferramenta === 'pushpull' ? 'pushpull' : ferramenta === 'selecionar' ? 'selecionar' : 'desenho'}
               gizmo={gizmo}
               aoClicarNoPlano={aoClicarNoPlano}
-              aoSelecionar={selecionar}
+              aoSelecionar={(id, aditivo) => {
+                if (aditivo === true) {
+                  if (id === null) selecionar(null);
+                  else alternarSelecionado(id);
+                } else {
+                  selecionar(id);
+                }
+              }}
+              selecionados={selecionados}
+              foco={focoCamera}
               aoEscolherFace={(solidoId, faceId) => {
                 setFace({ solidoId, faceId });
                 setAviso('Face selecionada — informe a altura e aplique o Push/Pull.');
@@ -837,7 +889,7 @@ export function EditorShell() {
         <span>nível: {selecaoNivel === null ? '—' : selecaoNivel.nivel}{selecaoNivel !== null && selecaoNivel.arestas > 0 ? ' (' + String(selecaoNivel.arestas) + ' arestas)' : ''}</span>
         <span style={{ color: 'var(--arq-ed-suave)' }}>{aviso}</span>
         {ultimoErro !== null ? <span style={{ color: '#ea7373' }}>erro: {ultimoErro.codigo}</span> : null}
-        <span style={{ marginLeft: 'auto' }}>S/L/R/C/A · P push/pull · M/O/E gizmo · Ctrl+Z</span>
+        <span style={{ marginLeft: 'auto' }}>Espaço · L/R/C/A · P · M/Q/S · F offset · E excluir · Ctrl+Z</span>
       </div>
       </div>
       <ModalInserir aberto={modalInserir} aoFechar={() => setModalInserir(false)} aoInserir={inserir} />

@@ -11,6 +11,7 @@ import type { FerramentaModelador } from '../modelador/desenho';
 import type { OperacaoModelador, Solido, Transformacao, Vetor3 } from '../modelador/schema';
 import type { ErroStore, EstadoModelador } from '../modelador/store-core';
 import { ESTADO_INICIAL, aplicarPasso, novoSolidoId } from '../modelador/store-core';
+import { alternarSelecao, principalDaSelecao, selecaoSimples } from '../modelador/selecao';
 
 const IDENTIDADE: Transformacao = { posicao: [0, 0, 0], rotacao: [0, 0, 0], escala: [1, 1, 1] };
 
@@ -20,6 +21,8 @@ export interface ModeladorState {
   indice: number;
   ferramenta: FerramentaModelador;
   solidoSelecionadoId: string | null;
+  /** Seleção múltipla (Ctrl/Shift). `solidoSelecionadoId` é o principal dela. */
+  selecionados: string[];
   ultimoErro: ErroStore | null;
   criarSolido: () => void;
   /** Insere um sólido com medidas exatas (canto mínimo + dimensões). */
@@ -49,6 +52,8 @@ export interface ModeladorState {
   refazer: () => void;
   setFerramenta: (ferramenta: FerramentaModelador) => void;
   selecionar: (id: string | null) => void;
+  /** Ctrl/Shift: adiciona ou remove um sólido da seleção atual. */
+  alternarSelecionado: (id: string) => void;
   carregar: (estado: EstadoModelador) => void;
 }
 
@@ -56,8 +61,9 @@ export const useModeladorStore = create<ModeladorState>((set, get) => ({
   estado: ESTADO_INICIAL,
   historico: [ESTADO_INICIAL],
   indice: 0,
-  ferramenta: 'linha',
+  ferramenta: 'selecionar',
   solidoSelecionadoId: null,
+  selecionados: [],
   ultimoErro: null,
 
   criarSolido: () => {
@@ -82,6 +88,7 @@ export const useModeladorStore = create<ModeladorState>((set, get) => ({
       historico: [...historico.slice(0, indice + 1), novo],
       indice: indice + 1,
       solidoSelecionadoId: id,
+      selecionados: [id],
       ultimoErro: null,
     });
   },
@@ -105,6 +112,7 @@ export const useModeladorStore = create<ModeladorState>((set, get) => ({
       historico: [...historico.slice(0, indice + 1), novo],
       indice: indice + 1,
       solidoSelecionadoId: id,
+      selecionados: [id],
       ultimoErro: null,
     });
   },
@@ -128,6 +136,7 @@ export const useModeladorStore = create<ModeladorState>((set, get) => ({
       historico: [...historico.slice(0, indice + 1), novo],
       indice: indice + 1,
       solidoSelecionadoId: id,
+      selecionados: [id],
       ultimoErro: null,
     });
   },
@@ -151,12 +160,13 @@ export const useModeladorStore = create<ModeladorState>((set, get) => ({
       historico: [...historico.slice(0, indice + 1), novo],
       indice: indice + 1,
       solidoSelecionadoId: id,
+      selecionados: [id],
       ultimoErro: null,
     });
   },
 
   removerSolido: (solidoId) => {
-    const { estado, historico, indice, solidoSelecionadoId } = get();
+    const { estado, historico, indice, solidoSelecionadoId, selecionados } = get();
     const alvo = estado.solidos.find((item) => item.id === solidoId);
     if (alvo === undefined) return;
     const resultado = aplicarPasso(estado, [{ tipo: 'remover_solido', solido: alvo }], 'direta');
@@ -169,6 +179,7 @@ export const useModeladorStore = create<ModeladorState>((set, get) => ({
       historico: [...historico.slice(0, indice + 1), resultado.estado],
       indice: indice + 1,
       solidoSelecionadoId: solidoSelecionadoId === solidoId ? null : solidoSelecionadoId,
+      selecionados: selecionados.filter((item) => item !== solidoId),
       ultimoErro: null,
     });
   },
@@ -202,7 +213,14 @@ export const useModeladorStore = create<ModeladorState>((set, get) => ({
   },
 
   setFerramenta: (ferramenta) => set({ ferramenta }),
-  selecionar: (id) => set({ solidoSelecionadoId: id }),
+  selecionar: (id) => set({ solidoSelecionadoId: id, selecionados: selecaoSimples(id) }),
 
-  carregar: (estado) => set({ estado, historico: [estado], indice: 0, solidoSelecionadoId: null, ultimoErro: null }),
+  /** Ctrl/Shift: entra ou sai da seleção. O último clicado vira o principal (gizmo/painel). */
+  alternarSelecionado: (id) => {
+    const novo = alternarSelecao(get().selecionados, id);
+    set({ selecionados: novo, solidoSelecionadoId: principalDaSelecao(novo) });
+  },
+
+  carregar: (estado) =>
+    set({ estado, historico: [estado], indice: 0, solidoSelecionadoId: null, selecionados: [], ultimoErro: null }),
 }));

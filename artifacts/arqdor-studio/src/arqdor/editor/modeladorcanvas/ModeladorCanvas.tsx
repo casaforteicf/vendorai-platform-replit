@@ -31,7 +31,11 @@ export interface PropsModeladorCanvas {
   modo: ModoInteracao;
   gizmo: ModoGizmo;
   aoClicarNoPlano: (ponto: Vetor3) => void;
-  aoSelecionar: (solidoId: string | null) => void;
+  aoSelecionar: (solidoId: string | null, aditivo?: boolean) => void;
+  /** Sólidos destacados na cena (seleção múltipla com Ctrl/Shift). */
+  selecionados?: readonly string[];
+  /** Pede à câmera para enquadrar um ponto — usado logo após inserir uma peça. */
+  foco?: { alvo: Vetor3; versao: number } | null;
   aoEscolherFace: (solidoId: string, faceId: string) => void;
   /** Clique em face (faceId) ou aresta (arestaId) — alimenta a seleção inteligente. */
   aoClicarPeca?: (alvo: { solidoId: string; faceId: string | null; arestaId: string | null }) => void;
@@ -123,6 +127,7 @@ export function ModeladorCanvas(props: PropsModeladorCanvas) {
   const cenaRef = useRef<THREE.Scene | null>(null);
   const gruposRef = useRef<THREE.Group | null>(null);
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
+  const orbitaisRef = useRef<OrbitControls | null>(null);
   const gizmoRef = useRef<TransformControls | null>(null);
   const selecionadoRef = useRef<string | null>(null);
 
@@ -181,6 +186,7 @@ export function ModeladorCanvas(props: PropsModeladorCanvas) {
     orbitais.enablePan = true;
     orbitais.zoomSpeed = 1.2;
     orbitais.panSpeed = 0.9;
+    orbitaisRef.current = orbitais;
     orbitais.target.set(2.5, 0.6, 2);
     orbitais.update();
 
@@ -533,7 +539,7 @@ export function ModeladorCanvas(props: PropsModeladorCanvas) {
               if (ultimoFaceRef.current === chave && agora - ultimoFaceTempoRef.current < DUPLO_CLIQUE_MS) {
                 ultimoFaceRef.current = null;
                 ultimoFaceTempoRef.current = 0;
-                selecionarRef.current(solidoId);
+                selecionarRef.current(solidoId, evento.ctrlKey || evento.metaKey || evento.shiftKey);
                 duploCliqueRef.current?.(solidoId, faceId);
                 return;
               }
@@ -541,7 +547,7 @@ export function ModeladorCanvas(props: PropsModeladorCanvas) {
               ultimoFaceTempoRef.current = agora;
             }
 
-            selecionarRef.current(solidoId);
+            selecionarRef.current(solidoId, evento.ctrlKey || evento.metaKey || evento.shiftKey);
             clicarPecaRef.current?.({ solidoId, faceId, arestaId: arestaSnapRef.current });
             arestaSnapRef.current = null;
             if (modo === 'pushpull' && faceId !== null) faceRef.current(solidoId, faceId);
@@ -611,11 +617,13 @@ export function ModeladorCanvas(props: PropsModeladorCanvas) {
     }
     solidoAtual.current = new Map(props.solidos.map((s) => [s.id, s]));
     const materializados = new Set(props.solidosMaterializados);
+    const destacados =
+      props.selecionados ?? (props.selecionadoId === null ? [] : [props.selecionadoId]);
     for (const solido of props.solidos) {
-      grupos.add(construirSolido(solido, solido.id === props.selecionadoId, materializados.has(solido.id)));
+      grupos.add(construirSolido(solido, destacados.includes(solido.id), materializados.has(solido.id)));
     }
     selecionadoRef.current = props.selecionadoId;
-  }, [props.solidos, props.selecionadoId, props.solidosMaterializados]);
+  }, [props.solidos, props.selecionadoId, props.selecionados, props.solidosMaterializados]);
   // Overlay de seleção: face azul translúcida, loop verde.
   useEffect(() => {
     const overlay = overlayRef.current;
@@ -690,6 +698,19 @@ export function ModeladorCanvas(props: PropsModeladorCanvas) {
     controle.setMode(MODO_GIZMO[props.gizmo]);
     controle.attach(alvo);
   }, [props.gizmo, props.selecionadoId, props.solidos]);
+
+  // Enquadra a câmera no ponto pedido (peça recém-inserida) — sem isso a peça nasce "fora de vista".
+  useEffect(() => {
+    const orbitais = orbitaisRef.current;
+    const camera = cameraRef.current;
+    if (orbitais === null || camera === null) return;
+    const foco = props.foco;
+    if (foco === null || foco === undefined) return;
+    const [x, y, z] = foco.alvo;
+    orbitais.target.set(x, y, z);
+    camera.position.set(x + 4.5, y + 4.5, z + 7.5);
+    orbitais.update();
+  }, [props.foco]);
 
   return <div ref={containerRef} style={{ width: '100%', height: '100%' }} />;
 }
