@@ -32,6 +32,8 @@ import { centroNormalDaFace } from './modelador/grip';
 import { converterMedida } from './modelador/unidades';
 import { ehTerreno } from './terreno/terreno';
 import { useUnidadeStore } from './stores/useUnidadeStore';
+import { obterVista, vistasPorGrupo } from './vistas/vistas';
+import type { IdVista } from './vistas/vistas';
 import { gerarOpEscalar, gerarOpMover, gerarOpRotacionar } from './modelador/gizmo';
 import type { ModoGizmo, TransformacaoLida } from './modeladorcanvas/ModeladorCanvas';
 import type { OperacaoModelador } from './modelador/schema';
@@ -62,7 +64,7 @@ function arred(valor: number): number {
 export function EditorShell() {
   const [carregado, setCarregado] = useState(false);
   const [aba, setAba] = useState<'modelo' | 'planta' | 'conflitos'>('modelo');
-  const [vistaTopo, setVistaTopo] = useState(false);
+  const [vistaId, setVistaId] = useState<IdVista>('perspectiva');
   const [mep, setMep] = useState<ElementoMEP[]>([]);
   const [modalInserir, setModalInserir] = useState(false);
   const [booleanaPronta, setBooleanaPronta] = useState(false);
@@ -800,18 +802,26 @@ export function EditorShell() {
           <button type="button" role="tab" className="arq-tool" aria-pressed={aba === 'conflitos'} onClick={() => setAba('conflitos')}>
             Conflitos
           </button>
-          <button
-            type="button"
-            className="arq-tool"
-            aria-pressed={vistaTopo}
-            aria-label={vistaTopo ? 'Sair da vista de topo' : 'Vista de topo'}
-            title="Vista de topo (desenhar planta sobre o terreno)"
-            onClick={() => setVistaTopo((atual) => !atual)}
-            disabled={aba !== 'modelo'}
-          >
-            Topo
-          </button>
         </div>
+        <select
+          className="arq-select-unidade"
+          value={vistaId}
+          onChange={(evento) => setVistaId(evento.target.value as IdVista)}
+          aria-label="Vista do editor"
+          title="Vista: técnicas, axonométricas e cônicas"
+          disabled={aba !== 'modelo'}
+          style={{ marginLeft: 8, maxWidth: 230 }}
+        >
+          {vistasPorGrupo().map((grupo) => (
+            <optgroup key={grupo.grupo} label={grupo.rotulo}>
+              {grupo.vistas.map((vista) => (
+                <option key={vista.id} value={vista.id}>
+                  {vista.rotulo}
+                </option>
+              ))}
+            </optgroup>
+          ))}
+        </select>
         <div className="arq-header-spacer" />
         <button
           type="button"
@@ -879,7 +889,7 @@ export function EditorShell() {
               foco={focoCamera}
               unidade={unidade}
               ocultarGrade={solidos.some((item) => ehTerreno(item))}
-              vistaTopo={vistaTopo}
+              vista={obterVista(vistaId)}
               grip={gripFace}
               aoEsticarFace={esticarFace}
               aoEscolherFace={(solidoId, faceId) => {

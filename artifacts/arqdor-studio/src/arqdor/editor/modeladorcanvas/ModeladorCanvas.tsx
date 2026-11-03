@@ -9,6 +9,8 @@ import { TransformControls } from 'three/examples/jsm/controls/TransformControls
 import type { Solido, Vetor3 } from '../modelador/schema';
 import type { Unidade } from '../modelador/unidades';
 import { formatarComUnidade } from '../modelador/unidades';
+import type { ConfiguracaoVista } from '../vistas/vistas';
+import { cameraDaVista, planoDeCorte } from '../vistas/vistas';
 import { COR_SNAP, calcularSnap, corDoSnap, eixoDominante, travarNoEixo } from '../modelador/snap';
 import { metricasAresta, metricasFace } from '../modelador/metricas';
 import type { CandidatoSnap } from '../modelador/snap';
@@ -42,8 +44,8 @@ export interface PropsModeladorCanvas {
   unidade?: Unidade;
   /** Oculta a grade verde (o terreno de referência já é o piso). */
   ocultarGrade?: boolean;
-  /** Vista de topo: câmera acima do alvo, rotação travada (desenhar planta sobre o terreno). */
-  vistaTopo?: boolean;
+  /** Vista selecionada (registro em vistas/vistas.ts). */
+  vista?: ConfiguracaoVista;
   /** Grip de esticar a face selecionada (losango vermelho). */
   grip?: { posicao: Vetor3; normal: Vetor3; faceId: string } | null;
   /** Soltou o grip: deslocamento ao longo da normal, em metros. */
@@ -159,6 +161,7 @@ export function ModeladorCanvas(props: PropsModeladorCanvas) {
   const gripDeltaRef = useRef(0);
   const unidadeRef = useRef<Unidade>(props.unidade ?? 'm');
   const gradeRef = useRef<THREE.GridHelper | null>(null);
+  const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
   const gizmoRef = useRef<TransformControls | null>(null);
   const selecionadoRef = useRef<string | null>(null);
 
@@ -210,6 +213,7 @@ export function ModeladorCanvas(props: PropsModeladorCanvas) {
     renderer.setPixelRatio(Math.min(2, window.devicePixelRatio));
     renderer.setSize(container.clientWidth, container.clientHeight);
     container.appendChild(renderer.domElement);
+    rendererRef.current = renderer;
 
     const orbitais = new OrbitControls(camera, renderer.domElement);
     // Navegação padrão SketchUp: botão do MEIO = PAN, DIREITO = ORBIT, RODA = ZOOM.
@@ -841,28 +845,41 @@ export function ModeladorCanvas(props: PropsModeladorCanvas) {
     orbitais.update();
   }, [props.foco]);
 
-  // Vista de topo: câmera acima do alvo e rotação travada, para desenhar planta sobre o terreno.
+  // Vista selecionada: posiciona a câmera e (na planta baixa) liga o corte em 1,50 m.
   useEffect(() => {
     const orbitais = orbitaisRef.current;
     const camera = cameraRef.current;
-    if (orbitais === null || camera === null) return;
-    if (props.vistaTopo === true) {
-      orbitais.enableRotate = false;
-      orbitais.minPolarAngle = 0.0001;
-      orbitais.maxPolarAngle = 0.0001;
-      camera.up.set(0, 0, -1);
-      orbitais.target.set(0, 0, 0);
-      camera.position.set(0.0001, 45, 0.0001);
-      orbitais.update();
-      return;
-    }
-    orbitais.enableRotate = true;
-    orbitais.minPolarAngle = 0;
-    orbitais.maxPolarAngle = Math.PI / 2 - 0.01;
-    camera.up.set(0, 1, 0);
-    camera.position.set(18, 13, 22);
+    const vista = props.vista;
+    if (orbitais === null || camera === null || vista === undefined) return;
+
+    const alvo: Vetor3 = [0, 0, 0];
+    const config = cameraDaVista(vista, alvo, 16);
+    camera.up.set(config.up[0], config.up[1], config.up[2]);
+    camera.fov = config.fov;
+    camera.updateProjectionMatrix();
+    camera.position.set(config.posicao[0], config.posicao[1], config.posicao[2]);
+    orbitais.target.set(alvo[0], alvo[1], alvo[2]);
+    // Vista técnica é para olhar, não para orbitar.
+    orbitais.enableRotate = vista.grupo === 'livre';
     orbitais.update();
-  }, [props.vistaTopo]);
+
+    // Corte horizontal (planta baixa): clipping em todos os materiais da cena.
+    const corte = planoDeCorte(vista);
+    const renderer = rendererRef.current;
+    if (renderer !== null) renderer.localClippingEnabled = corte !== null;
+    const planos =
+      corte === null
+        ? []
+        : [new THREE.Plane(new THREE.Vector3(corte.normal[0], corte.normal[1], corte.normal[2]), corte.constante)];
+    cenaRef.current?.traverse((objeto) => {
+      const material = (objeto as THREE.Mesh).material;
+      const lista = material === undefined ? [] : Array.isArray(material) ? material : [material];
+      for (const item of lista) {
+        (item as THREE.Material).clippingPlanes = corte === null ? null : planos;
+        item.needsUpdate = true;
+      }
+    });
+  }, [props.vista, props.solidos]);
 
   // O terreno de referência substitui a grade: sem isso, a grade verde fica por cima do piso.
   useEffect(() => {
