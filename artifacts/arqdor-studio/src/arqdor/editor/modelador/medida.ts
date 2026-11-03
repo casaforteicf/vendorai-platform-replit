@@ -8,6 +8,7 @@
  *   3x4      → dimensões 3 × 4 (retângulo)
  *   3 x 4    → idem
  *   3;4      → idem
+ *   4;2,8;2  → caixa 4 (X) × 2,8 (Z) × 2 (Y) — largura; profundidade; altura
  *
  * Puro e sem DOM: a UI só mostra o erro.
  */
@@ -15,6 +16,7 @@
 export type MedidaLida =
   | { tipo: 'escalar'; valor: number }
   | { tipo: 'dimensoes'; largura: number; profundidade: number }
+  | { tipo: 'dimensoes3'; largura: number; profundidade: number; altura: number }
   | { tipo: 'vazio' }
   | { tipo: 'invalido'; texto: string };
 
@@ -40,6 +42,15 @@ export function interpretarMedida(texto: string): MedidaLida {
   }
 
   const porPontoEVirgula = bruto.split(/\s*;\s*/);
+  if (porPontoEVirgula.length === 3) {
+    const largura = numero(porPontoEVirgula[0]);
+    const profundidade = numero(porPontoEVirgula[1]);
+    const altura = numero(porPontoEVirgula[2]);
+    if (largura === null || profundidade === null || altura === null) {
+      return { tipo: 'invalido', texto: bruto };
+    }
+    return { tipo: 'dimensoes3', largura, profundidade, altura };
+  }
   if (porPontoEVirgula.length === 2) {
     const largura = numero(porPontoEVirgula[0]);
     const profundidade = numero(porPontoEVirgula[1]);

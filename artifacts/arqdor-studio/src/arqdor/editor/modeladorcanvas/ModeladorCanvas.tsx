@@ -36,6 +36,10 @@ export interface PropsModeladorCanvas {
   selecionados?: readonly string[];
   /** Pede à câmera para enquadrar um ponto — usado logo após inserir uma peça. */
   foco?: { alvo: Vetor3; versao: number } | null;
+  /** Grip de esticar a face selecionada (losango vermelho). */
+  grip?: { posicao: Vetor3; normal: Vetor3; faceId: string } | null;
+  /** Soltou o grip: deslocamento ao longo da normal, em metros. */
+  aoEsticarFace?: (faceId: string, delta: number) => void;
   aoEscolherFace: (solidoId: string, faceId: string) => void;
   /** Clique em face (faceId) ou aresta (arestaId) — alimenta a seleção inteligente. */
   aoClicarPeca?: (alvo: { solidoId: string; faceId: string | null; arestaId: string | null }) => void;
@@ -128,6 +132,13 @@ export function ModeladorCanvas(props: PropsModeladorCanvas) {
   const gruposRef = useRef<THREE.Group | null>(null);
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
   const orbitaisRef = useRef<OrbitControls | null>(null);
+  const gripRef = useRef<THREE.Mesh | null>(null);
+  const gripInfoRef = useRef(props.grip);
+  const esticarRef = useRef(props.aoEsticarFace);
+  const gripArrastandoRef = useRef(false);
+  const gripBaseRef = useRef<Vetor3 | null>(null);
+  const gripNormalRef = useRef<Vetor3 | null>(null);
+  const gripDeltaRef = useRef(0);
   const gizmoRef = useRef<TransformControls | null>(null);
   const selecionadoRef = useRef<string | null>(null);
 
@@ -161,6 +172,8 @@ export function ModeladorCanvas(props: PropsModeladorCanvas) {
   modoRef.current = props.modo;
   gizmoAtivoRef.current = props.gizmo !== null;
   modoGizmoRef.current = props.gizmo;
+  gripInfoRef.current = props.grip;
+  esticarRef.current = props.aoEsticarFace;
 
   useEffect(() => {
     const container = containerRef.current;
@@ -249,6 +262,18 @@ export function ModeladorCanvas(props: PropsModeladorCanvas) {
     hud.style.zIndex = '7';
     container.appendChild(hud);
     hudRef.current = hud;
+
+    // Grip de esticar a face (losango vermelho). Fica FORA de `grupos` para não entrar no
+    // raycast de seleção: clicar no grip estica, não seleciona.
+    const grip = new THREE.Mesh(
+      new THREE.OctahedronGeometry(0.09),
+      new THREE.MeshBasicMaterial({ color: 0xef4444, depthTest: false, transparent: true, opacity: 0.95 }),
+    );
+    grip.visible = false;
+    grip.renderOrder = 20;
+    grip.userData.ehGrip = true;
+    cena.add(grip);
+    gripRef.current = grip;
 
     const grupos = new THREE.Group();
     const overlay = new THREE.Group();
@@ -368,6 +393,27 @@ export function ModeladorCanvas(props: PropsModeladorCanvas) {
     const aoPressionar = (evento: PointerEvent): void => {
       inicioX = evento.clientX;
       inicioY = evento.clientY;
+
+      // Grip: captura o ponteiro ANTES da órbita e do desenho.
+      const gripPressionado = gripRef.current;
+      const infoGrip = gripInfoRef.current;
+      if (gripPressionado !== null && gripPressionado.visible && infoGrip !== null && infoGrip !== undefined) {
+        const caixa = renderer.domElement.getBoundingClientRect();
+        const ndc = new THREE.Vector2(
+          ((evento.clientX - caixa.left) / caixa.width) * 2 - 1,
+          -(((evento.clientY - caixa.top) / caixa.height) * 2 - 1),
+        );
+        const raio = new THREE.Raycaster();
+        raio.setFromCamera(ndc, camera);
+        if (raio.intersectObject(gripPressionado, false).length > 0) {
+          gripArrastandoRef.current = true;
+          gripBaseRef.current = infoGrip.posicao;
+          gripNormalRef.current = infoGrip.normal;
+          gripDeltaRef.current = 0;
+          orbitais.enabled = false;
+          evento.preventDefault();
+        }
+      }
     };
 
     const projetarTela = (ponto: Vetor3): { x: number; y: number } | null => {
@@ -404,6 +450,41 @@ export function ModeladorCanvas(props: PropsModeladorCanvas) {
     };
 
     const aoMover = (evento: PointerEvent): void => {
+      if (gripArrastandoRef.current) {
+        const base = gripBaseRef.current;
+        const normal = gripNormalRef.current;
+        const grip = gripRef.current;
+        if (base === null || normal === null || grip === null) return;
+        const caixa = renderer.domElement.getBoundingClientRect();
+        const ndc = new THREE.Vector2(
+          ((evento.clientX - caixa.left) / caixa.width) * 2 - 1,
+          -(((evento.clientY - caixa.top) / caixa.height) * 2 - 1),
+        );
+        const raio = new THREE.Raycaster();
+        raio.setFromCamera(ndc, camera);
+        const plano = new THREE.Plane(
+          new THREE.Vector3(normal[0], normal[1], normal[2]),
+          -(normal[0] * base[0] + normal[1] * base[1] + normal[2] * base[2]),
+        );
+        const ponto = new THREE.Vector3();
+        if (raio.ray.intersectPlane(plano, ponto) === null) return;
+        const delta =
+          (ponto.x - base[0]) * normal[0] +
+          (ponto.y - base[1]) * normal[1] +
+          (ponto.z - base[2]) * normal[2];
+        gripDeltaRef.current = delta;
+        grip.position.set(
+          base[0] + normal[0] * delta,
+          base[1] + normal[1] * delta,
+          base[2] + normal[2] * delta,
+        );
+        const hud = hudRef.current;
+        if (hud !== null) {
+          hud.textContent = 'Esticar · ' + delta.toFixed(2).replace('.', ',') + ' m';
+          hud.style.display = 'block';
+        }
+        return;
+      }
       if (gizmoAtivoRef.current) {
         snapRef.current = null;
         marcador.style.display = 'none';
@@ -502,6 +583,18 @@ export function ModeladorCanvas(props: PropsModeladorCanvas) {
     };
 
     const aoSoltar = (evento: PointerEvent): void => {
+      if (gripArrastandoRef.current) {
+        gripArrastandoRef.current = false;
+        orbitais.enabled = true;
+        const info = gripInfoRef.current;
+        const delta = gripDeltaRef.current;
+        gripDeltaRef.current = 0;
+        esconderHud();
+        if (info !== null && info !== undefined && Math.abs(delta) > 1e-6) {
+          esticarRef.current?.(info.faceId, delta);
+        }
+        return;
+      }
       const mexeu = Math.abs(evento.clientX - inicioX) > 4 || Math.abs(evento.clientY - inicioY) > 4;
       if (mexeu) return;
       if (controle.dragging === true) return;
@@ -592,6 +685,9 @@ export function ModeladorCanvas(props: PropsModeladorCanvas) {
       marcador.remove();
       dica.remove();
       hud.remove();
+      grip.geometry.dispose();
+      (grip.material as THREE.Material).dispose();
+      cena.remove(grip);
       renderer.domElement.removeEventListener('contextmenu', semMenuContexto);
       renderer.domElement.removeEventListener('pointerup', aoSoltar);
       controle.detach();
@@ -711,6 +807,23 @@ export function ModeladorCanvas(props: PropsModeladorCanvas) {
     camera.position.set(x + 4.5, y + 4.5, z + 7.5);
     orbitais.update();
   }, [props.foco]);
+
+  // Posiciona o grip na face selecionada (centro + normal).
+  useEffect(() => {
+    const grip = gripRef.current;
+    if (grip === null) return;
+    const alvo = props.grip;
+    if (alvo === null || alvo === undefined) {
+      grip.visible = false;
+      return;
+    }
+    grip.visible = true;
+    grip.position.set(
+      alvo.posicao[0] + alvo.normal[0] * 0.02,
+      alvo.posicao[1] + alvo.normal[1] * 0.02,
+      alvo.posicao[2] + alvo.normal[2] * 0.02,
+    );
+  }, [props.grip, props.solidos]);
 
   return <div ref={containerRef} style={{ width: '100%', height: '100%' }} />;
 }

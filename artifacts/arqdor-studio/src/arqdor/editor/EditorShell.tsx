@@ -28,6 +28,7 @@ import { PainelPropriedades } from './painel/PainelPropriedades';
 import type { FaceEscolhida, PreviaBim } from './painel/PainelPropriedades';
 import { calcularPushPull } from './modelador/pushpull';
 import { offsetDaFace } from './modelador/offset';
+import { centroNormalDaFace } from './modelador/grip';
 import { gerarOpEscalar, gerarOpMover, gerarOpRotacionar } from './modelador/gizmo';
 import type { ModoGizmo, TransformacaoLida } from './modeladorcanvas/ModeladorCanvas';
 import type { OperacaoModelador } from './modelador/schema';
@@ -213,6 +214,14 @@ export function EditorShell() {
     : elementos.find((el) => el.id === 'el_' + solidoSelecionado.id && el.tipo === 'parede');
   const vaosDoSolido = paredeDoSolido === undefined ? [] : vaosDaParede(elementos, paredeDoSolido.id);
 
+  /** Grip da face selecionada (centro + normal) — o losango vermelho do canvas. */
+  const gripFace = useMemo(() => {
+    if (face === null) return null;
+    const alvo = solidos.find((item) => item.id === face.solidoId);
+    if (alvo === undefined) return null;
+    return centroNormalDaFace(alvo, face.faceId);
+  }, [face, solidos]);
+
   /** Ids de sólidos que já viraram elemento BIM (prefixo `el_`). */
   const solidosMaterializados = useMemo<string[]>(
     () => elementos.filter((elemento) => elemento.id.startsWith('el_')).map((elemento) => elemento.id.slice(3)),
@@ -397,7 +406,31 @@ export function EditorShell() {
     }
 
     if (ferramenta === 'retangulo') {
-      if (lido.tipo !== 'dimensoes') return 'Retângulo aceita largura x profundidade (ex.: 3x4).';
+      if (lido.tipo === 'dimensoes3') {
+        if (lido.largura <= 0 || lido.profundidade <= 0 || lido.altura <= 0) {
+          return 'As três medidas precisam ser maiores que zero.';
+        }
+        const ancora = desenho.pontos.length >= 1 ? desenho.pontos[0] : ([0, 0, 0] as Vetor3);
+        const posicao: Vetor3 = [ancora[0], 0, ancora[2]];
+        inserirCaixa({
+          nome: 'Caixa',
+          posicao,
+          dimensoes: { largura: lido.largura, altura: lido.altura, profundidade: lido.profundidade },
+        });
+        setDesenho(iniciar('retangulo'));
+        setFocoCamera({
+          alvo: [posicao[0] + lido.largura / 2, lido.altura / 2, posicao[2] + lido.profundidade / 2],
+          versao: Date.now(),
+        });
+        setAviso(
+          'Caixa ' + String(lido.largura) + ' × ' + String(lido.profundidade) + ' × ' +
+            String(lido.altura) + ' m criada em (' + posicao[0] + ', 0, ' + posicao[2] + ').',
+        );
+        return null;
+      }
+      if (lido.tipo !== 'dimensoes') {
+        return 'Retângulo aceita 3x4 (largura × profundidade) ou 4;2,8;2 (largura; profundidade; altura).';
+      }
       if (solidoSelecionado === undefined) return 'Crie um sólido antes de desenhar.';
       if (desenho.pontos.length !== 1) return 'Clique no primeiro canto no plano.';
       const a = desenho.pontos[0];
@@ -533,6 +566,25 @@ export function EditorShell() {
     aplicarGeometria(resultado.operacoes, alvo.id);
     setAviso(
       'Push/Pull de ' + String(alturaNum) + ' m aplicado em "' + alvo.nome + '"' +
+        (eraBim ? ' — elemento BIM atualizado.' : '.'),
+    );
+    setFace(null);
+  };
+
+  /** Grip de edição: estica a face ao longo da normal em UM passo de undo (e sincroniza o BIM). */
+  const esticarFace = (faceId: string, delta: number): void => {
+    if (face === null) return;
+    const alvo = solidos.find((item) => item.id === face.solidoId);
+    if (alvo === undefined) return;
+    const resultado = calcularPushPull(alvo, faceId, delta);
+    if (!resultado.ok) {
+      setAviso('Não foi possível esticar: ' + resultado.erro.codigo + '.');
+      return;
+    }
+    const eraBim = solidosMaterializados.includes(alvo.id);
+    aplicarGeometria(resultado.operacoes, alvo.id);
+    setAviso(
+      'Face esticada em ' + delta.toFixed(2).replace('.', ',') + ' m' +
         (eraBim ? ' — elemento BIM atualizado.' : '.'),
     );
     setFace(null);
@@ -792,6 +844,8 @@ export function EditorShell() {
               }}
               selecionados={selecionados}
               foco={focoCamera}
+              grip={gripFace}
+              aoEsticarFace={esticarFace}
               aoEscolherFace={(solidoId, faceId) => {
                 setFace({ solidoId, faceId });
                 setAviso('Face selecionada — informe a altura e aplique o Push/Pull.');

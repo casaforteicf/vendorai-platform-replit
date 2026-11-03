@@ -10,6 +10,8 @@ import { metricasAresta, metricasFace } from '../../src/arqdor/editor/modelador/
 import { offsetDaFace, offsetPoligono } from '../../src/arqdor/editor/modelador/offset';
 import type { Ponto2D } from '../../src/arqdor/editor/modelador/offset';
 import type { Solido } from '../../src/arqdor/editor/modelador/schema';
+import { criarCaixa } from '../../src/arqdor/editor/modelador/caixa';
+import { centroNormalDaFace } from '../../src/arqdor/editor/modelador/grip';
 import { textoDoArrasto, textoEscalar, textoMover, textoRotacionar } from '../../src/arqdor/editor/modelador/gizmo-hud';
 import type { TransformacaoGizmo } from '../../src/arqdor/editor/modelador/gizmo-hud';
 import type { Vetor3 } from '../../src/arqdor/editor';
@@ -178,6 +180,41 @@ ok(
   (textoDoArrasto('mover', t0, { ...t0, posicao: [0, 0, 3] }) ?? '').includes('Z +3,00 m'),
   'readout despacha pelo modo ativo (mover → Z)',
 );
+
+// ---------- 10. coordenadas múltiplas (largura; profundidade; altura) ----------
+const tres = interpretarMedida('4;2,8;2');
+ok(
+  tres.tipo === 'dimensoes3' && perto(tres.largura, 4) && perto(tres.profundidade, 2.8) && perto(tres.altura, 2),
+  'medida: 4;2,8;2 → largura 4, profundidade 2,8, altura 2',
+);
+ok(interpretarMedida('4; 2,8 ; 2').tipo === 'dimensoes3', 'medida: aceita espaços entre os pontos e vírgulas');
+const duas = interpretarMedida('4;2,8');
+ok(duas.tipo === 'dimensoes' && perto(duas.largura, 4), 'medida: 4;2,8 continua sendo 2 dimensões');
+ok(interpretarMedida('4;x;2').tipo === 'invalido', 'medida: valor não numérico no trio é inválido');
+ok(interpretarMedida('4;2;2;1').tipo === 'invalido', 'medida: quatro valores é inválido');
+
+// ---------- 11. grip da face ----------
+const caixaGrip = criarCaixa({
+  id: 'grip1',
+  nome: 'Caixa',
+  posicao: [0, 0, 0],
+  dimensoes: { largura: 1, altura: 1, profundidade: 1 },
+});
+ok(caixaGrip.ok, 'grip: caixa de teste criada');
+if (caixaGrip.ok) {
+  const topo = caixaGrip.solido.faces.find((face) => face.id.endsWith('_f_topo'));
+  ok(topo !== undefined, 'grip: face de topo encontrada');
+  if (topo !== undefined) {
+    const grip = centroNormalDaFace(caixaGrip.solido, topo.id);
+    ok(grip !== null, 'grip: face gera centro e normal');
+    if (grip !== null) {
+      ok(perto(grip.posicao[1], 1), 'grip: centro no plano da face (y = 1)');
+      ok(perto(grip.posicao[0], 0.5) && perto(grip.posicao[2], 0.5), 'grip: centro no meio da face');
+      ok(perto(grip.normal[1], 1), 'grip: normal aponta para +Y');
+    }
+  }
+  ok(centroNormalDaFace(caixaGrip.solido, 'nao-existe') === null, 'grip: face inexistente → null');
+}
 
 console.log('');
 console.log('resultado: ' + String(passou) + ' passaram, ' + String(falhou) + ' falharam');
