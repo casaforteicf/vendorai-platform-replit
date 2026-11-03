@@ -19,6 +19,8 @@ import type { FontePreco, Material } from './schema';
 export interface PainelMateriaisProps {
   aberto: boolean;
   aoFechar: () => void;
+  /** Renderiza dentro do inspetor (sem overlay fixo). */
+  inline?: boolean;
 }
 
 const CATEGORIAS: readonly Categoria[] = ['alvenaria', 'estrutura', 'acabamento', 'esquadria', 'mobiliario', 'cobertura', 'mep'];
@@ -44,7 +46,7 @@ function corFonte(fonte: FontePreco): string {
   return '#00c896';
 }
 
-export function PainelMateriais({ aberto, aoFechar }: PainelMateriaisProps) {
+export function PainelMateriais({ aberto, aoFechar, inline }: PainelMateriaisProps) {
   const [catalogo, setCatalogo] = useState<Catalogo>(() => catalogoPadrao());
   const [busca, setBusca] = useState('');
   const [categoria, setCategoria] = useState<'todas' | Categoria>('todas');
@@ -164,20 +166,20 @@ export function PainelMateriais({ aberto, aoFechar }: PainelMateriaisProps) {
   return (
     <div
       style={{
-        position: 'fixed',
-        right: 16,
-        top: 72,
-        width: 420,
-        maxHeight: '82vh',
-        overflowY: 'auto',
-        background: '#0f1f1a',
-        border: '1px solid rgba(255,255,255,.12)',
-        borderRadius: 12,
-        boxShadow: '0 18px 40px rgba(0,0,0,.45)',
-        zIndex: 70,
+        position: inline === true ? 'static' : 'fixed',
+        right: inline === true ? undefined : 16,
+        top: inline === true ? undefined : 72,
+        width: inline === true ? '100%' : 420,
+        maxHeight: inline === true ? 'none' : '82vh',
+        overflowY: inline === true ? 'visible' : 'auto',
+        background: inline === true ? 'transparent' : '#0f1f1a',
+        border: inline === true ? 'none' : '1px solid rgba(255,255,255,.12)',
+        borderRadius: inline === true ? 0 : 12,
+        boxShadow: inline === true ? 'none' : '0 18px 40px rgba(0,0,0,.45)',
+        zIndex: inline === true ? undefined : 70,
         fontFamily: 'Montserrat, Segoe UI, sans-serif',
         color: '#e6eeea',
-        padding: 12,
+        padding: inline === true ? 0 : 12,
       }}
       role="dialog"
       aria-label="Catálogo de materiais"

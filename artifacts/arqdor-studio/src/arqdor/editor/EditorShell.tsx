@@ -479,6 +479,8 @@ export function EditorShell() {
     altKey?: boolean;
     shiftKey?: boolean;
   }): void => {
+    // Selecionar no 3D volta o inspetor ao normal.
+    setMateriaisAberto(false);
     const solido = solidos.find((item) => item.id === info.solidoId);
     if (solido === undefined) return;
 
@@ -795,13 +797,13 @@ export function EditorShell() {
       <div className="arq-editor-page arq-ed-v2">
       <div className="arq-editor-toolbar">
         <div style={{ display: 'flex', gap: 4 }} role="tablist" aria-label="Vista">
-          <button type="button" role="tab" className="arq-tool" aria-pressed={aba === 'modelo'} onClick={() => setAba('modelo')}>
+          <button type="button" role="tab" className="arq-tool" aria-pressed={aba === 'modelo'} onClick={() => { setAba('modelo'); setMateriaisAberto(false); }}>
             Modelo 3D
           </button>
-          <button type="button" role="tab" className="arq-tool" aria-pressed={aba === 'planta'} onClick={() => setAba('planta')}>
+          <button type="button" role="tab" className="arq-tool" aria-pressed={aba === 'planta'} onClick={() => { setAba('planta'); setMateriaisAberto(false); }}>
             Planta 2D
           </button>
-          <button type="button" role="tab" className="arq-tool" aria-pressed={aba === 'conflitos'} onClick={() => setAba('conflitos')}>
+          <button type="button" role="tab" className="arq-tool" aria-pressed={aba === 'conflitos'} onClick={() => { setAba('conflitos'); setMateriaisAberto(false); }}>
             Conflitos
           </button>
         </div>
@@ -955,7 +957,12 @@ export function EditorShell() {
         </div>
 
         {aba === 'conflitos' ? null : (
-        <aside className="arq-editor-aside">
+        <aside className={'arq-editor-aside' + (materiaisAberto ? ' is-materiais' : '')}>
+          {materiaisAberto ? (
+            <div className="arq-materiais">
+              <PainelMateriais aberto aoFechar={() => setMateriaisAberto(false)} inline />
+            </div>
+          ) : null}
           <div className="arq-inspetor-head">
             <h2>Inspetor</h2>
           </div>
@@ -1010,7 +1017,6 @@ export function EditorShell() {
       </div>
       </div>
       <ModalInserir aberto={modalInserir} aoFechar={() => setModalInserir(false)} aoInserir={inserir} />
-      <PainelMateriais aberto={materiaisAberto} aoFechar={() => setMateriaisAberto(false)} />
       <PainelTerreno
         aberto={terrenoAberto}
         aoFechar={() => setTerrenoAberto(false)}

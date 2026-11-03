@@ -812,6 +812,13 @@ button { font-family: inherit; }
   box-shadow: 0 0 0 2px rgba(255, 255, 255, .1);
 }
 
+/* painel de materiais dentro do inspetor (substitui as camadas) */
+.arq-editor-aside.is-materiais > *:not(.arq-materiais) { display: none; }
+.arq-materiais {
+  display: flex; flex-direction: column;
+  width: 100%; min-height: 0; overflow-y: auto;
+}
+
 /* chip da unidade nos rótulos do inspetor (substitui o antigo "(m)") */
 .arq-unidade {
   display: inline-block; margin-left: 6px; padding: 1px 6px;
