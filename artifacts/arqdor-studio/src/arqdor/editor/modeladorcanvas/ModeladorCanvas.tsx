@@ -46,6 +46,9 @@ const MODO_GIZMO: Record<Exclude<ModoGizmo, null>, 'translate' | 'rotate' | 'sca
   escalar: 'scale',
 };
 
+/** Janela do duplo clique na face (ms) — dois cliques no mesmo alvo, com Push/Pull ativo. */
+const DUPLO_CLIQUE_MS = 400;
+
 function construirSolido(solido: Solido, selecionado: boolean, materializado: boolean): THREE.Group {
   const grupo = new THREE.Group();
   grupo.name = solido.id;
@@ -127,6 +130,8 @@ export function ModeladorCanvas(props: PropsModeladorCanvas) {
   const transformarRef = useRef(props.aoTransformar);
   const clicarPecaRef = useRef(props.aoClicarPeca);
   const duploCliqueRef = useRef(props.aoDuploCliqueFace);
+  const ultimoFaceRef = useRef<string | null>(null);
+  const ultimoFaceTempoRef = useRef(0);
   const modoRef = useRef(props.modo);
   const gizmoAtivoRef = useRef(false);
   const snapRef = useRef<Vetor3 | null>(null);
@@ -438,23 +443,31 @@ export function ModeladorCanvas(props: PropsModeladorCanvas) {
           while (alvo !== null && alvo.userData.solidoId === undefined) alvo = alvo.parent;
           const solidoId = alvo !== null ? (alvo.userData.solidoId as string | undefined) : undefined;
           if (solidoId !== undefined) {
-            selecionarRef.current(solidoId);
-            {
-              const mapa = (primeiro.object as THREE.Mesh).userData.mapaFaces as string[] | undefined;
-              const indice = primeiro.faceIndex;
-              const faceId = mapa !== undefined && indice !== null && indice !== undefined ? (mapa[indice] ?? null) : null;
-              const aresta = arestaSnapRef.current;
-              clicarPecaRef.current?.({ solidoId, faceId, arestaId: aresta });
-              arestaSnapRef.current = null;
-            }
-            if (modo === 'pushpull') {
-              const mapaFaces = (primeiro.object as THREE.Mesh).userData.mapaFaces as string[] | undefined;
-              const indice = primeiro.faceIndex;
-              if (mapaFaces !== undefined && indice !== null && indice !== undefined) {
-                const faceId = mapaFaces[indice];
-                if (faceId !== undefined) faceRef.current(solidoId, faceId);
+            const mapa = (primeiro.object as THREE.Mesh).userData.mapaFaces as string[] | undefined;
+            const indice = primeiro.faceIndex;
+            const faceId = mapa !== undefined && indice !== null && indice !== undefined ? (mapa[indice] ?? null) : null;
+
+            // Duplo clique por TEMPO (não pelo evento nativo `dblclick`): dois cliques na mesma
+            // face com Push/Pull ativo abrem a medida. O evento nativo não é confiável fora do
+            // mouse humano (automação/cliques sintéticos não o emitem).
+            if (modo === 'pushpull' && faceId !== null) {
+              const chave = solidoId + '|' + faceId;
+              const agora = Date.now();
+              if (ultimoFaceRef.current === chave && agora - ultimoFaceTempoRef.current < DUPLO_CLIQUE_MS) {
+                ultimoFaceRef.current = null;
+                ultimoFaceTempoRef.current = 0;
+                selecionarRef.current(solidoId);
+                duploCliqueRef.current?.(solidoId, faceId);
+                return;
               }
+              ultimoFaceRef.current = chave;
+              ultimoFaceTempoRef.current = agora;
             }
+
+            selecionarRef.current(solidoId);
+            clicarPecaRef.current?.({ solidoId, faceId, arestaId: arestaSnapRef.current });
+            arestaSnapRef.current = null;
+            if (modo === 'pushpull' && faceId !== null) faceRef.current(solidoId, faceId);
             return;
           }
         }
@@ -481,42 +494,16 @@ export function ModeladorCanvas(props: PropsModeladorCanvas) {
     };
     window.addEventListener('keydown', aoTeclaShift);
     window.addEventListener('keyup', aoTeclaShift);
-    /** Duplo clique: acha a face sob o cursor e devolve para a UI abrir a medida. */
-    const aoDuploClique = (evento: MouseEvent): void => {
-      const caixa = renderer.domElement.getBoundingClientRect();
-      const ndc = new THREE.Vector2(
-        ((evento.clientX - caixa.left) / caixa.width) * 2 - 1,
-        -(((evento.clientY - caixa.top) / caixa.height) * 2 - 1),
-      );
-      const raio = new THREE.Raycaster();
-      raio.setFromCamera(ndc, camera);
-      const atingidos = raio
-        .intersectObjects(grupos.children, true)
-        .filter((acerto) => (acerto.object as THREE.Mesh).isMesh === true);
-      const primeiro = atingidos[0];
-      if (primeiro === undefined) return;
-      let alvo: THREE.Object3D | null = primeiro.object;
-      while (alvo !== null && alvo.userData.solidoId === undefined) alvo = alvo.parent;
-      const solidoId = alvo !== null ? (alvo.userData.solidoId as string | undefined) : undefined;
-      if (solidoId === undefined) return;
-      const mapa = (primeiro.object as THREE.Mesh).userData.mapaFaces as string[] | undefined;
-      const indice = primeiro.faceIndex;
-      const faceId = mapa !== undefined && indice !== null && indice !== undefined ? (mapa[indice] ?? null) : null;
-      if (faceId === null) return;
-      duploCliqueRef.current?.(solidoId, faceId);
-    };
 
     renderer.domElement.addEventListener('pointerdown', aoPressionar);
     renderer.domElement.addEventListener('pointermove', aoMover);
     renderer.domElement.addEventListener('pointerup', aoSoltar);
-    renderer.domElement.addEventListener('dblclick', aoDuploClique);
 
     return () => {
       vivo = false;
       observador.disconnect();
       renderer.domElement.removeEventListener('pointerdown', aoPressionar);
       renderer.domElement.removeEventListener('pointermove', aoMover);
-      renderer.domElement.removeEventListener('dblclick', aoDuploClique);
       window.removeEventListener('keydown', aoTeclaShift);
       window.removeEventListener('keyup', aoTeclaShift);
       marcador.remove();

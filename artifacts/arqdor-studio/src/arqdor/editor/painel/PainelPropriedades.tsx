@@ -287,6 +287,13 @@ export function PainelPropriedades(props: PropsPainelPropriedades) {
           <p className="arq-muted" style={{ margin: '0 0 8px', lineHeight: 1.5 }}>
             Face selecionada. Informe a altura (m). Positivo puxa, negativo empurra.
           </p>
+          {props.materializado ? (
+            <p className="arq-aviso-bim">
+              Este sólido já é um Elemento BIM. O Push/Pull altera a geometria do sólido; para refletir no
+              modelo, clique em <strong>Atualizar no BIM</strong> depois. Atalho: duplo clique na face com o
+              Push/Pull ativo abre o campo de medida.
+            </p>
+          ) : null}
           <input
             className="arq-field"
             style={{ width: '100%' }}
@@ -296,7 +303,7 @@ export function PainelPropriedades(props: PropsPainelPropriedades) {
             inputMode="decimal"
           />
           <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
-            <button type="button" className="arq-btn arq-btn-primary" style={{ flex: 1, justifyContent: 'center', height: 34 }} onClick={props.aoAplicarPushPull}>
+            <button type="button" className="arq-btn arq-btn-primary" style={{ flex: 1, justifyContent: 'center', height: 34 }} onClick={() => props.aoAplicarPushPull()}>
               Aplicar
             </button>
             <button type="button" className="arq-btn" style={{ height: 34 }} onClick={props.aoCancelarFace}>

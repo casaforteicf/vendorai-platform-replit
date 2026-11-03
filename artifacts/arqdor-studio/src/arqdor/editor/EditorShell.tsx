@@ -443,7 +443,8 @@ export function EditorShell() {
       setFace(null);
       return;
     }
-    const alturaNum = Number((alturaDigitada ?? altura).replace(',', '.'));
+    const fonte = typeof alturaDigitada === 'string' ? alturaDigitada : altura;
+    const alturaNum = Number(fonte.replace(',', '.'));
     if (!Number.isFinite(alturaNum) || alturaNum === 0) {
       setAviso('Altura inválida — informe um número diferente de zero.');
       return;

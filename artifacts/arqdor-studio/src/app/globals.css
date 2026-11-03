@@ -583,6 +583,19 @@ button { font-family: inherit; }
 /* divisória entre os painéis do inspetor */
 .arq-sep { height: 1px; background: var(--arq-ed-linha); margin: 14px 0; }
 
+/* aviso: sólido já convertido — Push/Pull não propaga sozinho ao elemento BIM */
+.arq-aviso-bim {
+  margin: 0 0 8px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid rgba(245, 158, 11, .35);
+  background: rgba(245, 158, 11, .10);
+  color: #fcd34d;
+  font-size: 10.5px;
+  line-height: 1.5;
+}
+.arq-aviso-bim strong { color: #fde68a; font-weight: 700; }
+
 /* barra de status */
 .arq-editor-page .arq-statusbar {
   background: var(--arq-ed-base);
