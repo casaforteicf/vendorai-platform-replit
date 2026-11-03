@@ -2,8 +2,9 @@
 
 **Para:** DeepSeek (autor da interface nova)
 **Data:** 2026-11-03
-**Versão do motor:** Fase 1 concluída + Fase 2 (M1 materiais, M2 biblioteca, M3/C render, M4 IA) concluída
-**Estado:** contrato fechado · motor validado com **610 asserts em 25 suítes** (`node tests/run-all.mjs`)
+**Versão do motor:** Fase 1 + Fase 2 (M1 materiais, M2 biblioteca, M3/C render, M4 IA) + **Lote 1**
+(terreno, importação GLB/DXF, Postgres, transporte do render) — concluídos
+**Estado:** contrato fechado · motor validado com **690 asserts em 28 suítes** (`node tests/run-all.mjs`)
 
 > Este documento é a fronteira entre o motor (pronto e testado) e a interface (a ser criada).
 > Ele **não** descreve layout, cores nem componentes visuais: descreve **quem calcula o quê**.
@@ -172,6 +173,8 @@ A UI mapeia `codigo` → texto humano. Nunca tenta adivinhar a causa pelo texto.
 | `fingerprintDocumento` | `(documento) → string` | carimbo de versão |
 | `criarClienteRender` | `(transporte, opcoes?) → {enfileirar, consultar, aguardar}` | fila com timeout |
 | `TransporteRender` | interface `{enviar, consultar}` | adaptador do worker legado (Contabo) |
+| `criarTransporteHttp` | `({baseUrl, token?, fetch}) → TransporteRender` | POST `/render`, GET `/render/:id` |
+| `transporteDeAmbiente` | `(env, fetch) → {worker, bucketR2} \| null` | lê `RENDER_WORKER_URL`/`RENDER_WORKER_TOKEN`/`R2_BUCKET` |
 
 ### 3.6 IA — `ia/`
 | Export | Assinatura | Uso |
@@ -190,6 +193,35 @@ A UI mapeia `codigo` → texto humano. Nunca tenta adivinhar a causa pelo texto.
 
 > O escopo `mep` ainda não tem aplicador na ponte da IA: nenhuma tela deve tentar aplicar um passo de
 > IA que toque MEP (`ESCOPO_NAO_SUPORTADO`).
+
+### 3.8 Terreno — `terreno/`
+| Export | Assinatura | Uso |
+|---|---|---|
+| `interpretarLocalizacao` | `(texto) → {ok, localizacao} \| {ok:false, erro}` | aceita `lat,lng`, `@lat,lng,17z`, `?q=`, `mlat/mlon`, `geo:` |
+| `tileDaLocalizacao` / `metrosPorPixel` | `(lat,lng,zoom) → Tile` / `(lat,zoom) → number` | escala do plano |
+| `urlTerreno` | `(provedor, tile, google?) → string \| null` | OSM/Esri/Google (Google exige chave) |
+| `criarTerreno` | `({id, localizacao, largura?, profundidade?, provedor?}) → {ok, solido, textura}` | quad de referência |
+| `ehTerreno` / `contabilizaNoOrcamento` | `(solido) → boolean` | terrena **nunca** entra no orçamento |
+
+> O terreno é `Solido` com prefixo `__terreno__` e **não** é materializado como `ElementoBim`.
+> A UI deve aplicar como **um** passo e mostrar a atribuição do provedor (licença).
+
+### 3.9 Importação — `importacao/`
+| Export | Assinatura | Uso |
+|---|---|---|
+| `processarArquivo` | `({nome, bytes, idSolido}) → {ok, formato, solido, resumo}` | GLB e DXF; `.gltf`/`.ifc` recusados com motivo |
+| `construirSolido` | `(malha, {id, nome}) → {ok, solido}` | dedupe + centragem (x,z) + base em y=0 |
+| `operacoesDeImportacao` | `(solido) → OperacaoModelador[]` | **uma** operação ⇒ um PassoUndo |
+| `detectarFormato` | `(nome) → 'glb'\|'gltf'\|'dxf'\|'ifc'\|null` | extensão |
+
+### 3.10 Persistência — `persistencia/`
+| Export | Assinatura | Uso |
+|---|---|---|
+| `criarAdaptadorPostgres` | `(poolLike) → {salvarProjeto, obterProjeto, listarProjetos}` | tabela `arqdor_projetos` (jsonb) |
+| `criarAdaptadorResiliente` | `({primario, reserva}) → AdaptadorProjeto` | Postgres com fallback local |
+| `adaptadorDeAmbiente` | `(env, local, pool) → AdaptadorProjeto` | `DATABASE_URL` + pool → Postgres; senão local |
+
+> **Decisão vigente:** o app usa o adaptador **local** por padrão no MVP. Postgres fica para a nuvem.
 
 ---
 
@@ -251,6 +283,31 @@ Para cada um: responsabilidade, o que consome, o que **não** pode fazer e crit�
 - **Não pode:** aplicar `ToolCall` sem passar pelo `executarPlano`; executar ferramenta não reversível sem `confirmado: true`; escrever no store fora de `aplicarPassoDaIA`.
 - **Aceite:** pedido que falha na 2ª ferramenta **não altera nada**; ação não reversível pede confirmação; toda ação da IA vira **um** Ctrl+Z.
 
+### 4.10 Tela de Terreno
+- **Responsável:** entrada de coordenadas/link, provedor, dimensões, criar e remover o plano de referência.
+- **Consome:** `interpretarLocalizacao`, `criarTerreno`, `urlTerreno`, `ehTerreno`, `contabilizaNoOrcamento`, `aplicar`.
+- **Não pode:** calcular escala/UV na UI; materializar terreno como `ElementoBim`; esconder a atribuição do provedor.
+- **Aceite:** criar em **um** passo (Ctrl+Z remove); orçamento não muda; atribuição visível; link inválido → mensagem do motor.
+- **Já existe versão mínima** (`terreno/PainelTerreno.tsx`) — referência de **comportamento**, não de layout.
+
+### 4.11 Tela de Importação
+- **Responsável:** upload de GLB/DXF, progresso, resultado, enquadrar a câmera no modelo importado.
+- **Consome:** `processarArquivo` (dentro do Web Worker), `operacoesDeImportacao`, `aplicar`, `foco` da câmera.
+- **Não pode:** parsear arquivo na thread da UI; gerar N passos por face; prometer IFC (recusado nesta fase).
+- **Aceite:** **um** passo; modelo centrado em (x,z) e apoiado em `y = 0`; `.gltf`/`.ifc` mostram o motivo do motor.
+- **Estado:** motor pronto; o `worker.ts` ainda **não** tem wiring de bundler — o registro do Worker é desta tela.
+
+### 4.12 Decisões do dono (2026-11-03) — o que a UI deve assumir
+
+| Decisão | Consequência na UI |
+|---|---|
+| **IFC fora do MVP** (Fase 3) | não instalar `web-ifc`; exibir "formato não suportado nesta fase" com o motivo do motor |
+| **Persistência local é o padrão do MVP** | telas não assumem Postgres; nuvem/Supabase quando a VPS estiver pronta |
+| `DEEPSEEK_API_KEY` **configurada** | chat usa o caminho real; o modo local é só fallback quando a chave faltar |
+| `RENDER_WORKER_URL` e `DATABASE_URL` **pendentes** | telas de render e de nuvem devem tratar "não configurado" (`transporteDeAmbiente` → `null`) |
+| Terreno: **OSM padrão**; Google exige chave | `PROVEDOR_REQUER_CHAVE` deve virar mensagem clara, não erro genérico |
+| Chat e Terreno têm **protótipos de comportamento** | reaproveitar a lógica dos painéis atuais; o visual é livre |
+
 ---
 
 ## 5. Fluxos que a UI precisa fechar (com a ordem exata das chamadas)
@@ -299,7 +356,10 @@ exibir `url`.
 - [ ] porta chama `abrirVao` **e** `cortarVao`;
 - [ ] chat aplica somente via `aplicarPassoDaIA` e pede confirmação no que não é reversível;
 - [ ] tela de materiais mostra `ignorados` da importação;
-- [ ] render usa `documentoHash` e trata `SEM_URL`/`TIMEOUT`/`FALHOU`.
+- [ ] render usa `documentoHash` e trata `SEM_URL`/`TIMEOUT`/`FALHOU`;
+- [ ] terreno aplica em **um** passo e mostra a atribuição do provedor;
+- [ ] importação aplica em **um** passo, centra o modelo e trata `.gltf`/`.ifc` com a mensagem do motor;
+- [ ] transportes não configurados (`transporteDeAmbiente` → `null`) viram estado vazio, não erro.
 
 ---
 
@@ -322,3 +382,6 @@ exibir `url`.
 | preço de catálogo sem histórico | avisar "não desfazível" antes de confirmar |
 | transporte de render sem endpoint configurado | tela precisa tratar `API_INDISPONIVEL`/`FALHA_ENVIO` |
 | materialização sólido→BIM não reconhece escada por classificação | escada entra no BIM pelos parâmetros (`GeometriaEscada`), não por "converter sólido" |
+| **IFC** recusado no motor (`FORMATO_NAO_SUPORTADO`) | tela de importação mostra o motivo; não há parser nesta fase |
+| **Postgres** pronto mas não ligado no app | persistência segue local até a rota server-side existir |
+| **Worker de importação** sem wiring de bundler | a tela de importação é quem registra o Worker |
