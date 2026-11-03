@@ -31,6 +31,8 @@ export interface PropsPainelPropriedades {
   /** Já existe elemento BIM para este sólido? */
   materializado: boolean;
   aoMaterializar: () => void;
+  /** Terreno é referência: não oferece conversão para BIM. */
+  terreno?: boolean;
   /** Não-nulo quando o sólido selecionado já é uma PAREDE no BIM. */
   paredeId: string | null;
   vaosExistentes: number;
@@ -323,8 +325,17 @@ export function PainelPropriedades(props: PropsPainelPropriedades) {
           aoBooleana={props.aoBooleana}
         />
       ) : null}
-      {/* BIM — só aparece com sólido selecionado, e depois que o volume existe */}
-      {solido !== null ? (
+      {/* BIM — só aparece com sólido selecionado, e depois que o volume existe.
+          Terreno fica de fora: é referência de contexto, não entra no orçamento. */}
+      {solido !== null && props.terreno === true ? (
+        <div style={{ borderTop: '1px solid var(--arq-ed-linha)', marginTop: 12, paddingTop: 10 }}>
+          <div className="arq-panel-title" style={{ marginBottom: 6 }}>BIM</div>
+          <p className="arq-muted" style={{ margin: 0, lineHeight: 1.55 }}>
+            Terreno é referência de contexto: não vira elemento BIM nem entra no orçamento.
+          </p>
+        </div>
+      ) : null}
+      {solido !== null && props.terreno !== true ? (
         <div style={{ borderTop: '1px solid var(--arq-ed-linha)', marginTop: 12, paddingTop: 10 }}>
           <div className="arq-panel-title" style={{ marginBottom: 6 }}>BIM</div>
 
