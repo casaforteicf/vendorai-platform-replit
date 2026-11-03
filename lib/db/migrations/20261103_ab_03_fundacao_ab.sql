@@ -60,9 +60,9 @@ CREATE TABLE IF NOT EXISTS ab_fichas_tecnicas (
   ativo boolean NOT NULL DEFAULT true,
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now(),
-  UNIQUE (tenant_id, id),
+  CONSTRAINT ab_fichas_tecnicas_tenant_id_uq UNIQUE (tenant_id, id),
   -- Dois pratos com o mesmo nome no mesmo hotel são quase sempre duplicidade.
-  UNIQUE (tenant_id, nome)
+  CONSTRAINT ab_fichas_tecnicas_tenant_nome_uq UNIQUE (tenant_id, nome)
 );
 
 CREATE TABLE IF NOT EXISTS ab_ficha_insumos (
@@ -164,7 +164,7 @@ CREATE TABLE IF NOT EXISTS ab_estoque_saldos (
   atualizado_em timestamptz NOT NULL DEFAULT now(),
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now(),
-  UNIQUE (tenant_id, insumo_id),
+  CONSTRAINT ab_estoque_saldos_tenant_insumo_uq UNIQUE (tenant_id, insumo_id),
   CONSTRAINT ab_estoque_saldos_ponto_maior_igual_minimo
     CHECK (ponto_pedido >= estoque_minimo),
   FOREIGN KEY (tenant_id, insumo_id)
@@ -175,9 +175,6 @@ CREATE TABLE IF NOT EXISTS ab_estoque_saldos (
 CREATE INDEX IF NOT EXISTS ab_estoque_saldos_reposicao_idx
   ON ab_estoque_saldos(tenant_id)
   WHERE saldo_atual <= ponto_pedido;
-
-CREATE INDEX IF NOT EXISTS ab_estoque_saldos_tenant_insumo_idx
-  ON ab_estoque_saldos(tenant_id, insumo_id);
 
 -- ─────────────────────────────────────────────────────────────────────────────
 -- 4) Histórico de consumo (base da média diária)
@@ -201,7 +198,7 @@ CREATE TABLE IF NOT EXISTS ab_historico_consumo (
   observacao text,
   created_at timestamptz NOT NULL DEFAULT now(),
   -- Agregado diário idempotente: recalcular o dia substitui, não duplica.
-  UNIQUE (tenant_id, insumo_id, data, origem),
+  CONSTRAINT ab_historico_consumo_chave_uq UNIQUE (tenant_id, insumo_id, data, origem),
   FOREIGN KEY (tenant_id, insumo_id)
     REFERENCES insumos(tenant_id, id) ON DELETE CASCADE
 );
@@ -233,7 +230,7 @@ CREATE TABLE IF NOT EXISTS ab_ordens_compra (
   aprovada_em timestamptz,
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now(),
-  UNIQUE (tenant_id, id),
+  CONSTRAINT ab_ordens_compra_tenant_id_uq UNIQUE (tenant_id, id),
   CONSTRAINT ab_ordens_compra_periodo_valido
     CHECK (cobertura_fim >= cobertura_inicio),
   FOREIGN KEY (tenant_id, aprovada_por) REFERENCES users(tenant_id, id)
@@ -252,7 +249,7 @@ CREATE TABLE IF NOT EXISTS ab_ordem_compra_itens (
   custo_estimado numeric(15,4) CHECK (custo_estimado >= 0),
   observacao text,
   created_at timestamptz NOT NULL DEFAULT now(),
-  UNIQUE (tenant_id, ordem_id, insumo_id),
+  CONSTRAINT ab_ordem_compra_itens_chave_uq UNIQUE (tenant_id, ordem_id, insumo_id),
   FOREIGN KEY (tenant_id, ordem_id)
     REFERENCES ab_ordens_compra(tenant_id, id) ON DELETE CASCADE,
   FOREIGN KEY (tenant_id, insumo_id)
