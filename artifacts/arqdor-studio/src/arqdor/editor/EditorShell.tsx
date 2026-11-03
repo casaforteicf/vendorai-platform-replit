@@ -890,6 +890,8 @@ export function EditorShell() {
               unidade={unidade}
               ocultarGrade={solidos.some((item) => ehTerreno(item))}
               vista={obterVista(vistaId)}
+              projetoNome={projeto.nome}
+              vistaRotulo={obterVista(vistaId).rotulo}
               grip={gripFace}
               aoEsticarFace={esticarFace}
               aoEscolherFace={(solidoId, faceId) => {

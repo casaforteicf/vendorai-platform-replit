@@ -3,6 +3,7 @@
  */
 
 import { VISTAS, cameraDaVista, obterVista, planoDeCorte, vistasPorGrupo } from '../../src/arqdor/editor/vistas/vistas';
+import { calcularPagina, linhasCarimbo, mmParaPx } from '../../src/arqdor/editor/vistas/prancha';
 
 let passou = 0;
 let falhou = 0;
@@ -44,6 +45,17 @@ ok(obterVista('planta').projecao === 'ortografica' && obterVista('isometrica').p
 ok(obterVista('conica-2').projecao === 'perspectiva' && obterVista('perspectiva').projecao === 'perspectiva', 'projeção: cônicas seguem em perspectiva');
 ok((obterVista('planta').meioAltura ?? 0) > 0, 'projeção: frustum ortográfico definido');
 ok(obterVista('inexistente' as never).id === 'perspectiva', 'registro: id desconhecido cai na perspectiva');
+
+// ---------- prancha ----------
+ok(mmParaPx(25.4, 150) === 150, 'prancha: 25,4 mm a 150 dpi = 150 px');
+const pagina50 = calcularPagina(50);
+ok(pagina50.pxPorMetro === 118, 'prancha: 1:50 dá ~118 px por metro a 150 dpi');
+ok(Math.abs(pagina50.desenhoM.largura - 10.35) < 0.01 && Math.abs(pagina50.desenhoM.altura - 9.5) < 0.01, 'prancha: área útil em 1:50 é 10,35 × 9,5 m');
+const pagina100 = calcularPagina(100);
+ok(pagina100.pxPorMetro === 59 && pagina100.desenhoM.largura > pagina50.desenhoM.largura, 'prancha: escala menor cobre mais metros');
+const carimbo = linhasCarimbo({ titulo: 'Planta baixa', projeto: '', escala: 100, data: '03/11/2026' });
+ok(carimbo.some((linha) => linha.rotulo === 'ESCALA' && linha.valor === '1:100'), 'prancha: carimbo traz a escala');
+ok(carimbo.some((linha) => linha.rotulo === 'PROJETO' && linha.valor === '—'), 'prancha: projeto vazio vira travessão');
 
 console.log('');
 console.log('resultado: ' + String(passou) + ' passaram, ' + String(falhou) + ' falharam');

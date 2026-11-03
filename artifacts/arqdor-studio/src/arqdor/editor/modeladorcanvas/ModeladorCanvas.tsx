@@ -2,7 +2,7 @@
 
 /** Viewport 3D: desenha sólidos, faz picking (sólido e face) e hospeda o gizmo. */
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { TransformControls } from 'three/examples/jsm/controls/TransformControls.js';
@@ -11,6 +11,8 @@ import type { Unidade } from '../modelador/unidades';
 import { formatarComUnidade } from '../modelador/unidades';
 import type { ConfiguracaoVista } from '../vistas/vistas';
 import { cameraDaVista, planoDeCorte } from '../vistas/vistas';
+import { ESCALAS, calcularPagina, linhasCarimbo } from '../vistas/prancha';
+import type { EscalaPrancha } from '../vistas/prancha';
 import { COR_SNAP, calcularSnap, corDoSnap, eixoDominante, travarNoEixo } from '../modelador/snap';
 import { metricasAresta, metricasFace } from '../modelador/metricas';
 import type { CandidatoSnap } from '../modelador/snap';
@@ -46,6 +48,9 @@ export interface PropsModeladorCanvas {
   ocultarGrade?: boolean;
   /** Vista selecionada (registro em vistas/vistas.ts). */
   vista?: ConfiguracaoVista;
+  /** Dados do carimbo da prancha. */
+  projetoNome?: string;
+  vistaRotulo?: string;
   /** Grip de esticar a face selecionada (losango vermelho). */
   grip?: { posicao: Vetor3; normal: Vetor3; faceId: string } | null;
   /** Soltou o grip: deslocamento ao longo da normal, em metros. */
@@ -178,7 +183,8 @@ export function ModeladorCanvas(props: PropsModeladorCanvas) {
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
   /** Ativo quando a vista atual é ortográfica (frustum manual, sem trocar a câmera). */
   const ortoRef = useRef<{ meioAltura: number } | null>(null);
-  const exportarRef = useRef<() => void>(() => undefined);
+  const exportarRef = useRef<(escala: EscalaPrancha) => void>(() => undefined);
+  const [escalaExport, setEscalaExport] = useState<EscalaPrancha>(50);
   const gizmoRef = useRef<TransformControls | null>(null);
   const selecionadoRef = useRef<string | null>(null);
 
@@ -231,12 +237,77 @@ export function ModeladorCanvas(props: PropsModeladorCanvas) {
     renderer.setSize(container.clientWidth, container.clientHeight);
     container.appendChild(renderer.domElement);
     rendererRef.current = renderer;
-    exportarRef.current = () => {
-      const url = renderer.domElement.toDataURL('image/png');
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = 'arqdor-vista.png';
-      link.click();
+    exportarRef.current = (escala: EscalaPrancha) => {
+      const pagina = calcularPagina(escala);
+      const vista = props.vista;
+      if (vista === undefined || vista.projecao !== 'ortografica') return;
+
+      // 1) renderiza na resolução do papel (px por metro vem da escala)
+      const larguraAntes = container.clientWidth;
+      const alturaAntes = Math.max(1, container.clientHeight);
+      renderer.setSize(pagina.desenhoPx.largura, pagina.desenhoPx.altura, false);
+      const aspecto = pagina.desenhoPx.largura / pagina.desenhoPx.altura;
+      const meioAltura = Math.min(pagina.desenhoM.altura / 2, pagina.desenhoM.largura / 2 / aspecto);
+      aplicarOrtografica(camera, meioAltura, aspecto);
+      camera.updateMatrixWorld();
+      renderer.render(cena, camera);
+      const imagem = renderer.domElement.toDataURL('image/png');
+
+      // 2) compõe a prancha: margem branca + desenho + carimbo
+      const tela = document.createElement('canvas');
+      tela.width = pagina.larguraPx;
+      tela.height = pagina.alturaPx;
+      const ctx = tela.getContext('2d');
+      if (ctx === null) return;
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, tela.width, tela.height);
+
+      const foto = new Image();
+      foto.onload = () => {
+        ctx.drawImage(foto, pagina.margemPx, pagina.margemPx, pagina.desenhoPx.largura, pagina.desenhoPx.altura);
+        ctx.strokeStyle = '#111827';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(2, 2, tela.width - 4, tela.height - 4);
+
+        // carimbo à direita
+        const carimboX = pagina.margemPx + pagina.desenhoPx.largura;
+        const carimboLargura = pagina.carimboPx;
+        const carimboAltura = pagina.desenhoPx.altura;
+        ctx.strokeStyle = '#111827';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(carimboX, pagina.margemPx, carimboLargura, carimboAltura);
+
+        const linhas = linhasCarimbo({
+          titulo: props.vistaRotulo ?? vista.rotulo,
+          projeto: props.projetoNome ?? '—',
+          escala,
+          data: new Date().toLocaleDateString('pt-BR'),
+        });
+        const passo = carimboAltura / linhas.length;
+        linhas.forEach((linha, indice) => {
+          const y = pagina.margemPx + passo * (indice + 1) - passo / 2;
+          ctx.fillStyle = '#6b7280';
+          ctx.font = '600 ' + String(Math.round(pagina.margemPx * 0.85)) + 'px Montserrat, Segoe UI, sans-serif';
+          ctx.fillText(linha.rotulo, carimboX + 14, y);
+          ctx.fillStyle = '#111827';
+          ctx.font = '700 ' + String(Math.round(pagina.margemPx * 1.15)) + 'px Montserrat, Segoe UI, sans-serif';
+          ctx.fillText(linha.valor, carimboX + 14, y + passo * 0.32);
+        });
+
+        const link = document.createElement('a');
+        link.href = tela.toDataURL('image/png');
+        link.download = 'arqdor-prancha-1-' + String(escala) + '.png';
+        link.click();
+
+        // 3) volta ao viewport
+        renderer.setSize(larguraAntes, alturaAntes);
+        camera.aspect = larguraAntes / alturaAntes;
+        const orto = ortoRef.current;
+        if (orto !== null) aplicarOrtografica(camera, orto.meioAltura, camera.aspect);
+        else camera.updateProjectionMatrix();
+        orbitais.update();
+      };
+      foto.src = imagem;
     };
 
     const orbitais = new OrbitControls(camera, renderer.domElement);
@@ -944,27 +1015,51 @@ export function ModeladorCanvas(props: PropsModeladorCanvas) {
 
   return (
     <div ref={containerRef} style={{ width: '100%', height: '100%', position: 'relative' }}>
-      <button
-        type="button"
-        onClick={() => exportarRef.current()}
-        title="Exportar a vista atual como PNG (prancha)"
+      <div
         style={{
           position: 'absolute',
           right: 12,
           bottom: 64,
           zIndex: 6,
-          padding: '6px 10px',
-          borderRadius: 8,
-          border: '1px solid rgba(0,200,150,.35)',
-          background: 'rgba(10,25,21,.78)',
-          color: '#00c896',
-          fontSize: 11,
-          fontWeight: 700,
-          cursor: 'pointer',
+          display: 'flex',
+          gap: 6,
+          alignItems: 'center',
+          padding: 6,
+          borderRadius: 10,
+          background: 'rgba(10,25,21,.82)',
+          border: '1px solid rgba(0,200,150,.28)',
         }}
       >
-        Exportar PNG
-      </button>
+        <select
+          value={escalaExport}
+          onChange={(evento) => setEscalaExport(Number(evento.target.value) as EscalaPrancha)}
+          aria-label="Escala da prancha"
+          style={{ padding: '4px 6px', borderRadius: 6, background: 'rgba(0,0,0,.35)', color: '#e6eeea', border: '1px solid rgba(255,255,255,.14)', fontSize: 11 }}
+        >
+          {ESCALAS.map((escala) => (
+            <option key={escala} value={escala}>
+              1:{escala}
+            </option>
+          ))}
+        </select>
+        <button
+          type="button"
+          onClick={() => exportarRef.current(escalaExport)}
+          title="Exportar prancha A4 com escala e carimbo (PNG)"
+          style={{
+            padding: '6px 10px',
+            borderRadius: 6,
+            border: 0,
+            background: '#00c896',
+            color: '#06231b',
+            fontSize: 11,
+            fontWeight: 700,
+            cursor: 'pointer',
+          }}
+        >
+          Exportar prancha
+        </button>
+      </div>
     </div>
   );
 }
