@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import type { ReactNode } from 'react';
 import { Icone } from '../design/icones';
 
@@ -9,21 +10,31 @@ export interface PropsTopbar {
   acoes?: ReactNode;
   busca?: string;
   aoBuscar?: (valor: string) => void;
+  /** Modo imersão: botão de menu no lugar da sidebar e sem campo de busca. */
+  imersivo?: boolean;
 }
 
-export function Topbar({ projeto, salvo, acoes, busca, aoBuscar }: PropsTopbar) {
+export function Topbar({ projeto, salvo, acoes, busca, aoBuscar, imersivo }: PropsTopbar) {
   return (
     <header className="arq-topbar">
-      <div className="arq-search">
-        <Icone nome="buscar" />
-        <input
-          type="search"
-          placeholder="Buscar projetos, clientes, endereços, tags..."
-          aria-label="Buscar"
-          value={busca ?? ''}
-          onChange={(evento) => aoBuscar?.(evento.target.value)}
-        />
-      </div>
+      {imersivo === true ? (
+        <Link className="arq-menu-btn" href="/" title="Voltar ao dashboard" aria-label="Voltar ao dashboard">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" aria-hidden="true">
+            <path d="M4 7h16M4 12h16M4 17h16" />
+          </svg>
+        </Link>
+      ) : (
+        <div className="arq-search">
+          <Icone nome="buscar" />
+          <input
+            type="search"
+            placeholder="Buscar projetos, clientes, endereços, tags..."
+            aria-label="Buscar"
+            value={busca ?? ''}
+            onChange={(evento) => aoBuscar?.(evento.target.value)}
+          />
+        </div>
+      )}
 
       <button type="button" className="arq-projeto-ativo" title="Projeto ativo">
         <span className="capa" aria-hidden="true" />

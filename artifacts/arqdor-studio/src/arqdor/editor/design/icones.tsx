@@ -11,7 +11,7 @@ export type NomeIcone =
   | 'buscar' | 'sino' | 'sol' | 'historico' | 'salvo' | 'grade' | 'lista' | 'filtro'
   | 'calendario' | 'local' | 'estrela' | 'pasta' | 'importar' | 'lixeira' | 'etiqueta'
   | 'visao' | 'acoes' | 'conversar' | 'pessoa'
-  | 'pushpull' | 'mover' | 'rotacionar' | 'escalar' | 'selecionar';
+  | 'pushpull' | 'mover' | 'rotacionar' | 'escalar' | 'selecionar' | 'offset';
 
 const C: Record<NomeIcone, ReactElement> = {
   projetos: <><path d="M3 10.5 12 4l9 6.5" /><path d="M5.5 9.5V20h13V9.5" /><path d="M10 20v-5h4v5" /></>,
@@ -59,6 +59,7 @@ const C: Record<NomeIcone, ReactElement> = {
   mover: <><path d="M12 3v18M3 12h18" /><path d="M9 6l3-3 3 3M9 18l3 3 3-3M6 9l-3 3 3 3M18 9l3 3-3 3" /></>,
   rotacionar: <><path d="M20 12a8 8 0 1 1-3-6.2" /><path d="M20 4v5h-5" /></>,
   escalar: <><rect x="4" y="4" width="10" height="10" rx="1" /><path d="M14 10l6-6M20 4h-4M20 4v4" /></>,
+  offset: <><rect x="3" y="5" width="18" height="14" rx="1.5" /><rect x="7.5" y="8.5" width="9" height="7" rx="1" /></>,
 };
 
 export function Icone({ nome, tamanho = 18 }: { nome: NomeIcone; tamanho?: number }): ReactElement {

@@ -13,7 +13,10 @@ import { PRESETS_INSERCAO } from '../modelador/caixa';
 import type { NomePreset } from '../modelador/caixa';
 import { Icone } from '../design/icones';
 
+export type TipoInsercao = 'caixa' | 'telhado' | 'escada';
+
 export interface MedidasInsercao {
+  tipo: TipoInsercao;
   nome: string;
   posicao: [number, number, number];
   dimensoes: DimensoesCaixa;
@@ -31,6 +34,7 @@ function numero(valor: string): number {
 
 export function ModalInserir({ aberto, aoFechar, aoInserir }: PropsModalInserir) {
   const [nome, setNome] = useState('Parede');
+  const [tipo, setTipo] = useState<TipoInsercao>('caixa');
   const [x, setX] = useState('0');
   const [y, setY] = useState('0');
   const [z, setZ] = useState('0');
@@ -43,10 +47,28 @@ export function ModalInserir({ aberto, aoFechar, aoInserir }: PropsModalInserir)
 
   const aplicarPreset = (preset: NomePreset): void => {
     const dados = PRESETS_INSERCAO[preset];
+    setTipo('caixa');
     setNome(dados.nome);
     setLargura(String(dados.dimensoes.largura));
     setAltura(String(dados.dimensoes.altura));
     setProfundidade(String(dados.dimensoes.profundidade));
+    setErro(null);
+  };
+
+  /** Bloco 4: telhado de duas águas e escada reta usam os mesmos três campos. */
+  const aplicarBloco4 = (qual: 'telhado' | 'escada'): void => {
+    setTipo(qual);
+    if (qual === 'telhado') {
+      setNome('Telhado 2 águas');
+      setLargura('6');
+      setAltura('2');
+      setProfundidade('8');
+    } else {
+      setNome('Escada reta');
+      setLargura('1');
+      setAltura('2.8');
+      setProfundidade('0.28');
+    }
     setErro(null);
   };
 
@@ -62,7 +84,7 @@ export function ModalInserir({ aberto, aoFechar, aoInserir }: PropsModalInserir)
       return;
     }
     setErro(null);
-    aoInserir({ nome: nome.trim().length > 0 ? nome.trim() : 'Elemento', posicao: [px, py, pz], dimensoes: { largura: l, altura: a, profundidade: p } });
+    aoInserir({ tipo, nome: nome.trim().length > 0 ? nome.trim() : 'Elemento', posicao: [px, py, pz], dimensoes: { largura: l, altura: a, profundidade: p } });
   };
 
   return (
@@ -85,7 +107,21 @@ export function ModalInserir({ aberto, aoFechar, aoInserir }: PropsModalInserir)
               {PRESETS_INSERCAO[preset].nome}
             </button>
           ))}
+          <button type="button" className="arq-btn" onClick={() => aplicarBloco4('telhado')}>
+            Telhado 2 águas
+          </button>
+          <button type="button" className="arq-btn" onClick={() => aplicarBloco4('escada')}>
+            Escada reta
+          </button>
         </div>
+
+        {tipo !== 'caixa' ? (
+          <p className="arq-muted" style={{ margin: '0 0 10px', lineHeight: 1.5 }}>
+            {tipo === 'telhado'
+              ? 'Largura X = comprimento da cumeeira · Profund. Z = vão das águas · Altura Y = altura da cumeeira.'
+              : 'Largura X = largura da escada · Altura Y = altura a vencer · Profund. Z = piso do degrau (run).'}
+          </p>
+        ) : null}
 
         <label className="arq-muted">Nome
           <input className="arq-field" style={{ width: '100%', marginTop: 3 }} value={nome} onChange={(e) => setNome(e.target.value)} />

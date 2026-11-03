@@ -16,8 +16,12 @@ export interface PropsToolbar {
   podeRefazer: boolean;
   temSolido: boolean;
   gizmo: ModoGizmo;
-
   aoGizmo: (modo: ModoGizmo) => void;
+  /** Ferramenta Offset: abre o campo de distância no inspetor. */
+  aoOffset: () => void;
+  /** Exclui o sólido selecionado. */
+  aoExcluir: () => void;
+  podeExcluir: boolean;
 }
 
 const FERRAMENTAS: ReadonlyArray<{ id: FerramentaModelador; rotulo: string; icone: NomeIcone; tecla: string }> = [
@@ -35,6 +39,10 @@ const GIZMOS: ReadonlyArray<{ id: Exclude<ModoGizmo, null>; rotulo: string; icon
   { id: 'escalar', rotulo: 'Escalar', icone: 'escalar', tecla: 'E' },
 ];
 
+/**
+ * Rail vertical só com ícones (padrão SketchUp): o rótulo vive em `title`/`aria-label`,
+ * nunca ocupando espaço do viewport.
+ */
 export function ToolbarModelador(props: PropsToolbar) {
   const botao = (
     chave: string,
@@ -43,51 +51,62 @@ export function ToolbarModelador(props: PropsToolbar) {
     ativo: boolean,
     desabilitado: boolean,
     aoClicar: () => void,
-    dica: string,
   ) => (
     <button
       key={chave}
       type="button"
-      className="arq-tool"
+      className="arq-tool arq-tool-icone"
       aria-pressed={ativo}
+      aria-label={rotulo}
       disabled={desabilitado}
-      title={dica}
+      title={rotulo}
       onClick={aoClicar}
     >
-      <Icone nome={icone} />
-      <span>{rotulo}</span>
+      <Icone nome={icone} tamanho={20} />
     </button>
   );
 
   return (
     <div className="arq-editor-rail" role="toolbar" aria-label="Ferramentas de modelagem">
-      <div className="arq-rail-label">Sólido</div>
-      {botao('inserir', 'Inserir medidas', 'retangulo', false, false, props.aoAbrirInsercao, 'Cria um sólido digitando posição e dimensões')}
-      {botao('novo', 'Novo sólido', 'mais', false, false, props.aoNovoSolido, 'Cria um sólido vazio')}
+      {botao('inserir', 'Inserir por medidas', 'retangulo', false, false, props.aoAbrirInsercao)}
+      {botao('novo', 'Novo sólido', 'mais', false, false, props.aoNovoSolido)}
 
-      <div className="arq-rail-label">Ferramentas</div>
+      <div className="arq-rail-sep" />
+
       {FERRAMENTAS.map((f) => {
         const exigeSolido = f.id !== 'selecionar' && f.id !== 'pushpull';
         return botao(
           f.id,
-          f.rotulo,
+          f.rotulo + ' (' + f.tecla + ')',
           f.icone,
           props.ferramenta === f.id,
           exigeSolido && !props.temSolido,
           () => props.aoEscolher(f.id),
-          f.rotulo + ' (' + f.tecla + ')',
         );
       })}
 
-      <div className="arq-rail-label">Gizmo</div>
+      <div className="arq-rail-sep" />
+
       {GIZMOS.map((g) =>
-        botao(g.id, g.rotulo, g.icone, props.gizmo === g.id, !props.temSolido, () => props.aoGizmo(props.gizmo === g.id ? null : g.id), g.rotulo + ' (' + g.tecla + ')'),
+        botao(
+          g.id,
+          g.rotulo + ' (' + g.tecla + ')',
+          g.icone,
+          props.gizmo === g.id,
+          !props.temSolido,
+          () => props.aoGizmo(props.gizmo === g.id ? null : g.id),
+        ),
       )}
 
+      <div className="arq-rail-sep" />
 
-      <div className="arq-rail-label">Histórico</div>
-      {botao('desfazer', 'Desfazer', 'desfazer', false, !props.podeDesfazer, props.aoDesfazer, 'Desfazer (Ctrl+Z)')}
-      {botao('refazer', 'Refazer', 'refazer', false, !props.podeRefazer, props.aoRefazer, 'Refazer (Ctrl+Shift+Z)')}
+      {botao('offset', 'Offset da face', 'offset', false, !props.temSolido, props.aoOffset)}
+      {botao('excluir', 'Excluir sólido', 'lixeira', false, !props.podeExcluir, props.aoExcluir)}
+
+      <div className="arq-rail-sep" />
+
+      {botao('desfazer', 'Desfazer (Ctrl+Z)', 'desfazer', false, !props.podeDesfazer, props.aoDesfazer)}
+      {botao('refazer', 'Refazer (Ctrl+Shift+Z)', 'refazer', false, !props.podeRefazer, props.aoRefazer)}
     </div>
   );
 }

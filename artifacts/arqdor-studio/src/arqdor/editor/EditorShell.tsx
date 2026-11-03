@@ -67,6 +67,8 @@ export function EditorShell() {
   const totalPassos = useModeladorStore((s) => s.historico.length);
   const criarSolido = useModeladorStore((s) => s.criarSolido);
   const inserirCaixa = useModeladorStore((s) => s.inserirCaixa);
+  const inserirTelhado = useModeladorStore((s) => s.inserirTelhado);
+  const inserirEscada = useModeladorStore((s) => s.inserirEscada);
   const removerSolido = useModeladorStore((s) => s.removerSolido);
   const aplicar = useModeladorStore((s) => s.aplicar);
   const desfazer = useModeladorStore((s) => s.desfazer);
@@ -90,6 +92,7 @@ export function EditorShell() {
   const [face, setFace] = useState<FaceEscolhida | null>(null);
   const [altura, setAltura] = useState('2.8');
   const [focoMedida, setFocoMedida] = useState(0);
+  const [painelAberto, setPainelAberto] = useState(true);
 
   useEffect(() => {
     setDesenho(iniciar(ferramenta));
@@ -279,7 +282,26 @@ export function EditorShell() {
   };
 
   const inserir = (medidas: MedidasInsercao): void => {
-    inserirCaixa(medidas);
+    const { largura, altura: alturaMedida, profundidade } = medidas.dimensoes;
+    if (medidas.tipo === 'telhado') {
+      inserirTelhado({
+        nome: medidas.nome,
+        posicao: medidas.posicao,
+        larguraX: largura,
+        profundidadeZ: profundidade,
+        altura: alturaMedida,
+      });
+    } else if (medidas.tipo === 'escada') {
+      inserirEscada({
+        nome: medidas.nome,
+        posicao: medidas.posicao,
+        largura,
+        alturaTotal: alturaMedida,
+        profundidadeDegrau: profundidade,
+      });
+    } else {
+      inserirCaixa(medidas);
+    }
     setModalInserir(false);
     setAba('modelo');
     setAviso(
@@ -621,7 +643,7 @@ export function EditorShell() {
 
   if (!carregado) {
     return (
-      <AppShell>
+      <AppShell imersivo>
         <div className="arq-page-pad arq-muted">Carregando projeto…</div>
       </AppShell>
     );
@@ -629,7 +651,7 @@ export function EditorShell() {
 
   if (projeto === null) {
     return (
-      <AppShell>
+      <AppShell imersivo>
         <div className="arq-page-pad">
           <h1 className="arq-dashboard-title">Nenhum projeto ativo</h1>
           <p className="arq-dashboard-sub">Abra um projeto na área de Projetos para começar a modelar.</p>
@@ -643,6 +665,7 @@ export function EditorShell() {
 
   return (
     <AppShell
+      imersivo
       projeto={projeto.nome}
       salvo={salvoEm !== null}
       acoes={
@@ -666,10 +689,19 @@ export function EditorShell() {
           </button>
         </div>
         <div className="arq-header-spacer" />
-        <span className="arq-muted">Modelagem de sólidos</span>
+        <button
+          type="button"
+          className="arq-tool arq-tool-icone"
+          aria-pressed={painelAberto}
+          aria-label={painelAberto ? 'Esconder inspetor' : 'Mostrar inspetor'}
+          title={painelAberto ? 'Esconder inspetor' : 'Mostrar inspetor'}
+          onClick={() => setPainelAberto((aberto) => !aberto)}
+        >
+          <Icone nome="lista" tamanho={18} />
+        </button>
       </div>
 
-      <div className="arq-editor-body">
+      <div className="arq-editor-body" data-aside={painelAberto ? 'aberto' : 'fechado'}>
         {aba === 'conflitos' ? null : (
         <ToolbarModelador
           ferramenta={ferramenta}
@@ -687,6 +719,12 @@ export function EditorShell() {
           temSolido={solidoSelecionado !== undefined}
           gizmo={gizmo}
           aoGizmo={setGizmo}
+          aoOffset={() => {
+            setPainelAberto(true);
+            setAviso('Offset: escolha a face e informe a distância no inspetor.');
+          }}
+          aoExcluir={excluirSelecionado}
+          podeExcluir={solidoSelecionado !== undefined}
         />
         )}
 
@@ -754,6 +792,7 @@ export function EditorShell() {
           <div className="arq-inspetor-head">
             <h2>Inspetor</h2>
           </div>
+          {solidoSelecionado !== undefined ? (
           <PainelPropriedades
             solido={solidoSelecionado ?? null}
             face={face}
@@ -776,7 +815,8 @@ export function EditorShell() {
             aoCarregarBooleana={carregarBooleana}
             aoBooleana={booleanaComSelecionado}
           />
-          <div className="arq-sep" />
+          ) : null}
+          {solidoSelecionado !== undefined ? <div className="arq-sep" /> : null}
           <PainelCamadas
             camadas={camadas}
             totalObjetos={elementos.length}

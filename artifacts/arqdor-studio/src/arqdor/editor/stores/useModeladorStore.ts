@@ -4,6 +4,8 @@
 
 import { criarCaixa } from '../modelador/caixa';
 import type { DimensoesCaixa } from '../modelador/caixa';
+import { criarTelhadoDuasAguas } from '../modelador/telhado';
+import { criarEscadaReta } from '../modelador/escada';
 import { create } from 'zustand';
 import type { FerramentaModelador } from '../modelador/desenho';
 import type { OperacaoModelador, Solido, Transformacao, Vetor3 } from '../modelador/schema';
@@ -22,6 +24,24 @@ export interface ModeladorState {
   criarSolido: () => void;
   /** Insere um sólido com medidas exatas (canto mínimo + dimensões). */
   inserirCaixa: (entrada: { nome: string; posicao: Vetor3; dimensoes: DimensoesCaixa }) => void;
+  /** Telhado de duas águas (Bloco 4) a partir da base retangular. */
+  inserirTelhado: (entrada: {
+    nome: string;
+    posicao: Vetor3;
+    larguraX: number;
+    profundidadeZ: number;
+    altura: number;
+    beiral?: number;
+  }) => void;
+  /** Escada reta (Bloco 4) com piso/espelho reais. */
+  inserirEscada: (entrada: {
+    nome: string;
+    posicao: Vetor3;
+    largura: number;
+    alturaTotal: number;
+    profundidadeDegrau: number;
+    numeroDegraus?: number;
+  }) => void;
   /** Remove o sólido (e a seleção). Undo restaura. */
   removerSolido: (solidoId: string) => void;
   aplicar: (operacoes: OperacaoModelador[]) => void;
@@ -75,6 +95,52 @@ export const useModeladorStore = create<ModeladorState>((set, get) => ({
       return;
     }
     const resultado = aplicarPasso(estado, [{ tipo: 'criar_solido', solido: caixa.solido }], 'direta');
+    if (!resultado.ok) {
+      set({ ultimoErro: resultado.erro });
+      return;
+    }
+    const novo: EstadoModelador = { ...resultado.estado, proximoSolidoN };
+    set({
+      estado: novo,
+      historico: [...historico.slice(0, indice + 1), novo],
+      indice: indice + 1,
+      solidoSelecionadoId: id,
+      ultimoErro: null,
+    });
+  },
+
+  inserirTelhado: (entrada) => {
+    const { estado, historico, indice } = get();
+    const { id, proximoSolidoN } = novoSolidoId(estado);
+    const telhado = criarTelhadoDuasAguas({ id, ...entrada });
+    if (!telhado.ok) {
+      set({ ultimoErro: { codigo: 'ESTADO_INCONSISTENTE', detalhe: telhado.erro.codigo } });
+      return;
+    }
+    const resultado = aplicarPasso(estado, [{ tipo: 'criar_solido', solido: telhado.solido }], 'direta');
+    if (!resultado.ok) {
+      set({ ultimoErro: resultado.erro });
+      return;
+    }
+    const novo: EstadoModelador = { ...resultado.estado, proximoSolidoN };
+    set({
+      estado: novo,
+      historico: [...historico.slice(0, indice + 1), novo],
+      indice: indice + 1,
+      solidoSelecionadoId: id,
+      ultimoErro: null,
+    });
+  },
+
+  inserirEscada: (entrada) => {
+    const { estado, historico, indice } = get();
+    const { id, proximoSolidoN } = novoSolidoId(estado);
+    const escada = criarEscadaReta({ id, ...entrada });
+    if (!escada.ok) {
+      set({ ultimoErro: { codigo: 'ESTADO_INCONSISTENTE', detalhe: escada.erro.codigo } });
+      return;
+    }
+    const resultado = aplicarPasso(estado, [{ tipo: 'criar_solido', solido: escada.solido }], 'direta');
     if (!resultado.ok) {
       set({ ultimoErro: resultado.erro });
       return;

@@ -596,6 +596,44 @@ button { font-family: inherit; }
 }
 .arq-aviso-bim strong { color: #fde68a; font-weight: 700; }
 
+/* ============ MODO IMERSÃO (layout SketchUp) ============ */
+/* sidebar sai de cena: o editor ocupa a tela e o dashboard vira botão de menu */
+.arq-app-imersivo { grid-template-columns: minmax(0, 1fr); }
+.arq-content-imersivo { overflow: hidden; background: var(--arq-ed-base); }
+.arq-menu-btn {
+  display: grid; place-items: center; width: 36px; height: 36px; flex-shrink: 0;
+  border: 0; border-radius: 9px; background: rgba(255, 255, 255, .08);
+  color: #fff; cursor: pointer; text-decoration: none;
+}
+.arq-menu-btn:hover { background: rgba(255, 255, 255, .16); }
+.arq-app-imersivo .arq-topbar { padding-left: 14px; }
+
+/* rail apenas com ícones (rótulo no title/aria-label) */
+.arq-editor-body { grid-template-columns: 56px minmax(0, 1fr) 320px; }
+.arq-editor-rail {
+  width: auto;
+  padding: 8px 6px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+.arq-tool-icone {
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  justify-content: center;
+  border-radius: 10px;
+  font-size: 0;
+}
+.arq-rail-sep { width: 70%; height: 1px; background: rgba(255, 255, 255, .08); margin: 6px 0; }
+
+/* inspetor colapsável: fechado, a coluna vai a zero e o painel some */
+.arq-editor-body[data-aside="fechado"] { grid-template-columns: 56px minmax(0, 1fr) 0; }
+.arq-editor-body[data-aside="fechado"] > .arq-editor-aside { display: none; }
+
 /* barra de status */
 .arq-editor-page .arq-statusbar {
   background: var(--arq-ed-base);
