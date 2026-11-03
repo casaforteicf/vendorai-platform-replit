@@ -41,6 +41,7 @@ import { aplicarPasso } from './modelador/store-core';
 import { resolverAtalho } from './input/atalhos';
 import { useChatIAStore } from './stores/useChatIAStore';
 import { PainelTerreno } from './terreno/PainelTerreno';
+import { PainelMateriais } from './materiais/PainelMateriais';
 import type { DocumentoArqdor } from './persistencia/documento';
 import { VERSAO_DOCUMENTO } from './persistencia/documento';
 import { obterProjeto, salvarProjeto } from './persistencia/apiStore';
@@ -111,6 +112,7 @@ export function EditorShell() {
   const [focoCamera, setFocoCamera] = useState<{ alvo: [number, number, number]; versao: number; distancia?: number } | null>(null);
   const [painelAberto, setPainelAberto] = useState(true);
   const [terrenoAberto, setTerrenoAberto] = useState(false);
+  const [materiaisAberto, setMateriaisAberto] = useState(false);
   const abrirChatIA = useChatIAStore((s) => s.abrir);
   const unidade = useUnidadeStore((s) => s.unidade);
 
@@ -822,6 +824,16 @@ export function EditorShell() {
             </optgroup>
           ))}
         </select>
+        <button
+          type="button"
+          className="arq-tool"
+          aria-pressed={materiaisAberto}
+          title="Catálogo de materiais"
+          onClick={() => setMateriaisAberto((atual) => !atual)}
+          style={{ marginLeft: 6 }}
+        >
+          Materiais
+        </button>
         <div className="arq-header-spacer" />
         <button
           type="button"
@@ -998,6 +1010,7 @@ export function EditorShell() {
       </div>
       </div>
       <ModalInserir aberto={modalInserir} aoFechar={() => setModalInserir(false)} aoInserir={inserir} />
+      <PainelMateriais aberto={materiaisAberto} aoFechar={() => setMateriaisAberto(false)} />
       <PainelTerreno
         aberto={terrenoAberto}
         aoFechar={() => setTerrenoAberto(false)}
