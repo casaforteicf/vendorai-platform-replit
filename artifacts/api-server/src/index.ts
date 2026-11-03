@@ -7,6 +7,7 @@ import { startScheduler } from "./jobs/scheduler.js";
 import { startMetaCustomAudienceReconcileScheduler } from "./jobs/metaCustomAudienceReconcile.js";
 import { runCommercialLifecycleSync } from "./jobs/commercialLifecycleSync.js";
 import { executarMotorPreditivo } from "./jobs/abEstoquePreditivo.js";
+import { sincronizarSaldosAb } from "./jobs/abEstoqueSync.js";
 import { runBehaviorIntentSync } from "./jobs/behaviorIntentSync.js";
 import { runTrialJourney } from "./jobs/trialJourney.js";
 import { runVendorAiSubscriptionBilling } from "./jobs/vendorAiSubscriptionBilling.js";
@@ -249,11 +250,22 @@ async function start() {
     setTimeout(() => { void syncCampaignAbWinner(); }, 2 * 60 * 1000).unref();
     setInterval(() => { void syncCampaignAbWinner(); }, 60 * 60 * 1000).unref();
 
-    // A&B — motor preditivo de estoque (AB-03). Opt-in explícito: sem
-    // AB_PREDICTIVE_CRON=1 não roda, para o job não gerar ordem de compra em
-    // ambiente que ninguém pediu. O gatilho manual é o endpoint interno.
+    // A&B — sincronização de saldos + motor preditivo (AB-03/AB-04). Opt-in
+    // explícito: sem AB_PREDICTIVE_CRON=1 não roda, para o job não gerar ordem
+    // de compra em ambiente que ninguém pediu. O gatilho manual é o endpoint
+    // interno. A ORDEM importa: o motor lê ab_estoque_saldos, então sincronizar
+    // primeiro evita decidir compra com saldo velho.
     if (process.env["AB_PREDICTIVE_CRON"] === "1") {
       const syncAbEstoquePreditivo = async () => {
+        try {
+          const saldos = await sincronizarSaldosAb({ logger });
+          logger.info({ saldos }, "ab-sync: saldos sincronizados");
+        } catch (syncErr) {
+          logger.error({ err: syncErr }, "ab-sync: unhandled sync error");
+          // Sem saldo confiável o motor não roda: melhor pular o dia do que
+          // gerar ordem de compra com número errado.
+          return;
+        }
         try {
           await executarMotorPreditivo({ logger });
         } catch (syncErr) {

@@ -529,3 +529,53 @@ export const insertAbOrdemCompraItemSchema = createInsertSchema(abOrdemCompraIte
 export const selectAbOrdemCompraItemSchema = createSelectSchema(abOrdemCompraItensTable);
 export type AbOrdemCompraItem = typeof abOrdemCompraItensTable.$inferSelect;
 export type InsertAbOrdemCompraItem = typeof abOrdemCompraItensTable.$inferInsert;
+
+// ─── 8) Mapa produto de estoque → insumo (AB-04) ─────────────────────────────
+
+/**
+ * Liga o catálogo de ESTOQUE (`produtos_catalogo`, via `inventory_items`) ao
+ * insumo do motor preditivo (`insumos`).
+ *
+ * Sem este mapa o job de sincronização não consegue somar
+ * `hotel_stock_location_balances` em `ab_estoque_saldos`: são catálogos
+ * distintos, sem FK entre si. Um produto mapeia para UM insumo; um insumo pode
+ * agregar vários produtos.
+ */
+export const abInsumoProdutoTable = pgTable(
+  "ab_insumo_produto",
+  {
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
+    tenantId: text("tenant_id")
+      .notNull()
+      .references(() => tenantsTable.id, { onDelete: "cascade" }),
+    insumoId: text("insumo_id").notNull(),
+    produtoCatalogoId: text("produto_catalogo_id").notNull(),
+    /** Quantas unidades base do insumo há em 1 unidade de estoque (saco, caixa). */
+    fatorEmbalagem: numeric("fator_embalagem", { precision: 15, scale: 6 }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
+  },
+  (table) => [
+    unique("ab_insumo_produto_produto_uq").on(table.tenantId, table.produtoCatalogoId),
+    index("ab_insumo_produto_tenant_insumo_idx").on(table.tenantId, table.insumoId),
+    check(
+      "ab_insumo_produto_fator_positivo",
+      sql`${table.fatorEmbalagem} IS NULL OR ${table.fatorEmbalagem} > 0`,
+    ),
+  ],
+);
+
+export const insertAbInsumoProdutoSchema = createInsertSchema(abInsumoProdutoTable, {
+  insumoId: z.string().uuid(),
+  produtoCatalogoId: z.string().uuid(),
+  fatorEmbalagem: decimalPositivo.nullable().optional(),
+}).omit({ id: true, tenantId: true, createdAt: true, updatedAt: true });
+
+export const selectAbInsumoProdutoSchema = createSelectSchema(abInsumoProdutoTable);
+export type AbInsumoProduto = typeof abInsumoProdutoTable.$inferSelect;
+export type InsertAbInsumoProduto = typeof abInsumoProdutoTable.$inferInsert;

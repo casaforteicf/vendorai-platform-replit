@@ -1,6 +1,7 @@
 import { Router, type IRouter } from "express";
 import { z } from "zod/v4";
 import { executarMotorPreditivo } from "../jobs/abEstoquePreditivo.js";
+import { sincronizarSaldosAb } from "../jobs/abEstoqueSync.js";
 
 const router: IRouter = Router();
 
@@ -51,6 +52,36 @@ router.post("/internal/ab/estoque/preditivo", requireInternalKey, async (req, re
   } catch (erro) {
     console.error("[ab-preditivo] execução falhou", erro);
     return res.status(500).json({ error: "Não foi possível executar o motor preditivo" });
+  }
+});
+
+/**
+ * Sincroniza `ab_estoque_saldos` a partir de `hotel_stock_location_balances`,
+ * convertendo as unidades. Precisa rodar ANTES do motor preditivo: sem saldo
+ * atualizado, a sugestão de compra olha para número velho.
+ */
+const corpoSync = z
+  .object({
+    tenantIds: z.array(z.string().min(1)).max(500).optional(),
+    dryRun: z.boolean().optional(),
+  })
+  .strict();
+
+router.post("/internal/ab/estoque/sync", requireInternalKey, async (req, res) => {
+  const parsed = corpoSync.safeParse(req.body ?? {});
+  if (!parsed.success) {
+    return res.status(422).json({
+      error: "Parâmetros inválidos",
+      fields: parsed.error.issues.map((issue) => issue.path.join(".") || "(corpo)"),
+    });
+  }
+
+  try {
+    const resumo = await sincronizarSaldosAb(parsed.data);
+    return res.json(resumo);
+  } catch (erro) {
+    console.error("[ab-sync] execução falhou", erro);
+    return res.status(500).json({ error: "Não foi possível sincronizar os saldos" });
   }
 });
 
