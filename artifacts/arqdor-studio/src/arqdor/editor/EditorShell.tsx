@@ -9,7 +9,7 @@ import { Icone } from './design/icones';
 import { derivar2d } from './bim/derivar2d';
 import { abrirVao, vaosDaParede } from './bim/esquadrias';
 import { formatarMedida, interpretarMedida } from './modelador/medida';
-import { loopDaFace, loopDeAresta } from './modelador/loop';
+import { resolverNivel } from './modelador/selecao-nivel';
 import { aplicarBooleana, booleanaDisponivel, inicializarBooleana } from './modelador/booleana';
 import { classificarSolido, materializarSolidos } from './bim/materializar';
 import { PainelConflitos } from './conflitos/PainelConflitos';
@@ -446,40 +446,36 @@ export function EditorShell() {
     return 'Esta ferramenta ainda não aceita medida digitada.';
   };
 
-  const cliquesRef = useRef(0);
-  const ultimoAlvoRef = useRef<string | null>(null);
-  const tempoCliqueRef = useRef(0);
-
-  /** 1 clique = face/aresta · 2 = loop · 3 = sólido inteiro. */
-  const registrarAlvo = (info: { solidoId: string; faceId: string | null; arestaId: string | null }): void => {
-    const chave = info.solidoId + '|' + String(info.faceId) + '|' + String(info.arestaId);
-    const agora = Date.now();
-    if (ultimoAlvoRef.current === chave && agora - tempoCliqueRef.current < 450) {
-      cliquesRef.current += 1;
-    } else {
-      cliquesRef.current = 1;
-    }
-    ultimoAlvoRef.current = chave;
-    tempoCliqueRef.current = agora;
-
+  /**
+   * 1 clique = face/aresta · **Alt** = loop · **Alt+Shift** = sólido inteiro.
+   * Duplo clique deixou de ser loop: agora é sempre "editar medida" (decisão do dono, 2026-11-03).
+   */
+  const registrarAlvo = (info: {
+    solidoId: string;
+    faceId: string | null;
+    arestaId: string | null;
+    altKey?: boolean;
+    shiftKey?: boolean;
+  }): void => {
     const solido = solidos.find((item) => item.id === info.solidoId);
     if (solido === undefined) return;
 
-    if (cliquesRef.current >= 3) {
-      setSelecaoNivel({ nivel: 'sólido', arestas: solido.arestas.length, ids: [], solidoId: info.solidoId, faceId: info.faceId });
+    const nivel = resolverNivel({
+      solido,
+      faceId: info.faceId,
+      arestaId: info.arestaId,
+      altKey: info.altKey,
+      shiftKey: info.shiftKey,
+    });
+    setSelecaoNivel({ nivel: nivel.nivel, arestas: nivel.arestas, ids: nivel.ids, solidoId: info.solidoId, faceId: info.faceId });
+
+    if (nivel.nivel === 'sólido') {
       setAviso('Sólido inteiro: ' + String(solido.vertices.length) + ' vértices, ' + String(solido.faces.length) + ' faces.');
-      return;
+    } else if (nivel.nivel === 'loop') {
+      setAviso('Loop selecionado: ' + String(nivel.arestas) + ' aresta(s).');
+    } else {
+      setAviso(nivel.nivel === 'face' ? 'Face selecionada.' : 'Aresta selecionada.');
     }
-
-    if (cliquesRef.current === 2) {
-      const arestas = info.faceId !== null ? loopDaFace(solido, info.faceId) : info.arestaId !== null ? loopDeAresta(solido, info.arestaId) : [];
-      setSelecaoNivel({ nivel: 'loop', arestas: arestas.length, ids: arestas, solidoId: info.solidoId, faceId: info.faceId });
-      setAviso('Loop selecionado: ' + String(arestas.length) + ' aresta(s).');
-      return;
-    }
-
-    setSelecaoNivel({ nivel: info.faceId !== null ? 'face' : 'aresta', arestas: 0, ids: [], solidoId: info.solidoId, faceId: info.faceId });
-    setAviso(info.faceId !== null ? 'Face selecionada.' : 'Aresta selecionada.');
   };
 
   const adicionarMep = (elemento: ElementoMEP): void => {

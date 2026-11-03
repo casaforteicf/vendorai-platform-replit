@@ -3,6 +3,8 @@
  */
 
 import { resolverAtalho } from '../../src/arqdor/editor/input/atalhos';
+import { resolverNivel } from '../../src/arqdor/editor/modelador/selecao-nivel';
+import { criarCaixa } from '../../src/arqdor/editor/modelador/caixa';
 import {
   alternarSelecao,
   principalDaSelecao,
@@ -61,6 +63,35 @@ ok(principalDaSelecao(semA) === 'b', 'seleção: principal continua válido apó
 
 ok(principalDaSelecao(alternarSelecao(['a'], 'a')) === null, 'seleção: remover o último zera o principal');
 ok(alternarSelecao([], 'a').length === 1, 'seleção: Ctrl no vazio só adiciona');
+
+// ---------- 5. nível de seleção: Alt = loop, Alt+Shift = sólido ----------
+const caixaLoop = criarCaixa({
+  id: 'sel1',
+  nome: 'Caixa',
+  posicao: [0, 0, 0],
+  dimensoes: { largura: 1, altura: 1, profundidade: 1 },
+});
+ok(caixaLoop.ok, 'nível: sólido de teste criado');
+if (caixaLoop.ok) {
+  const solido = caixaLoop.solido;
+  const face = solido.faces[0];
+  const aresta = solido.arestas[0];
+
+  const simples = resolverNivel({ solido, faceId: face.id, arestaId: null });
+  ok(simples.nivel === 'face' && simples.arestas === 0, 'nível: clique simples em face');
+
+  const loop = resolverNivel({ solido, faceId: face.id, arestaId: null, altKey: true });
+  ok(loop.nivel === 'loop' && loop.ids.length === 4, 'nível: Alt+face = loop com 4 arestas');
+
+  const inteiro = resolverNivel({ solido, faceId: face.id, arestaId: null, altKey: true, shiftKey: true });
+  ok(inteiro.nivel === 'sólido' && inteiro.arestas === solido.arestas.length, 'nível: Alt+Shift = sólido inteiro');
+
+  const naAresta = resolverNivel({ solido, faceId: null, arestaId: aresta.id });
+  ok(naAresta.nivel === 'aresta', 'nível: clique simples em aresta');
+
+  const loopDaAresta = resolverNivel({ solido, faceId: null, arestaId: aresta.id, altKey: true });
+  ok(loopDaAresta.nivel === 'loop' && loopDaAresta.ids.length > 0, 'nível: Alt+aresta = loop');
+}
 
 console.log('');
 console.log('resultado: ' + String(passou) + ' passaram, ' + String(falhou) + ' falharam');

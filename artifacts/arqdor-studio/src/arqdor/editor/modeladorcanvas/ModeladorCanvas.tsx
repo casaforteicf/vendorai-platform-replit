@@ -41,8 +41,14 @@ export interface PropsModeladorCanvas {
   /** Soltou o grip: deslocamento ao longo da normal, em metros. */
   aoEsticarFace?: (faceId: string, delta: number) => void;
   aoEscolherFace: (solidoId: string, faceId: string) => void;
-  /** Clique em face (faceId) ou aresta (arestaId) — alimenta a seleção inteligente. */
-  aoClicarPeca?: (alvo: { solidoId: string; faceId: string | null; arestaId: string | null }) => void;
+  /** Clique em face (faceId) ou aresta (arestaId) — alimenta a seleção por nível. */
+  aoClicarPeca?: (alvo: {
+    solidoId: string;
+    faceId: string | null;
+    arestaId: string | null;
+    altKey?: boolean;
+    shiftKey?: boolean;
+  }) => void;
   /** Duplo clique numa face — abre a medida daquela face (padrão SketchUp). */
   aoDuploCliqueFace?: (solidoId: string, faceId: string) => void;
   faceSelecionada?: { solidoId: string; faceId: string } | null;
@@ -623,10 +629,9 @@ export function ModeladorCanvas(props: PropsModeladorCanvas) {
             const indice = primeiro.faceIndex;
             const faceId = mapa !== undefined && indice !== null && indice !== undefined ? (mapa[indice] ?? null) : null;
 
-            // Duplo clique por TEMPO (não pelo evento nativo `dblclick`): dois cliques na mesma
-            // face com Push/Pull ativo abrem a medida. O evento nativo não é confiável fora do
-            // mouse humano (automação/cliques sintéticos não o emitem).
-            if (modo === 'pushpull' && faceId !== null) {
+            // Duplo clique por TEMPO: dois cliques na mesma face abrem a medida. Vale em QUALQUER
+            // ferramenta — o loop saiu daqui e virou Alt+clique (decisão do dono, 2026-11-03).
+            if (faceId !== null) {
               const chave = solidoId + '|' + faceId;
               const agora = Date.now();
               if (ultimoFaceRef.current === chave && agora - ultimoFaceTempoRef.current < DUPLO_CLIQUE_MS) {
@@ -641,7 +646,13 @@ export function ModeladorCanvas(props: PropsModeladorCanvas) {
             }
 
             selecionarRef.current(solidoId, evento.ctrlKey || evento.metaKey || evento.shiftKey);
-            clicarPecaRef.current?.({ solidoId, faceId, arestaId: arestaSnapRef.current });
+            clicarPecaRef.current?.({
+              solidoId,
+              faceId,
+              arestaId: arestaSnapRef.current,
+              altKey: evento.altKey,
+              shiftKey: evento.shiftKey,
+            });
             arestaSnapRef.current = null;
             if (modo === 'pushpull' && faceId !== null) faceRef.current(solidoId, faceId);
             return;
