@@ -40,7 +40,7 @@ export interface TransacaoIA {
 }
 
 export type IAErro =
-  | { codigo: 'API_INDISPONIVEL'; provedor: 'openai' | 'anthropic' }
+  | { codigo: 'API_INDISPONIVEL'; provedor: 'openai' | 'anthropic' | 'deepseek' }
   | { codigo: 'TOOL_CALL_INVALIDA'; tool: string; detalhe: string }
   | { codigo: 'OPERACAO_NAO_SUPORTADA'; tool: string }
   | { codigo: 'ROLLBACK_FALHOU'; passoId: string; recuperacao: 'restaurar_snapshot' | 'congelar_sessao' }
