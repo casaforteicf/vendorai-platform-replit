@@ -61,7 +61,7 @@ export function PainelCamadas(props: PropsPainelCamadas) {
               checked={camada.visivel}
               onChange={() => props.aoAlternarCamada(camada.id)}
               aria-label={'Visibilidade de ' + camada.nome}
-              style={{ accentColor: '#176d59' }}
+              style={{ accentColor: '#00c896' }}
             />
             <span style={{ flex: 1, fontSize: 12 }}>{camada.nome}</span>
             {camada.padrao ? (

@@ -569,7 +569,7 @@ export function EditorShell() {
       projeto={projeto.nome}
       salvo={salvoEm !== null}
       acoes={
-        <button type="button" className="arq-btn" onClick={salvarAgora}>
+        <button type="button" className="arq-btn arq-btn-salvar" onClick={salvarAgora}>
           <Icone nome="salvo" tamanho={16} />
           Salvar
         </button>
@@ -672,6 +672,9 @@ export function EditorShell() {
 
         {aba === 'conflitos' ? null : (
         <aside className="arq-editor-aside">
+          <div className="arq-inspetor-head">
+            <h2>Inspetor</h2>
+          </div>
           <PainelPropriedades
             solido={solidoSelecionado ?? null}
             face={face}
@@ -693,7 +696,7 @@ export function EditorShell() {
             aoCarregarBooleana={carregarBooleana}
             aoBooleana={booleanaComSelecionado}
           />
-          <div style={{ height: 1, background: '#e5e7eb', margin: '14px 0' }} />
+          <div className="arq-sep" />
           <PainelCamadas
             camadas={camadas}
             totalObjetos={elementos.length}
@@ -712,7 +715,7 @@ export function EditorShell() {
         <span>{String(elementos.length)} elemento(s)</span>
         <span>selecionado: {solidoSelecionado?.nome ?? 'nenhum'}</span>
         <span>nível: {selecaoNivel === null ? '—' : selecaoNivel.nivel}{selecaoNivel !== null && selecaoNivel.arestas > 0 ? ' (' + String(selecaoNivel.arestas) + ' arestas)' : ''}</span>
-        <span style={{ color: '#52605a' }}>{aviso}</span>
+        <span style={{ color: 'var(--arq-ed-suave)' }}>{aviso}</span>
         {ultimoErro !== null ? <span style={{ color: '#ea7373' }}>erro: {ultimoErro.codigo}</span> : null}
         <span style={{ marginLeft: 'auto' }}>S/L/R/C/A · P push/pull · M/O/E gizmo · Ctrl+Z</span>
       </div>

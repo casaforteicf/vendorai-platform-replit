@@ -402,3 +402,243 @@ button { font-family: inherit; }
   color: #04231b; font: inherit; font-size: 11px; font-weight: 700; padding: 0 10px; cursor: pointer;
 }
 .arq-medidas-erro { font-size: 10.5px; color: #fca5a5; max-width: 230px; }
+
+/* ============ SKIN PREMIUM v6 — editor escuro (design DeepSeek) ============
+   Escopo: SOMENTE a página de modelagem. Dashboard e orçamento seguem claros.
+   Paleta do desenho: base #0A1915 · painel #0F1F1A · viewport #07120F ·
+   acento #00C896 · tinta #E6EEEA · texto suave #8FA39C · linha rgba(255,255,255,.06).
+   Nada aqui altera lógica, estado ou wiring: só superfície, cor e tipografia. */
+
+:root {
+  --arq-ed-base: #0a1915;
+  --arq-ed-painel: #0f1f1a;
+  --arq-ed-vazio: #07120f;
+  --arq-ed-tinta: #e6eeea;
+  --arq-ed-suave: #8fa39c;
+  --arq-ed-linha: rgba(255, 255, 255, .06);
+}
+
+/* casca: sidebar e topbar já nascem escuras; só refino as costuras */
+.arq-sidebar { border-right: 1px solid var(--arq-ed-linha); }
+.arq-topbar { border-bottom: 1px solid rgba(0, 0, 0, .20); }
+.arq-search input:focus-visible {
+  outline: none;
+  border-color: rgba(0, 200, 150, .60);
+  box-shadow: 0 0 0 2px rgba(0, 200, 150, .18);
+}
+.arq-avatar {
+  background: linear-gradient(135deg, #00c896, #0b6b4f);
+  color: #04231b;
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, .10);
+}
+.arq-vendi button { background: var(--arq-verde); color: #04231b; }
+.arq-vendi button:hover { background: var(--arq-verde-hover); }
+.arq-vendi button:disabled { opacity: .6; cursor: not-allowed; }
+
+/* o conteúdo do editor vira superfície escura (o dashboard fica intocado) */
+.arq-content:has(.arq-editor-page) { background: var(--arq-ed-base); }
+.arq-editor-page { background: var(--arq-ed-base); color: var(--arq-ed-tinta); }
+
+/* faixa de abas do editor */
+.arq-editor-toolbar {
+  background: var(--arq-ed-base);
+  border-bottom: 1px solid var(--arq-ed-linha);
+}
+.arq-editor-toolbar .arq-tool {
+  height: 34px;
+  border: 0;
+  border-radius: 8px 8px 0 0;
+  background: transparent;
+  color: #93a8a1;
+  font-weight: 600;
+}
+.arq-editor-toolbar .arq-tool:hover:not(:disabled) { background: rgba(255, 255, 255, .05); color: #fff; }
+.arq-editor-toolbar .arq-tool[aria-pressed="true"] {
+  background: transparent;
+  color: var(--arq-verde);
+  font-weight: 700;
+  box-shadow: inset 0 -2px 0 var(--arq-verde);
+}
+.arq-editor-toolbar .arq-muted { color: var(--arq-ed-suave); }
+
+/* rail de ferramentas */
+.arq-editor-rail {
+  background: var(--arq-ed-base);
+  border-right: 1px solid var(--arq-ed-linha);
+}
+.arq-editor-rail .arq-rail-label {
+  color: rgba(0, 200, 150, .85);
+  font-size: 9px;
+  letter-spacing: .9px;
+  padding-top: 12px;
+}
+.arq-editor-rail .arq-tool { color: #b6c8c2; font-size: 11.5px; }
+.arq-editor-rail .arq-tool svg { color: #7f938c; }
+.arq-editor-rail .arq-tool:hover:not(:disabled) { background: rgba(255, 255, 255, .06); color: #fff; }
+.arq-editor-rail .arq-tool:hover:not(:disabled) svg { color: var(--arq-verde); }
+.arq-editor-rail .arq-tool[aria-pressed="true"] { background: rgba(0, 200, 150, .14); color: #fff; font-weight: 600; }
+.arq-editor-rail .arq-tool[aria-pressed="true"] svg { color: var(--arq-verde); }
+
+/* viewport */
+.arq-editor-canvas { background: var(--arq-ed-vazio); }
+.arq-editor-canvas .arq-vazio-overlay .arq-btn {
+  border-color: var(--arq-verde);
+  background: var(--arq-verde);
+  color: #04231b;
+  font-weight: 700;
+}
+.arq-editor-canvas .arq-vazio-overlay .arq-btn:hover { background: var(--arq-verde-hover); border-color: var(--arq-verde-hover); }
+
+/* inspetor */
+.arq-editor-aside {
+  background: var(--arq-ed-painel);
+  border-left: 1px solid var(--arq-ed-linha);
+  color: var(--arq-ed-tinta);
+}
+.arq-inspetor-head {
+  margin: -14px -14px 14px;
+  padding: 13px 14px 11px;
+  border-bottom: 1px solid var(--arq-ed-linha);
+  background: rgba(0, 0, 0, .18);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.arq-inspetor-head h2 {
+  margin: 0;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 1.4px;
+  text-transform: uppercase;
+  color: #9fb3ad;
+}
+.arq-editor-aside .arq-panel-title {
+  color: var(--arq-verde);
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: .9px;
+  text-transform: uppercase;
+}
+.arq-editor-aside .arq-panel-title svg { color: var(--arq-verde); }
+.arq-editor-aside .arq-muted { color: var(--arq-ed-suave); }
+.arq-editor-aside .arq-transf-titulo { color: #7f938c; }
+.arq-editor-aside input[type="checkbox"] { accent-color: var(--arq-verde); }
+
+/* botões de alternância do inspetor (Modos, Revelar todos, criar camada):
+   sem isto herdam --arq-texto escuro e o rótulo some no fundo escuro */
+.arq-editor-aside .arq-tool {
+  color: #b6c8c2;
+  background: transparent;
+  border: 1px solid transparent;
+  font-size: 11.5px;
+}
+.arq-editor-aside .arq-tool svg { color: #7f938c; }
+.arq-editor-aside .arq-tool:hover:not(:disabled) { background: rgba(255, 255, 255, .06); color: #fff; }
+.arq-editor-aside .arq-tool:hover:not(:disabled) svg { color: var(--arq-verde); }
+.arq-editor-aside .arq-tool[aria-pressed="true"] { background: rgba(0, 200, 150, .14); color: #fff; font-weight: 600; }
+.arq-editor-aside .arq-tool[aria-pressed="true"] svg { color: var(--arq-verde); }
+.arq-editor-aside .arq-tool:focus-visible { outline: 2px solid var(--arq-verde); outline-offset: 2px; }
+
+/* campos */
+.arq-editor-aside .arq-field {
+  background: rgba(0, 0, 0, .32);
+  border: 1px solid rgba(255, 255, 255, .10);
+  border-radius: 8px;
+  color: #fff;
+}
+.arq-editor-aside .arq-field::placeholder { color: rgba(255, 255, 255, .32); }
+.arq-editor-aside .arq-field:focus,
+.arq-editor-aside .arq-field:focus-visible {
+  outline: none;
+  border-color: rgba(0, 200, 150, .65);
+  box-shadow: 0 0 0 2px rgba(0, 200, 150, .18);
+}
+.arq-editor-aside select.arq-field option { background: var(--arq-ed-painel); color: #fff; }
+
+/* botões do inspetor */
+.arq-editor-aside .arq-btn {
+  background: rgba(255, 255, 255, .04);
+  border: 1px solid rgba(255, 255, 255, .10);
+  color: var(--arq-ed-tinta);
+}
+.arq-editor-aside .arq-btn:hover { background: rgba(255, 255, 255, .09); border-color: rgba(255, 255, 255, .18); }
+.arq-editor-aside .arq-btn-primary {
+  background: var(--arq-verde);
+  border-color: var(--arq-verde);
+  color: #06231b;
+  font-weight: 700;
+  box-shadow: 0 6px 18px rgba(0, 200, 150, .18);
+}
+.arq-editor-aside .arq-btn-primary:hover { background: var(--arq-verde-hover); border-color: var(--arq-verde-hover); }
+.arq-editor-aside .arq-btn-perigo {
+  background: rgba(239, 68, 68, .12);
+  border-color: rgba(239, 68, 68, .35);
+  color: #fca5a5;
+}
+.arq-editor-aside .arq-btn-perigo:hover { background: rgba(239, 68, 68, .20); border-color: rgba(239, 68, 68, .50); }
+
+/* selo BIM: azul do design não tem contraste no escuro */
+.arq-editor-aside .arq-badge-bim { background: rgba(96, 165, 250, .14); color: #93c5fd; }
+
+/* divisória entre os painéis do inspetor */
+.arq-sep { height: 1px; background: var(--arq-ed-linha); margin: 14px 0; }
+
+/* barra de status */
+.arq-editor-page .arq-statusbar {
+  background: var(--arq-ed-base);
+  border-top: 1px solid var(--arq-ed-linha);
+  color: #7f938c;
+}
+
+/* ação "Salvar" da topbar como primário mint (o desenho pede botão cheio) */
+.arq-btn-salvar {
+  background: var(--arq-verde);
+  border-color: var(--arq-verde);
+  color: #06231b;
+  font-weight: 700;
+  box-shadow: 0 6px 18px rgba(0, 200, 150, .22);
+}
+.arq-btn-salvar:hover { background: var(--arq-verde-hover); border-color: var(--arq-verde-hover); }
+
+/* aba Conflitos também mora no editor escuro */
+.arq-editor-canvas .arq-conflitos { background: var(--arq-ed-base); }
+.arq-editor-canvas .arq-conflitos-form,
+.arq-editor-canvas .arq-conflitos-lista {
+  background: var(--arq-ed-painel);
+  border-color: var(--arq-ed-linha);
+  color: var(--arq-ed-tinta);
+}
+.arq-editor-canvas .arq-conflitos-planta { background: var(--arq-ed-vazio); border-color: var(--arq-ed-linha); }
+.arq-editor-canvas .arq-conflitos .arq-painel-title { color: var(--arq-verde); font-weight: 700; }
+.arq-editor-canvas .arq-conflitos .arq-painel-head svg { color: var(--arq-ed-suave); }
+.arq-editor-canvas .arq-conflitos .arq-muted { color: var(--arq-ed-suave); }
+.arq-editor-canvas .arq-conflitos .arq-rail-label { color: rgba(0, 200, 150, .85); letter-spacing: .9px; }
+.arq-editor-canvas .arq-conflitos .arq-field {
+  background: rgba(0, 0, 0, .32);
+  border: 1px solid rgba(255, 255, 255, .10);
+  border-radius: 8px;
+  color: #fff;
+}
+.arq-editor-canvas .arq-conflitos .arq-field:focus,
+.arq-editor-canvas .arq-conflitos .arq-field:focus-visible {
+  outline: none;
+  border-color: rgba(0, 200, 150, .65);
+  box-shadow: 0 0 0 2px rgba(0, 200, 150, .18);
+}
+.arq-editor-canvas .arq-conflitos select.arq-field option { background: var(--arq-ed-painel); color: #fff; }
+.arq-editor-canvas .arq-conflitos .arq-btn {
+  background: rgba(255, 255, 255, .04);
+  border: 1px solid rgba(255, 255, 255, .10);
+  color: var(--arq-ed-tinta);
+}
+.arq-editor-canvas .arq-conflitos .arq-btn:hover { background: rgba(255, 255, 255, .09); border-color: rgba(255, 255, 255, .18); }
+.arq-editor-canvas .arq-conflitos .arq-btn-primary {
+  background: var(--arq-verde);
+  border-color: var(--arq-verde);
+  color: #06231b;
+  font-weight: 700;
+}
+.arq-editor-canvas .arq-conflitos .arq-btn-primary:hover { background: var(--arq-verde-hover); border-color: var(--arq-verde-hover); }
+.arq-editor-canvas .arq-conflitos .arq-tabela th { color: #93a8a1; border-bottom-color: rgba(255, 255, 255, .10); }
+.arq-editor-canvas .arq-conflitos .arq-tabela td { border-bottom-color: rgba(255, 255, 255, .06); }
+.arq-editor-canvas .arq-conflitos .arq-tabela tr:last-child td { border-bottom: 0; }
