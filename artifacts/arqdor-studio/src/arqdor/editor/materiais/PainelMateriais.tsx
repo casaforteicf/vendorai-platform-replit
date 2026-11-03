@@ -13,6 +13,13 @@ import type { Catalogo } from './catalogo';
 import { exportarParaCotacao, importarCotacao, itensDeCotacao } from './cotacao';
 import { quantitativos } from '../orcamento/quantitativos';
 import { useBIMStore } from '../stores/useBIMStore';
+import {
+  COMPOSICOES_PADRAO,
+  custoComposicao,
+  exportarComposicoesCsv,
+  importarComposicoesCsv,
+} from './composicoes';
+import type { Composicao, InsumoComposicao } from './composicoes';
 import type { Categoria, Unidade } from '../orcamento/quantitativos';
 import type { FontePreco, Material } from './schema';
 
@@ -53,6 +60,16 @@ export function PainelMateriais({ aberto, aoFechar, inline }: PainelMateriaisPro
   const [selecionadoId, setSelecionadoId] = useState<string | null>(null);
   const [preco, setPreco] = useState('');
   const [aviso, setAviso] = useState<string | null>(null);
+  const [abaMat, setAbaMat] = useState<'catalogo' | 'composicoes'>('catalogo');
+  const [composicoes, setComposicoes] = useState<Composicao[]>(() => COMPOSICOES_PADRAO.map((item) => ({ ...item, insumos: [...item.insumos] })));
+  const [rascunho, setRascunho] = useState<{ nome: string; unidade: Unidade; insumos: InsumoComposicao[] }>({
+    nome: '',
+    unidade: 'm2',
+    insumos: [],
+  });
+  const [insumoId, setInsumoId] = useState('');
+  const [insumoQtd, setInsumoQtd] = useState('');
+  const composicoesRef = useRef<HTMLInputElement | null>(null);
   const arquivoRef = useRef<HTMLInputElement | null>(null);
   const [novo, setNovo] = useState<{ nome: string; categoria: Categoria; unidade: Unidade; preco: string }>({
     nome: '',
@@ -153,6 +170,63 @@ export function PainelMateriais({ aberto, aoFechar, inline }: PainelMateriaisPro
     );
   };
 
+  const adicionarInsumo = (): void => {
+    const qtd = Number(insumoQtd.replace(',', '.'));
+    if (insumoId.length === 0 || !(qtd > 0)) {
+      setAviso('Escolha o insumo e uma quantidade maior que zero.');
+      return;
+    }
+    setRascunho((atual) => ({ ...atual, insumos: [...atual.insumos, { materialId: insumoId, quantidade: qtd }] }));
+    setInsumoQtd('');
+    setAviso(null);
+  };
+
+  const criarComposicao = (): void => {
+    if (rascunho.nome.trim().length === 0) {
+      setAviso('Informe o nome da composição.');
+      return;
+    }
+    if (rascunho.insumos.length === 0) {
+      setAviso('Adicione ao menos um insumo.');
+      return;
+    }
+    const nova: Composicao = {
+      id: 'COMP-' + Date.now().toString(36).toUpperCase(),
+      nome: rascunho.nome.trim(),
+      unidade: rascunho.unidade,
+      insumos: rascunho.insumos,
+    };
+    setComposicoes((atual) => [...atual, nova]);
+    setRascunho({ nome: '', unidade: 'm2', insumos: [] });
+    setAviso('Composição criada: ' + nova.nome + '.');
+  };
+
+  const importarComposicoes = async (arquivo: File): Promise<void> => {
+    const texto = await arquivo.text();
+    const resultado = importarComposicoesCsv(texto);
+    if (resultado.erro === 'CABECALHO_INVALIDO') {
+      setAviso('CSV sem o cabeçalho esperado: composicao_id;composicao_nome;unidade;insumo_id;quantidade.');
+      return;
+    }
+    setComposicoes((atual) => [...atual, ...resultado.composicoes]);
+    setAviso(
+      String(resultado.composicoes.length) + ' composição(ões) importada(s).' +
+        (resultado.ignorados.length > 0 ? ' ' + String(resultado.ignorados.length) + ' linha(s) ignorada(s).' : ''),
+    );
+  };
+
+  const exportarComposicoes = (): void => {
+    const csv = exportarComposicoesCsv(composicoes);
+    const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'composicoes-arqdor.csv';
+    link.click();
+    URL.revokeObjectURL(url);
+    setAviso(String(composicoes.length) + ' composição(ões) exportada(s).');
+  };
+
   const campo = {
     padding: '7px 9px',
     borderRadius: 8,
@@ -197,6 +271,33 @@ export function PainelMateriais({ aberto, aoFechar, inline }: PainelMateriaisPro
         </button>
       </div>
 
+      <div style={{ display: 'flex', gap: 4, marginBottom: 8 }} role="tablist" aria-label="Seção de materiais">
+        {(['catalogo', 'composicoes'] as const).map((aba) => (
+          <button
+            key={aba}
+            type="button"
+            role="tab"
+            aria-selected={abaMat === aba}
+            onClick={() => setAbaMat(aba)}
+            style={{
+              flex: 1,
+              padding: '6px 8px',
+              borderRadius: 8,
+              border: '1px solid ' + (abaMat === aba ? 'rgba(0,200,150,.5)' : 'transparent'),
+              background: abaMat === aba ? 'rgba(0,200,150,.14)' : 'rgba(0,0,0,.22)',
+              color: abaMat === aba ? '#e6eeea' : '#8fa39c',
+              fontSize: 11.5,
+              fontWeight: 700,
+              cursor: 'pointer',
+            }}
+          >
+            {aba === 'catalogo' ? 'Catálogo' : 'Composições'}
+          </button>
+        ))}
+      </div>
+
+      {abaMat === 'catalogo' ? (
+      <>
       <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
         <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Buscar material" aria-label="Buscar material" style={{ ...campo, flex: 1 }} />
         <select value={categoria} onChange={(e) => setCategoria(e.target.value as 'todas' | Categoria)} aria-label="Filtrar por categoria" style={campo}>
@@ -329,6 +430,138 @@ export function PainelMateriais({ aberto, aoFechar, inline }: PainelMateriaisPro
           </button>
         </div>
       </div>
+
+      </>
+      ) : (
+        <>
+          <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
+            <button
+              type="button"
+              onClick={() => composicoesRef.current?.click()}
+              style={{ padding: '7px 10px', borderRadius: 8, border: '1px solid rgba(0,200,150,.35)', background: 'rgba(0,200,150,.12)', color: '#00c896', fontWeight: 700, fontSize: 11.5, cursor: 'pointer' }}
+            >
+              Importar CSV
+            </button>
+            <button
+              type="button"
+              onClick={exportarComposicoes}
+              style={{ padding: '7px 10px', borderRadius: 8, border: '1px solid rgba(255,255,255,.14)', background: 'rgba(0,0,0,.25)', color: '#e6eeea', fontWeight: 600, fontSize: 11.5, cursor: 'pointer' }}
+            >
+              Exportar CSV
+            </button>
+            <input
+              ref={composicoesRef}
+              type="file"
+              accept=".csv,text/csv"
+              style={{ display: 'none' }}
+              onChange={(evento) => {
+                const arquivo = evento.target.files?.[0];
+                if (arquivo !== undefined) void importarComposicoes(arquivo);
+                evento.target.value = '';
+              }}
+            />
+          </div>
+
+          <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: 4 }}>
+            {composicoes.map((composicao) => {
+              const custo = custoComposicao(composicao, catalogo);
+              return (
+                <li
+                  key={composicao.id}
+                  style={{ padding: '7px 9px', borderRadius: 8, background: 'rgba(0,0,0,.22)', border: '1px solid rgba(255,255,255,.06)' }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 6 }}>
+                    <span style={{ fontSize: 12, fontWeight: 600 }}>{composicao.nome}</span>
+                    <span style={{ fontSize: 11.5, color: '#cfe0da' }}>
+                      {moeda(custo.custo)}/{composicao.unidade}
+                    </span>
+                  </div>
+                  <div style={{ fontSize: 10, color: '#8fa39c', marginTop: 2 }}>
+                    {composicao.insumos.length} insumo(s)
+                    {custo.faltando.length > 0 ? ' · sem preço: ' + custo.faltando.join(', ') : ' · custo completo'}
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+
+          <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid rgba(255,255,255,.08)' }}>
+            <div style={{ fontSize: 10.5, color: '#8fa39c', marginBottom: 6 }}>Nova composição</div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 6 }}>
+              <input
+                value={rascunho.nome}
+                onChange={(evento) => setRascunho({ ...rascunho, nome: evento.target.value })}
+                placeholder="Nome (ex.: Alvenaria de bloco)"
+                aria-label="Nome da composição"
+                style={campo}
+              />
+              <select
+                value={rascunho.unidade}
+                onChange={(evento) => setRascunho({ ...rascunho, unidade: evento.target.value as Unidade })}
+                aria-label="Unidade da composição"
+                style={campo}
+              >
+                {UNIDADES.map((unidade) => (
+                  <option key={unidade} value={unidade}>
+                    {unidade}
+                  </option>
+                ))}
+              </select>
+              <select
+                value={insumoId}
+                onChange={(evento) => setInsumoId(evento.target.value)}
+                aria-label="Insumo"
+                style={campo}
+              >
+                <option value="">Insumo…</option>
+                {catalogo.map((material) => (
+                  <option key={material.id} value={material.id}>
+                    {material.nome}
+                  </option>
+                ))}
+              </select>
+              <div style={{ display: 'flex', gap: 4 }}>
+                <input
+                  value={insumoQtd}
+                  onChange={(evento) => setInsumoQtd(evento.target.value)}
+                  placeholder="Qtd"
+                  inputMode="decimal"
+                  aria-label="Quantidade do insumo"
+                  style={{ ...campo, width: 68, textAlign: 'right' }}
+                />
+                <button
+                  type="button"
+                  onClick={adicionarInsumo}
+                  style={{ padding: '6px 9px', borderRadius: 8, border: '1px solid rgba(255,255,255,.14)', background: 'rgba(0,0,0,.25)', color: '#e6eeea', fontSize: 11, cursor: 'pointer' }}
+                >
+                  +
+                </button>
+              </div>
+            </div>
+
+            {rascunho.insumos.length > 0 ? (
+              <ul style={{ listStyle: 'none', margin: '8px 0 0', padding: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>
+                {rascunho.insumos.map((insumo, indice) => (
+                  <li key={String(indice)} style={{ fontSize: 10.5, color: '#8fa39c' }}>
+                    {insumo.quantidade} × {insumo.materialId}
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+
+            <button
+              type="button"
+              onClick={criarComposicao}
+              style={{ marginTop: 8, width: '100%', padding: '8px 12px', borderRadius: 8, border: 0, background: '#00c896', color: '#06231b', fontWeight: 700, fontSize: 12, cursor: 'pointer' }}
+            >
+              Criar composição
+            </button>
+            <p style={{ margin: '6px 0 0', fontSize: 10, color: '#6b7c76', lineHeight: 1.45 }}>
+              CSV: composicao_id;composicao_nome;unidade;insumo_id;quantidade (linhas do mesmo id viram insumos).
+            </p>
+          </div>
+        </>
+      )}
 
       {aviso !== null ? <p style={{ margin: '10px 0 0', fontSize: 11.5, color: '#8fa39c' }}>{aviso}</p> : null}
     </div>
