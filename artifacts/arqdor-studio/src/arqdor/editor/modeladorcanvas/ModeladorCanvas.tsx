@@ -35,7 +35,7 @@ export interface PropsModeladorCanvas {
   /** Sólidos destacados na cena (seleção múltipla com Ctrl/Shift). */
   selecionados?: readonly string[];
   /** Pede à câmera para enquadrar um ponto — usado logo após inserir uma peça. */
-  foco?: { alvo: Vetor3; versao: number } | null;
+  foco?: { alvo: Vetor3; versao: number; distancia?: number } | null;
   /** Grip de esticar a face selecionada (losango vermelho). */
   grip?: { posicao: Vetor3; normal: Vetor3; faceId: string } | null;
   /** Soltou o grip: deslocamento ao longo da normal, em metros. */
@@ -814,8 +814,12 @@ export function ModeladorCanvas(props: PropsModeladorCanvas) {
     const foco = props.foco;
     if (foco === null || foco === undefined) return;
     const [x, y, z] = foco.alvo;
+    // Distância explícita para peças grandes (terreno de 120 m); default mantém o enquadramento
+    // próximo usado na inserção de sólidos.
+    const distancia = foco.distancia ?? 10;
     orbitais.target.set(x, y, z);
-    camera.position.set(x + 4.5, y + 4.5, z + 7.5);
+    orbitais.maxDistance = Math.max(orbitais.maxDistance, distancia * 3);
+    camera.position.set(x + distancia * 0.42, y + distancia * 0.55, z + distancia * 0.72);
     orbitais.update();
   }, [props.foco]);
 

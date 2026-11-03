@@ -97,7 +97,7 @@ export function EditorShell() {
   const [face, setFace] = useState<FaceEscolhida | null>(null);
   const [altura, setAltura] = useState('2.8');
   const [focoMedida, setFocoMedida] = useState(0);
-  const [focoCamera, setFocoCamera] = useState<{ alvo: [number, number, number]; versao: number } | null>(null);
+  const [focoCamera, setFocoCamera] = useState<{ alvo: [number, number, number]; versao: number; distancia?: number } | null>(null);
   const [painelAberto, setPainelAberto] = useState(true);
   const [terrenoAberto, setTerrenoAberto] = useState(false);
   const abrirChatIA = useChatIAStore((s) => s.abrir);
@@ -958,8 +958,9 @@ export function EditorShell() {
       <PainelTerreno
         aberto={terrenoAberto}
         aoFechar={() => setTerrenoAberto(false)}
-        aoCriar={() => {
-          setFocoCamera({ alvo: [0, 0, 0], versao: Date.now() });
+        aoCriar={(info) => {
+          // Enquadra o lote inteiro: distância proporcional ao maior lado do terreno.
+          setFocoCamera({ alvo: [0, 0, 0], versao: Date.now(), distancia: Math.max(12, info.ladoM * 1.25) });
           setAviso('Terreno criado como referência — não entra no orçamento.');
         }}
       />
