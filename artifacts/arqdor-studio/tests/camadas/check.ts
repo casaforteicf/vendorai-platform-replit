@@ -19,6 +19,7 @@ import {
   hidratarObjetos,
   objetoVisivel,
   revelarTodosObjetos,
+  renomearCamada,
   reordenarCamadas,
 } from '../../src/arqdor/editor';
 
@@ -117,6 +118,18 @@ const faxina = faxineiroOrfaos(inicial, [
 ok(faxina.migrados === 1, 'um orfao migrado');
 ok(faxina.objetos[0].camadaId === 'camada_estrutura', 'orfao volta para Estrutura');
 ok(faxina.objetos[1].camadaId === CAMADA_MODELADOR, 'sentinela nao e tocada pelo faxineiro');
+
+// ---------- renomear e reordenar (Bloco 2) ----------
+const base = estadoInicialCamadas();
+const renomeado = renomearCamada(base, 'camada_mobiliario', 'Móveis');
+ok(renomeado.ok && renomeado.estado.camadas.find((c) => c.id === 'camada_mobiliario')?.nome === 'Móveis', 'camadas: renomear atualiza o nome');
+const nomeVazio = renomearCamada(base, 'camada_mobiliario', '   ');
+ok(!nomeVazio.ok && nomeVazio.erro.codigo === 'NOME_VAZIO', 'camadas: renomear com nome vazio é recusado');
+const reordenado2 = reordenarCamadas(base, ['camada_frentes', 'camada_estrutura', 'camada_mobiliario']);
+const ordemNova2 = reordenado2.ok
+  ? [...reordenado2.estado.camadas].sort((a, b) => a.ordem - b.ordem).map((c) => c.id).join(',')
+  : '';
+ok(reordenado2.ok && ordemNova2 === 'camada_frentes,camada_estrutura,camada_mobiliario', 'camadas: reordenar regrava ordem');
 
 console.log('');
 console.log('resultado: ' + String(passou) + ' passaram, ' + String(falhou) + ' falharam');

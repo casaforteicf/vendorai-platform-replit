@@ -99,6 +99,8 @@ export function EditorShell() {
   const toggleCamada = useBIMStore((s) => s.toggleCamada);
   const novaCamada = useBIMStore((s) => s.novaCamada);
   const removerCamada = useBIMStore((s) => s.removerCamada);
+  const renomearCamadaStore = useBIMStore((s) => s.renomearCamada);
+  const reordenarCamadasStore = useBIMStore((s) => s.reordenarCamadas);
   const revelarTodos = useBIMStore((s) => s.revelarTodos);
   const carregarExemplo = useBIMStore((s) => s.carregarExemplo);
   const aplicarBim = useBIMStore((s) => s.aplicar);
@@ -231,6 +233,21 @@ export function EditorShell() {
     ? undefined
     : elementos.find((el) => el.id === 'el_' + solidoSelecionado.id && el.tipo === 'parede');
   const vaosDoSolido = paredeDoSolido === undefined ? [] : vaosDaParede(elementos, paredeDoSolido.id);
+
+  /** Ordem de desenho por sólido: vem da camada do elemento BIM vinculado ao sólido. */
+  const ordemPorSolido = useMemo(() => {
+    const ordemCamada = new Map(camadas.camadas.map((camada) => [camada.id, camada.ordem]));
+    const mapa: Record<string, number> = {};
+    for (const elemento of elementos) {
+      // O vínculo com o sólido vive na geometria (tipos diferentes expõem o mesmo campo).
+      const geometria = elemento.geometria as { modeladorSolidoId?: string };
+      const solidoId = geometria.modeladorSolidoId;
+      if (solidoId !== undefined) {
+        mapa[solidoId] = ordemCamada.get(elemento.camadaId) ?? 0;
+      }
+    }
+    return mapa;
+  }, [elementos, camadas]);
 
   /** Grip da face selecionada (centro + normal) — o losango vermelho do canvas. */
   const gripFace = useMemo(() => {
@@ -903,6 +920,7 @@ export function EditorShell() {
               foco={focoCamera}
               unidade={unidade}
               ocultarGrade={solidos.some((item) => ehTerreno(item))}
+              ordemPorSolido={ordemPorSolido}
               vista={obterVista(vistaId)}
               projetoNome={projeto.nome}
               vistaRotulo={obterVista(vistaId).rotulo}
@@ -999,6 +1017,8 @@ export function EditorShell() {
             aoAplicarModo={setModo}
             aoAlternarCamada={toggleCamada}
             aoCriarCamada={novaCamada}
+            aoRenomearCamada={renomearCamadaStore}
+            aoReordenarCamadas={reordenarCamadasStore}
             aoRemoverCamada={removerCamada}
             aoRevelarTodos={revelarTodos}
           />

@@ -46,6 +46,8 @@ export interface PropsModeladorCanvas {
   unidade?: Unidade;
   /** Oculta a grade verde (o terreno de referência já é o piso). */
   ocultarGrade?: boolean;
+  /** Ordem de desenho por sólido (camada): maior = desenhado depois (na frente). */
+  ordemPorSolido?: Record<string, number>;
   /** Vista selecionada (registro em vistas/vistas.ts). */
   vista?: ConfiguracaoVista;
   /** Dados do carimbo da prancha. */
@@ -80,7 +82,7 @@ const MODO_GIZMO: Record<Exclude<ModoGizmo, null>, 'translate' | 'rotate' | 'sca
 /** Janela do duplo clique na face (ms) — dois cliques no mesmo alvo, com Push/Pull ativo. */
 const DUPLO_CLIQUE_MS = 400;
 
-function construirSolido(solido: Solido, selecionado: boolean, materializado: boolean): THREE.Group {
+function construirSolido(solido: Solido, selecionado: boolean, materializado: boolean, ordem = 0): THREE.Group {
   const grupo = new THREE.Group();
   grupo.name = solido.id;
   grupo.userData.solidoId = solido.id;
@@ -117,6 +119,7 @@ function construirSolido(solido: Solido, selecionado: boolean, materializado: bo
       roughness: 0.85,
     });
     const malha = new THREE.Mesh(geometria, material);
+    malha.renderOrder = ordem;
     malha.userData.mapaFaces = mapaFaces;
     grupo.add(malha);
   }
@@ -179,6 +182,8 @@ export function ModeladorCanvas(props: PropsModeladorCanvas) {
   const gripNormalRef = useRef<Vetor3 | null>(null);
   const gripDeltaRef = useRef(0);
   const unidadeRef = useRef<Unidade>(props.unidade ?? 'm');
+  const ordemRef = useRef<Record<string, number>>(props.ordemPorSolido ?? {});
+  ordemRef.current = props.ordemPorSolido ?? {};
   const gradeRef = useRef<THREE.GridHelper | null>(null);
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
   /** Ativo quando a vista atual é ortográfica (frustum manual, sem trocar a câmera). */
@@ -854,7 +859,7 @@ export function ModeladorCanvas(props: PropsModeladorCanvas) {
     const destacados =
       props.selecionados ?? (props.selecionadoId === null ? [] : [props.selecionadoId]);
     for (const solido of props.solidos) {
-      grupos.add(construirSolido(solido, destacados.includes(solido.id), materializados.has(solido.id)));
+      grupos.add(construirSolido(solido, destacados.includes(solido.id), materializados.has(solido.id), ordemRef.current[solido.id] ?? 0));
     }
     selecionadoRef.current = props.selecionadoId;
   }, [props.solidos, props.selecionadoId, props.selecionados, props.solidosMaterializados]);

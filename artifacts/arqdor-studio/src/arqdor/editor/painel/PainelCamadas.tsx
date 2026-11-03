@@ -10,14 +10,42 @@ export interface PropsPainelCamadas {
   aoAplicarModo: (modoId: string) => void;
   aoAlternarCamada: (camadaId: string) => void;
   aoCriarCamada: (nome: string) => void;
+  aoRenomearCamada: (camadaId: string, nome: string) => void;
+  /** Reordena pela lista de ids na ordem nova (índice 0 = primeira). */
+  aoReordenarCamadas: (idsNaOrdem: string[]) => void;
   aoRemoverCamada: (camadaId: string) => void;
   aoRevelarTodos: () => void;
 }
 
+const CORES_CAMADA = ['#00c896', '#38bdf8', '#f59e0b', '#a78bfa', '#84cc16', '#f472b6'];
+
 /** Conteúdo do inspetor direito (300px) — sem wrapper próprio. */
 export function PainelCamadas(props: PropsPainelCamadas) {
   const [nome, setNome] = useState('');
+  const [editandoId, setEditandoId] = useState<string | null>(null);
+  const [textoEdicao, setTextoEdicao] = useState('');
+  const [arrastandoId, setArrastandoId] = useState<string | null>(null);
   const { camadas } = props;
+
+  const confirmarRenome = (): void => {
+    if (editandoId === null) return;
+    if (textoEdicao.trim().length > 0) props.aoRenomearCamada(editandoId, textoEdicao.trim());
+    setEditandoId(null);
+    setTextoEdicao('');
+  };
+
+  const soltarSobre = (destinoId: string): void => {
+    if (arrastandoId === null || arrastandoId === destinoId) return;
+    const ids = camadas.camadas.map((camada) => camada.id);
+    const de = ids.indexOf(arrastandoId);
+    const para = ids.indexOf(destinoId);
+    if (de < 0 || para < 0) return;
+    const semOrigem = ids.filter((id) => id !== arrastandoId);
+    const indiceDestino = semOrigem.indexOf(destinoId);
+    semOrigem.splice(para > de ? indiceDestino + 1 : indiceDestino, 0, arrastandoId);
+    props.aoReordenarCamadas(semOrigem);
+    setArrastandoId(null);
+  };
 
   return (
     <div>
@@ -42,28 +70,63 @@ export function PainelCamadas(props: PropsPainelCamadas) {
         ))}
       </div>
 
-      <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
-        {camadas.camadas.map((camada) => (
+      <ul style={{ listStyle: 'none', margin: 0, padding: 0 }} className="arq-layer-list">
+        {camadas.camadas.map((camada, indice) => (
           <li
             key={camada.id}
+            className={'arq-layer-item' + (camada.visivel ? '' : ' is-hidden')}
+            draggable
+            onDragStart={() => setArrastandoId(camada.id)}
+            onDragOver={(evento) => evento.preventDefault()}
+            onDrop={() => soltarSobre(camada.id)}
+            onDoubleClick={() => {
+              setEditandoId(camada.id);
+              setTextoEdicao(camada.nome);
+            }}
             style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 8,
-              minHeight: 30,
-              padding: '2px 6px',
-              borderRadius: 6,
               background: camadas.camadaAtivaId === camada.id ? 'rgba(23,109,89,0.15)' : 'transparent',
+              cursor: 'grab',
             }}
           >
-            <input
-              type="checkbox"
-              checked={camada.visivel}
-              onChange={() => props.aoAlternarCamada(camada.id)}
-              aria-label={'Visibilidade de ' + camada.nome}
-              style={{ accentColor: '#00c896' }}
-            />
-            <span style={{ flex: 1, fontSize: 12 }}>{camada.nome}</span>
+            <span className="arq-layer-swatch" style={{ backgroundColor: CORES_CAMADA[indice % CORES_CAMADA.length], opacity: camada.visivel ? 1 : 0.25 }} aria-hidden="true" />
+            {editandoId === camada.id ? (
+              <input
+                autoFocus
+                className="arq-field"
+                value={textoEdicao}
+                onChange={(evento) => setTextoEdicao(evento.target.value)}
+                onBlur={confirmarRenome}
+                onKeyDown={(evento) => {
+                  if (evento.key === 'Enter') confirmarRenome();
+                  if (evento.key === 'Escape') setEditandoId(null);
+                }}
+                aria-label={'Novo nome da camada ' + camada.nome}
+                style={{ flex: 1, height: 24, fontSize: 12 }}
+              />
+            ) : (
+              <button
+                type="button"
+                className="arq-layer-name"
+                onClick={() => {
+                  setEditandoId(camada.id);
+                  setTextoEdicao(camada.nome);
+                }}
+                title="Clique para renomear"
+                style={{ border: 0, background: 'transparent', cursor: 'text', padding: 0 }}
+              >
+                {camada.nome}
+              </button>
+            )}
+            <button
+              type="button"
+              className="arq-layer-eye"
+              onClick={() => props.aoAlternarCamada(camada.id)}
+              aria-label={(camada.visivel ? 'Ocultar' : 'Mostrar') + ' camada ' + camada.nome}
+              aria-pressed={camada.visivel}
+              style={{ border: 0, background: 'transparent', cursor: 'pointer', fontSize: 13, color: camada.visivel ? '#00c896' : '#374151' }}
+            >
+              {camada.visivel ? '◉' : '○'}
+            </button>
             {camada.padrao ? (
               <span className="arq-muted">padrão</span>
             ) : (

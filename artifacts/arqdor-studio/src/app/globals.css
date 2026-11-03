@@ -812,6 +812,20 @@ button { font-family: inherit; }
   box-shadow: 0 0 0 2px rgba(255, 255, 255, .1);
 }
 
+/* camadas (classes do mock do DeepSeek) */
+.arq-layer-list { display: flex; flex-direction: column; gap: 4px; }
+.arq-layer-item {
+  display: flex; align-items: center; gap: 8px;
+  min-height: 30px; padding: 4px 6px; border-radius: 8px;
+  border: 1px solid transparent;
+  transition: background .15s, border-color .15s;
+}
+.arq-layer-item:hover { background: rgba(255, 255, 255, .05); border-color: rgba(255, 255, 255, .08); }
+.arq-layer-item.is-hidden .arq-layer-name { color: #4b5563; }
+.arq-layer-swatch { width: 10px; height: 10px; border-radius: 3px; flex: 0 0 auto; }
+.arq-layer-name { flex: 1; text-align: left; font-size: 12px; font-weight: 500; color: #e5e7eb; }
+.arq-layer-eye { width: 18px; height: 18px; display: flex; align-items: center; justify-content: center; }
+
 /* painel de materiais dentro do inspetor (substitui as camadas) */
 .arq-editor-aside.is-materiais > *:not(.arq-materiais) { display: none; }
 .arq-materiais {

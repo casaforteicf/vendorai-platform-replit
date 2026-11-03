@@ -11,6 +11,8 @@ import {
   criarCamada,
   deletarCamada,
   estadoInicialCamadas,
+  renomearCamada,
+  reordenarCamadas,
   revelarTodosObjetos,
 } from '../bim/camadas';
 import type { ElementoBim, OperacaoBIM } from '../bim/schema';
@@ -23,6 +25,8 @@ export interface BIMState {
   setModo: (modoId: string) => void;
   toggleCamada: (camadaId: string) => void;
   novaCamada: (nome: string) => void;
+  renomearCamada: (camadaId: string, nome: string) => void;
+  reordenarCamadas: (ordemDesejada: readonly string[]) => void;
   removerCamada: (camadaId: string) => void;
   toggleOculto: (objetoId: string) => void;
   revelarTodos: () => void;
@@ -57,6 +61,16 @@ export const useBIMStore = create<BIMState>((set, get) => ({
       el.camadaId === camadaId ? { ...el, camadaId: r.fallbackId } : el,
     );
     set({ camadas: r.estado, bim: { elementos } });
+  },
+
+  renomearCamada: (camadaId, nome) => {
+    const r = renomearCamada(get().camadas, camadaId, nome);
+    if (r.ok) set({ camadas: r.estado });
+  },
+
+  reordenarCamadas: (ordemDesejada) => {
+    const r = reordenarCamadas(get().camadas, ordemDesejada);
+    if (r.ok) set({ camadas: r.estado });
   },
 
   toggleOculto: (objetoId) => {
