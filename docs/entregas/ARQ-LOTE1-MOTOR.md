@@ -30,6 +30,23 @@
 **Pendente (UI):** baixar a imagem e aplicar como textura (o motor entrega URL + escala). Nenhuma
 chamada de rede foi feita — provedor/zoom e licença (OSM exige atribuição; Google exige chave/ToS).
 
+### 1.1 UAT do terreno (feito no navegador)
+
+Para o item ser testável sem esperar a tela nova, foi adicionado um painel mínimo
+(`terreno/PainelTerreno.tsx`) com botão **"Terreno"** na topbar do editor — o motor não mudou.
+
+| Passo | Resultado |
+|---|---|
+| clicar "Terreno" | painel abre com `-23.5505, -46.6333` |
+| clicar "Criar" | `-23.5505, -46.6333 · zoom 17 · 120 × 120 m · © OpenStreetMap contributors` |
+| prévia | tile real de São Paulo (Sé / Rua Santa Teresa) carregado do provedor |
+| escala | `1.095 m/px` |
+| aplicação | status bar **6 → 7 sólidos**, "1 passo (Ctrl+Z remove)" |
+| orçamento | aviso "não entra no orçamento" (o terreno não vira `ElementoBim`) |
+
+**O que NÃO foi verificado:** aplicar a imagem como textura na face do quad (é UV/material no canvas,
+próxima tela); Ctrl+Z no terreno (o passo é único, mas não foi exercitado por automação de teclado).
+
 ## 2. Importação (GLB/DXF agora; IFC/glTF recusados com motivo)
 
 - `importacao/glb.ts`: container glTF binário lido à mão (chunks JSON/BIN, `accessors` de POSITION

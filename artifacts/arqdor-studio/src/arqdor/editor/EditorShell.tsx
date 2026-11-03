@@ -35,6 +35,7 @@ import type { OperacaoModelador } from './modelador/schema';
 import { aplicarPasso } from './modelador/store-core';
 import { resolverAtalho } from './input/atalhos';
 import { useChatIAStore } from './stores/useChatIAStore';
+import { PainelTerreno } from './terreno/PainelTerreno';
 import type { DocumentoArqdor } from './persistencia/documento';
 import { VERSAO_DOCUMENTO } from './persistencia/documento';
 import { obterProjeto, salvarProjeto } from './persistencia/apiStore';
@@ -98,6 +99,7 @@ export function EditorShell() {
   const [focoMedida, setFocoMedida] = useState(0);
   const [focoCamera, setFocoCamera] = useState<{ alvo: [number, number, number]; versao: number } | null>(null);
   const [painelAberto, setPainelAberto] = useState(true);
+  const [terrenoAberto, setTerrenoAberto] = useState(false);
   const abrirChatIA = useChatIAStore((s) => s.abrir);
 
   useEffect(() => {
@@ -763,6 +765,9 @@ export function EditorShell() {
       salvo={salvoEm !== null}
       acoes={
         <div style={{ display: 'flex', gap: 8 }}>
+          <button type="button" className="arq-btn" onClick={() => setTerrenoAberto(true)} title="Importar terreno por coordenadas">
+            Terreno
+          </button>
           <button type="button" className="arq-btn" onClick={abrirChatIA} title="Abrir o Vendi IA">
             Vendi IA
           </button>
@@ -950,6 +955,14 @@ export function EditorShell() {
       </div>
       </div>
       <ModalInserir aberto={modalInserir} aoFechar={() => setModalInserir(false)} aoInserir={inserir} />
+      <PainelTerreno
+        aberto={terrenoAberto}
+        aoFechar={() => setTerrenoAberto(false)}
+        aoCriar={() => {
+          setFocoCamera({ alvo: [0, 0, 0], versao: Date.now() });
+          setAviso('Terreno criado como referência — não entra no orçamento.');
+        }}
+      />
     </AppShell>
   );
 }
