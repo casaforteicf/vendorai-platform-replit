@@ -88,6 +88,8 @@ export interface GeometriaMobiliario {
   posicao?: [number, number];
   /** D5: rotacao em planta (graus), sentido anti-horario. */
   rotacaoGraus?: number;
+  /** Família da Biblioteca de Interiores (M2). Ausente = móvel sem catálogo. */
+  familiaId?: string;
 }
 
 export interface GeometriaTelhado {
