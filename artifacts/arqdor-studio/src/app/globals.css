@@ -812,6 +812,16 @@ button { font-family: inherit; }
   box-shadow: 0 0 0 2px rgba(255, 255, 255, .1);
 }
 
+/* grid de campos do inspetor (layout do mock) */
+.arq-field-row { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+.arq-inspector-clear {
+  border: 0; background: transparent; cursor: pointer;
+  font-size: 10px; font-weight: 700; letter-spacing: .08em;
+  color: #6b7280; padding: 2px 4px;
+}
+.arq-inspector-clear:hover:not(:disabled) { color: #00c896; }
+.arq-inspector-clear:disabled { opacity: .4; cursor: default; }
+
 /* camadas (classes do mock do DeepSeek) */
 .arq-layer-list { display: flex; flex-direction: column; gap: 4px; }
 .arq-layer-item {

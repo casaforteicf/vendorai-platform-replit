@@ -90,6 +90,25 @@ ok(misto.total === Math.round((referencia.total + 11.2 * 20) * 100) / 100, 'mist
 const semNenhumServico = orcamentoCompleto([comMaterial], catalogo, [composicao]);
 ok(semNenhumServico.servicos.total === 0 && semNenhumServico.total === referencia.total, 'regressão: modelo sem serviço mantém o total antigo');
 
+// ---------- conversão de unidade (área × espessura → volume) ----------
+const composicaoVolume: Composicao = { id: 'COMP-VOL', nome: 'Concreto', unidade: 'm3', insumos: [{ materialId: 'MAT-S1', quantidade: 1 }] };
+const comVolume = orcamentoCompleto([parede('el_vol', 'COMP-VOL')], catalogo, [composicaoVolume]);
+ok(
+  Math.abs(comVolume.servicos.linhas[0].quantidade - 11.2 * 0.15) < 1e-9,
+  'conversão: parede de 11,2 m² × 0,15 m = 1,68 m³ de serviço',
+);
+const semEspessura = orcamentoCompleto(
+  [{
+    ...parede('el_sem'),
+    servicoId: 'COMP-VOL',
+    // parede sem espessura declarada: contrato exige, então forçamos o cenário inválido de propósito
+    geometria: { ponto_a: [0, 0], ponto_b: [4, 0], altura: 2.8 } as unknown as ElementoBim['geometria'],
+  }],
+  catalogo,
+  [composicaoVolume],
+);
+ok(semEspessura.servicos.linhas[0].quantidade === 1, 'conversão: sem espessura não inventa volume (cai em 1)');
+
 console.log('');
 console.log('resultado: ' + String(passou) + ' passaram, ' + String(falhou) + ' falharam');
 if (falhou > 0) throw new Error('falhas: ' + String(falhou));

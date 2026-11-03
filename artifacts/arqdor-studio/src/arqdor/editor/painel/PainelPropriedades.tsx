@@ -200,7 +200,7 @@ function CamposTransformacao(props: {
       <div className="arq-transf-titulo">
         Posição <span className="arq-unidade">{simbolo(props.unidade)}</span>
       </div>
-      <div className="arq-transf">
+      <div className="arq-transf arq-field-row">
         <input type="number" step={passo} className="arq-field" value={px} onFocus={(e) => e.currentTarget.select()} onChange={(e) => setPx(e.target.value)} onBlur={confirmar} onKeyDown={aoTeclar} aria-label={'Posição X em ' + simbolo(props.unidade)} />
         <input type="number" step={passo} className="arq-field" value={py} onFocus={(e) => e.currentTarget.select()} onChange={(e) => setPy(e.target.value)} onBlur={confirmar} onKeyDown={aoTeclar} aria-label={'Posição Y em ' + simbolo(props.unidade)} />
         <input type="number" step={passo} className="arq-field" value={pz} onFocus={(e) => e.currentTarget.select()} onChange={(e) => setPz(e.target.value)} onBlur={confirmar} onKeyDown={aoTeclar} aria-label={'Posição Z em ' + simbolo(props.unidade)} />
@@ -208,7 +208,7 @@ function CamposTransformacao(props: {
       <div className="arq-transf-titulo">
         Escala <span className="arq-unidade">×</span>
       </div>
-      <div className="arq-transf">
+      <div className="arq-transf arq-field-row">
         <input type="number" step="0.01" className="arq-field" value={ex} onFocus={(e) => e.currentTarget.select()} onChange={(e) => setEx(e.target.value)} onBlur={confirmar} onKeyDown={aoTeclar} aria-label="Escala X" />
         <input type="number" step="0.01" className="arq-field" value={ey} onFocus={(e) => e.currentTarget.select()} onChange={(e) => setEy(e.target.value)} onBlur={confirmar} onKeyDown={aoTeclar} aria-label="Escala Y" />
         <input type="number" step="0.01" className="arq-field" value={ez} onFocus={(e) => e.currentTarget.select()} onChange={(e) => setEz(e.target.value)} onBlur={confirmar} onKeyDown={aoTeclar} aria-label="Escala Z" />

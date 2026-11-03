@@ -35,7 +35,11 @@ export interface CustosServico {
 
 /**
  * Metragem real por elemento, na unidade da composição.
- * Sem medição compatível, cai em 1 (uma unidade de serviço).
+ *
+ * Conversão EXPLÍCITA quando a unidade não é medida direta:
+ *   m² → m³: área × espessura (parede/laje)
+ *   m³ → m²: volume ÷ espessura
+ * Sem espessura declarada, cai em 1 (uma unidade de serviço) — nunca inventa a espessura.
  */
 export function obterQuantidadesPorElemento(
   elementos: readonly ElementoBim[],
@@ -50,9 +54,24 @@ export function obterQuantidadesPorElemento(
     if (servicoId === undefined || servicoId.length === 0) continue;
     const composicao = porId.get(servicoId);
     if (composicao === undefined) continue;
+
     const medicoes = medirElemento(elemento, vaos);
-    const compativel = medicoes.find((medicao) => medicao.unidade === composicao.unidade);
-    quantidades[elemento.id] = compativel?.quantidade ?? 1;
+    const espessura = (elemento.geometria as { espessura?: number }).espessura;
+
+    let quantidade: number | undefined;
+    const direta = medicoes.find((medicao) => medicao.unidade === composicao.unidade);
+    if (direta !== undefined) {
+      quantidade = direta.quantidade;
+    } else if (composicao.unidade === 'm3' && typeof espessura === 'number' && espessura > 0) {
+      const area = medicoes.find((medicao) => medicao.unidade === 'm2');
+      if (area !== undefined) quantidade = area.quantidade * espessura;
+    } else if (composicao.unidade === 'm2' && typeof espessura === 'number' && espessura > 0) {
+      const volume = medicoes.find((medicao) => medicao.unidade === 'm3');
+      if (volume !== undefined) quantidade = volume.quantidade / espessura;
+    }
+
+    // Medida inválida (ex.: volume NaN por falta de espessura) não pode virar custo NaN.
+    quantidades[elemento.id] = quantidade !== undefined && Number.isFinite(quantidade) && quantidade > 0 ? quantidade : 1;
   }
 
   return quantidades;

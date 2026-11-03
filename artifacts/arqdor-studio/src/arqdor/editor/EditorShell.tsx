@@ -983,6 +983,19 @@ export function EditorShell() {
           ) : null}
           <div className="arq-inspetor-head">
             <h2>Inspetor</h2>
+            <button
+              type="button"
+              className="arq-inspector-clear"
+              onClick={() => {
+                selecionar(null);
+                setFace(null);
+                setSelecaoNivel(null);
+              }}
+              disabled={solidoSelecionado === undefined && face === null}
+              title="Limpar seleção"
+            >
+              LIMPAR
+            </button>
           </div>
           {solidoSelecionado !== undefined ? (
           <PainelPropriedades
