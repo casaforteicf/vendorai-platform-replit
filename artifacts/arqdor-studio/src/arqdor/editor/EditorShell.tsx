@@ -34,6 +34,7 @@ import type { ModoGizmo, TransformacaoLida } from './modeladorcanvas/ModeladorCa
 import type { OperacaoModelador } from './modelador/schema';
 import { aplicarPasso } from './modelador/store-core';
 import { resolverAtalho } from './input/atalhos';
+import { useChatIAStore } from './stores/useChatIAStore';
 import type { DocumentoArqdor } from './persistencia/documento';
 import { VERSAO_DOCUMENTO } from './persistencia/documento';
 import { obterProjeto, salvarProjeto } from './persistencia/apiStore';
@@ -97,6 +98,7 @@ export function EditorShell() {
   const [focoMedida, setFocoMedida] = useState(0);
   const [focoCamera, setFocoCamera] = useState<{ alvo: [number, number, number]; versao: number } | null>(null);
   const [painelAberto, setPainelAberto] = useState(true);
+  const abrirChatIA = useChatIAStore((s) => s.abrir);
 
   useEffect(() => {
     setDesenho(iniciar(ferramenta));
@@ -760,10 +762,15 @@ export function EditorShell() {
       projeto={projeto.nome}
       salvo={salvoEm !== null}
       acoes={
-        <button type="button" className="arq-btn arq-btn-salvar" onClick={salvarAgora}>
-          <Icone nome="salvo" tamanho={16} />
-          Salvar
-        </button>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button type="button" className="arq-btn" onClick={abrirChatIA} title="Abrir o Vendi IA">
+            Vendi IA
+          </button>
+          <button type="button" className="arq-btn arq-btn-salvar" onClick={salvarAgora}>
+            <Icone nome="salvo" tamanho={16} />
+            Salvar
+          </button>
+        </div>
       }
     >
       <div className="arq-editor-page">

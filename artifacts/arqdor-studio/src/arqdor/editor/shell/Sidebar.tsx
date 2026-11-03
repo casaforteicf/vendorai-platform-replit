@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { Icone } from '../design/icones';
 import type { NomeIcone } from '../design/icones';
+import { useChatIAStore } from '../stores/useChatIAStore';
 
 interface ItemNav { id: string; rotulo: string; icone: NomeIcone; href: string | null }
 
@@ -43,6 +44,7 @@ function Item({ item, atual }: { item: ItemNav; atual: boolean }) {
 
 export function Sidebar() {
   const caminho = usePathname() ?? '/';
+  const abrirChat = useChatIAStore((s) => s.abrir);
 
   return (
     <aside className="arq-sidebar">
@@ -78,7 +80,7 @@ export function Sidebar() {
       <div className="arq-vendi">
         <strong>Vendi IA</strong>
         <span>Seu assistente no ARQDOR</span>
-        <button type="button" disabled title="Disponível em fase posterior">
+        <button type="button" onClick={abrirChat} title="Abrir o Vendi IA">
           Conversar
         </button>
       </div>

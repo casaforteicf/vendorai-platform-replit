@@ -10,6 +10,7 @@
 import type { ReactNode } from 'react';
 import { Sidebar } from './Sidebar';
 import { Topbar } from './Topbar';
+import { ChatIA } from '../ia/ChatIA';
 
 export interface PropsAppShell {
   projeto?: string;
@@ -37,6 +38,7 @@ export function AppShell({ projeto, salvo, acoes, busca, aoBuscar, imersivo, chi
           />
           <div className="arq-content arq-content-imersivo">{children}</div>
         </div>
+        <ChatIA />
       </div>
     );
   }
@@ -48,6 +50,7 @@ export function AppShell({ projeto, salvo, acoes, busca, aoBuscar, imersivo, chi
         <Topbar projeto={projeto} salvo={salvo} acoes={acoes} busca={busca} aoBuscar={aoBuscar} />
         <div className="arq-content">{children}</div>
       </div>
+      <ChatIA />
     </div>
   );
 }

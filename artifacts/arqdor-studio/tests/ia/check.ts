@@ -7,6 +7,7 @@ import type { PlanoIa } from '../../src/arqdor/editor/ia/executor';
 import { listarFerramentas } from '../../src/arqdor/editor/ia/ferramentas';
 import type { EstadoIa } from '../../src/arqdor/editor/ia/ferramentas';
 import { resumirDocumento } from '../../src/arqdor/editor/ia/contexto';
+import { mensagemDoResultado, montarPlanoDoChat } from '../../src/arqdor/editor/ia/chat-core';
 import { ESTADO_INICIAL } from '../../src/arqdor/editor/modelador/store-core';
 import { catalogoPadrao, obterMaterial } from '../../src/arqdor/editor/materiais/catalogo';
 import { FAMILIAS_PADRAO } from '../../src/arqdor/editor/biblioteca/familias';
@@ -193,6 +194,21 @@ const resumoComMaterial = resumirDocumento({
   familias: FAMILIAS_PADRAO,
 });
 ok(resumoComMaterial.materiais[0]?.id === 'MAT-REB-MASSA', 'contexto: material usado aparece primeiro');
+
+// ---------- 11. chat: plano e mensagens ----------
+const planoChat = montarPlanoDoChat(
+  { texto: null, toolCalls: [{ nome: 'criar_caixa', argumentos: { largura: 4 } }] },
+  'crie uma parede',
+);
+ok(planoChat !== null && planoChat.tipo === 'layout' && planoChat.toolCalls.length === 1, 'chat: tool call vira plano');
+ok(montarPlanoDoChat({ texto: 'oi', toolCalls: [] }, 'oi') === null, 'chat: sem tool call não gera plano');
+
+const mensagemErro = mensagemDoResultado(desconhecida);
+ok(mensagemErro.tipo === 'erro' && mensagemErro.texto.includes('OPERACAO_NAO_SUPORTADA'), 'chat: erro tipado vira mensagem');
+const mensagemLeitura = mensagemDoResultado(cotacao);
+ok(mensagemLeitura.tipo === 'leitura', 'chat: leitura não diz que alterou o projeto');
+const mensagemOk = mensagemDoResultado(caixa);
+ok(mensagemOk.tipo === 'ok' && mensagemOk.texto.includes('criar_caixa'), 'chat: aplicação cita a ferramenta');
 
 console.log('');
 console.log('resultado: ' + String(passou) + ' passaram, ' + String(falhou) + ' falharam');
