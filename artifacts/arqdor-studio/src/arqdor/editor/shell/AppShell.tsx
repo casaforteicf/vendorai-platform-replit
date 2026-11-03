@@ -20,10 +20,13 @@ export interface PropsAppShell {
   aoBuscar?: (valor: string) => void;
   /** Modo imersão: sem sidebar, conteúdo em tela cheia. */
   imersivo?: boolean;
+  /** Acessos do editor imersivo (a sidebar não existe nesse modo). */
+  aoVendi?: () => void;
+  aoTerreno?: () => void;
   children: ReactNode;
 }
 
-export function AppShell({ projeto, salvo, acoes, busca, aoBuscar, imersivo, children }: PropsAppShell) {
+export function AppShell({ projeto, salvo, acoes, busca, aoBuscar, imersivo, aoVendi, aoTerreno, children }: PropsAppShell) {
   if (imersivo === true) {
     return (
       <div className="arq-app arq-app-imersivo">
@@ -35,6 +38,8 @@ export function AppShell({ projeto, salvo, acoes, busca, aoBuscar, imersivo, chi
             busca={busca}
             aoBuscar={aoBuscar}
             imersivo
+            aoVendi={aoVendi}
+            aoTerreno={aoTerreno}
           />
           <div className="arq-content arq-content-imersivo">{children}</div>
         </div>

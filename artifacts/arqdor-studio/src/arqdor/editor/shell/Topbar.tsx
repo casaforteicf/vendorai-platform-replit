@@ -12,29 +12,76 @@ export interface PropsTopbar {
   aoBuscar?: (valor: string) => void;
   /** Modo imersão: botão de menu no lugar da sidebar e sem campo de busca. */
   imersivo?: boolean;
+  /** Acessos do editor imersivo (sem sidebar). */
+  aoVendi?: () => void;
+  aoTerreno?: () => void;
 }
 
-export function Topbar({ projeto, salvo, acoes, busca, aoBuscar, imersivo }: PropsTopbar) {
+function SvgIcone({ d }: { d: string }) {
   return (
-    <header className={imersivo === true ? 'arq-topbar arq-topbar-ed' : 'arq-topbar'}>
-      {imersivo === true ? (
-        <Link className="arq-menu-btn" href="/" title="Voltar ao dashboard" aria-label="Voltar ao dashboard">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" aria-hidden="true">
-            <path d="M4 7h16M4 12h16M4 17h16" />
-          </svg>
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} aria-hidden="true">
+      <path strokeLinecap="round" strokeLinejoin="round" d={d} />
+    </svg>
+  );
+}
+
+export function Topbar({ projeto, salvo, acoes, busca, aoBuscar, imersivo, aoVendi, aoTerreno }: PropsTopbar) {
+  if (imersivo === true) {
+    return (
+      <header className="arq-topbar arq-topbar-ed">
+        <Link className="arq-topbar-back" href="/" title="Sair do modo imersão" aria-label="Voltar ao dashboard">
+          <SvgIcone d="M15 19l-7-7 7-7" />
         </Link>
-      ) : (
-        <div className="arq-search">
-          <Icone nome="buscar" />
-          <input
-            type="search"
-            placeholder="Buscar projetos, clientes, endereços, tags..."
-            aria-label="Buscar"
-            value={busca ?? ''}
-            onChange={(evento) => aoBuscar?.(evento.target.value)}
-          />
+
+        <button type="button" className="arq-topbar-project" title="Projeto ativo">
+          <span className="arq-topbar-project-thumb" aria-hidden="true">
+            <SvgIcone d="M3 12l9-9 9 9M5 10v10h14V10" />
+          </span>
+          <span className="arq-topbar-project-info">
+            <span className="arq-topbar-project-label">Projeto</span>
+            <span className="arq-topbar-project-name">{projeto ?? 'Nenhum projeto ativo'}</span>
+          </span>
+        </button>
+
+        <button type="button" className="arq-topbar-vendi" onClick={aoVendi} title="Abrir o Vendi IA">
+          <SvgIcone d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-4l-4 4v-4z" />
+          <span>Vendi IA</span>
+          <span className="arq-topbar-vendi-dot" aria-hidden="true" />
+        </button>
+
+        <button type="button" className="arq-topbar-terreno" onClick={aoTerreno} title="Importar terreno por coordenadas">
+          <SvgIcone d="M3 20l4-8 4 4 4-10 6 14H3z" />
+          <span>Terreno</span>
+        </button>
+
+        <div className="arq-topbar-right">
+          {acoes !== undefined ? <div className="arq-topbar-acoes">{acoes}</div> : null}
+          {salvo === true ? (
+            <span className="arq-salvo">
+              <Icone nome="salvo" tamanho={16} />
+              Salvo
+            </span>
+          ) : null}
+          <div className="arq-topbar-avatar-wrap">
+            <span className="arq-topbar-avatar">MP</span>
+          </div>
         </div>
-      )}
+      </header>
+    );
+  }
+
+  return (
+    <header className="arq-topbar">
+      <div className="arq-search">
+        <Icone nome="buscar" />
+        <input
+          type="search"
+          placeholder="Buscar projetos, clientes, endereços, tags..."
+          aria-label="Buscar"
+          value={busca ?? ''}
+          onChange={(evento) => aoBuscar?.(evento.target.value)}
+        />
+      </div>
 
       <button type="button" className="arq-projeto-ativo" title="Projeto ativo">
         <span className="capa" aria-hidden="true" />

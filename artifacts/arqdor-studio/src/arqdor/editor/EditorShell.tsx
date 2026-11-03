@@ -763,14 +763,10 @@ export function EditorShell() {
       imersivo
       projeto={projeto.nome}
       salvo={salvoEm !== null}
+      aoVendi={abrirChatIA}
+      aoTerreno={() => setTerrenoAberto(true)}
       acoes={
         <div style={{ display: 'flex', gap: 8 }}>
-          <button type="button" className="arq-btn" onClick={() => setTerrenoAberto(true)} title="Importar terreno por coordenadas">
-            Terreno
-          </button>
-          <button type="button" className="arq-btn" onClick={abrirChatIA} title="Abrir o Vendi IA">
-            Vendi IA
-          </button>
           <button type="button" className="arq-btn arq-btn-salvar" onClick={salvarAgora}>
             <Icone nome="salvo" tamanho={16} />
             Salvar
@@ -832,6 +828,10 @@ export function EditorShell() {
         )}
 
         <div className="arq-editor-canvas">
+          <div className="arq-canvas-mode-badge" aria-hidden="true">
+            <span className="arq-canvas-mode-dot" />
+            <span className="arq-canvas-mode-text">{aba === 'modelo' ? 'Modelo 3D' : aba === 'planta' ? 'Planta 2D' : 'Conflitos'}</span>
+          </div>
           {aba === 'conflitos' ? (
             <PainelConflitos elementos={elementos} mep={mep} aoAdicionar={adicionarMep} aoRemover={removerMep} />
           ) : aba === 'modelo' ? (

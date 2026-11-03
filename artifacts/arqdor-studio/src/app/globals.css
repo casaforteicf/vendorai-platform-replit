@@ -754,6 +754,83 @@ button { font-family: inherit; }
   box-shadow: 0 0 0 2px rgba(255, 255, 255, .1);
 }
 
+/* topbar v2 — botões do shell do DeepSeek */
+.arq-topbar-ed .arq-topbar-back {
+  width: 36px; height: 36px; border-radius: 8px; flex: 0 0 auto;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(0, 0, 0, .2); color: #00C896;
+  text-decoration: none; transition: background .15s;
+}
+.arq-topbar-ed .arq-topbar-back:hover { background: rgba(0, 0, 0, .4); }
+.arq-topbar-ed .arq-topbar-back svg { width: 20px; height: 20px; }
+
+.arq-topbar-ed .arq-topbar-project {
+  display: flex; align-items: center; gap: 10px;
+  padding: 6px 12px 6px 8px;
+  background: rgba(0, 0, 0, .2);
+  border: 1px solid rgba(255, 255, 255, .1); border-radius: 8px;
+  color: inherit; cursor: pointer; transition: border-color .15s;
+}
+.arq-topbar-ed .arq-topbar-project:hover { border-color: rgba(0, 200, 150, .4); }
+.arq-topbar-ed .arq-topbar-project-thumb {
+  width: 32px; height: 32px; border-radius: 6px;
+  display: flex; align-items: center; justify-content: center;
+  color: rgba(0, 200, 150, .6);
+  background: linear-gradient(135deg, #065f46, #0A1915);
+  border: 1px solid rgba(255, 255, 255, .1);
+}
+.arq-topbar-ed .arq-topbar-project-thumb svg { width: 16px; height: 16px; }
+.arq-topbar-ed .arq-topbar-project-info { display: flex; flex-direction: column; align-items: flex-start; line-height: 1.1; }
+.arq-topbar-ed .arq-topbar-project-label {
+  font-size: 9px; letter-spacing: .1em; text-transform: uppercase;
+  color: rgba(167, 243, 208, .5);
+}
+.arq-topbar-ed .arq-topbar-project-name { font-size: 12px; font-weight: 600; color: #fff; }
+
+.arq-topbar-ed .arq-topbar-vendi,
+.arq-topbar-ed .arq-topbar-terreno {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 12px; font: inherit; font-size: 12px; font-weight: 600;
+  color: #d1fae5; background: rgba(0, 0, 0, .2);
+  border: 1px solid rgba(255, 255, 255, .1); border-radius: 8px;
+  cursor: pointer; transition: border-color .15s, color .15s;
+}
+.arq-topbar-ed .arq-topbar-vendi svg,
+.arq-topbar-ed .arq-topbar-terreno svg { width: 16px; height: 16px; }
+.arq-topbar-ed .arq-topbar-vendi:hover,
+.arq-topbar-ed .arq-topbar-terreno:hover { border-color: rgba(0, 200, 150, .4); color: #fff; }
+.arq-topbar-ed .arq-topbar-vendi-dot {
+  width: 6px; height: 6px; border-radius: 50%; background: #00C896;
+  animation: arq-pulse 1.8s ease-in-out infinite;
+}
+.arq-topbar-ed .arq-topbar-avatar-wrap { padding-left: 12px; border-left: 1px solid rgba(255, 255, 255, .1); }
+.arq-topbar-ed .arq-topbar-avatar {
+  display: flex; align-items: center; justify-content: center;
+  width: 36px; height: 36px; border-radius: 50%;
+  background: linear-gradient(135deg, #00C896, #047857); color: #fff;
+  font-size: 12px; font-weight: 700;
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, .1);
+}
+
+/* badge de modo sobre o canvas */
+.arq-ed-v2 .arq-canvas-mode-badge {
+  position: absolute; top: 16px; left: 16px; z-index: 5;
+  display: flex; align-items: center; gap: 8px;
+  padding: 6px 12px; border-radius: 999px;
+  background: rgba(0, 0, 0, .4);
+  border: 1px solid rgba(255, 255, 255, .1);
+  backdrop-filter: blur(4px);
+  pointer-events: none;
+}
+.arq-ed-v2 .arq-canvas-mode-dot {
+  width: 6px; height: 6px; border-radius: 50%; background: #00C896;
+  animation: arq-pulse 1.8s ease-in-out infinite;
+}
+.arq-ed-v2 .arq-canvas-mode-text {
+  font-size: 10px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase;
+  color: rgba(167, 243, 208, .8);
+}
+
 
 /* barra de status */
 .arq-editor-page .arq-statusbar {
