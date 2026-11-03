@@ -445,3 +445,86 @@ export async function listarRecebimentos(
     urlAb(auth, `/recebimentos?limite=${limite}`),
   );
 }
+
+// ─── Requisições (AB-08) ─────────────────────────────────────────────────────
+
+export type Requisicao = {
+  id: string;
+  setor: string;
+  insumoId: string;
+  quantidadeBase: string;
+  unidadeBase: string;
+  status: "pendente" | "aprovada" | "entregue";
+  dataSolicitacao: string;
+  baixaAplicadaEm: string | null;
+  createdAt: string;
+  insumoNome: string | null;
+};
+
+export type RequisicaoInput = {
+  setor: string;
+  insumoId: string;
+  quantidadeBase: number;
+  dataSolicitacao?: string;
+};
+
+export async function criarRequisicao(
+  auth: AbAuth,
+  entrada: RequisicaoInput,
+): Promise<Requisicao> {
+  return requisitar<Requisicao>(auth, urlAb(auth, "/requisicoes"), {
+    method: "POST",
+    body: JSON.stringify(entrada),
+  });
+}
+
+export async function listarRequisicoes(
+  auth: AbAuth,
+  status?: Requisicao["status"],
+): Promise<{ requisicoes: Requisicao[]; resumo: { total: number; pendentes: number } }> {
+  const query = status ? `?status=${status}` : "";
+  return requisitar<{ requisicoes: Requisicao[]; resumo: { total: number; pendentes: number } }>(
+    auth,
+    urlAb(auth, `/requisicoes${query}`),
+  );
+}
+
+export async function entregarRequisicao(
+  auth: AbAuth,
+  id: string,
+): Promise<{ status: string; baixa: { quantidadeEstoque: number; unidadeEstoque: string } }> {
+  return requisitar<{ status: string; baixa: { quantidadeEstoque: number; unidadeEstoque: string } }>(
+    auth,
+    urlAb(auth, `/requisicoes/${encodeURIComponent(id)}/entregar`),
+    { method: "PATCH" },
+  );
+}
+
+// ─── Dashboard de CMV (AB-09) ────────────────────────────────────────────────
+
+export type CmvDashboard = {
+  mes: string;
+  competencia: { inicio: string; fim: string };
+  compras: { valor: number; recebimentos: number; semCusto: number; estimado: boolean; observacao: string };
+  producao: { valor: number | null; motivo: string };
+  desperdicio: {
+    valor: number;
+    kg: number;
+    semCusto: number;
+    porDia: Array<{ data: string; kg: number; valor: number }>;
+  };
+  estoque: { valor: number; insumosSemPreco: number };
+  receita: { valor: number; mock: boolean; observacao: string };
+  cmv: { valor: number | null; percentual: number | null; formula: string };
+};
+
+export async function buscarCmv(
+  auth: AbAuth,
+  opcoes: { mes?: string; receita?: number } = {},
+): Promise<CmvDashboard> {
+  const params = new URLSearchParams();
+  if (opcoes.mes) params.set("mes", opcoes.mes);
+  if (opcoes.receita !== undefined) params.set("receita", String(opcoes.receita));
+  const query = params.toString();
+  return requisitar<CmvDashboard>(auth, urlAb(auth, `/dashboard/cmv${query ? `?${query}` : ""}`));
+}

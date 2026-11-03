@@ -10,6 +10,8 @@ const links=[
  {href:"/hotelaria/ab/sobras",name:"Sobras"},
  {href:"/hotelaria/ab/mapeamento",name:"Mapeamento"},
  {href:"/hotelaria/ab/recebimento",name:"Recebimento"},
+ {href:"/hotelaria/ab/requisicao",name:"Requisição"},
+ {href:"/hotelaria/ab/cmv",name:"CMV"},
 ] as const;
 export default function HotelModulesNav(){
  const [location]=useLocation();

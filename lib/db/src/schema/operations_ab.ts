@@ -684,3 +684,86 @@ export const insertAbRecebimentoSchema = createInsertSchema(abRecebimentosTable,
 export const selectAbRecebimentoSchema = createSelectSchema(abRecebimentosTable);
 export type AbRecebimento = typeof abRecebimentosTable.$inferSelect;
 export type InsertAbRecebimento = typeof abRecebimentosTable.$inferInsert;
+
+// ─── 10) Requisição de estoque — saída por setor (AB-08) ─────────────────────
+
+export const AB_STATUS_REQUISICAO = ["pendente", "aprovada", "entregue"] as const;
+export type AbStatusRequisicao = (typeof AB_STATUS_REQUISICAO)[number];
+
+/**
+ * Pedido de retirada de UM insumo por um setor.
+ *
+ * A baixa no saldo físico acontece no `entregue`, nunca na criação: pedir não
+ * tira mercadoria da prateleira. `baixa_aplicada_em` é a trava de idempotência.
+ */
+export const abRequisicoesTable = pgTable(
+  "ab_requisicoes",
+  {
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
+    tenantId: text("tenant_id")
+      .notNull()
+      .references(() => tenantsTable.id, { onDelete: "cascade" }),
+    setor: text("setor").notNull(),
+    insumoId: text("insumo_id").notNull(),
+    /** Na unidade base (g/ml/un) — a conversão para estoque ocorre na baixa. */
+    quantidadeBase: numeric("quantidade_base", { precision: 15, scale: 4 }).notNull(),
+    unidadeBase: text("unidade_base").notNull(),
+    status: text("status").notNull().default("pendente"),
+    dataSolicitacao: date("data_solicitacao", { mode: "string" }).notNull(),
+    baixaAplicadaEm: timestamp("baixa_aplicada_em", { withTimezone: true }),
+    baixaInventoryItemId: text("baixa_inventory_item_id"),
+    baixaLocationId: text("baixa_location_id"),
+    baixaMotivo: text("baixa_motivo"),
+    solicitadoPor: text("solicitado_por"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
+  },
+  (table) => [
+    index("ab_requisicoes_pendentes_idx").on(
+      table.tenantId,
+      table.status,
+      table.dataSolicitacao,
+      table.createdAt,
+    ),
+    index("ab_requisicoes_tenant_insumo_idx").on(
+      table.tenantId,
+      table.insumoId,
+      table.dataSolicitacao.desc(),
+    ),
+    check("ab_requisicoes_setor_nao_vazio", sql`length(btrim(${table.setor})) > 0`),
+    check("ab_requisicoes_quantidade_positiva", sql`${table.quantidadeBase} > 0`),
+    check("ab_requisicoes_unidade_valida", sql`${table.unidadeBase} IN ('g', 'ml', 'un')`),
+    check(
+      "ab_requisicoes_status_valido",
+      sql`${table.status} IN ('pendente', 'aprovada', 'entregue')`,
+    ),
+  ],
+);
+
+export const insertAbRequisicaoSchema = createInsertSchema(abRequisicoesTable, {
+  setor: z.string().trim().min(1).max(80),
+  insumoId: z.string().uuid(),
+  quantidadeBase: decimalPositivo,
+  unidadeBase: z.enum(AB_UNIDADES),
+  dataSolicitacao: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+}).omit({
+  id: true,
+  tenantId: true,
+  status: true,
+  baixaAplicadaEm: true,
+  baixaInventoryItemId: true,
+  baixaLocationId: true,
+  baixaMotivo: true,
+  solicitadoPor: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const selectAbRequisicaoSchema = createSelectSchema(abRequisicoesTable);
+export type AbRequisicao = typeof abRequisicoesTable.$inferSelect;
+export type InsertAbRequisicao = typeof abRequisicoesTable.$inferInsert;
