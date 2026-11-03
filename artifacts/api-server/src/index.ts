@@ -6,6 +6,7 @@ import { authenticate, requireRole } from "./middlewares/auth.js";
 import { startScheduler } from "./jobs/scheduler.js";
 import { startMetaCustomAudienceReconcileScheduler } from "./jobs/metaCustomAudienceReconcile.js";
 import { runCommercialLifecycleSync } from "./jobs/commercialLifecycleSync.js";
+import { executarMotorPreditivo } from "./jobs/abEstoquePreditivo.js";
 import { runBehaviorIntentSync } from "./jobs/behaviorIntentSync.js";
 import { runTrialJourney } from "./jobs/trialJourney.js";
 import { runVendorAiSubscriptionBilling } from "./jobs/vendorAiSubscriptionBilling.js";
@@ -247,6 +248,21 @@ async function start() {
     };
     setTimeout(() => { void syncCampaignAbWinner(); }, 2 * 60 * 1000).unref();
     setInterval(() => { void syncCampaignAbWinner(); }, 60 * 60 * 1000).unref();
+
+    // A&B — motor preditivo de estoque (AB-03). Opt-in explícito: sem
+    // AB_PREDICTIVE_CRON=1 não roda, para o job não gerar ordem de compra em
+    // ambiente que ninguém pediu. O gatilho manual é o endpoint interno.
+    if (process.env["AB_PREDICTIVE_CRON"] === "1") {
+      const syncAbEstoquePreditivo = async () => {
+        try {
+          await executarMotorPreditivo({ logger });
+        } catch (syncErr) {
+          logger.error({ err: syncErr }, "ab-estoque-preditivo: unhandled sync error");
+        }
+      };
+      setTimeout(() => { void syncAbEstoquePreditivo(); }, 5 * 60 * 1000).unref();
+      setInterval(() => { void syncAbEstoquePreditivo(); }, 24 * 60 * 60 * 1000).unref();
+    }
   });
 }
 

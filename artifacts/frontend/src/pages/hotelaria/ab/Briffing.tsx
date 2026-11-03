@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import HotelModulesNav from "../HotelModulesNav";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -19,89 +19,26 @@ import {
   formatarQuantidade,
   validarOcupacao,
   type CardapioDia,
+  type Prato,
   type ResultadoBriffing,
 } from "@/lib/ab/briffing";
 import { formatarDataBR, hojeISO } from "@/lib/ab/datas";
+import { useAuth } from "@/contexts/AuthContext";
+import { listarFichas, mensagemDoErro, type AbAuth, type FichaTecnica } from "@/lib/ab/client";
 
 /**
  * Briffing — resumo de produção de A&B.
  *
- * Esta tela é o *ensaio* do motor: o cardápio vem de uma constante mock, porque a
- * ficha técnica real (Receitas) ainda não expõe os campos de A&B. Nenhuma chamada
- * de API acontece aqui — o cálculo é 100% local, o que permite conferir o número
- * contra a planilha antes de plugar dado de produção.
+ * O cardápio agora vem das fichas técnicas reais (`GET /ab/fichas-tecnicas`).
+ * Cada ficha é um prato; o usuário escolhe quais preparam no serviço do dia.
+ *
+ * Decisão: `porcoesPorPax` não existe na ficha (é decisão do menu, não da
+ * receita), então cada prato selecionado entra com 1 porção por hóspede.
+ *
+ * Chave de consolidação do insumo: o id do catálogo quando existe, senão o nome
+ * normalizado — é isso que faz o mesmo "Arroz" de duas fichas virar uma linha só
+ * no consolidado.
  */
-
-const CARDAPIO_EXEMPLO: CardapioDia = {
-  data: hojeISO(),
-  pratos: [
-    {
-      id: "p-arroz",
-      nome: "Arroz branco",
-      porcoesPorPax: 1,
-      ficha: [
-        { insumoId: "i-arroz", insumoNome: "Arroz", unidadeBase: "g", gramaturaPorPorcao: 80 },
-      ],
-    },
-    {
-      id: "p-bife",
-      nome: "Bife acebolado",
-      porcoesPorPax: 1,
-      ficha: [
-        {
-          insumoId: "i-bife",
-          insumoNome: "Bife (patinho)",
-          unidadeBase: "g",
-          gramaturaPorPorcao: 150,
-          fatorCorrecao: 1.2,
-        },
-        { insumoId: "i-cebola", insumoNome: "Cebola", unidadeBase: "g", gramaturaPorPorcao: 30 },
-      ],
-    },
-    {
-      id: "p-salada",
-      nome: "Salada da casa",
-      porcoesPorPax: 1,
-      ficha: [
-        {
-          insumoId: "i-alface",
-          insumoNome: "Alface",
-          unidadeBase: "g",
-          gramaturaPorPorcao: 40,
-          fatorCorrecao: 1.15,
-        },
-        {
-          insumoId: "i-tomate",
-          insumoNome: "Tomate",
-          unidadeBase: "g",
-          gramaturaPorPorcao: 50,
-          fatorCorrecao: 1.1,
-        },
-      ],
-    },
-    {
-      id: "p-suco",
-      nome: "Suco de laranja",
-      porcoesPorPax: 1,
-      ficha: [
-        { insumoId: "i-laranja", insumoNome: "Laranja", unidadeBase: "un", gramaturaPorPorcao: 3 },
-      ],
-    },
-    {
-      id: "p-pudim",
-      nome: "Pudim (meia porção)",
-      porcoesPorPax: 0.5,
-      ficha: [
-        {
-          insumoId: "i-leite-cond",
-          insumoNome: "Leite condensado",
-          unidadeBase: "g",
-          gramaturaPorPorcao: 60,
-        },
-      ],
-    },
-  ],
-};
 
 const NUMERO = new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 3 });
 
@@ -109,15 +46,86 @@ function formatarBase(quantidade: number, unidade: "g" | "ml" | "un"): string {
   return `${NUMERO.format(quantidade)} ${unidade}`;
 }
 
+function chaveInsumo(insumo: { insumoId: string | null; insumoNome: string }): string {
+  return insumo.insumoId ?? `nome:${insumo.insumoNome.trim().toLowerCase()}`;
+}
+
+function fichaParaPrato(ficha: FichaTecnica): Prato {
+  return {
+    id: ficha.id,
+    nome: ficha.nome,
+    porcoesPorPax: 1,
+    ficha: ficha.insumos.map((insumo) => {
+      const fator = Number(insumo.fatorCorrecao);
+      return {
+        insumoId: chaveInsumo(insumo),
+        insumoNome: insumo.insumoNome,
+        unidadeBase: insumo.unidadeBase,
+        gramaturaPorPorcao: Number(insumo.quantidadePorPorcao),
+        fatorCorrecao: Number.isFinite(fator) && fator > 0 ? fator : 1,
+      };
+    }),
+  };
+}
+
 export default function Briffing() {
+  const { user, token } = useAuth();
+  const tenantId = user?.tenantId ?? "";
+  const auth = useMemo<AbAuth>(() => ({ token: token ?? "", tenantId }), [token, tenantId]);
+
   const [ocupacao, setOcupacao] = useState("150");
   const [resultado, setResultado] = useState<ResultadoBriffing | null>(null);
   const [ocupacaoCalculada, setOcupacaoCalculada] = useState<number | null>(null);
   const [erro, setErro] = useState<string | null>(null);
 
+  const [fichas, setFichas] = useState<FichaTecnica[]>([]);
+  const [selecionadas, setSelecionadas] = useState<Set<string>>(new Set());
+  const [carregando, setCarregando] = useState(false);
+  const [erroLista, setErroLista] = useState<string | null>(null);
+
+  const carregarFichas = useCallback(async () => {
+    if (!tenantId || !token) return;
+    setCarregando(true);
+    setErroLista(null);
+    try {
+      const carregadas = await listarFichas(auth);
+      setFichas(carregadas);
+      // Começa com todas as fichas ativas selecionadas — o caso comum é o
+      // cardápio usar a maior parte do que está cadastrado.
+      setSelecionadas(new Set(carregadas.filter((f) => f.ativo).map((f) => f.id)));
+    } catch (falha) {
+      setErroLista(mensagemDoErro(falha));
+    } finally {
+      setCarregando(false);
+    }
+  }, [auth, tenantId, token]);
+
+  useEffect(() => {
+    void carregarFichas();
+  }, [carregarFichas]);
+
+  const selecionadasLista = useMemo(
+    () => fichas.filter((ficha) => selecionadas.has(ficha.id)),
+    [fichas, selecionadas],
+  );
+
+  const cardapio: CardapioDia = useMemo(
+    () => ({ data: hojeISO(), pratos: selecionadasLista.map(fichaParaPrato) }),
+    [selecionadasLista],
+  );
+
   const valorAtual = Number(ocupacao.trim().replace(",", "."));
   const desatualizado =
     resultado !== null && ocupacaoCalculada !== null && valorAtual !== ocupacaoCalculada;
+
+  function alternarSelecao(id: string) {
+    setSelecionadas((atual) => {
+      const proximo = new Set(atual);
+      if (proximo.has(id)) proximo.delete(id);
+      else proximo.add(id);
+      return proximo;
+    });
+  }
 
   function calcular(evento: React.FormEvent) {
     evento.preventDefault();
@@ -128,9 +136,13 @@ export default function Briffing() {
       setErro(validada.erro);
       return;
     }
+    if (cardapio.pratos.length === 0) {
+      setErro("Selecione pelo menos uma ficha no cardápio do dia.");
+      return;
+    }
 
     try {
-      setResultado(calcularBriffing(validada.valor, CARDAPIO_EXEMPLO));
+      setResultado(calcularBriffing(validada.valor, cardapio));
       setOcupacaoCalculada(validada.valor);
     } catch (falha) {
       setResultado(null);
@@ -149,7 +161,7 @@ export default function Briffing() {
     return resultado?.porPrato.find((prato) => prato.pratoId === pratoId)?.porcoesTotais ?? null;
   }
 
-  const dataFormatada = formatarDataBR(CARDAPIO_EXEMPLO.data);
+  const dataFormatada = formatarDataBR(cardapio.data);
 
   return (
     <main className="mx-auto max-w-5xl space-y-5 p-4 sm:p-8">
@@ -170,7 +182,7 @@ export default function Briffing() {
         <CardHeader>
           <CardTitle>Parâmetros do serviço</CardTitle>
           <CardDescription>
-            Informe quantos hóspedes serão servidos e calcule a produção do cardápio abaixo.
+            Informe quantos hóspedes serão servidos e calcule a produção do cardápio selecionado.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -194,9 +206,9 @@ export default function Briffing() {
               </div>
 
               <div className="space-y-1.5">
-                <Label>Prato do dia</Label>
+                <Label>Cardápio do dia</Label>
                 <p className="flex h-10 items-center text-sm text-muted-foreground">
-                  {dataFormatada} · {CARDAPIO_EXEMPLO.pratos.length} preparações
+                  {dataFormatada} · {cardapio.pratos.length} preparação(ões)
                 </p>
               </div>
 
@@ -236,52 +248,100 @@ export default function Briffing() {
         <CardHeader className="gap-1">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <CardTitle>Cardápio do dia</CardTitle>
-            <Badge variant="outline">Simulado</Badge>
+            <Badge variant="outline">{selecionadasLista.length} selecionada(s)</Badge>
           </div>
           <CardDescription>
-            Dados de exemplo no estado da tela. A ficha técnica real virá do cadastro de Receitas.
+            Fichas técnicas cadastradas. Marque as que entram no serviço de hoje.
           </CardDescription>
         </CardHeader>
         <CardContent className="pt-0">
-          <Table>
-            <TableCaption className="sr-only">Pratos do cardápio e suas fichas técnicas</TableCaption>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Prato</TableHead>
-                <TableHead>Porções / hóspede</TableHead>
-                <TableHead>Porções totais</TableHead>
-                <TableHead>Ficha técnica</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {CARDAPIO_EXEMPLO.pratos.map((prato) => {
-                const porcoes = porcoesDoPrato(prato.id);
-                return (
-                  <TableRow key={prato.id}>
-                    <TableCell className="font-medium whitespace-normal">{prato.nome}</TableCell>
-                    <TableCell>{NUMERO.format(prato.porcoesPorPax)}</TableCell>
-                    <TableCell>
-                      {porcoes === null ? (
-                        <span className="text-muted-foreground">—</span>
-                      ) : (
-                        NUMERO.format(porcoes)
-                      )}
-                    </TableCell>
-                    <TableCell className="whitespace-normal">
-                      <ul className="space-y-0.5 text-xs text-muted-foreground">
-                        {prato.ficha.map((item) => (
-                          <li key={item.insumoId}>
-                            {item.insumoNome} · {formatarQuantidade(item.gramaturaPorPorcao, item.unidadeBase)}
-                            {item.fatorCorrecao ? ` · FC ${NUMERO.format(item.fatorCorrecao)}` : ""}
-                          </li>
-                        ))}
-                      </ul>
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
-            </TableBody>
-          </Table>
+          {carregando && <p className="py-6 text-center text-sm text-muted-foreground">Carregando fichas…</p>}
+
+          {!carregando && erroLista && (
+            <div className="rounded-lg border border-red-300 bg-red-50 p-3 text-sm text-red-900">
+              <p>{erroLista}</p>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="mt-2"
+                onClick={() => void carregarFichas()}
+              >
+                Tentar novamente
+              </Button>
+            </div>
+          )}
+
+          {!carregando && !erroLista && fichas.length === 0 && (
+            <p className="py-6 text-center text-sm text-muted-foreground">
+              Nenhuma ficha técnica cadastrada. Cadastre em{" "}
+              <a href="/hotelaria/ab/fichas-tecnicas" className="underline">
+                Fichas técnicas
+              </a>{" "}
+              para calcular a produção.
+            </p>
+          )}
+
+          {fichas.length > 0 && (
+            <Table>
+              <TableCaption className="sr-only">
+                Fichas técnicas disponíveis para o cardápio do dia
+              </TableCaption>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="w-10">Dia</TableHead>
+                  <TableHead>Prato</TableHead>
+                  <TableHead>Porções totais</TableHead>
+                  <TableHead>Ficha técnica</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {fichas.map((ficha) => {
+                  const porcoes = porcoesDoPrato(ficha.id);
+                  const marcada = selecionadas.has(ficha.id);
+                  return (
+                    <TableRow key={ficha.id}>
+                      <TableCell>
+                        <input
+                          type="checkbox"
+                          checked={marcada}
+                          onChange={() => alternarSelecao(ficha.id)}
+                          aria-label={`Incluir ${ficha.nome} no cardápio do dia`}
+                          className="h-4 w-4 accent-[var(--primary)]"
+                        />
+                      </TableCell>
+                      <TableCell className="font-medium whitespace-normal">
+                        {ficha.nome}
+                        {!ficha.ativo && (
+                          <span className="ml-2 text-xs text-muted-foreground">(inativa)</span>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        {porcoes === null ? (
+                          <span className="text-muted-foreground">—</span>
+                        ) : (
+                          NUMERO.format(porcoes)
+                        )}
+                      </TableCell>
+                      <TableCell className="whitespace-normal">
+                        <ul className="space-y-0.5 text-xs text-muted-foreground">
+                          {ficha.insumos.map((insumo) => (
+                            <li key={insumo.id}>
+                              {insumo.insumoNome} ·{" "}
+                              {formatarQuantidade(Number(insumo.quantidadePorPorcao), insumo.unidadeBase)}
+                              {Number(insumo.fatorCorrecao) !== 1
+                                ? ` · FC ${NUMERO.format(Number(insumo.fatorCorrecao))}`
+                                : ""}
+                            </li>
+                          ))}
+                        </ul>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          )}
         </CardContent>
       </Card>
 
@@ -310,7 +370,7 @@ export default function Briffing() {
 
           {resultado && resultado.consolidado.length === 0 && (
             <p className="py-6 text-center text-sm text-muted-foreground">
-              O cardápio não tem insumos cadastrados.
+              O cardápio selecionado não tem insumos cadastrados.
             </p>
           )}
 

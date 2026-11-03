@@ -219,3 +219,111 @@ export function mensagemDoErro(erro: unknown): string {
   if (erro instanceof Error && erro.message) return erro.message;
   return "Não foi possível concluir a operação. Tente novamente.";
 }
+
+// ─── Sobras ──────────────────────────────────────────────────────────────────
+
+/**
+ * As rotas de sobras/fichas (Drizzle) devolvem os nomes em camelCase, como
+ * declarados no schema — ao contrário de ab_cargos, que é SQL cru em snake_case.
+ */
+export type Sobra = {
+  id: string;
+  data: string;
+  insumoId: string | null;
+  insumoNome: string;
+  /** numeric do Postgres chega como string. */
+  pesoKg: string;
+  motivo: string;
+  fotoUrl: string | null;
+  observacao: string | null;
+  registradoPor: string | null;
+  createdAt: string;
+};
+
+export type SobraInput = {
+  data: string;
+  insumoId?: string | null;
+  insumoNome: string;
+  pesoKg: number;
+  motivo: string;
+  fotoUrl?: string | null;
+  observacao?: string | null;
+};
+
+export type SobrasResposta = {
+  sobras: Sobra[];
+  resumo: { totalRegistros: number; totalKg: number; porMotivo: Record<string, number> };
+};
+
+function urlAb(auth: AbAuth, sufixo: string): string {
+  return `/api/tenants/${encodeURIComponent(auth.tenantId)}/ab${sufixo}`;
+}
+
+export async function criarSobra(auth: AbAuth, entrada: SobraInput): Promise<Sobra> {
+  return requisitar<Sobra>(auth, urlAb(auth, "/sobras"), {
+    method: "POST",
+    body: JSON.stringify(entrada),
+  });
+}
+
+export async function listarSobras(
+  auth: AbAuth,
+  filtro: { dataInicio?: string; dataFim?: string; motivo?: string } = {},
+): Promise<SobrasResposta> {
+  const params = new URLSearchParams();
+  if (filtro.dataInicio) params.set("dataInicio", filtro.dataInicio);
+  if (filtro.dataFim) params.set("dataFim", filtro.dataFim);
+  if (filtro.motivo) params.set("motivo", filtro.motivo);
+  const query = params.toString();
+
+  return requisitar<SobrasResposta>(auth, urlAb(auth, `/sobras${query ? `?${query}` : ""}`));
+}
+
+// ─── Fichas técnicas ─────────────────────────────────────────────────────────
+
+export type FichaInsumo = {
+  id: string;
+  fichaId: string;
+  insumoId: string | null;
+  insumoNome: string;
+  unidadeBase: "g" | "ml" | "un";
+  quantidadePorPorcao: string;
+  fatorCorrecao: string;
+  ordem: number;
+};
+
+export type FichaTecnica = {
+  id: string;
+  nome: string;
+  rendimentoPorcoes: string;
+  observacoes: string | null;
+  ativo: boolean;
+  insumos: FichaInsumo[];
+};
+
+export type FichaInput = {
+  nome: string;
+  rendimentoPorcoes: number;
+  observacoes?: string | null;
+  insumos: Array<{
+    insumoNome: string;
+    unidadeBase: "g" | "ml" | "un";
+    quantidadePorPorcao: number;
+    fatorCorrecao?: number;
+  }>;
+};
+
+export async function criarFicha(auth: AbAuth, entrada: FichaInput): Promise<FichaTecnica> {
+  return requisitar<FichaTecnica>(auth, urlAb(auth, "/fichas-tecnicas"), {
+    method: "POST",
+    body: JSON.stringify(entrada),
+  });
+}
+
+export async function listarFichas(auth: AbAuth): Promise<FichaTecnica[]> {
+  const resposta = await requisitar<{ fichas: FichaTecnica[] }>(
+    auth,
+    urlAb(auth, "/fichas-tecnicas"),
+  );
+  return resposta.fichas ?? [];
+}

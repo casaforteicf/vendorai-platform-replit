@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import HotelModulesNav from "../HotelModulesNav";
+import { useAuth } from "@/contexts/AuthContext";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -15,14 +16,18 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { formatarDataBR, hojeISO } from "@/lib/ab/datas";
+import { criarSobra, mensagemDoErro, type AbAuth, type SobraInput } from "@/lib/ab/client";
 
 /**
  * Controle de sobras e desperdício — A&B.
  *
  * Tela de registro do fechamento do dia: para cada insumo preparado, quanto sobrou,
- * por quê, e uma foto como evidência. Sem backend ainda: os insumos são um mock e o
- * envio é simulado com `alert`. A foto também não sai do navegador — só guardamos o
- * nome do arquivo.
+ * por quê, e uma foto como evidência. O peso/motivo vão para a API
+ * (`POST /ab/sobras`) — um POST por insumo; se um falhar, os outros seguem e só os
+ * que não gravaram ficam na tela.
+ *
+ * A foto ainda NÃO é enviada: falta o endpoint de upload (storage R2). O nome do
+ * arquivo fica só na tela — por isso a coluna aparece com o aviso de pendência.
  *
  * Decisão: o motivo é obrigatório quando há peso. "Sobrou 3 kg" sem motivo não vira
  * ação nenhuma; o motivo é o que separa erro de produção (treinar equipe) de sobra de
@@ -63,14 +68,16 @@ function paraKg(texto: string): number {
   return Number.isFinite(valor) && valor > 0 ? valor : 0;
 }
 
-function rotuloMotivo(motivo: Motivo | ""): string {
-  return MOTIVOS.find((opcao) => opcao.valor === motivo)?.rotulo ?? "—";
-}
-
 export default function Sobras() {
+  const { user, token } = useAuth();
+  const tenantId = user?.tenantId ?? "";
+  const auth = useMemo<AbAuth>(() => ({ token: token ?? "", tenantId }), [token, tenantId]);
+
   const [data, setData] = useState(hojeISO());
   const [linhas, setLinhas] = useState<Linha[]>(linhasVazias);
   const [erro, setErro] = useState<string | null>(null);
+  const [aviso, setAviso] = useState<string | null>(null);
+  const [enviando, setEnviando] = useState(false);
 
   const comSobra = linhas.filter((linha) => paraKg(linha.pesoKg) > 0);
   const totalKg = comSobra.reduce((soma, linha) => soma + paraKg(linha.pesoKg), 0);
@@ -86,10 +93,15 @@ export default function Sobras() {
     setErro(null);
   }
 
-  function registrar(evento: React.FormEvent) {
+  async function registrar(evento: React.FormEvent) {
     evento.preventDefault();
     setErro(null);
+    setAviso(null);
 
+    if (!tenantId) {
+      setErro("Sessão sem hotel identificado. Entre novamente.");
+      return;
+    }
     if (!data) {
       setErro("Informe a data do registro.");
       return;
@@ -104,21 +116,44 @@ export default function Sobras() {
       return;
     }
 
-    const detalhe = comSobra
-      .map(
-        (linha) =>
-          `• ${linha.insumoNome}: ${NUMERO.format(paraKg(linha.pesoKg))} kg — ${rotuloMotivo(linha.motivo)}`,
-      )
-      .join("\n");
+    setEnviando(true);
+    const gravadas: string[] = [];
+    const falhas: string[] = [];
 
-    // Sem backend ainda: confirmação local. Trocar por toast/registro persistido
-    // quando o endpoint de sobras existir.
-    window.alert(
-      `Sobras registradas em ${formatarDataBR(data)} (${NUMERO.format(totalKg)} kg no total).\n\n${detalhe}`,
-    );
+    // Um POST por insumo: o endpoint é por sobra, não em lote. Se um falhar,
+    // os demais seguem e a tela mantém só os que não gravaram.
+    for (const linha of comSobra) {
+      const entrada: SobraInput = {
+        data,
+        insumoNome: linha.insumoNome,
+        pesoKg: paraKg(linha.pesoKg),
+        motivo: linha.motivo as string,
+      };
+      try {
+        await criarSobra(auth, entrada);
+        gravadas.push(linha.insumoId);
+      } catch (falha) {
+        falhas.push(`${linha.insumoNome}: ${mensagemDoErro(falha)}`);
+      }
+    }
+    setEnviando(false);
 
-    // Mantém a data: o fechamento do dia costuma ser lançado em sequência.
-    setLinhas(linhasVazias());
+    if (gravadas.length > 0) {
+      // Mantém a data: o fechamento do dia costuma ser lançado em sequência.
+      setLinhas((atual) =>
+        atual.map((linha) =>
+          gravadas.includes(linha.insumoId) ? { ...linha, pesoKg: "", motivo: "", foto: null } : linha,
+        ),
+      );
+      setAviso(
+        `${gravadas.length} sobra(s) registrada(s) em ${formatarDataBR(data)}${
+          falhas.length > 0 ? ` — ${falhas.length} falhou(aram)` : ""
+        }.`,
+      );
+    }
+    if (falhas.length > 0) {
+      setErro(`Falha ao registrar ${falhas.length} de ${comSobra.length}: ${falhas.join(" | ")}`);
+    }
   }
 
   return (
@@ -139,11 +174,11 @@ export default function Sobras() {
         <CardHeader className="gap-1">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <CardTitle>Registro do dia</CardTitle>
-            <Badge variant="outline">Simulado</Badge>
+            <Badge variant="outline">Insumos de exemplo</Badge>
           </div>
           <CardDescription>
-            Insumos de exemplo. O registro ainda não é gravado — a integração vem quando o endpoint
-            de sobras existir.
+            O peso e o motivo são gravados na API. O <strong>anexo ainda não é enviado</strong> —
+            falta o endpoint de upload; o nome do arquivo fica só nesta tela.
           </CardDescription>
         </CardHeader>
 
@@ -259,6 +294,15 @@ export default function Sobras() {
               </TableBody>
             </Table>
 
+            {aviso && (
+              <p
+                role="status"
+                className="rounded-lg border border-emerald-300 bg-emerald-50 p-3 text-sm text-emerald-900"
+              >
+                {aviso}
+              </p>
+            )}
+
             {erro && (
               <p
                 role="alert"
@@ -269,10 +313,12 @@ export default function Sobras() {
             )}
 
             <div className="flex flex-wrap items-center justify-end gap-2">
-              <Button type="button" variant="outline" onClick={limpar}>
+              <Button type="button" variant="outline" onClick={limpar} disabled={enviando}>
                 Limpar
               </Button>
-              <Button type="submit">Registrar Sobras</Button>
+              <Button type="submit" disabled={enviando}>
+                {enviando ? "Registrando…" : "Registrar Sobras"}
+              </Button>
             </div>
           </form>
         </CardContent>
