@@ -146,6 +146,20 @@ function liberar(objeto: THREE.Object3D): void {
   });
 }
 
+/** Projeção ortográfica aplicada na MESMA câmera (raycaster e controles continuam válidos). */
+function aplicarOrtografica(camera: THREE.PerspectiveCamera, meioAltura: number, aspecto: number): void {
+  const matriz = new THREE.Matrix4().makeOrthographic(
+    -meioAltura * aspecto,
+    meioAltura * aspecto,
+    meioAltura,
+    -meioAltura,
+    0.1,
+    2000,
+  );
+  camera.projectionMatrix.copy(matriz);
+  camera.projectionMatrixInverse.copy(matriz).invert();
+}
+
 export function ModeladorCanvas(props: PropsModeladorCanvas) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const cenaRef = useRef<THREE.Scene | null>(null);
@@ -162,6 +176,9 @@ export function ModeladorCanvas(props: PropsModeladorCanvas) {
   const unidadeRef = useRef<Unidade>(props.unidade ?? 'm');
   const gradeRef = useRef<THREE.GridHelper | null>(null);
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
+  /** Ativo quando a vista atual é ortográfica (frustum manual, sem trocar a câmera). */
+  const ortoRef = useRef<{ meioAltura: number } | null>(null);
+  const exportarRef = useRef<() => void>(() => undefined);
   const gizmoRef = useRef<TransformControls | null>(null);
   const selecionadoRef = useRef<string | null>(null);
 
@@ -209,11 +226,18 @@ export function ModeladorCanvas(props: PropsModeladorCanvas) {
     const camera = new THREE.PerspectiveCamera(50, container.clientWidth / Math.max(1, container.clientHeight), 0.05, 500);
     camera.position.set(7, 6, 8);
 
-    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
     renderer.setPixelRatio(Math.min(2, window.devicePixelRatio));
     renderer.setSize(container.clientWidth, container.clientHeight);
     container.appendChild(renderer.domElement);
     rendererRef.current = renderer;
+    exportarRef.current = () => {
+      const url = renderer.domElement.toDataURL('image/png');
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = 'arqdor-vista.png';
+      link.click();
+    };
 
     const orbitais = new OrbitControls(camera, renderer.domElement);
     // Navegação padrão SketchUp: botão do MEIO = PAN, DIREITO = ORBIT, RODA = ZOOM.
@@ -411,7 +435,13 @@ export function ModeladorCanvas(props: PropsModeladorCanvas) {
       const largura = container.clientWidth;
       const altura = Math.max(1, container.clientHeight);
       camera.aspect = largura / altura;
-      camera.updateProjectionMatrix();
+      const orto = ortoRef.current;
+      if (orto !== null) {
+        // Mantém a projeção paralela na proporção nova (updateProjectionMatrix a desfaria).
+        aplicarOrtografica(camera, orto.meioAltura, camera.aspect);
+      } else {
+        camera.updateProjectionMatrix();
+      }
       renderer.setSize(largura, altura);
     });
     observador.observe(container);
@@ -855,10 +885,17 @@ export function ModeladorCanvas(props: PropsModeladorCanvas) {
     const alvo: Vetor3 = [0, 0, 0];
     const config = cameraDaVista(vista, alvo, 16);
     camera.up.set(config.up[0], config.up[1], config.up[2]);
-    camera.fov = config.fov;
-    camera.updateProjectionMatrix();
     camera.position.set(config.posicao[0], config.posicao[1], config.posicao[2]);
     orbitais.target.set(alvo[0], alvo[1], alvo[2]);
+
+    if (vista.projecao === 'ortografica') {
+      ortoRef.current = { meioAltura: vista.meioAltura ?? 12 };
+      aplicarOrtografica(camera, vista.meioAltura ?? 12, camera.aspect);
+    } else {
+      ortoRef.current = null;
+      camera.fov = config.fov;
+      camera.updateProjectionMatrix();
+    }
     // Vista técnica é para olhar, não para orbitar.
     orbitais.enableRotate = vista.grupo === 'livre';
     orbitais.update();
@@ -905,5 +942,29 @@ export function ModeladorCanvas(props: PropsModeladorCanvas) {
     );
   }, [props.grip, props.solidos]);
 
-  return <div ref={containerRef} style={{ width: '100%', height: '100%' }} />;
+  return (
+    <div ref={containerRef} style={{ width: '100%', height: '100%', position: 'relative' }}>
+      <button
+        type="button"
+        onClick={() => exportarRef.current()}
+        title="Exportar a vista atual como PNG (prancha)"
+        style={{
+          position: 'absolute',
+          right: 12,
+          bottom: 64,
+          zIndex: 6,
+          padding: '6px 10px',
+          borderRadius: 8,
+          border: '1px solid rgba(0,200,150,.35)',
+          background: 'rgba(10,25,21,.78)',
+          color: '#00c896',
+          fontSize: 11,
+          fontWeight: 700,
+          cursor: 'pointer',
+        }}
+      >
+        Exportar PNG
+      </button>
+    </div>
+  );
 }

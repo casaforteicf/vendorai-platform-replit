@@ -39,6 +39,10 @@ export interface ConfiguracaoVista {
   fatorDistancia: number;
   /** FOV em graus: estreito ≈ paralela; largo = cônica. */
   fov: number;
+  /** Projeção da vista: paralela (prancha) ou cônica. */
+  projecao: 'perspectiva' | 'ortografica';
+  /** Meia-altura do frustum ortográfico, em metros. */
+  meioAltura?: number;
   /** Corte horizontal (planta baixa): plano em Y, em metros. */
   corteY?: number;
 }
@@ -49,26 +53,26 @@ const NORMA = (v: Vetor3): Vetor3 => {
 };
 
 export const VISTAS: readonly ConfiguracaoVista[] = [
-  { id: 'perspectiva', rotulo: 'Perspectiva', grupo: 'livre', direcao: NORMA([1, 0.72, 1.2]), up: [0, 1, 0], fatorDistancia: 2.2, fov: 45 },
+  { id: 'perspectiva', rotulo: 'Perspectiva', grupo: 'livre', direcao: NORMA([1, 0.72, 1.2]), up: [0, 1, 0], fatorDistancia: 2.2, fov: 45, projecao: 'perspectiva' },
 
-  // Técnicas (FOV estreito ⇒ projeção quase paralela)
-  { id: 'planta', rotulo: 'Planta baixa (corte 1,50 m)', grupo: 'tecnica', direcao: [0, 1, 0], up: [0, 0, -1], fatorDistancia: 3, fov: 4, corteY: 1.5 },
-  { id: 'implantacao', rotulo: 'Planta de implantação', grupo: 'tecnica', direcao: [0, 1, 0], up: [0, 0, -1], fatorDistancia: 3, fov: 4 },
-  { id: 'corte-longitudinal', rotulo: 'Corte longitudinal', grupo: 'tecnica', direcao: [0, 0, 1], up: [0, 1, 0], fatorDistancia: 3, fov: 4 },
-  { id: 'corte-transversal', rotulo: 'Corte transversal', grupo: 'tecnica', direcao: [1, 0, 0], up: [0, 1, 0], fatorDistancia: 3, fov: 4 },
-  { id: 'fachada-norte', rotulo: 'Fachada norte', grupo: 'tecnica', direcao: [0, 0, -1], up: [0, 1, 0], fatorDistancia: 3, fov: 4 },
-  { id: 'fachada-sul', rotulo: 'Fachada sul', grupo: 'tecnica', direcao: [0, 0, 1], up: [0, 1, 0], fatorDistancia: 3, fov: 4 },
-  { id: 'fachada-leste', rotulo: 'Fachada leste', grupo: 'tecnica', direcao: [1, 0, 0], up: [0, 1, 0], fatorDistancia: 3, fov: 4 },
-  { id: 'fachada-oeste', rotulo: 'Fachada oeste', grupo: 'tecnica', direcao: [-1, 0, 0], up: [0, 1, 0], fatorDistancia: 3, fov: 4 },
+  // Técnicas — projeção PARALELA (prancha em escala)
+  { id: 'planta', rotulo: 'Planta baixa (corte 1,50 m)', grupo: 'tecnica', direcao: [0, 1, 0], up: [0, 0, -1], fatorDistancia: 3, fov: 4, projecao: 'ortografica', meioAltura: 14, corteY: 1.5 },
+  { id: 'implantacao', rotulo: 'Planta de implantação', grupo: 'tecnica', direcao: [0, 1, 0], up: [0, 0, -1], fatorDistancia: 3, fov: 4, projecao: 'ortografica', meioAltura: 30 },
+  { id: 'corte-longitudinal', rotulo: 'Corte longitudinal', grupo: 'tecnica', direcao: [0, 0, 1], up: [0, 1, 0], fatorDistancia: 3, fov: 4, projecao: 'ortografica', meioAltura: 10 },
+  { id: 'corte-transversal', rotulo: 'Corte transversal', grupo: 'tecnica', direcao: [1, 0, 0], up: [0, 1, 0], fatorDistancia: 3, fov: 4, projecao: 'ortografica', meioAltura: 10 },
+  { id: 'fachada-norte', rotulo: 'Fachada norte', grupo: 'tecnica', direcao: [0, 0, -1], up: [0, 1, 0], fatorDistancia: 3, fov: 4, projecao: 'ortografica', meioAltura: 10 },
+  { id: 'fachada-sul', rotulo: 'Fachada sul', grupo: 'tecnica', direcao: [0, 0, 1], up: [0, 1, 0], fatorDistancia: 3, fov: 4, projecao: 'ortografica', meioAltura: 10 },
+  { id: 'fachada-leste', rotulo: 'Fachada leste', grupo: 'tecnica', direcao: [1, 0, 0], up: [0, 1, 0], fatorDistancia: 3, fov: 4, projecao: 'ortografica', meioAltura: 10 },
+  { id: 'fachada-oeste', rotulo: 'Fachada oeste', grupo: 'tecnica', direcao: [-1, 0, 0], up: [0, 1, 0], fatorDistancia: 3, fov: 4, projecao: 'ortografica', meioAltura: 10 },
 
-  // Axonométricas
-  { id: 'isometrica', rotulo: 'Isométrica', grupo: 'axonometrica', direcao: NORMA([1, 1, 1]), up: [0, 1, 0], fatorDistancia: 2.6, fov: 18 },
-  { id: 'cavaleira', rotulo: 'Cavaleira (profundidade 45°)', grupo: 'axonometrica', direcao: NORMA([0.55, 0.35, 1]), up: [0, 1, 0], fatorDistancia: 2.8, fov: 20 },
+  // Axonométricas — também paralelas
+  { id: 'isometrica', rotulo: 'Isométrica', grupo: 'axonometrica', direcao: NORMA([1, 1, 1]), up: [0, 1, 0], fatorDistancia: 2.6, fov: 18, projecao: 'ortografica', meioAltura: 16 },
+  { id: 'cavaleira', rotulo: 'Cavaleira (profundidade 45°)', grupo: 'axonometrica', direcao: NORMA([0.55, 0.35, 1]), up: [0, 1, 0], fatorDistancia: 2.8, fov: 20, projecao: 'ortografica', meioAltura: 16 },
 
   // Cônicas
-  { id: 'conica-1', rotulo: 'Perspectiva 1 ponto de fuga', grupo: 'conica', direcao: [0, 0.25, 1], up: [0, 1, 0], fatorDistancia: 2.2, fov: 50 },
-  { id: 'conica-2', rotulo: 'Perspectiva 2 pontos de fuga', grupo: 'conica', direcao: NORMA([1, 0.35, 1]), up: [0, 1, 0], fatorDistancia: 2.4, fov: 48 },
-  { id: 'conica-3', rotulo: 'Perspectiva aérea (3 pontos)', grupo: 'conica', direcao: NORMA([0.8, 1.1, 1]), up: [0, 1, 0], fatorDistancia: 2.8, fov: 52 },
+  { id: 'conica-1', rotulo: 'Perspectiva 1 ponto de fuga', grupo: 'conica', direcao: [0, 0.25, 1], up: [0, 1, 0], fatorDistancia: 2.2, fov: 50, projecao: 'perspectiva' },
+  { id: 'conica-2', rotulo: 'Perspectiva 2 pontos de fuga', grupo: 'conica', direcao: NORMA([1, 0.35, 1]), up: [0, 1, 0], fatorDistancia: 2.4, fov: 48, projecao: 'perspectiva' },
+  { id: 'conica-3', rotulo: 'Perspectiva aérea (3 pontos)', grupo: 'conica', direcao: NORMA([0.8, 1.1, 1]), up: [0, 1, 0], fatorDistancia: 2.8, fov: 52, projecao: 'perspectiva' },
 ];
 
 export function obterVista(id: IdVista): ConfiguracaoVista {

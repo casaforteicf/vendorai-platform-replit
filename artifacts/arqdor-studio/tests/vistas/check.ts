@@ -40,6 +40,9 @@ ok(planoDeCorte(obterVista('perspectiva')) === null, 'corte: perspectiva não te
 const norte = obterVista('fachada-norte');
 ok(norte.direcao[2] === -1 && obterVista('fachada-sul').direcao[2] === 1, 'fachadas: norte e sul opostas');
 ok(obterVista('perspectiva').fov > 30, 'perspectiva: FOV de cônica');
+ok(obterVista('planta').projecao === 'ortografica' && obterVista('isometrica').projecao === 'ortografica', 'projeção: plantas e isométrica são paralelas');
+ok(obterVista('conica-2').projecao === 'perspectiva' && obterVista('perspectiva').projecao === 'perspectiva', 'projeção: cônicas seguem em perspectiva');
+ok((obterVista('planta').meioAltura ?? 0) > 0, 'projeção: frustum ortográfico definido');
 ok(obterVista('inexistente' as never).id === 'perspectiva', 'registro: id desconhecido cai na perspectiva');
 
 console.log('');
