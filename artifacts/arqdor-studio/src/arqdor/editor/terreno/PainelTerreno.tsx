@@ -25,12 +25,27 @@ const INICIAL = { lat: -23.5505, lng: -46.6333 };
 export function PainelTerreno({ aberto, aoFechar, aoCriar }: PainelTerrenoProps) {
   const [resultado, setResultado] = useState<ResultadoTerreno | null>(null);
   const [aviso, setAviso] = useState<string | null>(null);
+  const [largura, setLargura] = useState('20');
+  const [profundidade, setProfundidade] = useState('30');
 
   if (!aberto) return null;
 
+  const numero = (valor: string): number => Number(valor.replace(',', '.'));
+  const loteLargura = numero(largura);
+  const loteProfundidade = numero(profundidade);
+
   const criar = (local: { lat: number; lng: number }): void => {
+    if (!(loteLargura > 0) || !(loteProfundidade > 0)) {
+      setAviso('Informe largura e profundidade maiores que zero.');
+      return;
+    }
     const id = 'terreno_' + Date.now().toString(36);
-    const lido = criarTerreno({ id, localizacao: local.lat.toFixed(6) + ',' + local.lng.toFixed(6) });
+    const lido = criarTerreno({
+      id,
+      localizacao: local.lat.toFixed(6) + ',' + local.lng.toFixed(6),
+      largura: loteLargura,
+      profundidade: loteProfundidade,
+    });
 
     if (!lido.ok) {
       setResultado(null);
@@ -89,7 +104,38 @@ export function PainelTerreno({ aberto, aoFechar, aoCriar }: PainelTerrenoProps)
         </button>
       </div>
 
-      <MapaTerreno inicial={INICIAL} aoEscolher={criar} />
+      <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+        <label style={{ flex: 1, fontSize: 11, color: '#8fa39c' }}>
+          Largura (m)
+          <input
+            value={largura}
+            onChange={(evento) => setLargura(evento.target.value)}
+            inputMode="decimal"
+            aria-label="Largura do lote em metros"
+            style={{ width: '100%', marginTop: 4, padding: '7px 9px', borderRadius: 8, border: '1px solid rgba(255,255,255,.12)', background: 'rgba(0,0,0,.32)', color: '#fff', font: 'inherit', fontSize: 12, textAlign: 'right' }}
+          />
+        </label>
+        <label style={{ flex: 1, fontSize: 11, color: '#8fa39c' }}>
+          Profundidade (m)
+          <input
+            value={profundidade}
+            onChange={(evento) => setProfundidade(evento.target.value)}
+            inputMode="decimal"
+            aria-label="Profundidade do lote em metros"
+            style={{ width: '100%', marginTop: 4, padding: '7px 9px', borderRadius: 8, border: '1px solid rgba(255,255,255,.12)', background: 'rgba(0,0,0,.32)', color: '#fff', font: 'inherit', fontSize: 12, textAlign: 'right' }}
+          />
+        </label>
+      </div>
+
+      <MapaTerreno
+        inicial={INICIAL}
+        aoEscolher={criar}
+        loteMetros={
+          loteLargura > 0 && loteProfundidade > 0
+            ? { largura: loteLargura, profundidade: loteProfundidade }
+            : undefined
+        }
+      />
 
       {aviso !== null ? (
         <p style={{ margin: '10px 0 0', fontSize: 11.5, color: '#fca5a5', lineHeight: 1.5 }}>{aviso}</p>

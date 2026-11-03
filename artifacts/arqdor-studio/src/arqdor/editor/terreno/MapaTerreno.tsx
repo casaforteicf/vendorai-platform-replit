@@ -10,12 +10,14 @@
 import { useMemo, useRef, useState } from 'react';
 import { panCentro, pixelDaLocalizacao, tilesDaViewport, zoomAncorado } from './mapa';
 import type { LocalizacaoMapa } from './mapa';
-import { urlTerreno } from './tiles';
+import { metrosPorPixel, urlTerreno } from './tiles';
 
 export interface MapaTerrenoProps {
   inicial: LocalizacaoMapa;
   larguraPx?: number;
   alturaPx?: number;
+  /** Retângulo do lote desenhado sobre o mapa (metros). */
+  loteMetros?: { largura: number; profundidade: number };
   /** Clique no mapa: coordenada escolhida (cria o terreno). */
   aoEscolher: (local: LocalizacaoMapa) => void;
 }
@@ -23,7 +25,7 @@ export interface MapaTerrenoProps {
 const ZOOM_MIN = 3;
 const ZOOM_MAX = 19;
 
-export function MapaTerreno({ inicial, larguraPx = 540, alturaPx = 320, aoEscolher }: MapaTerrenoProps) {
+export function MapaTerreno({ inicial, larguraPx = 540, alturaPx = 320, loteMetros, aoEscolher }: MapaTerrenoProps) {
   const [centro, setCentro] = useState<LocalizacaoMapa>(inicial);
   const [zoom, setZoom] = useState(17);
   const [aviso, setAviso] = useState<string | null>(null);
@@ -131,6 +133,52 @@ export function MapaTerreno({ inicial, larguraPx = 540, alturaPx = 320, aoEscolh
             />
           );
         })}
+        {loteMetros !== undefined
+          ? (() => {
+              const mpp = metrosPorPixel(centro.lat, zoom);
+              const larguraLote = loteMetros.largura / mpp;
+              const alturaLote = loteMetros.profundidade / mpp;
+              const cabe = larguraLote <= larguraPx && alturaLote <= alturaPx;
+              return (
+                <>
+                  <div
+                    aria-hidden="true"
+                    style={{
+                      position: 'absolute',
+                      left: '50%',
+                      top: '50%',
+                      width: Math.min(larguraLote, larguraPx),
+                      height: Math.min(alturaLote, alturaPx),
+                      transform: 'translate(-50%, -50%)',
+                      border: '2px solid #00c896',
+                      background: 'rgba(0,200,150,.12)',
+                      boxShadow: '0 0 0 1px rgba(0,0,0,.5)',
+                      pointerEvents: 'none',
+                    }}
+                  />
+                  {!cabe ? (
+                    <span
+                      style={{
+                        position: 'absolute',
+                        left: '50%',
+                        top: 8,
+                        transform: 'translateX(-50%)',
+                        padding: '3px 8px',
+                        borderRadius: 6,
+                        background: 'rgba(0,0,0,.65)',
+                        color: '#fca5a5',
+                        fontSize: 10.5,
+                        pointerEvents: 'none',
+                      }}
+                    >
+                      lote maior que a tela — diminua o zoom
+                    </span>
+                  ) : null}
+                </>
+              );
+            })()
+          : null}
+
         <div
           style={{
             position: 'absolute',

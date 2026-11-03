@@ -124,6 +124,16 @@ const novoCentroPx = pixelDaLocalizacao(novoCentro, 18);
 const localDepois = localizacaoDoPixel(novoCentroPx.x - 300 + ancoraTela.x, novoCentroPx.y - 160 + ancoraTela.y, 18);
 ok(perto(localAntes.lat, localDepois.lat, 1e-6) && perto(localAntes.lng, localDepois.lng, 1e-6), 'mapa: zoom mantém o ponto sob o cursor');
 
+// ---------- 5. lote com medidas do usuário ----------
+const lote = criarTerreno({ id: 'lote1', localizacao: '-23.55,-46.63', largura: 20, profundidade: 30 });
+ok(lote.ok, 'lote: criado com as medidas informadas');
+if (lote.ok) {
+  const xs = lote.solido.vertices.map((vertice) => vertice.posicao[0]);
+  const zs = lote.solido.vertices.map((vertice) => vertice.posicao[2]);
+  ok(perto(Math.max(...xs) - Math.min(...xs), 20), 'lote: largura de 20 m respeitada');
+  ok(perto(Math.max(...zs) - Math.min(...zs), 30), 'lote: profundidade de 30 m respeitada');
+}
+
 console.log('');
 console.log('resultado: ' + String(passou) + ' passaram, ' + String(falhou) + ' falharam');
 if (falhou > 0) throw new Error('falhas: ' + String(falhou));
