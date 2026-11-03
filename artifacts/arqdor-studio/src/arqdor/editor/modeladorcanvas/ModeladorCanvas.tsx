@@ -42,6 +42,8 @@ export interface PropsModeladorCanvas {
   unidade?: Unidade;
   /** Oculta a grade verde (o terreno de referência já é o piso). */
   ocultarGrade?: boolean;
+  /** Vista de topo: câmera acima do alvo, rotação travada (desenhar planta sobre o terreno). */
+  vistaTopo?: boolean;
   /** Grip de esticar a face selecionada (losango vermelho). */
   grip?: { posicao: Vetor3; normal: Vetor3; faceId: string } | null;
   /** Soltou o grip: deslocamento ao longo da normal, em metros. */
@@ -838,6 +840,29 @@ export function ModeladorCanvas(props: PropsModeladorCanvas) {
     camera.position.set(x + distancia * 0.42, y + distancia * 0.55, z + distancia * 0.72);
     orbitais.update();
   }, [props.foco]);
+
+  // Vista de topo: câmera acima do alvo e rotação travada, para desenhar planta sobre o terreno.
+  useEffect(() => {
+    const orbitais = orbitaisRef.current;
+    const camera = cameraRef.current;
+    if (orbitais === null || camera === null) return;
+    if (props.vistaTopo === true) {
+      orbitais.enableRotate = false;
+      orbitais.minPolarAngle = 0.0001;
+      orbitais.maxPolarAngle = 0.0001;
+      camera.up.set(0, 0, -1);
+      orbitais.target.set(0, 0, 0);
+      camera.position.set(0.0001, 45, 0.0001);
+      orbitais.update();
+      return;
+    }
+    orbitais.enableRotate = true;
+    orbitais.minPolarAngle = 0;
+    orbitais.maxPolarAngle = Math.PI / 2 - 0.01;
+    camera.up.set(0, 1, 0);
+    camera.position.set(18, 13, 22);
+    orbitais.update();
+  }, [props.vistaTopo]);
 
   // O terreno de referência substitui a grade: sem isso, a grade verde fica por cima do piso.
   useEffect(() => {

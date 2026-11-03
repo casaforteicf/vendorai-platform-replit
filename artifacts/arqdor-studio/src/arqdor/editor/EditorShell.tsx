@@ -62,6 +62,7 @@ function arred(valor: number): number {
 export function EditorShell() {
   const [carregado, setCarregado] = useState(false);
   const [aba, setAba] = useState<'modelo' | 'planta' | 'conflitos'>('modelo');
+  const [vistaTopo, setVistaTopo] = useState(false);
   const [mep, setMep] = useState<ElementoMEP[]>([]);
   const [modalInserir, setModalInserir] = useState(false);
   const [booleanaPronta, setBooleanaPronta] = useState(false);
@@ -799,6 +800,17 @@ export function EditorShell() {
           <button type="button" role="tab" className="arq-tool" aria-pressed={aba === 'conflitos'} onClick={() => setAba('conflitos')}>
             Conflitos
           </button>
+          <button
+            type="button"
+            className="arq-tool"
+            aria-pressed={vistaTopo}
+            aria-label={vistaTopo ? 'Sair da vista de topo' : 'Vista de topo'}
+            title="Vista de topo (desenhar planta sobre o terreno)"
+            onClick={() => setVistaTopo((atual) => !atual)}
+            disabled={aba !== 'modelo'}
+          >
+            Topo
+          </button>
         </div>
         <div className="arq-header-spacer" />
         <button
@@ -867,6 +879,7 @@ export function EditorShell() {
               foco={focoCamera}
               unidade={unidade}
               ocultarGrade={solidos.some((item) => ehTerreno(item))}
+              vistaTopo={vistaTopo}
               grip={gripFace}
               aoEsticarFace={esticarFace}
               aoEscolherFace={(solidoId, faceId) => {
