@@ -3,6 +3,30 @@
 import Link from 'next/link';
 import type { ReactNode } from 'react';
 import { Icone } from '../design/icones';
+import { useUnidadeStore } from '../stores/useUnidadeStore';
+import type { Unidade } from '../modelador/unidades';
+
+const UNIDADES: readonly Unidade[] = ['mm', 'cm', 'm', 'pol'];
+
+function SeletorUnidade() {
+  const unidade = useUnidadeStore((s) => s.unidade);
+  const setUnidade = useUnidadeStore((s) => s.setUnidade);
+  return (
+    <select
+      className="arq-select-unidade"
+      value={unidade}
+      onChange={(evento) => setUnidade(evento.target.value as Unidade)}
+      title="Unidade de entrada e exibição (interno continua em metros)"
+      aria-label="Unidade de medida"
+    >
+      {UNIDADES.map((item) => (
+        <option key={item} value={item}>
+          {item}
+        </option>
+      ))}
+    </select>
+  );
+}
 
 export interface PropsTopbar {
   projeto?: string;
@@ -55,6 +79,7 @@ export function Topbar({ projeto, salvo, acoes, busca, aoBuscar, imersivo, aoVen
         </button>
 
         <div className="arq-topbar-right">
+          <SeletorUnidade />
           {acoes !== undefined ? <div className="arq-topbar-acoes">{acoes}</div> : null}
           {salvo === true ? (
             <span className="arq-salvo">
@@ -92,6 +117,7 @@ export function Topbar({ projeto, salvo, acoes, busca, aoBuscar, imersivo, aoVen
       </button>
 
       <div className="arq-topbar-right">
+        <SeletorUnidade />
         {acoes !== undefined ? <div className="arq-topbar-acoes">{acoes}</div> : null}
         {salvo === true ? (
           <span className="arq-salvo">

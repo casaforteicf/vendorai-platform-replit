@@ -29,6 +29,9 @@ import type { FaceEscolhida, PreviaBim } from './painel/PainelPropriedades';
 import { calcularPushPull } from './modelador/pushpull';
 import { offsetDaFace } from './modelador/offset';
 import { centroNormalDaFace } from './modelador/grip';
+import { converterMedida } from './modelador/unidades';
+import { ehTerreno } from './terreno/terreno';
+import { useUnidadeStore } from './stores/useUnidadeStore';
 import { gerarOpEscalar, gerarOpMover, gerarOpRotacionar } from './modelador/gizmo';
 import type { ModoGizmo, TransformacaoLida } from './modeladorcanvas/ModeladorCanvas';
 import type { OperacaoModelador } from './modelador/schema';
@@ -49,6 +52,11 @@ const PASSO_GRADE = 0.05;
 
 function aposGrade(valor: number): number {
   return Math.round(valor / PASSO_GRADE) * PASSO_GRADE;
+}
+
+/** Arredonda para leitura (evita "2.8000000000000003" nas mensagens). */
+function arred(valor: number): number {
+  return Math.round(valor * 1000) / 1000;
 }
 
 export function EditorShell() {
@@ -101,6 +109,7 @@ export function EditorShell() {
   const [painelAberto, setPainelAberto] = useState(true);
   const [terrenoAberto, setTerrenoAberto] = useState(false);
   const abrirChatIA = useChatIAStore((s) => s.abrir);
+  const unidade = useUnidadeStore((s) => s.unidade);
 
   useEffect(() => {
     setDesenho(iniciar(ferramenta));
@@ -280,6 +289,11 @@ export function EditorShell() {
 
   const materializarSelecionado = (): void => {
     if (projeto === null || solidoSelecionado === undefined) return;
+    // Terreno é referência visual: converter em elemento BIM o jogaria no orçamento.
+    if (ehTerreno(solidoSelecionado)) {
+      setAviso('Terreno é referência de contexto — não vira elemento BIM nem entra no orçamento.');
+      return;
+    }
     const lote = materializarSolidos(
       [solidoSelecionado],
       { projetoId: projeto.id, camadaId: camadas.camadaAtivaId },
@@ -397,8 +411,7 @@ export function EditorShell() {
     setAviso('Booleana aplicada: ' + operacao + ' (Ctrl+Z desfaz).');
   };
 
-  const aplicarMedidaDigitada = (texto: string): string | null => {
-    const lido = interpretarMedida(texto);
+  const aplicarMedidaDigitada = (texto: string): string | null => {    const lido = converterMedida(interpretarMedida(texto), unidade);
     if (lido.tipo === 'vazio') return 'Digite uma medida.';
     if (lido.tipo === 'invalido') return 'Medida inválida — use 2,8 ou 3x4.';
 
@@ -427,8 +440,8 @@ export function EditorShell() {
           versao: Date.now(),
         });
         setAviso(
-          'Caixa ' + String(lido.largura) + ' × ' + String(lido.profundidade) + ' × ' +
-            String(lido.altura) + ' m criada em (' + posicao[0] + ', 0, ' + posicao[2] + ').',
+          'Caixa ' + String(arred(lido.largura)) + ' × ' + String(arred(lido.profundidade)) + ' × ' +
+            String(arred(lido.altura)) + ' m criada em (' + String(arred(posicao[0])) + ', 0, ' + String(arred(posicao[2])) + ').',
         );
         return null;
       }
@@ -852,6 +865,7 @@ export function EditorShell() {
               }}
               selecionados={selecionados}
               foco={focoCamera}
+              unidade={unidade}
               grip={gripFace}
               aoEsticarFace={esticarFace}
               aoEscolherFace={(solidoId, faceId) => {
@@ -879,11 +893,12 @@ export function EditorShell() {
             <BarraMedidas
               dica={
                 ferramenta === 'pushpull'
-                  ? 'Altura do Push/Pull (m)'
+                  ? 'Altura do Push/Pull'
                   : ferramenta === 'retangulo'
                     ? 'Largura x profundidade (ex.: 3x4)'
                     : 'Medida'
               }
+              unidade={unidade}
               aoAplicar={aplicarMedidaDigitada}
               focarEm={focoMedida}
             />

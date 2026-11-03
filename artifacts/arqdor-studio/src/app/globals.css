@@ -812,6 +812,17 @@ button { font-family: inherit; }
   box-shadow: 0 0 0 2px rgba(255, 255, 255, .1);
 }
 
+/* seletor de unidade (topbar) */
+.arq-select-unidade {
+  height: 32px; padding: 0 8px;
+  font: inherit; font-size: 12px; font-weight: 600;
+  color: #d1fae5; background: rgba(0, 0, 0, .2);
+  border: 1px solid rgba(255, 255, 255, .12); border-radius: 8px;
+  cursor: pointer; outline: none;
+}
+.arq-select-unidade:hover { border-color: rgba(0, 200, 150, .4); color: #fff; }
+.arq-select-unidade option { background: #0B3D2E; color: #fff; }
+
 /* badge de modo sobre o canvas */
 .arq-ed-v2 .arq-canvas-mode-badge {
   position: absolute; top: 16px; left: 16px; z-index: 5;

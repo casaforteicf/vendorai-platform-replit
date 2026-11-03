@@ -9,6 +9,8 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { Icone } from '../design/icones';
+import { simbolo } from '../modelador/unidades';
+import type { Unidade } from '../modelador/unidades';
 
 export interface PropsBarraMedidas {
   dica: string;
@@ -16,6 +18,8 @@ export interface PropsBarraMedidas {
   aoAplicar: (texto: string) => string | null;
   /** Incrementar este contador foca o campo (duplo clique na face). */
   focarEm?: number;
+  /** Unidade da entrada digitada (o motor recebe metros). */
+  unidade?: Unidade;
 }
 
 export function BarraMedidas(props: PropsBarraMedidas) {
@@ -58,7 +62,10 @@ export function BarraMedidas(props: PropsBarraMedidas) {
 
   return (
     <div className="arq-medidas" role="group" aria-label="Barra de medidas">
-      <span className="arq-medidas-dica">{props.dica}</span>
+      <span className="arq-medidas-dica">
+        {props.dica}
+        {props.unidade !== undefined ? ' — em ' + simbolo(props.unidade) : ''}
+      </span>
       <div className="arq-medidas-linha">
         <Icone nome="linha" tamanho={14} />
         <input

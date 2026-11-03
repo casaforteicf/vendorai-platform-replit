@@ -7,6 +7,8 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { TransformControls } from 'three/examples/jsm/controls/TransformControls.js';
 import type { Solido, Vetor3 } from '../modelador/schema';
+import type { Unidade } from '../modelador/unidades';
+import { formatarComUnidade } from '../modelador/unidades';
 import { COR_SNAP, calcularSnap, corDoSnap, eixoDominante, travarNoEixo } from '../modelador/snap';
 import { metricasAresta, metricasFace } from '../modelador/metricas';
 import type { CandidatoSnap } from '../modelador/snap';
@@ -36,6 +38,8 @@ export interface PropsModeladorCanvas {
   selecionados?: readonly string[];
   /** Pede à câmera para enquadrar um ponto — usado logo após inserir uma peça. */
   foco?: { alvo: Vetor3; versao: number; distancia?: number } | null;
+  /** Unidade usada nas leituras (HUD); o motor continua em metros. */
+  unidade?: Unidade;
   /** Grip de esticar a face selecionada (losango vermelho). */
   grip?: { posicao: Vetor3; normal: Vetor3; faceId: string } | null;
   /** Soltou o grip: deslocamento ao longo da normal, em metros. */
@@ -145,6 +149,7 @@ export function ModeladorCanvas(props: PropsModeladorCanvas) {
   const gripBaseRef = useRef<Vetor3 | null>(null);
   const gripNormalRef = useRef<Vetor3 | null>(null);
   const gripDeltaRef = useRef(0);
+  const unidadeRef = useRef<Unidade>(props.unidade ?? 'm');
   const gizmoRef = useRef<TransformControls | null>(null);
   const selecionadoRef = useRef<string | null>(null);
 
@@ -180,6 +185,7 @@ export function ModeladorCanvas(props: PropsModeladorCanvas) {
   modoGizmoRef.current = props.gizmo;
   gripInfoRef.current = props.grip;
   esticarRef.current = props.aoEsticarFace;
+  unidadeRef.current = props.unidade ?? 'm';
 
   useEffect(() => {
     const container = containerRef.current;
@@ -486,7 +492,7 @@ export function ModeladorCanvas(props: PropsModeladorCanvas) {
         );
         const hud = hudRef.current;
         if (hud !== null) {
-          hud.textContent = 'Esticar · ' + delta.toFixed(2).replace('.', ',') + ' m';
+          hud.textContent = 'Esticar · ' + formatarComUnidade(delta, unidadeRef.current);
           hud.style.display = 'block';
         }
         return;

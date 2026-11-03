@@ -12,6 +12,7 @@ import type { Ponto2D } from '../../src/arqdor/editor/modelador/offset';
 import type { Solido } from '../../src/arqdor/editor/modelador/schema';
 import { criarCaixa } from '../../src/arqdor/editor/modelador/caixa';
 import { centroNormalDaFace } from '../../src/arqdor/editor/modelador/grip';
+import { converterMedida, deMetros, formatarComUnidade, paraMetros } from '../../src/arqdor/editor/modelador/unidades';
 import { textoDoArrasto, textoEscalar, textoMover, textoRotacionar } from '../../src/arqdor/editor/modelador/gizmo-hud';
 import type { TransformacaoGizmo } from '../../src/arqdor/editor/modelador/gizmo-hud';
 import type { Vetor3 } from '../../src/arqdor/editor';
@@ -215,6 +216,19 @@ if (caixaGrip.ok) {
   }
   ok(centroNormalDaFace(caixaGrip.solido, 'nao-existe') === null, 'grip: face inexistente → null');
 }
+
+// ---------- 13. unidades (entrada em mm/cm/m/pol, motor em metros) ----------
+const emCm = converterMedida(interpretarMedida('2,8'), 'cm');
+ok(emCm.tipo === 'escalar' && perto(emCm.valor, 0.028), 'unidades: 2,8 cm vira 0,028 m');
+const emMm = converterMedida(interpretarMedida('3x4'), 'mm');
+ok(emMm.tipo === 'dimensoes' && perto(emMm.largura, 0.003) && perto(emMm.profundidade, 0.004), 'unidades: 3x4 mm vira 0,003 × 0,004 m');
+const emPol = converterMedida(interpretarMedida('2'), 'pol');
+ok(emPol.tipo === 'escalar' && perto(emPol.valor, 0.0508), 'unidades: 2 pol vira 0,0508 m');
+const emMetros = converterMedida(interpretarMedida('4;2,8;2'), 'm');
+ok(emMetros.tipo === 'dimensoes3' && perto(emMetros.altura, 2), 'unidades: metros não convertem');
+ok(formatarComUnidade(2.8, 'cm') === '280,0 cm', 'unidades: exibe 2,8 m como 280,0 cm');
+ok(formatarComUnidade(0.0254, 'mm') === '25 mm', 'unidades: 1 pol exibe 25 mm');
+ok(perto(deMetros(paraMetros(1, 'pol'), 'pol'), 1), 'unidades: ida e volta preserva o valor');
 
 console.log('');
 console.log('resultado: ' + String(passou) + ' passaram, ' + String(falhou) + ' falharam');
