@@ -12,6 +12,7 @@ const COR: Record<TipoLinha2D, string> = {
   laje: '#8fa3a0',
   mobiliario: '#b28ce8',
   telhado: '#d08a4a',
+  escada: '#c9b28a',
 };
 
 export interface PropsViewport2D {

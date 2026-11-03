@@ -18,7 +18,8 @@ export type TipoElemento =
   | 'janela'
   | 'laje'
   | 'mobiliario'
-  | 'telhado';
+  | 'telhado'
+  | 'escada';
 
 export type CategoriaEsquadria =
   | 'giro'
@@ -94,13 +95,34 @@ export interface GeometriaTelhado {
   inclinacaoGraus: number;
 }
 
+/**
+ * Escada RETA no BIM (decisão do dono, 2026-11-03).
+ *
+ * Mesma convenção das outras geometrias: `posicao` é o canto mínimo da projeção em planta.
+ * O concreto é medido pelo prisma de degraus (é o volume real da escada do modelador), não
+ * pela caixa envolvente — caixa superestima e é o erro clássico de orçamento de escada.
+ *
+ * `comprimento` é a soma dos pisos (projeção horizontal), não o desenvolvimento inclinado.
+ */
+export interface GeometriaEscada {
+  posicao: [number, number];
+  /** Largura em X. */
+  largura: number;
+  /** Projeção horizontal em Y (soma dos pisos). */
+  comprimento: number;
+  /** Altura a vencer (soma dos espelhos). */
+  alturaTotal: number;
+  numeroDegraus: number;
+}
+
 export type Geometria =
   | GeometriaParede
   | GeometriaPorta
   | GeometriaJanela
   | GeometriaLaje
   | GeometriaMobiliario
-  | GeometriaTelhado;
+  | GeometriaTelhado
+  | GeometriaEscada;
 
 export interface ElementoBim {
   id: string;

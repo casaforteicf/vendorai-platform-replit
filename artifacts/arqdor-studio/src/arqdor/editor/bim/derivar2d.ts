@@ -6,13 +6,14 @@
 import type {
   ElementoBim,
   Geometria,
+  GeometriaEscada,
   GeometriaJanela,
   GeometriaMobiliario,
   GeometriaParede,
   GeometriaPorta,
 } from './schema';
 
-export type TipoLinha2D = 'parede' | 'abertura' | 'esquadria' | 'laje' | 'mobiliario' | 'telhado';
+export type TipoLinha2D = 'parede' | 'abertura' | 'esquadria' | 'laje' | 'mobiliario' | 'telhado' | 'escada';
 
 export interface Linha2D {
   x1: number;
@@ -125,6 +126,25 @@ function derivarMobiliario(el: ElementoBim, g: GeometriaMobiliario): Linha2D[] {
   return derivarContorno(el, cantos, 'mobiliario');
 }
 
+/**
+ * Escada em planta: retângulo ocupado + uma linha por degrau (tracejada).
+ * A projeção é o que o arquiteto desenha em planta baixa; o desenvolvimento inclinado não.
+ */
+function derivarEscada(el: ElementoBim, g: GeometriaEscada): Linha2D[] {
+  if (g.numeroDegraus < 1 || g.largura <= EPS || g.comprimento <= EPS) return [];
+  const [x0, y0] = g.posicao;
+  const x1 = x0 + g.largura;
+  const y1 = y0 + g.comprimento;
+  const contorno: [number, number][] = [[x0, y0], [x1, y0], [x1, y1], [x0, y1]];
+  const saida = derivarContorno(el, contorno, 'escada');
+  const piso = g.comprimento / g.numeroDegraus;
+  for (let i = 1; i < g.numeroDegraus; i += 1) {
+    const y = y0 + piso * i;
+    saida.push(linha(x0, y, x1, y, 'escada', el.id, el.camadaId, true));
+  }
+  return saida;
+}
+
 export function derivar2d(elementos: readonly ElementoBim[]): Linha2D[] {
   const paredes = new Map<string, GeometriaParede>();
   for (const el of elementos) {
@@ -150,6 +170,9 @@ export function derivar2d(elementos: readonly ElementoBim[]): Linha2D[] {
         break;
       case 'mobiliario':
         linhas.push(...derivarMobiliario(el, g as GeometriaMobiliario));
+        break;
+      case 'escada':
+        linhas.push(...derivarEscada(el, g as GeometriaEscada));
         break;
     }
   }

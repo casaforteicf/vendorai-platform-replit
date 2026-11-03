@@ -5,6 +5,7 @@
 
 import type {
   ElementoBim,
+  GeometriaEscada,
   GeometriaJanela,
   GeometriaLaje,
   GeometriaMobiliario,
@@ -37,6 +38,8 @@ export function categoriaDe(tipo: ElementoBim['tipo']): Categoria {
       return 'mobiliario';
     case 'telhado':
       return 'cobertura';
+    case 'escada':
+      return 'estrutura';
   }
 }
 
@@ -125,6 +128,21 @@ export function medirElemento(el: ElementoBim, vaos: Map<string, number>): Medic
       void g;
       return [{ unidade: 'un', quantidade: 1 }];
     }
+
+    case 'escada': {
+      const g = el.geometria as GeometriaEscada;
+      if (g.numeroDegraus < 1 || g.largura <= EPS || g.comprimento <= EPS) return [];
+      const piso = g.comprimento / g.numeroDegraus;
+      const espelho = g.alturaTotal / g.numeroDegraus;
+      // Volume do prisma de degraus (igual ao sólido do modelador) — não é a caixa envolvente.
+      const volume = (g.largura * piso * espelho * g.numeroDegraus * (g.numeroDegraus + 1)) / 2;
+      return [
+        { unidade: 'm2', quantidade: g.largura * g.comprimento },
+        { unidade: 'm3', quantidade: volume },
+        { unidade: 'un', quantidade: g.numeroDegraus },
+        { unidade: 'm', quantidade: g.alturaTotal },
+      ];
+    }
   }
 }
 
@@ -185,6 +203,8 @@ export function quantitativos(elementos: readonly ElementoBim[], opcoes: OpcoesQ
     const coeficiente = coeficienteDe(el.tipo, materialId, opcoes);
 
     for (const medicao of medirElemento(el, vaos)) {
+      // Perda é para material contínuo. Unidade 'un' é contagem: ninguém compra 1,03 porta.
+      const coeficienteAplicado = medicao.unidade === 'un' ? 1 : coeficiente;
       itens.push({
         elementoId: el.id,
         tipo: el.tipo,
@@ -193,8 +213,8 @@ export function quantitativos(elementos: readonly ElementoBim[], opcoes: OpcoesQ
         materialId,
         unidade: medicao.unidade,
         quantidadeBruta: medicao.quantidade,
-        coeficientePerda: coeficiente,
-        quantidadeComPerda: medicao.quantidade * coeficiente,
+        coeficientePerda: coeficienteAplicado,
+        quantidadeComPerda: medicao.quantidade * coeficienteAplicado,
       });
     }
   }
