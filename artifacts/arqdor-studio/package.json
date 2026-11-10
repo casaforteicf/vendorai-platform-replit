@@ -1,0 +1,37 @@
+{
+  "name": "@workspace/arqdor-studio",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "next dev --port 5180",
+    "dev:clean": "node -e \"require('node:fs').rmSync('.next',{recursive:true,force:true})\" && next dev --port 5180",
+    "build": "next build",
+    "start": "next start --port 5180",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "typecheck:contracts": "tsc -p tsconfig.contracts.json",
+    "typecheck:contracts-tests": "tsc -p tsconfig.contracts-tests.json",
+    "test:camadas": "tsc -p tsconfig.check.json && node tests/run-all.mjs"
+  },
+  "dependencies": {
+    "@thatopen/components": "^3.6.0",
+    "drizzle-orm": "catalog:",
+    "manifold-3d": "^3.5.4",
+    "next": "15.5.24",
+    "pg": "^8.23.1",
+    "react": "catalog:",
+    "react-dom": "catalog:",
+    "three": "^0.187.0",
+    "three-bvh-csg": "^0.0.18",
+    "zod": "catalog:",
+    "zustand": "^5.0.16"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "@types/pg": "^8.11.10",
+    "@types/react": "catalog:",
+    "@types/react-dom": "catalog:",
+    "@types/three": "^0.187.0",
+    "typescript": "~5.9.3"
+  }
+}
