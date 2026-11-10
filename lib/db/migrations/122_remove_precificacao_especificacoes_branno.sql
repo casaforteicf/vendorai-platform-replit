@@ -1,3 +1,7 @@
+-- Ensure the optional JSONB field defined by the current catalog schema exists.
+ALTER TABLE public.produtos_catalogo
+  ADD COLUMN IF NOT EXISTS especificacoes jsonb;
+
 -- Remove informações comerciais internas da tabela pública de especificações.
 -- Margem e regra de preço permanecem nos campos próprios de formação de preço.
 UPDATE produtos_catalogo AS produto
