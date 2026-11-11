@@ -3,7 +3,7 @@
 set -Eeuo pipefail
 OUT=/dev/stdout
 printf 'VENDI04_AUDIT_AT=%s\n' "$(date -u +%FT%TZ)"
-for c in vendorai-homolog-api vendorai-prod-api-candidate vendorai-mcp-contabo-fixed; do
+for c in vendorai-homolog-api vendorai-prod-api-candidate vendorai-mcp-novo; do
   if ! docker inspect "$c" >/dev/null 2>&1; then
     echo "MISSING_CONTAINER=$c"; continue
   fi
