@@ -131,8 +131,8 @@ function automaticFolder(input: {
   activityType?: string | null;
   pipeline?: string | null;
 }): string {
-  const text = [input.name, input.category, input.origin, input.activityType, input.pipeline]
-    .filter(Boolean).join(" ").toLowerCase();
+  const text = [input.name, input.category].filter(Boolean).join(" ").toLowerCase();
+  const context = [input.origin, input.activityType, input.pipeline].filter(Boolean).join(" ").toLowerCase();
   if (/contrato|contract|termo assinado|assinad/.test(text)) return "Documentos / Contratos";
   if (/proposta|orçamento|orcamento|cotação|cotacao/.test(text)) return "Documentos / Propostas e Orçamentos";
   if (/ordem de serviço|ordem de servico|\bos\b|service order/.test(text)) return "Documentos / Ordens de Serviço";
@@ -143,7 +143,9 @@ function automaticFolder(input: {
   if (/projeto|planta|render|fachada|memorial|especificaç|especificac/.test(text)) return "Projetos";
   if (/assistência|assistencia|suporte|garantia|manutenção|manutencao/.test(text)) return "Assistência / Suporte";
   if (/execução|execucao|obra|instalação|instalacao|entrega/.test(text)) return "Execução / Obra";
-  if (/whatsapp|e-mail|email|conversa|mensagem|omnichannel/.test(text)) return "Conversas / Arquivos recebidos";
+  if (/assistência|assistencia|suporte/.test(context)) return "Assistência / Suporte";
+  if (/execução|execucao|obra/.test(context)) return "Execução / Obra";
+  if (/whatsapp|e-mail|email|conversa|mensagem|omnichannel/.test(context)) return "Conversas / Arquivos recebidos";
   if (input.type === "image") return "Imagens e Fotos";
   if (input.type === "video") return "Vídeos";
   if (input.type === "audio") return "Áudios";
