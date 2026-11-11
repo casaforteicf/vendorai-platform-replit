@@ -2864,6 +2864,14 @@ export default function Deals() {
     defaultValues: { titulo: "", valor: undefined, leadId: "", etapa: "novo", probabilidade: undefined, tipoFechamento: tenantDefault ?? "pedido" },
   });
 
+  useEffect(() => {
+    const leadId = new URLSearchParams(window.location.search).get("newDealLeadId");
+    if (!leadId || !leads.some((lead) => lead.id === leadId)) return;
+    createForm.setValue("leadId", leadId, { shouldValidate: true });
+    setIsCreateOpen(true);
+    window.history.replaceState(null, "", "/deals");
+  }, [leads, createForm]);
+
   function onCreateSubmit(values: z.infer<typeof createSchema>) {
     if (!values.leadId || !leads.some((lead) => lead.id === values.leadId)) {
       toast({ title: "Selecione um lead cadastrado antes de criar o negócio.", variant: "destructive" });
@@ -3658,7 +3666,7 @@ export default function Deals() {
                         ) : null;
                       })()}
                       <Button type="button" variant="outline" className="w-full"
-                        onClick={() => { setIsCreateOpen(false); navigate("/leads"); }}>
+                        onClick={() => { setIsCreateOpen(false); navigate("/leads?newDealLead=1"); }}>
                         <Plus className="h-4 w-4 mr-2" /> Cadastrar novo lead
                       </Button>
                       <FormMessage />
