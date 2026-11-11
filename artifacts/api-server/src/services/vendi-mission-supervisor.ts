@@ -7,7 +7,8 @@ import {
 } from "@workspace/db";
 import { callOpenAI } from "../lib/ai-gateway.js";
 import { sendDirectWhatsAppMessage } from "./omnichannel.js";
-import { preservePendingSteps, isObserverReadOnlyTool, completedPlan } from "./vendi-mission-integrity.js";
+import { preservePendingSteps, isObserverReadOnlyTool, completedPlan, compactConsultationPlan, consultationOnly } from "./vendi-mission-integrity.js";
+import { summarizeMission } from "./vendi-mission-summary.js";
 import { withVendiTenantContext } from "./vendi-db-context.js";
 import { logger } from "../lib/logger.js";
 import {
@@ -73,7 +74,7 @@ export async function planVendiMission(input: {
   const tools = listVendiTools().filter((tool) => !observer || isObserverReadOnlyTool(tool));
   const result = await callOpenAI(
     input.tenantId,
-    "agent_runtime" as any,
+    "intelligence_analysis",
     [
       {
         role: "system",
@@ -84,6 +85,10 @@ export async function planVendiMission(input: {
           "Prefira ferramentas internas antes de web.",
           "Use web apenas quando a informação/ação não estiver disponível internamente.",
           "Não inclua ação externa ou escrita desnecessária.",
+          "Inclua somente consultas necessárias para os itens explicitamente pedidos; não acrescente categorias relacionadas por precaução.",
+          "Atividades ou tarefas vencidas são consultadas por admin.operational_attention. Agendamentos são compromissos da agenda, uma categoria diferente.",
+          "Use agenda.appointments.list somente quando o objetivo pedir agendamentos ou compromissos da agenda; atividades vencidas não implicam consultar agendamentos.",
+          "Para consultar leads, negócios e atividades vencidas, o plano mínimo contém crm.leads.list, crm.deals.list e admin.operational_attention, uma vez cada. Acrescente outras consultas apenas se explicitamente solicitadas.",
           "Retorne SOMENTE JSON válido no formato:",
           '{"steps":[{"toolId":"...","input":{},"reason":"..."}],"successCriteria":["..."]}',
           "Máximo de 10 passos.",
@@ -129,7 +134,7 @@ export async function planVendiMission(input: {
     ? parsed.successCriteria.filter((item): item is string => typeof item === "string").slice(0, 8)
     : [];
 
-  return { steps, successCriteria };
+  return { steps: compactConsultationPlan(steps, getVendiTool), successCriteria };
 }
 
 export async function executeVendiMission(input: {
@@ -332,6 +337,7 @@ export async function executeVendiMission(input: {
         ok: executed.result.ok,
         data: executed.result.data,
         message: executed.result.message,
+        evidence: executed.result.evidence,
       };
       outputs.push(output);
 
@@ -349,8 +355,11 @@ export async function executeVendiMission(input: {
 
       if (!executed.result.ok) throw new Error(executed.result.message ?? "VENDI_TOOL_FAILED:" + tool.id);
 
+      // A consultation-only plan already defines the requested observations.
+      // Replanning it after every read inflated three queries into nine.
       const hasUsefulObservation =
-        !tool.mutates &&
+        !consultationOnly(plan, getVendiTool) &&
+        isObserverReadOnlyTool(tool) &&
         executed.result.data !== undefined &&
         stepIndex < plan.length - 1 &&
         adaptiveReplanCount < maxAdaptiveReplans;
@@ -547,6 +556,7 @@ export async function executeVendiMission(input: {
   const result = {
     outputs,
     executedSteps: outputs.length,
+    summary: summarizeMission(outputs),
     recoveryCount,
     adaptiveReplanCount,
     verification: {

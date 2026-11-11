@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { preservePendingSteps, isObserverReadOnlyTool, completedPlan } from './vendi-mission-integrity.ts';
+import { preservePendingSteps, isObserverReadOnlyTool, completedPlan, consultationOnly, compactConsultationPlan } from './vendi-mission-integrity.ts';
 const step = (toolId: string, input: Record<string, unknown> = {}) => ({toolId, input, reason: ''});
 test('adaptive plan cannot drop activities after listing leads', () => {
   const pending = [step('crm.deals.list'), step('admin.operational_attention')];
@@ -26,4 +26,20 @@ test('empty and partially executed plans cannot complete', () => {
   assert.equal(completedPlan(plan, [{stepIndex:0, toolId:'leads', ok:true}, {stepIndex:1, toolId:'other', ok:true}]), false);
   assert.equal(completedPlan(plan, [{stepIndex:0, toolId:'leads', ok:true}, {stepIndex:1, toolId:'activities', ok:false}]), false);
   assert.equal(completedPlan(plan, [{stepIndex:0, toolId:'leads', ok:true}, {stepIndex:1, toolId:'activities', ok:true}]), true);
+});
+
+const lookup = (id: string) => id === 'unknown' ? undefined : ({ mutates: id === 'write', externalEffect: id === 'send' });
+test('consultation plan keeps three requested queries and removes only identical duplicates', () => {
+  const plan = [step('leads', {a: 1, b: 2}), step('deals'), step('attention'), step('leads', {b: 2, a: 1})];
+  assert.equal(consultationOnly(plan, lookup), true);
+  assert.deepEqual(compactConsultationPlan(plan, lookup), plan.slice(0, 3));
+  assert.equal(compactConsultationPlan([step('leads', {limit: 25}), step('leads', {limit: 50})], lookup).length, 2);
+});
+test('mixed, external and unknown plans are not compacted or classified as consultations', () => {
+  for (const id of ['write', 'send', 'unknown']) {
+    const plan = [step('leads'), step(id), step('leads')];
+    assert.equal(consultationOnly(plan, lookup), false);
+    assert.deepEqual(compactConsultationPlan(plan, lookup), plan);
+  }
+  assert.equal(consultationOnly([], lookup), false);
 });

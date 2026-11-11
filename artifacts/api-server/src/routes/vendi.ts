@@ -10,6 +10,8 @@ import { executeVendiMission } from "../services/vendi-mission-supervisor.js";
 import { withVendiTenantContext } from "../services/vendi-db-context.js";
 import { getPostgresDiagnostic } from "./vendi-db-errors.js";
 
+import { summarizeMissionEvents } from "../services/vendi-mission-summary.js";
+
 const router: IRouter = Router();
 
 const createMissionSchema = z.object({
@@ -203,7 +205,9 @@ router.get("/vendi/missions/:id", async (req, res) => {
     res.status(404).json({ error: "Missão não encontrada" });
     return;
   }
-  res.json({ mission, events });
+  // Also expose evidence-based summaries for missions completed before this release.
+  const summary = mission.status === "completed" ? summarizeMissionEvents(events) : [];
+  res.json({ mission, events, summary });
 });
 
 export default router;

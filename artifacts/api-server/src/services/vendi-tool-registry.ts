@@ -415,7 +415,7 @@ register({
 register({
   id: "agenda.appointments.list",
   domain: "agenda",
-  description: "Lista agendamentos recentes do tenant.",
+  description: "Lista compromissos e agendamentos do tenant. Não consulta atividades ou tarefas do CRM vencidas; para essas use admin.operational_attention.",
   risk: "low",
   mutates: false,
   externalEffect: false,
@@ -433,7 +433,7 @@ register({
 register({
   id: "admin.operational_attention",
   domain: "admin",
-  description: "Lista exceções operacionais que exigem atenção: tarefas vencidas e leads ativos sem responsável.",
+  description: "Consulta atividades/tarefas do CRM vencidas e leads ativos sem responsável. Use esta ferramenta para pedidos de atividades vencidas; não é necessário consultar a agenda para obter essas tarefas.",
   risk: "low",
   mutates: false,
   externalEffect: false,
