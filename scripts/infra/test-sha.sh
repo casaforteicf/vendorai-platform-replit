@@ -100,9 +100,10 @@ if [ "$SUITE" = mcp ]; then
   run mcp-ts "pnpm --filter @workspace/cloudflare-mcp typecheck"
 fi
 if [ "$SUITE" = api ] || [ "$SUITE" = full ]; then
+  run api-launch-ts "cd artifacts/api-server && ../../node_modules/.bin/tsc -p tsconfig.launch-ci.json --noEmit"
   run api-ts "pnpm --filter @workspace/api-server typecheck"
   run api-vitest "pnpm --filter @workspace/api-server test"
-  run api-build "pnpm --filter @workspace/api-server build"
+  run api-build "cd artifacts/api-server && node ./build.mjs"
 fi
 if [ "$SUITE" = frontend ] || [ "$SUITE" = full ]; then
   run frontend-ts "pnpm --filter @workspace/frontend typecheck"
@@ -111,3 +112,4 @@ fi
 printf 'finished=%s\n' "$(date -u +%FT%TZ)" >>"$RUN/manifest.txt"
 echo "Evidence: $RUN"
 if grep -qE 'exit=[1-9][0-9]*' "$RUN/results.txt"; then exit 1; fi
+
