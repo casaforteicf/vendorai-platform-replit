@@ -1,3 +1,41 @@
+-- Bootstrap the restaurant menu on fresh PostgreSQL installations.
+-- Existing installations retain their rows and category type.
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'restaurante_categoria_cardapio') THEN
+    CREATE TYPE public.restaurante_categoria_cardapio AS ENUM (
+      'entrada', 'prato_principal', 'sobremesa', 'bebida', 'combo', 'outros'
+    );
+  END IF;
+END $$;
+
+CREATE TABLE IF NOT EXISTS public.restaurante_cardapio (
+  id text PRIMARY KEY,
+  tenant_id text NOT NULL REFERENCES public.tenants(id) ON DELETE CASCADE,
+  nome text NOT NULL,
+  descricao text,
+  categoria public.restaurante_categoria_cardapio,
+  preco numeric(10,2) NOT NULL,
+  tempo_preparo_minutos integer DEFAULT 20,
+  disponivel_almoco boolean NOT NULL DEFAULT true,
+  disponivel_jantar boolean NOT NULL DEFAULT true,
+  imagem_url text,
+  ativo boolean NOT NULL DEFAULT true,
+  vende_no_praca_ai boolean NOT NULL DEFAULT false,
+  destaque_whatsapp boolean NOT NULL DEFAULT false,
+  created_at timestamp NOT NULL DEFAULT now(),
+  updated_at timestamp NOT NULL DEFAULT now()
+);
+
+ALTER TABLE public.restaurante_cardapio ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS vendorai_tenant_access ON public.restaurante_cardapio;
+CREATE POLICY vendorai_tenant_access ON public.restaurante_cardapio
+  FOR ALL TO vendorai_app
+  USING (app_security.is_super_admin() OR tenant_id = app_security.current_tenant_id())
+  WITH CHECK (app_security.is_super_admin() OR tenant_id = app_security.current_tenant_id());
+REVOKE ALL ON TABLE public.restaurante_cardapio FROM PUBLIC;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.restaurante_cardapio TO vendorai_app;
+
 -- O Vendor.ai e a fonte unica dos anuncios publicados no Praca.ai.
 -- Cada registro especializado precisa de opt-in proprio, alem da permissao
 -- geral do tenant, para evitar publicar estoque/cardapio/cadastro interno.
