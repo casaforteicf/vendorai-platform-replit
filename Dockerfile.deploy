@@ -1,0 +1,28 @@
+# Imagem do backend para o auto-deploy (homolog + prod) na Contabo.
+# Igual ao backend/Dockerfile, mas o passo de build roda:
+#   1) tsc --noEmit  (GATE: pega corrupcao / erro de tipo -> falha o build)
+#   2) esbuild (pnpm run build)
+# NAO roda a suite pesada de testes/auditorias do ci:railway (depende de banco).
+FROM public.ecr.aws/docker/library/node:22-bookworm-slim
+
+WORKDIR /app
+
+# ffmpeg/fontconfig/fonts-liberation: Content Studio (video). chromium: PDFs das propostas.
+RUN corepack enable \
+  && corepack prepare pnpm@10.26.1 --activate \
+  && apt-get update \
+  && apt-get install -y --no-install-recommends ffmpeg fontconfig fonts-liberation chromium \
+  && rm -rf /var/lib/apt/lists/*
+
+COPY . .
+
+# GATE + build. Se o tsc falhar, a imagem nao e criada e nada e publicado.
+RUN pnpm install --no-frozen-lockfile \
+  && pnpm --filter @workspace/api-server exec tsc -p tsconfig.launch-ci.json --noEmit \
+  && pnpm --filter @workspace/api-server run build
+
+ENV NODE_ENV=production
+
+EXPOSE 5000
+
+CMD ["pnpm", "--filter", "@workspace/api-server", "run", "start"]
