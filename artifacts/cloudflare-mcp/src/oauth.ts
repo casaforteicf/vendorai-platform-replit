@@ -88,7 +88,7 @@ function issue(res: ServerResponse, grant: Grant) {
   const refresh = sign({ type: "refresh", iss: issuer(), aud: grant.resource, scope: grant.scope, client: grant.client, family: grant.family, instance: instance(), exp: refreshExp, jti: nonce() });
   refreshes.set(hash(refresh), { ...grant, exp: refreshExp });
   json(res, 200, {
-    access_token: sign({ type: "access", iss: issuer(), aud: grant.resource, scope: grant.scope, sub: "administrator", family: grant.family, instance: instance(), exp: now() + 3600, jti: nonce() }),
+    access_token: sign({ type: "access", iss: issuer(), aud: grant.resource, scope: grant.scope, sub: "administrator", client: grant.client, family: grant.family, instance: instance(), exp: now() + 3600, jti: nonce() }),
     token_type: "Bearer", expires_in: 3600, refresh_token: refresh, scope: grant.scope,
   });
 }

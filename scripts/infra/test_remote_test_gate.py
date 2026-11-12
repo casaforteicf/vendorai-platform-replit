@@ -36,6 +36,36 @@ class GateTests(unittest.TestCase):
   self.assertIn('"VENDORAI_PREPARE_OFFLINE": "0"',s)
 
 
+ def test_lock_readonly_and_contents_preserved(self):
+  import tempfile
+  import fcntl
+  with tempfile.TemporaryDirectory() as tmp:
+   lock=Path(tmp)/"test.lock"
+   lock.write_text("PRESERVE_AUDIT")
+   lock.chmod(0o444)
+   with patch.object(mod, "LOCK", lock):
+    with mod.open_executor_lock() as f:
+     self.assertTrue(f.readable())
+     self.assertFalse(f.writable())
+     fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
+   self.assertEqual(lock.read_text(), "PRESERVE_AUDIT")
+
+ def test_lock_created_if_missing_and_symlink_rejected(self):
+  import tempfile
+  with tempfile.TemporaryDirectory() as tmp:
+   lock=Path(tmp)/"test.lock"
+   with patch.object(mod, "LOCK", lock):
+    with mod.open_executor_lock() as f:
+     self.assertTrue(f.readable())
+    self.assertTrue(lock.is_file())
+    lock.unlink()
+    other=Path(tmp)/"other"
+    other.write_text("external")
+    lock.symlink_to(other)
+    with self.assertRaises(OSError):
+     mod.open_executor_lock()
+    self.assertEqual(other.read_text(),"external")
+
  def test_timeout_kills_process_group(self):
   s=p.read_text()
   self.assertIn('start_new_session=True',s)
