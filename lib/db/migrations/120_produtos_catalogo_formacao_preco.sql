@@ -1,5 +1,6 @@
 -- Formação auditável do preço de venda e rendimento técnico dos produtos
 ALTER TABLE produtos_catalogo
+  ADD COLUMN IF NOT EXISTS controla_estoque boolean NOT NULL DEFAULT false,
   ADD COLUMN IF NOT EXISTS margem_percentual numeric(7, 2),
   ADD COLUMN IF NOT EXISTS frete_percentual numeric(7, 2),
   ADD COLUMN IF NOT EXISTS custo_financeiro_percentual numeric(7, 2),
