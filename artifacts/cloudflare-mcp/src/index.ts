@@ -258,7 +258,7 @@ async function contaboReadOnly(action: keyof typeof CONTABO_READ_ONLY_COMMANDS) 
 
 function releaseOperatorGrant(operation: ReleaseOperation, lot: string): string {
   return authorizeReleaseOperation({
-    client: testOperatorSession.getStore(),
+    client: testOperatorSession.getStore() ?? null,
     policyText: process.env["VENDI_RELEASE_OPERATOR_POLICY"],
     operation,
     lot,
