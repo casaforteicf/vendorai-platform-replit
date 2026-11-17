@@ -14,12 +14,15 @@ import { injectGeneratedSiteTouchpointTracking } from "./lib/generated-site-attr
 import { enforceTenantPath } from "./middlewares/tenant-path-guard.js";
 import { getPendingVerificationMetaToken } from "./services/search-console-oauth.js";
 import { startInternalCommandBootstrap } from "./services/internal-command-bootstrap.js";
+import { resolveTrustProxy } from "./lib/trust-proxy.js";
 
 const app: Express = express();
 
 startInternalCommandBootstrap();
 
-app.set("trust proxy", true);
+// Nunca `true`: qualquer cliente poderia forjar X-Forwarded-For e furar o
+// rate limit por IP. Default = 1 hop da plataforma; ajuste com TRUST_PROXY.
+app.set("trust proxy", resolveTrustProxy());
 
 app.use(helmet({
   crossOriginResourcePolicy: { policy: "cross-origin" },

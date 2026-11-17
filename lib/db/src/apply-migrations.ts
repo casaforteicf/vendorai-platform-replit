@@ -47,6 +47,22 @@ export function isAcceptedMigrationChecksum(
 }
 
 /**
+ * Escape hatch operacional explícito para bancos que já aplicaram uma versão
+ * anterior do arquivo (hotfix, rebase de release branch). Sem este opt-in o
+ * boot continua falhando — a proteção contra alteração silenciosa permanece.
+ *
+ * Produção hoje define DRIZZLE_IGNORE_CHECKSUM=true, mas o motor ignorava a
+ * variável e marcava a API como degradada (databaseReady=false), impedindo
+ * schedulers/workers de subirem.
+ */
+export function isChecksumEnforcementDisabled(
+  env: NodeJS.ProcessEnv = process.env,
+): boolean {
+  const value = String(env["DRIZZLE_IGNORE_CHECKSUM"] ?? "").trim().toLowerCase();
+  return value === "1" || value === "true" || value === "yes" || value === "on";
+}
+
+/**
  * Resolve a pasta lib/db/migrations de forma resiliente.
  *
  * Não dá pra confiar só em `import.meta.url` (caminho relativo a ESTE
@@ -240,6 +256,14 @@ function assertAppliedChecksum(
   const content = fs.readFileSync(file.filePath, "utf8");
   const checksum = sha256(content);
   if (!isAcceptedMigrationChecksum(appliedKey, checksum, stored)) {
+    if (isChecksumEnforcementDisabled()) {
+      console.warn(
+        `[migrations] checksum divergente para ${file.version} ("${file.name}") ` +
+          `ignorado porque DRIZZLE_IGNORE_CHECKSUM está ativo. ` +
+          `Reconcilie o arquivo/checksum e remova a variável.`,
+      );
+      return;
+    }
     throw new Error(
       `Checksum mismatch for migration ${file.version} ("${file.name}"). ` +
         `Migration file was modified after being applied.`,

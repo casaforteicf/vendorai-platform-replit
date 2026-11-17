@@ -98,3 +98,8 @@ export async function isMigrationApplied(version: string): Promise<boolean> {
 export async function applyPendingMigrations(logger?: Pick<Console, "info" | "warn" | "error">) {
   return _applyPendingMigrations(pool, { logger });
 }
+
+export {
+  isAcceptedMigrationChecksum,
+  isChecksumEnforcementDisabled,
+} from "./apply-migrations.js";
