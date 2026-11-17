@@ -47,6 +47,7 @@ import {
 } from "@workspace/db";
 import { findLeadByDedup, storePhone } from "../lib/dedup.js";
 import { buildUserFunctionFilter, requireAdminOrUserFunction, type UserFunction } from "../middlewares/auth.js";
+import { seesWholeTenantWallet } from "../lib/crm-visibility.js";
 import { callOpenAI } from "../lib/ai-gateway.js";
 import { pickNextLeadResponsibility } from "../lib/round-robin.js";
 import { geocodeAddressWithTimeout } from "../lib/geocoding.js";
@@ -1394,10 +1395,11 @@ router.get("/leads/:id", async (req, res) => {
   }
 
   if (!representativeAccess && !sharedDealAccess) {
-    const isAdmin = req.user?.platformRole === "super_admin" || req.user?.platformRole === "tenant_admin";
     // A leitura por ID deve respeitar a mesma carteira da listagem, para
-    // todas as funções humanas (não apenas a função "vendedor").
-    if (!isAdmin && lead.assignedTo !== req.user?.sub) {
+    // todas as funções humanas (não apenas a função "vendedor"). A regra é
+    // compartilhada com `buildUserFunctionFilter`; manter duas definições de
+    // administrador fazia o lead aparecer na lista e o detalhe responder 403.
+    if (!seesWholeTenantWallet(req.user) && lead.assignedTo !== req.user?.sub) {
       res.status(403).json({ error: "Access denied to this lead" });
       return;
     }
@@ -1449,8 +1451,10 @@ router.patch("/leads/:id", async (req, res) => {
   const isAdmin2 = req.user?.platformRole === "super_admin" || req.user?.platformRole === "tenant_admin";
 
   if (!representativeAccess2) {
-    // Alinhar mutação à regra de carteira para todas as funções não administrativas.
-    if (!isAdmin2 && existing.assignedTo !== req.user?.sub) {
+    // Alinhar mutação à regra de carteira da listagem (que também inclui a
+    // função "administrador"). Reatribuição e representação continuam restritas
+    // a `isAdmin2`, que é a regra de gestão do tenant.
+    if (!seesWholeTenantWallet(req.user) && existing.assignedTo !== req.user?.sub) {
       res.status(403).json({ error: "Access denied to this lead" });
       return;
     }
@@ -1682,8 +1686,7 @@ router.get("/leads/:id/responsavel-historico", async (req, res) => {
   // CRM-05/06: o histórico segue a mesma restrição de carteira dos detalhes do lead.
   // Perfis não administrativos do tenant proprietário não podem consultar
   // mudanças de responsabilidade de leads de outros vendedores.
-  const isAdmin3 = req.user?.platformRole === "super_admin" || req.user?.platformRole === "tenant_admin";
-  if (!isAdmin3 && existing.assignedTo !== req.user?.sub) {
+  if (!seesWholeTenantWallet(req.user) && existing.assignedTo !== req.user?.sub) {
     res.status(403).json({ error: "Access denied to this lead" });
     return;
   }
