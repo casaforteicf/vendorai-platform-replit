@@ -137,6 +137,210 @@ function isR2Enabled(): boolean {
   return getR2() !== null;
 }
 
+// ─────────────────────── Configuração / diagnóstico ───────────────────────
+
+export type StorageBackend = "r2" | "supabase" | "unconfigured" | "misconfigured";
+
+export interface SupabaseKeyInspection {
+  configured: boolean;
+  valid: boolean;
+  format: "jwt" | "sb_secret" | "unknown" | "missing";
+  issue: string | null;
+}
+
+export interface StorageConfigurationStatus {
+  backend: StorageBackend;
+  r2Configured: boolean;
+  r2Bucket: string | null;
+  r2EndpointHost: string | null;
+  supabase: SupabaseKeyInspection & { url: string | null };
+  privateObjectDir: string | null;
+  publicSearchPaths: string[];
+  errors: string[];
+}
+
+/**
+ * Valida o formato da service role key do Supabase SEM chamar a rede.
+ *
+ * O incidente de 17/11/2026 foi causado por uma chave truncada no deploy (93
+ * caracteres, apenas 2 segmentos JWT). O erro só aparecia no upload, como um
+ * `StorageApiError: Invalid Compact JWS` cru — 500 opaco para o usuário. Esta
+ * checagem transforma o problema em erro de configuração explícito.
+ */
+export function inspectSupabaseServiceRoleKey(
+  rawKey: string | undefined | null,
+): SupabaseKeyInspection {
+  const original = String(rawKey ?? "");
+  const key = original.trim();
+  if (!key) {
+    return { configured: false, valid: false, format: "missing", issue: "SUPABASE_SERVICE_ROLE_KEY não definida" };
+  }
+  if (/\s/.test(key)) {
+    return {
+      configured: true,
+      valid: false,
+      format: "unknown",
+      issue: "SUPABASE_SERVICE_ROLE_KEY contém espaços/quebras de linha",
+    };
+  }
+  if (key.startsWith("sb_secret_")) {
+    return {
+      configured: true,
+      valid: key.length >= 20,
+      format: "sb_secret",
+      issue: key.length < 20 ? "chave sb_secret_ curta demais" : null,
+    };
+  }
+  const parts = key.split(".");
+  if (parts.length !== 3) {
+    return {
+      configured: true,
+      valid: false,
+      format: "unknown",
+      issue: `JWT inválido: esperados 3 segmentos, recebidos ${parts.length} segmentos (chave truncada?)`,
+    };
+  }
+  try {
+    const payload = JSON.parse(Buffer.from(parts[1]!, "base64url").toString("utf8")) as {
+      role?: string;
+      ref?: string;
+    };
+    if (payload.role && payload.role !== "service_role") {
+      return {
+        configured: true,
+        valid: false,
+        format: "jwt",
+        issue: `chave não é service_role (role=${payload.role})`,
+      };
+    }
+    return { configured: true, valid: true, format: "jwt", issue: null };
+  } catch {
+    return { configured: true, valid: false, format: "jwt", issue: "payload do JWT não é JSON válido" };
+  }
+}
+
+/**
+ * Inspeciona a configuração de storage sem expor segredos. Usado no boot, no
+ * endpoint /api/storage/health e nos testes. Uma configuração R2 PARCIAL é
+ * tratada como erro (não como "R2 desligado"): cair silenciosamente no
+ * Supabase foi exatamente o que escondeu os assets quebrados em produção.
+ */
+export function inspectStorageConfiguration(
+  env: NodeJS.ProcessEnv = process.env,
+): StorageConfigurationStatus {
+  const accessKeyId = String(env["R2_ACCESS_KEY_ID"] ?? "").trim();
+  const secretAccessKey = String(env["R2_SECRET_ACCESS_KEY"] ?? "").trim();
+  const bucket = String(env["R2_BUCKET"] ?? "").trim();
+  const endpointEnv = String(env["R2_ENDPOINT"] ?? "").trim();
+  const accountId = String(env["R2_ACCOUNT_ID"] ?? "").trim();
+
+  const r2Missing: string[] = [];
+  if (!accessKeyId) r2Missing.push("R2_ACCESS_KEY_ID");
+  if (!secretAccessKey) r2Missing.push("R2_SECRET_ACCESS_KEY");
+  if (!bucket) r2Missing.push("R2_BUCKET");
+  if (!endpointEnv && !accountId) r2Missing.push("R2_ACCOUNT_ID|R2_ENDPOINT");
+
+  const r2Provided = Boolean(accessKeyId || secretAccessKey || bucket || endpointEnv || accountId);
+  const r2Configured = r2Provided && r2Missing.length === 0;
+
+  let r2EndpointHost: string | null = null;
+  const endpoint = endpointEnv || (accountId ? `https://${accountId}.r2.cloudflarestorage.com` : "");
+  if (endpoint) {
+    try {
+      r2EndpointHost = new URL(endpoint).host;
+    } catch {
+      r2EndpointHost = null;
+    }
+  }
+
+  const supabaseUrl = String(env["SUPABASE_URL"] ?? "").trim() || null;
+  const supabaseKey = inspectSupabaseServiceRoleKey(env["SUPABASE_SERVICE_ROLE_KEY"]);
+  const privateObjectDir = String(env["PRIVATE_OBJECT_DIR"] ?? "").trim() || null;
+  const publicSearchPaths = Array.from(
+    new Set(
+      String(env["PUBLIC_OBJECT_SEARCH_PATHS"] ?? "")
+        .split(",")
+        .map((p) => p.trim())
+        .filter(Boolean),
+    ),
+  );
+
+  const errors: string[] = [];
+  if (r2Provided && !r2Configured) {
+    errors.push(`Configuração R2 incompleta: faltam ${r2Missing.join(", ")}`);
+  }
+  if (r2Provided && !r2EndpointHost) {
+    errors.push("R2_ACCOUNT_ID/R2_ENDPOINT inválido (não foi possível montar a URL do endpoint)");
+  }
+
+  let backend: StorageBackend;
+  if (r2Configured) {
+    backend = "r2";
+  } else if (r2Provided) {
+    backend = "misconfigured";
+  } else if (supabaseKey.valid) {
+    backend = "supabase";
+  } else if (supabaseKey.configured || supabaseUrl) {
+    backend = "misconfigured";
+    if (supabaseKey.issue) errors.push(supabaseKey.issue);
+  } else {
+    backend = "unconfigured";
+    errors.push(
+      "Nenhum backend de storage configurado: defina R2_* (recomendado) ou SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY",
+    );
+  }
+
+  if (!privateObjectDir) {
+    errors.push("PRIVATE_OBJECT_DIR não configurado");
+  } else if (privateObjectDir.split("/").filter(Boolean).length < 2) {
+    errors.push("PRIVATE_OBJECT_DIR deve seguir o formato /<bucket>/<prefixo> (ex: /vendorai-uploads/.private)");
+  }
+
+  return {
+    backend,
+    r2Configured,
+    r2Bucket: bucket || null,
+    r2EndpointHost,
+    supabase: { ...supabaseKey, url: supabaseUrl },
+    privateObjectDir,
+    publicSearchPaths,
+    errors,
+  };
+}
+
+/** Erro de configuração — a rota deve responder 503 (não 500) e com detalhe
+ *  acionável para o operador. */
+export class StorageConfigurationError extends Error {
+  readonly code = "storage_misconfigured";
+  constructor(readonly issues: string[]) {
+    super(`Storage mal configurado: ${issues.join("; ")}`);
+    this.name = "StorageConfigurationError";
+  }
+}
+
+/** Garante que há backend utilizável ANTES de gerar uma URL de upload. */
+export function assertStorageReadyForUpload(env: NodeJS.ProcessEnv = process.env): StorageConfigurationStatus {
+  const status = inspectStorageConfiguration(env);
+  if (status.backend !== "r2" && status.backend !== "supabase") {
+    throw new StorageConfigurationError(status.errors);
+  }
+  if (status.errors.length > 0) {
+    throw new StorageConfigurationError(status.errors);
+  }
+  return status;
+}
+
+/** Resumo seguro para log de boot (sem chaves). */
+export function describeStorageConfiguration(status = inspectStorageConfiguration()): string {
+  const target =
+    status.backend === "r2"
+      ? `${status.r2EndpointHost ?? "?"}/${status.r2Bucket ?? "?"}`
+      : status.backend === "supabase"
+        ? `${status.supabase.url ?? "?"} (fallback)`
+        : "nenhum";
+  return `storage=${status.backend} target=${target} privateDir=${status.privateObjectDir ?? "?"}`;
+}
+
 function encodeR2Key(key: string): string {
   return key
     .split("/")
@@ -200,6 +404,20 @@ const R2 = {
     const res = await r2.client.fetch(r2ObjectUrl(r2.config, key), { method: "DELETE" });
     if (!res.ok && res.status !== 404) {
       throw new Error(`Falha ao apagar do R2 (${res.status}): ${await safeText(res)}`);
+    }
+  },
+
+  /** Verifica credenciais e conectividade com uma listagem mínima do bucket.
+   *  Não baixa nem grava nada. */
+  async probe(): Promise<void> {
+    const r2 = getR2();
+    if (!r2) throw new Error("R2 não está configurado.");
+    const res = await r2.client.fetch(
+      `${r2.config.endpoint}/${r2.config.bucket}?list-type=2&max-keys=1`,
+      { method: "GET" },
+    );
+    if (!res.ok) {
+      throw new Error(`R2 respondeu ${res.status}: ${await safeText(res)}`);
     }
   },
 
@@ -448,7 +666,39 @@ export class ObjectStorageService {
     return new Response(new Uint8Array(buffer), { headers });
   }
 
+  /** Checagem ativa de conectividade/credenciais para o endpoint de saúde. */
+  async checkStorageConnectivity(): Promise<{
+    ok: boolean;
+    backend: StorageBackend;
+    latencyMs: number;
+    error: string | null;
+  }> {
+    const status = inspectStorageConfiguration();
+    const startedAt = Date.now();
+    try {
+      if (status.backend === "r2") {
+        await R2.probe();
+      } else if (status.backend === "supabase") {
+        const { error } = await getSupabaseClient().storage.listBuckets();
+        if (error) throw new Error(error.message);
+      } else {
+        throw new StorageConfigurationError(status.errors);
+      }
+      return { ok: true, backend: status.backend, latencyMs: Date.now() - startedAt, error: null };
+    } catch (error) {
+      return {
+        ok: false,
+        backend: status.backend,
+        latencyMs: Date.now() - startedAt,
+        error: error instanceof Error ? error.message : String(error),
+      };
+    }
+  }
+
   async getObjectEntityUploadURL(tenantId?: string | null): Promise<string> {
+    // Falha ANTES de chamar o provedor: configuração incompleta vira 503 com
+    // causa explícita, não um 500 genérico depois de um erro cru do SDK.
+    assertStorageReadyForUpload();
     const privateObjectDir = this.getPrivateObjectDir();
     const objectId = randomUUID();
     const tenantSegment = String(tenantId ?? "").trim().replace(/[^a-zA-Z0-9_-]/g, "");
