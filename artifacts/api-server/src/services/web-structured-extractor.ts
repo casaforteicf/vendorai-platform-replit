@@ -17,7 +17,7 @@ export async function extractStructuredData(input: {
 }) {
   const result = await callOpenAI(
     input.tenantId,
-    "agent_runtime",
+    "intelligence_analysis",
     [
       {
         role: "system",
