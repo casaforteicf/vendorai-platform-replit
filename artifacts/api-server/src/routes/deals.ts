@@ -434,7 +434,8 @@ const transferDealPipelineSchema = z.object({
   targetPipeline: z.enum(MOVABLE_PIPELINES),
   targetStage: z.string().trim().min(1).max(120),
   responsavelId: z.string().min(1).optional(),
-  justificativa: z.string().trim().min(5, "Informe a justificativa do movimento.").max(2000),
+  // A justificativa é opcional: o lead pode ser movido sem preenchê-la.
+  justificativa: z.string().trim().max(2000).optional(),
 });
 
 function currentDealPipeline(deal: typeof dealsTable.$inferSelect): { pipeline: MovablePipeline; stage: string } {
@@ -453,6 +454,7 @@ router.post("/deals/:id/transfer-pipeline", async (req, res) => {
     res.status(422).json({ error: parsed.error.message });
     return;
   }
+  const justificativa = parsed.data.justificativa?.trim() || null;
 
   const [deal] = await db.select().from(dealsTable).where(eq(dealsTable.id, String(req.params.id))).limit(1);
   if (!deal) {
@@ -592,7 +594,7 @@ router.post("/deals/:id/transfer-pipeline", async (req, res) => {
         transferidoParaEtapa: parsed.data.targetStage,
         transferidoEm: movedAt.toISOString(),
         transferidoPor: req.user?.sub ?? null,
-        justificativaMovimento: parsed.data.justificativa,
+        justificativaMovimento: justificativa,
       },
       updatedAt: movedAt,
     }).where(eq(workCardsTable.id, sourceOperationalCard.id));
@@ -638,14 +640,14 @@ router.post("/deals/:id/transfer-pipeline", async (req, res) => {
       transferidoParaEtapa: null,
       transferidoEm: movedAt.toISOString(),
       transferidoPor: req.user?.sub ?? null,
-      justificativaMovimento: parsed.data.justificativa,
+      justificativaMovimento: justificativa,
     };
 
     if (existingCard) {
       [destinationCard] = await db.update(workCardsTable).set({
         etapa: parsed.data.targetStage,
         responsavelId,
-        descricao: parsed.data.justificativa,
+        descricao: justificativa ?? existingCard.descricao,
         metadata,
         updatedAt: movedAt,
       }).where(eq(workCardsTable.id, existingCard.id)).returning();
@@ -656,7 +658,7 @@ router.post("/deals/:id/transfer-pipeline", async (req, res) => {
         tipo: parsed.data.targetPipeline === "suporte" ? "assistencia" : "pedido",
         etapa: parsed.data.targetStage,
         titulo: `${parsed.data.targetPipeline === "suporte" ? "Suporte" : "Execução"} • ${deal.titulo}`,
-        descricao: parsed.data.justificativa,
+        descricao: justificativa,
         prioridade: "normal",
         leadId: deal.leadId,
         dealId: deal.id,
@@ -685,7 +687,7 @@ router.post("/deals/:id/transfer-pipeline", async (req, res) => {
     leadId: deal.leadId,
     dealId: deal.id,
     title: `Movido de ${source.pipeline} / ${source.stage} para ${parsed.data.targetPipeline} / ${targetStageConfig.label}`,
-    description: `Justificativa obrigatória: ${parsed.data.justificativa}`,
+    description: justificativa ? `Justificativa: ${justificativa}` : "Movimentação registrada sem justificativa.",
     responsavelId,
   });
 
