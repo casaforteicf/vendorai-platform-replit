@@ -762,8 +762,8 @@ export default function LeadWorkspace() {
   }
 
   async function transferPipeline() {
-    if (!deal || !targetPipeline || !targetPipelineStage || !transferOwner || transferReason.trim().length < 5) {
-      toast({ title: "Selecione a pipeline, a etapa, o responsável e informe a justificativa.", variant: "destructive" });
+    if (!deal || !targetPipeline || !targetPipelineStage || !transferOwner) {
+      toast({ title: "Selecione a pipeline, a etapa e o responsável.", variant: "destructive" });
       return;
     }
 
@@ -793,7 +793,9 @@ export default function LeadWorkspace() {
       setTransferReason("");
       toast({
         title: "Lead movido",
-        description: `Destino: ${pipelineOptions.find((item) => item.key === targetPipeline)?.label ?? targetPipeline} / ${result?.destination?.stageLabel ?? targetPipelineStage}. A justificativa foi registrada no histórico.`,
+        description: transferReason.trim()
+          ? `Destino: ${pipelineOptions.find((item) => item.key === targetPipeline)?.label ?? targetPipeline} / ${result?.destination?.stageLabel ?? targetPipelineStage}. A justificativa foi registrada no histórico.`
+          : `Destino: ${pipelineOptions.find((item) => item.key === targetPipeline)?.label ?? targetPipeline} / ${result?.destination?.stageLabel ?? targetPipelineStage}.`,
       });
 
       const workCardId = result?.workCard?.id;
@@ -1342,7 +1344,7 @@ export default function LeadWorkspace() {
                   Mover lead para outra pipeline
                 </div>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  Escolha a pipeline de destino, a posição dentro dela e registre obrigatoriamente o motivo da movimentação. O histórico anterior é preservado.
+                  Escolha a pipeline de destino e a posição dentro dela. A justificativa da movimentação é opcional e, quando informada, fica registrada no histórico.
                 </p>
               </div>
               <Field label="Pipeline de destino">
@@ -1380,17 +1382,17 @@ export default function LeadWorkspace() {
                   </SelectContent>
                 </Select>
               </Field>
-              <Field label="Justificativa da movimentação *">
+              <Field label="Justificativa da movimentação (opcional)">
                 <Textarea
                   value={transferReason}
                   onChange={(event) => setTransferReason(event.target.value)}
-                  placeholder="Explique por que este lead está sendo movido para outra pipeline/etapa."
+                  placeholder="Opcional: explique por que este lead está sendo movido para outra pipeline/etapa."
                 />
               </Field>
               <Button
                 type="button"
                 onClick={transferPipeline}
-                disabled={movingPipeline || !targetPipelineStage || !transferOwner || transferReason.trim().length < 5}
+                disabled={movingPipeline || !targetPipelineStage || !transferOwner}
               >
                 {movingPipeline && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                 Confirmar movimentação
