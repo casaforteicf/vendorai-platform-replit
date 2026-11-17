@@ -1,5 +1,6 @@
 import app from "./app";
 import { logger } from "./lib/logger";
+import { describeStorageConfiguration, inspectStorageConfiguration } from "./lib/objectStorage";
 import { getServerRuntimeSnapshot, startServerRuntimeSentinel } from "./lib/dev-agent-server-runtime.js";
 import { getMainGovernanceSnapshot, startMainGovernanceGuard } from "./lib/dev-agent-main-governance.js";
 import { authenticate, requireRole } from "./middlewares/auth.js";
@@ -156,6 +157,18 @@ async function runStartupMigrations(): Promise<boolean> {
 
 async function start() {
   const databaseReady = await runStartupMigrations();
+
+  // Log de boot sem segredos: bucket real e backend ativo. Se a configuração
+  // estiver incompleta, o operador vê o motivo aqui (e não só no upload).
+  const storageConfig = inspectStorageConfiguration();
+  if (storageConfig.errors.length > 0) {
+    logger.error(
+      { issues: storageConfig.errors, config: describeStorageConfiguration(storageConfig) },
+      "storage: configuração incompleta; uploads responderão 503 até ser corrigida",
+    );
+  } else {
+    logger.info({ config: describeStorageConfiguration(storageConfig) }, "storage: backend configurado");
+  }
 
   app.listen(port, (err) => {
     if (err) {

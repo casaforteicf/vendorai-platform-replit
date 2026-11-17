@@ -3,7 +3,12 @@ import {
   RequestUploadUrlBody,
   RequestUploadUrlResponse,
 } from "@workspace/api-zod";
-import { ObjectStorageService, ObjectNotFoundError } from "../lib/objectStorage";
+import {
+  ObjectStorageService,
+  ObjectNotFoundError,
+  StorageConfigurationError,
+  inspectStorageConfiguration,
+} from "../lib/objectStorage";
 import { verifyToken } from "../lib/jwt.js";
 import { pool } from "@workspace/db";
 import { requestCanAccessLockedObject } from "../lib/attachment-folder-access.js";
@@ -175,9 +180,60 @@ router.post("/storage/uploads/request-url", async (req: Request, res: Response) 
       }),
     );
   } catch (error) {
+    if (error instanceof StorageConfigurationError) {
+      req.log.error(
+        { err: error, issues: error.issues },
+        "storage misconfigured; upload URL request rejected",
+      );
+      res.status(503).json({
+        error: "Storage não configurado corretamente. Contate o administrador.",
+        code: error.code,
+        issues: error.issues,
+      });
+      return;
+    }
     req.log.error({ err: error }, "Error generating upload URL");
-    res.status(500).json({ error: "Failed to generate upload URL" });
+    res.status(502).json({
+      error: "Não foi possível gerar a URL de upload. Tente novamente.",
+      code: "upload_url_failed",
+    });
   }
+});
+
+/**
+ * GET /storage/health
+ *
+ * Diagnóstico operacional do storage (somente super_admin). Faz uma chamada
+ * mínima ao backend para validar credenciais/conectividade e devolve apenas
+ * metadados não sensíveis. Use após deploy para confirmar R2/Supabase sem
+ * precisar tentar um upload real.
+ */
+router.get("/storage/health", async (req: Request, res: Response) => {
+  if (!requireStorageSession(req, res)) return;
+  if ((req as any).user?.platformRole !== "super_admin") {
+    res.status(403).json({ error: "Apenas super_admin pode consultar a saúde do storage" });
+    return;
+  }
+
+  const config = inspectStorageConfiguration();
+  const connectivity = await objectStorageService.checkStorageConnectivity();
+  const backendReady = config.backend === "r2" || config.backend === "supabase";
+  const ok = connectivity.ok && backendReady && config.errors.length === 0;
+
+  res.status(ok ? 200 : 503).json({
+    ok,
+    backend: config.backend,
+    target:
+      config.backend === "r2"
+        ? { bucket: config.r2Bucket, endpointHost: config.r2EndpointHost }
+        : { supabaseUrl: config.supabase.url },
+    privateObjectDir: config.privateObjectDir,
+    publicSearchPaths: config.publicSearchPaths,
+    supabaseKey: { format: config.supabase.format, valid: config.supabase.valid },
+    checks: { connectivity },
+    issues: config.errors,
+    checkedAt: new Date().toISOString(),
+  });
 });
 
 /**
