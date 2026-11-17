@@ -3,7 +3,7 @@
 **Data de atualização:** 2026-11-17
 **Branch:** `agent/move-lead-justification-a871f05ef25a`
 **Issue:** https://github.com/casaforteicf/vendorai-platform-replit/issues/3731
-**PR:** preenchido na abertura do PR
+**PR:** https://github.com/casaforteicf/vendorai-platform-replit/pull/3732
 
 ## Objetivo e escopo
 
