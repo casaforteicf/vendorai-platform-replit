@@ -228,10 +228,28 @@ function buildSiteIntelligenceScript(): string {
 }
 
 export const publicSiteGeneratorRouter: IRouter = Router();
+
+/**
+ * Só injeta o script em documentos HTML. `res.json({ html })` também contém
+ * `</body>` (é o HTML de um orçamento, por exemplo); injetar ali quebra o JSON
+ * e o cliente recebe "Expected ',' or '}' ...". Respostas JSON nunca recebem
+ * o script, mesmo que o payload tenha HTML dentro.
+ */
+function shouldInjectSiteIntelligence(res: any, body: unknown): boolean {
+  if (typeof body !== "string" || !body.includes("</body>") || body.includes("vendorai-site-intelligence")) {
+    return false;
+  }
+  const contentType = String(res.getHeader("Content-Type") ?? "").toLowerCase();
+  if (contentType.includes("json")) return false;
+  if (contentType.includes("text/html")) return true;
+  if (contentType) return false;
+  return /^\s*(?:<!doctype\s+html|<html[\s>])/i.test(body);
+}
+
 publicSiteGeneratorRouter.use((req, res, next) => {
   const originalSend = res.send.bind(res);
   (res as any).send = (body: any) => {
-    if (typeof body === "string" && body.includes("</body>") && !body.includes("vendorai-site-intelligence")) {
+    if (shouldInjectSiteIntelligence(res, body)) {
       body = body.replace("</body>", `${buildSiteIntelligenceScript()}</body>`);
     }
     return originalSend(body);
