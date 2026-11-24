@@ -320,6 +320,23 @@ export async function criarFicha(auth: AbAuth, entrada: FichaInput): Promise<Fic
   });
 }
 
+export async function atualizarFicha(
+  auth: AbAuth,
+  id: string,
+  entrada: FichaInput,
+): Promise<FichaTecnica> {
+  return requisitar<FichaTecnica>(auth, urlAb(auth, `/fichas-tecnicas/${encodeURIComponent(id)}`), {
+    method: "PATCH",
+    body: JSON.stringify(entrada),
+  });
+}
+
+export async function excluirFicha(auth: AbAuth, id: string): Promise<void> {
+  await requisitar<null>(auth, urlAb(auth, `/fichas-tecnicas/${encodeURIComponent(id)}`), {
+    method: "DELETE",
+  });
+}
+
 export async function listarFichas(auth: AbAuth): Promise<FichaTecnica[]> {
   const resposta = await requisitar<{ fichas: FichaTecnica[] }>(
     auth,

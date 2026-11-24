@@ -1,14 +1,17 @@
 // FichaTecnica.tsx
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Plus, Trash2, Save, X, ChefHat, ClipboardList } from 'lucide-react';
+import { Plus, Trash2, Save, X, ChefHat, ClipboardList, Pencil } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import {
+  atualizarFicha,
   criarFicha,
+  excluirFicha,
   listarFichas,
   mensagemDoErro,
   type AbAuth,
   type FichaTecnica as FichaSalva,
 } from '@/lib/ab/client';
+import RestaurantModulesNav from '../RestaurantModulesNav';
 
 type Unidade = 'g' | 'ml' | 'un';
 
@@ -40,6 +43,7 @@ export default function FichaTecnica() {
   const [erro, setErro] = useState<string | null>(null);
   const [aviso, setAviso] = useState<string | null>(null);
   const [fichas, setFichas] = useState<FichaSalva[]>([]);
+  const [editandoId, setEditandoId] = useState<string | null>(null);
   const [carregandoLista, setCarregandoLista] = useState(false);
 
   const carregarFichas = useCallback(async () => {
@@ -109,7 +113,7 @@ export default function FichaTecnica() {
 
     setEnviando(true);
     try {
-      await criarFicha(auth, {
+      const corpo = {
         nome,
         rendimentoPorcoes: porcoes,
         insumos: insumos.map((i) => ({
@@ -118,8 +122,14 @@ export default function FichaTecnica() {
           quantidadePorPorcao: Number(i.quantidade),
           fatorCorrecao: Number(i.fatorCorrecao) || 1,
         })),
-      });
-      setAviso(`Ficha "${nome}" salva.`);
+      };
+      if (editandoId) {
+        await atualizarFicha(auth, editandoId, corpo);
+        setAviso(`Ficha "${nome}" atualizada.`);
+      } else {
+        await criarFicha(auth, corpo);
+        setAviso(`Ficha "${nome}" salva.`);
+      }
       cancelar();
       await carregarFichas();
     } catch (falha) {
@@ -130,14 +140,45 @@ export default function FichaTecnica() {
   };
 
   const cancelar = () => {
+    setEditandoId(null);
     setNomePrato('');
     setRendimento('');
     setInsumos([novoInsumo()]);
   };
 
+  const editar = (ficha: FichaSalva) => {
+    setEditandoId(ficha.id);
+    setNomePrato(ficha.nome);
+    setRendimento(String(Number(ficha.rendimentoPorcoes)));
+    setInsumos(ficha.insumos.map((insumo) => ({
+      id: crypto.randomUUID(),
+      nome: insumo.insumoNome,
+      quantidade: String(Number(insumo.quantidadePorPorcao)),
+      unidade: insumo.unidadeBase,
+      fatorCorrecao: String(Number(insumo.fatorCorrecao)),
+    })));
+    setErro(null);
+    setAviso(null);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const excluir = async (ficha: FichaSalva) => {
+    if (!window.confirm(`Excluir a ficha "${ficha.nome}"?`)) return;
+    setErro(null);
+    try {
+      await excluirFicha(auth, ficha.id);
+      if (editandoId === ficha.id) cancelar();
+      setAviso('Ficha excluída.');
+      await carregarFichas();
+    } catch (falha) {
+      setErro(mensagemDoErro(falha));
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gray-100">
       <div className="max-w-4xl mx-auto p-6">
+        <RestaurantModulesNav />
         {/* Cabeçalho */}
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-3">
@@ -369,6 +410,14 @@ export default function FichaTecnica() {
                       )
                       .join(' · ')}
                   </p>
+                  <div className="mt-2 flex gap-2">
+                    <button type="button" onClick={() => editar(ficha)} className="inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-xs text-gray-700 hover:bg-gray-50">
+                      <Pencil className="h-3 w-3" /> Editar
+                    </button>
+                    <button type="button" onClick={() => void excluir(ficha)} className="inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-xs text-red-700 hover:bg-red-50">
+                      <Trash2 className="h-3 w-3" /> Excluir
+                    </button>
+                  </div>
                 </li>
               ))}
             </ul>
