@@ -529,3 +529,372 @@ export const insertAbOrdemCompraItemSchema = createInsertSchema(abOrdemCompraIte
 export const selectAbOrdemCompraItemSchema = createSelectSchema(abOrdemCompraItensTable);
 export type AbOrdemCompraItem = typeof abOrdemCompraItensTable.$inferSelect;
 export type InsertAbOrdemCompraItem = typeof abOrdemCompraItensTable.$inferInsert;
+
+// ─── 8) Mapa produto de estoque → insumo (AB-04) ─────────────────────────────
+
+/**
+ * Liga o catálogo de ESTOQUE (`produtos_catalogo`, via `inventory_items`) ao
+ * insumo do motor preditivo (`insumos`).
+ *
+ * Sem este mapa o job de sincronização não consegue somar
+ * `hotel_stock_location_balances` em `ab_estoque_saldos`: são catálogos
+ * distintos, sem FK entre si. Um produto mapeia para UM insumo; um insumo pode
+ * agregar vários produtos.
+ */
+export const abInsumoProdutoTable = pgTable(
+  "ab_insumo_produto",
+  {
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
+    tenantId: text("tenant_id")
+      .notNull()
+      .references(() => tenantsTable.id, { onDelete: "cascade" }),
+    insumoId: text("insumo_id").notNull(),
+    produtoCatalogoId: text("produto_catalogo_id").notNull(),
+    /** Quantas unidades base do insumo há em 1 unidade de estoque (saco, caixa). */
+    fatorEmbalagem: numeric("fator_embalagem", { precision: 15, scale: 6 }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
+  },
+  (table) => [
+    unique("ab_insumo_produto_produto_uq").on(table.tenantId, table.produtoCatalogoId),
+    index("ab_insumo_produto_tenant_insumo_idx").on(table.tenantId, table.insumoId),
+    check(
+      "ab_insumo_produto_fator_positivo",
+      sql`${table.fatorEmbalagem} IS NULL OR ${table.fatorEmbalagem} > 0`,
+    ),
+  ],
+);
+
+export const insertAbInsumoProdutoSchema = createInsertSchema(abInsumoProdutoTable, {
+  insumoId: z.string().uuid(),
+  produtoCatalogoId: z.string().uuid(),
+  fatorEmbalagem: decimalPositivo.nullable().optional(),
+}).omit({ id: true, tenantId: true, createdAt: true, updatedAt: true });
+
+export const selectAbInsumoProdutoSchema = createSelectSchema(abInsumoProdutoTable);
+export type AbInsumoProduto = typeof abInsumoProdutoTable.$inferSelect;
+export type InsertAbInsumoProduto = typeof abInsumoProdutoTable.$inferInsert;
+
+// ─── 9) Recebimento de mercadorias com lote (AB-06) ──────────────────────────
+
+/** Etiqueta FEFO calculada no servidor a partir da validade. */
+export const AB_ETIQUETAS_FEFO = ["verde", "amarelo", "vermelho"] as const;
+export const AB_STATUS_RECEBIMENTO = ["aprovado", "bloqueado"] as const;
+
+export type AbEtiquetaFefo = (typeof AB_ETIQUETAS_FEFO)[number];
+export type AbStatusRecebimento = (typeof AB_STATUS_RECEBIMENTO)[number];
+
+/**
+ * Entrada declarada pelo recebedor.
+ *
+ * `etiqueta_fefo`, `status` e `motivo_bloqueio` são **derivados** (regra FEFO e
+ * sanidade) e gravados junto para auditoria — nunca vêm do corpo da requisição.
+ */
+export const abRecebimentosTable = pgTable(
+  "ab_recebimentos",
+  {
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
+    tenantId: text("tenant_id")
+      .notNull()
+      .references(() => tenantsTable.id, { onDelete: "cascade" }),
+    produtoCatalogoId: text("produto_catalogo_id").notNull(),
+    notaFiscal: text("nota_fiscal").notNull(),
+    fornecedor: text("fornecedor"),
+    lote: text("lote").notNull(),
+    dataValidade: date("data_validade", { mode: "string" }).notNull(),
+    /** Nulo quando o produto não exige controle de temperatura. */
+    temperaturaC: numeric("temperatura_c", { precision: 6, scale: 2 }),
+    quantidade: numeric("quantidade", { precision: 15, scale: 4 }).notNull(),
+    /** Sempre na unidade base (g/ml/un) — ver AB-04. */
+    unidade: text("unidade").notNull(),
+    etiquetaFefo: text("etiqueta_fefo").notNull(),
+    status: text("status").notNull(),
+    motivoBloqueio: text("motivo_bloqueio"),
+    /** Local de destino no estoque (AB-07). Nulo = usa o local padrão do hotel. */
+    locationId: text("location_id"),
+    /** Marca que a quantidade já foi somada em hotel_stock_location_balances. */
+    estoqueAplicadoEm: timestamp("estoque_aplicado_em", { withTimezone: true }),
+    /** Por que a soma falhou, quando falhou. O recebimento nunca é apagado. */
+    motivoNaoAplicado: text("motivo_nao_aplicado"),
+    recebidoPor: text("recebido_por"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
+  },
+  (table) => [
+    index("ab_recebimentos_fefo_idx").on(
+      table.tenantId,
+      table.dataValidade,
+      table.produtoCatalogoId,
+    ),
+    index("ab_recebimentos_tenant_created_idx").on(table.tenantId, table.createdAt.desc()),
+    index("ab_recebimentos_tenant_status_idx").on(table.tenantId, table.status, table.createdAt.desc()),
+    index("ab_recebimentos_lote_idx").on(table.tenantId, table.produtoCatalogoId, table.lote),
+    check("ab_recebimentos_nf_nao_vazia", sql`length(btrim(${table.notaFiscal})) > 0`),
+    check("ab_recebimentos_lote_nao_vazio", sql`length(btrim(${table.lote})) > 0`),
+    check("ab_recebimentos_quantidade_positiva", sql`${table.quantidade} > 0`),
+    check("ab_recebimentos_unidade_valida", sql`${table.unidade} IN ('g', 'ml', 'un')`),
+    check(
+      "ab_recebimentos_etiqueta_valida",
+      sql`${table.etiquetaFefo} IN ('verde', 'amarelo', 'vermelho')`,
+    ),
+    check(
+      "ab_recebimentos_status_valido",
+      sql`${table.status} IN ('aprovado', 'bloqueado')`,
+    ),
+  ],
+);
+
+/**
+ * Payload aceito pela API: enxuto de propósito — `etiquetaFefo`, `status`,
+ * `motivoBloqueio` e `recebidoPor` são calculados/preenchidos no servidor.
+ */
+export const insertAbRecebimentoSchema = createInsertSchema(abRecebimentosTable, {
+  produtoCatalogoId: z.string().uuid(),
+  notaFiscal: z.string().trim().min(1).max(60),
+  fornecedor: z.string().trim().max(120).nullable().optional(),
+  lote: z.string().trim().min(1).max(60),
+  dataValidade: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Data no formato yyyy-mm-dd"),
+  temperaturaC: decimal.nullable().optional(),
+  quantidade: decimalPositivo,
+  unidade: z.enum(AB_UNIDADES),
+  locationId: z.string().uuid().nullable().optional(),
+}).omit({
+  id: true,
+  tenantId: true,
+  etiquetaFefo: true,
+  status: true,
+  motivoBloqueio: true,
+  recebidoPor: true,
+  estoqueAplicadoEm: true,
+  motivoNaoAplicado: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const selectAbRecebimentoSchema = createSelectSchema(abRecebimentosTable);
+export type AbRecebimento = typeof abRecebimentosTable.$inferSelect;
+export type InsertAbRecebimento = typeof abRecebimentosTable.$inferInsert;
+
+// ─── 10) Requisição de estoque — saída por setor (AB-08) ─────────────────────
+
+export const AB_STATUS_REQUISICAO = ["pendente", "aprovada", "entregue"] as const;
+export type AbStatusRequisicao = (typeof AB_STATUS_REQUISICAO)[number];
+
+/**
+ * Pedido de retirada de UM insumo por um setor.
+ *
+ * A baixa no saldo físico acontece no `entregue`, nunca na criação: pedir não
+ * tira mercadoria da prateleira. `baixa_aplicada_em` é a trava de idempotência.
+ */
+export const abRequisicoesTable = pgTable(
+  "ab_requisicoes",
+  {
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
+    tenantId: text("tenant_id")
+      .notNull()
+      .references(() => tenantsTable.id, { onDelete: "cascade" }),
+    setor: text("setor").notNull(),
+    insumoId: text("insumo_id").notNull(),
+    /** Na unidade base (g/ml/un) — a conversão para estoque ocorre na baixa. */
+    quantidadeBase: numeric("quantidade_base", { precision: 15, scale: 4 }).notNull(),
+    unidadeBase: text("unidade_base").notNull(),
+    status: text("status").notNull().default("pendente"),
+    dataSolicitacao: date("data_solicitacao", { mode: "string" }).notNull(),
+    baixaAplicadaEm: timestamp("baixa_aplicada_em", { withTimezone: true }),
+    baixaInventoryItemId: text("baixa_inventory_item_id"),
+    baixaLocationId: text("baixa_location_id"),
+    baixaMotivo: text("baixa_motivo"),
+    solicitadoPor: text("solicitado_por"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
+  },
+  (table) => [
+    index("ab_requisicoes_pendentes_idx").on(
+      table.tenantId,
+      table.status,
+      table.dataSolicitacao,
+      table.createdAt,
+    ),
+    index("ab_requisicoes_tenant_insumo_idx").on(
+      table.tenantId,
+      table.insumoId,
+      table.dataSolicitacao.desc(),
+    ),
+    check("ab_requisicoes_setor_nao_vazio", sql`length(btrim(${table.setor})) > 0`),
+    check("ab_requisicoes_quantidade_positiva", sql`${table.quantidadeBase} > 0`),
+    check("ab_requisicoes_unidade_valida", sql`${table.unidadeBase} IN ('g', 'ml', 'un')`),
+    check(
+      "ab_requisicoes_status_valido",
+      sql`${table.status} IN ('pendente', 'aprovada', 'entregue')`,
+    ),
+  ],
+);
+
+export const insertAbRequisicaoSchema = createInsertSchema(abRequisicoesTable, {
+  setor: z.string().trim().min(1).max(80),
+  insumoId: z.string().uuid(),
+  quantidadeBase: decimalPositivo,
+  unidadeBase: z.enum(AB_UNIDADES),
+  dataSolicitacao: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+}).omit({
+  id: true,
+  tenantId: true,
+  status: true,
+  baixaAplicadaEm: true,
+  baixaInventoryItemId: true,
+  baixaLocationId: true,
+  baixaMotivo: true,
+  solicitadoPor: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const selectAbRequisicaoSchema = createSelectSchema(abRequisicoesTable);
+export type AbRequisicao = typeof abRequisicoesTable.$inferSelect;
+export type InsertAbRequisicao = typeof abRequisicoesTable.$inferInsert;
+
+// ─── 10) Cardápios por data/serviço (AB-10) ──────────────────────────────────
+
+/**
+ * Serviço do cardápio. `outro` cobre eventos e serviços fora do padrão.
+ * Texto + CHECK (não ENUM) segue o padrão do módulo: adicionar um serviço novo
+ * não exige ALTER TYPE em produção.
+ */
+export const AB_SERVICOS_CARDAPIO = [
+  "cafe_manha",
+  "almoco",
+  "jantar",
+  "outro",
+] as const;
+
+export type AbServicoCardapio = (typeof AB_SERVICOS_CARDAPIO)[number];
+
+/**
+ * Cardápio de um serviço em uma data. É a ponte entre a ficha técnica (o que a
+ * cozinha sabe produzir) e o briffing (quanto comprar para a ocupação do dia).
+ *
+ * O nome é único por (hotel, data, serviço) para o operador não criar dois
+ * cardápios iguais sem perceber. Um mesmo prato não entra duas vezes no mesmo
+ * cardápio — a porção por hóspede é um número só.
+ */
+export const abCardapiosTable = pgTable(
+  "ab_cardapios",
+  {
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
+    tenantId: text("tenant_id")
+      .notNull()
+      .references(() => tenantsTable.id, { onDelete: "cascade" }),
+    nome: text("nome").notNull(),
+    data: date("data", { mode: "string" }).notNull(),
+    servico: text("servico").notNull(),
+    ativo: boolean("ativo").notNull().default(true),
+    observacao: text("observacao"),
+    createdBy: text("created_by").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
+  },
+  (table) => [
+    unique("ab_cardapios_tenant_id_uq").on(table.tenantId, table.id),
+    unique("ab_cardapios_tenant_data_servico_nome_uq").on(
+      table.tenantId,
+      table.data,
+      table.servico,
+      table.nome,
+    ),
+    index("ab_cardapios_tenant_data_idx").on(table.tenantId, table.data, table.servico),
+    check("ab_cardapios_nome_nao_vazio", sql`length(btrim(${table.nome})) > 0`),
+    check(
+      "ab_cardapios_servico_valido",
+      sql`${table.servico} IN ('cafe_manha', 'almoco', 'jantar', 'outro')`,
+    ),
+  ],
+);
+
+export const insertAbCardapioSchema = createInsertSchema(abCardapiosTable, {
+  nome: z.string().trim().min(1).max(120),
+  data: dataISO,
+  servico: z.enum(AB_SERVICOS_CARDAPIO),
+  observacao: z.string().trim().max(2000).nullable().optional(),
+}).omit({ id: true, tenantId: true, createdBy: true, createdAt: true, updatedAt: true });
+
+export const selectAbCardapioSchema = createSelectSchema(abCardapiosTable);
+export type AbCardapio = typeof abCardapiosTable.$inferSelect;
+export type InsertAbCardapio = typeof abCardapiosTable.$inferInsert;
+
+/**
+ * Prato do cardápio. `fichaNome` é snapshot: o cardápio impresso/calculado não
+ * muda porque a ficha foi renomeada depois.
+ */
+export const abCardapioItensTable = pgTable(
+  "ab_cardapio_itens",
+  {
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
+    tenantId: text("tenant_id")
+      .notNull()
+      .references(() => tenantsTable.id, { onDelete: "cascade" }),
+    cardapioId: text("cardapio_id").notNull(),
+    fichaId: text("ficha_id").notNull(),
+    fichaNome: text("ficha_nome").notNull(),
+    porcoesPorPax: numeric("porcoes_por_pax", { precision: 8, scale: 3 })
+      .notNull()
+      .default("1"),
+    ordem: integer("ordem").notNull().default(0),
+    observacao: text("observacao"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
+  },
+  (table) => [
+    unique("ab_cardapio_itens_tenant_id_uq").on(table.tenantId, table.id),
+    unique("ab_cardapio_itens_cardapio_ficha_uq").on(
+      table.tenantId,
+      table.cardapioId,
+      table.fichaId,
+    ),
+    index("ab_cardapio_itens_cardapio_idx").on(
+      table.tenantId,
+      table.cardapioId,
+      table.ordem,
+    ),
+    check("ab_cardapio_itens_nome_nao_vazio", sql`length(btrim(${table.fichaNome})) > 0`),
+    check("ab_cardapio_itens_porcoes_positivas", sql`${table.porcoesPorPax} > 0`),
+    check("ab_cardapio_itens_ordem_nao_negativa", sql`${table.ordem} >= 0`),
+  ],
+);
+
+export const insertAbCardapioItemSchema = createInsertSchema(abCardapioItensTable, {
+  cardapioId: z.string().uuid(),
+  fichaId: z.string().uuid(),
+  fichaNome: z.string().trim().min(1).max(120),
+  porcoesPorPax: decimalPositivo.optional(),
+  ordem: z.number().int().min(0).optional(),
+  observacao: z.string().trim().max(1000).nullable().optional(),
+}).omit({ id: true, tenantId: true, createdAt: true, updatedAt: true });
+
+export const selectAbCardapioItemSchema = createSelectSchema(abCardapioItensTable);
+export type AbCardapioItem = typeof abCardapioItensTable.$inferSelect;
+export type InsertAbCardapioItem = typeof abCardapioItensTable.$inferInsert;
