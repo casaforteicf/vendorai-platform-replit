@@ -55,13 +55,14 @@ describe("Restaurante — parsers de importação", () => {
     expect(cardapios[0]!.itens[0]).toEqual({ receitaNome: "Arroz branco", porcoesPorPax: 0.5 });
   });
 
-  it("lê ingredientes em CSV e recusa kg/l com aviso", () => {
+  it("lê ingredientes em CSV e converte kg/l para a unidade base", () => {
     const { rows } = parseDelimited("nome;unidade;preco;categoria\nArroz;g;0,005;grãos\nLeite;l;4,50;bebidas\n");
     const avisos: string[] = [];
     const itens = parseIngredientesDelimitado(rows, avisos);
-    expect(itens).toHaveLength(1);
+    expect(itens).toHaveLength(2);
     expect(itens[0]).toMatchObject({ nome: "Arroz", unidade: "g", precoUnitario: "0.0050", categoria: "grãos" });
-    expect(avisos.join(" ")).toContain("Use g/ml");
+    expect(itens[1]).toMatchObject({ nome: "Leite", unidade: "ml", precoUnitario: "0.0045", categoria: "bebidas" });
+    expect(avisos).toHaveLength(0);
   });
 
   it("lê receita em texto com cabeçalho e ingredientes", () => {

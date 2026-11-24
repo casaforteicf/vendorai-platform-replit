@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, gte, lte } from "drizzle-orm";
 import { z } from "zod/v4";
 import { abBriffingPrevisoesTable } from "@workspace/db";
 import { abAllowed, camposInvalidos, withTenantTx } from "../lib/ab/escopo.js";
@@ -33,6 +33,8 @@ router.get("/tenants/:tenantId/ab/briffing/previsoes", async (req, res) => {
   if (!abAllowed(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
   const filtro = z.object({
     data: z.iso.date().optional(),
+    de: z.iso.date().optional(),
+    ate: z.iso.date().optional(),
     servico: z.enum(SERVICOS).optional(),
   }).safeParse(req.query);
   if (!filtro.success) return res.status(422).json({ error: "Filtro inválido", fields: camposInvalidos(filtro.error) });
@@ -41,6 +43,8 @@ router.get("/tenants/:tenantId/ab/briffing/previsoes", async (req, res) => {
     const previsoes = await withTenantTx(tenantId, async (tx) => {
       const conditions = [eq(abBriffingPrevisoesTable.tenantId, tenantId)];
       if (filtro.data.data) conditions.push(eq(abBriffingPrevisoesTable.data, filtro.data.data));
+      if (filtro.data.de) conditions.push(gte(abBriffingPrevisoesTable.data, filtro.data.de));
+      if (filtro.data.ate) conditions.push(lte(abBriffingPrevisoesTable.data, filtro.data.ate));
       if (filtro.data.servico) conditions.push(eq(abBriffingPrevisoesTable.servico, filtro.data.servico));
       return tx
         .select(selectPrevisao())
@@ -99,6 +103,24 @@ router.put("/tenants/:tenantId/ab/briffing/previsoes", async (req, res) => {
   } catch (error) {
     console.error("[ab-briffing] upsert", error);
     return res.status(500).json({ error: "Não foi possível salvar a previsão" });
+  }
+});
+
+router.delete("/tenants/:tenantId/ab/briffing/previsoes/:id", async (req, res) => {
+  const tenantId = String(req.params.tenantId);
+  const id = String(req.params.id);
+  if (!abAllowed(req, tenantId, true)) return res.status(403).json({ error: "Forbidden" });
+  if (!z.string().trim().min(1).max(100).safeParse(id).success) return res.status(422).json({ error: "Previsão inválida" });
+  try {
+    const removida = await withTenantTx(tenantId, async (tx) => (
+      await tx.delete(abBriffingPrevisoesTable)
+        .where(and(eq(abBriffingPrevisoesTable.tenantId, tenantId), eq(abBriffingPrevisoesTable.id, id)))
+        .returning({ id: abBriffingPrevisoesTable.id })
+    ).length > 0);
+    return removida ? res.status(204).send() : res.status(404).json({ error: "Previsão não encontrada" });
+  } catch (error) {
+    console.error("[ab-briffing] delete", error);
+    return res.status(500).json({ error: "Não foi possível excluir a previsão" });
   }
 });
 

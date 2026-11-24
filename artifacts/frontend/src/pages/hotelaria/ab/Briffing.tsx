@@ -236,6 +236,12 @@ export default function Briffing() {
           Ocupação × porções por hóspede × gramatura × fator de correção. O resultado é a lista que
           alimenta a requisição de compra do dia.
         </p>
+        <Link
+          href={`/hotelaria/restaurante/briffing/imprimir?data=${cardapio.data}`}
+          className="inline-flex items-center gap-1 rounded-md border px-3 py-1.5 text-sm hover:bg-muted"
+        >
+          Imprimir briffing do dia
+        </Link>
       </header>
 
       {previsao && (

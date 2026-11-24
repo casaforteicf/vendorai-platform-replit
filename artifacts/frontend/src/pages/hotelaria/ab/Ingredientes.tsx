@@ -72,15 +72,20 @@ export default function Ingredientes() {
     setErro(null);
     setAviso(null);
     if (!form.nome.trim()) { setErro("Informe o nome do ingrediente."); return; }
-    if (!["g", "ml", "un"].includes(form.unidade)) { setErro("A unidade base precisa ser g, ml ou un."); return; }
+    if (!["g", "kg", "ml", "l", "un"].includes(form.unidade)) { setErro("A unidade precisa ser g, kg, ml, L ou un."); return; }
     const preco = form.precoUnitario.trim();
     if (preco && !/^\d+(\.\d+)?$/.test(preco.replace(",", "."))) { setErro("Preço inválido."); return; }
+    const entradaEmKg = form.unidade === "kg";
+    const entradaEmLitro = form.unidade === "l";
+    const unidadeBase = entradaEmKg ? "g" : entradaEmLitro ? "ml" : form.unidade;
+    const divisor = entradaEmKg || entradaEmLitro ? 1000 : 1;
+    const precoBase = preco ? (Number(preco.replace(",", ".")) / divisor).toFixed(4) : null;
     setSalvando(true);
     try {
       const body = {
         nome: form.nome.trim(),
-        unidade: form.unidade,
-        precoUnitario: preco ? preco.replace(",", ".") : null,
+        unidade: unidadeBase,
+        precoUnitario: precoBase,
         categoria: form.categoria.trim() || null,
         codigo: form.codigo.trim() || null,
         descricao: form.descricao.trim() || null,
@@ -141,11 +146,19 @@ export default function Ingredientes() {
           <label className="block text-sm">Unidade base
             <select className="mt-1 w-full rounded-md border p-2" value={form.unidade} onChange={(event) => setForm((current) => ({ ...current, unidade: event.target.value }))}>
               <option value="g">g (grama)</option>
+              <option value="kg">kg (quilograma)</option>
               <option value="ml">ml (mililitro)</option>
+              <option value="l">L (litro)</option>
               <option value="un">un (unidade)</option>
             </select>
           </label>
-          <label className="block text-sm">Preço por unidade base (R$)<input type="number" min="0" step=".01" className="mt-1 w-full rounded-md border p-2" value={form.precoUnitario} onChange={(event) => setForm((current) => ({ ...current, precoUnitario: event.target.value }))} /></label>
+          <label className="block text-sm">
+            {form.unidade === "kg" ? "Preço por kg (R$)" : form.unidade === "l" ? "Preço por litro (R$)" : "Preço por unidade base (R$)"}
+            <input type="number" min="0" step=".01" className="mt-1 w-full rounded-md border p-2" value={form.precoUnitario} onChange={(event) => setForm((current) => ({ ...current, precoUnitario: event.target.value }))} />
+            {(form.unidade === "kg" || form.unidade === "l") && (
+              <span className="mt-1 block text-xs text-muted-foreground">Será convertido para {form.unidade === "kg" ? "g" : "ml"} no catálogo (preço ÷ 1.000).</span>
+            )}
+          </label>
           <label className="block text-sm">Categoria<input className="mt-1 w-full rounded-md border p-2" value={form.categoria} onChange={(event) => setForm((current) => ({ ...current, categoria: event.target.value }))} /></label>
           <label className="block text-sm">Código<input className="mt-1 w-full rounded-md border p-2" value={form.codigo} onChange={(event) => setForm((current) => ({ ...current, codigo: event.target.value }))} /></label>
           <label className="block text-sm">Descrição<textarea rows={2} className="mt-1 w-full rounded-md border p-2" value={form.descricao} onChange={(event) => setForm((current) => ({ ...current, descricao: event.target.value }))} /></label>

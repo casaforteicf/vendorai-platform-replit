@@ -49,6 +49,7 @@ export default function Importar() {
   const [tipo, setTipo] = useState<Tipo>("receitas");
   const [arquivo, setArquivo] = useState<File | null>(null);
   const [formato, setFormato] = useState("");
+  const [criarFichasFaltantes, setCriarFichasFaltantes] = useState(true);
   const [receitas, setReceitas] = useState<Receita[]>([]);
   const [cardapios, setCardapios] = useState<Cardapio[]>([]);
   const [ingredientes, setIngredientes] = useState<Ingrediente[]>([]);
@@ -112,11 +113,11 @@ export default function Importar() {
       const resposta = await fetch(`${base}/confirmar`, {
         method: "POST",
         headers: { ...headers, "Content-Type": "application/json" },
-        body: JSON.stringify({ tipo, itens }),
+        body: JSON.stringify({ tipo, itens, ...(tipo === "cardapios" ? { criarFichasFaltantes } : {}) }),
       });
       const payload = await resposta.json().catch(() => ({}));
       if (!resposta.ok) throw new Error(payload?.error ?? "Falha ao confirmar.");
-      setAviso(`Importação concluída: ${payload.criados ?? 0} criado(s), ${payload.atualizados ?? 0} atualizado(s)${payload.erros?.length ? `, ${payload.erros.length} erro(s)` : ""}.`);
+      setAviso(`Importação concluída: ${payload.criados ?? 0} criado(s), ${payload.atualizados ?? 0} atualizado(s)${payload.fichasCriadas ? `, ${payload.fichasCriadas} ficha(s) criada(s)` : ""}${payload.erros?.length ? `, ${payload.erros.length} erro(s)` : ""}.`);
       setErro(payload.erros?.length ? payload.erros.join(" | ") : null);
     } catch (error) {
       setErro(error instanceof Error ? error.message : String(error));
@@ -189,6 +190,12 @@ export default function Importar() {
           <FileUp className="h-4 w-4" /> {lendo ? "Interpretando..." : "Gerar preview"}
         </button>
         {formato && <span className="text-xs text-muted-foreground">Formato detectado: {formato.toUpperCase()}</span>}
+        {tipo === "cardapios" && (
+          <label className="flex items-center gap-2 text-sm text-muted-foreground">
+            <input type="checkbox" checked={criarFichasFaltantes} onChange={(event) => setCriarFichasFaltantes(event.target.checked)} />
+            Criar ficha técnica para receitas que ainda não existem (sem ingredientes, para completar depois)
+          </label>
+        )}
       </section>
 
       {tipo === "ingredientes" && ingredientes.length > 0 && (
