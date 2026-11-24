@@ -202,11 +202,29 @@ export async function generateImagesWithReference(
   const openai = await getOpenAIForTenant(tenantId);
   const results: string[] = [];
 
-  let referenceBuffer: Buffer;
+  // A referência pode estar numa pasta privada (R2/Supabase) e o fetch interno
+  // sem sessão recebe 401. Em vez de derrubar a produção do anúncio, cai para
+  // geração texto→imagem: o criativo é criado e fica para revisão humana.
+  let referenceBuffer: Buffer | null = null;
   try {
     referenceBuffer = await fetchImageBuffer(referenceImageUrl);
   } catch {
-    throw new Error("Não foi possível carregar a imagem de referência. Verifique se ela está acessível.");
+    referenceBuffer = null;
+    console.warn("[content-generation] referência indisponível; gerando criativo sem referência", { tenantId });
+  }
+
+  if (!referenceBuffer) {
+    return generateImagesForContent(
+      {},
+      tenantId,
+      editPrompt,
+      undefined,
+      "feed",
+      imageCount,
+      undefined,
+      undefined,
+      "A imagem de referência original não estava acessível. Gere um criativo profissional fiel à descrição, sem inventar dados.",
+    );
   }
 
   const imagePromises = Array.from({ length: imageCount }, async (_, i) => {
@@ -227,7 +245,7 @@ export async function generateImagesWithReference(
         });
         const item = Array.isArray((response as any)?.data) ? (response as any).data[0] : undefined;
         if (!item) continue;
-        if (item.b64_json) return await saveB64Image(item.b64_json);
+        if (item.b64_json) return await saveB64Image(tenantId, item.b64_json, "content_reference_edit", { prompt: variantPrompt, referenceImageUrl });
         if (item.url) return item.url as string;
       } catch {
         // Try next model

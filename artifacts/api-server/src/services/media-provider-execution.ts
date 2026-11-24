@@ -152,6 +152,22 @@ export async function generateVeoVideo(input: {
   const workload = input.cinema ? "video_cinema" : "video_standard";
   const route = resolveMediaProvider(workload);
 
+  // Falha explícita e acionável quando NENHUM provedor de vídeo está configurado.
+  // Antes o erro era só "GOOGLE_CLOUD_PROJECT not set", que não diz o que falta.
+  const hasVertex = Boolean(
+    process.env["GOOGLE_CLOUD_PROJECT"]?.trim()
+    && (process.env["GOOGLE_SERVICE_ACCOUNT_JSON"]?.trim() || process.env["GOOGLE_APPLICATION_CREDENTIALS"]?.trim())
+    && process.env["VENDORAI_VERTEX_VIDEO_GCS_URI"]?.trim(),
+  );
+  const hasReplicate = Boolean(process.env["REPLICATE_API_TOKEN"]?.trim());
+  if (!hasVertex && !hasReplicate) {
+    throw new Error(
+      "Geração de vídeo indisponível: configure o provedor Google Vertex/Veo "
+      + "(GOOGLE_CLOUD_PROJECT, GOOGLE_SERVICE_ACCOUNT_JSON e VENDORAI_VERTEX_VIDEO_GCS_URI) "
+      + "ou REPLICATE_API_TOKEN.",
+    );
+  }
+
   if (route.provider === "google-vertex") {
     try {
       const direct = await callGoogleVertexVeo({
