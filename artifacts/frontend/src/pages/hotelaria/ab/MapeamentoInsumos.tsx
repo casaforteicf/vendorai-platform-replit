@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { Link } from "wouter";
 import HotelModulesNav from "../HotelModulesNav";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -257,9 +258,16 @@ export default function MapeamentoInsumos() {
           )}
 
           {!carregando && insumos.length === 0 && !erro && (
-            <p className="py-6 text-center text-sm text-muted-foreground">
-              Nenhum insumo cadastrado no catálogo. Cadastre insumos antes de mapear.
-            </p>
+            <div className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
+              <p>Nenhum ingrediente do Restaurante cadastrado.</p>
+              <p className="mt-1">
+                O de-para lista somente alimentos/B&amp;B. Cadastre os ingredientes em{" "}
+                <Link href="/hotelaria/restaurante/ingredientes" className="font-medium text-primary underline">
+                  Restaurante → Ingredientes
+                </Link>{" "}
+                para eles aparecerem aqui.
+              </p>
+            </div>
           )}
 
           {!carregando && insumos.length > 0 && (
@@ -271,7 +279,7 @@ export default function MapeamentoInsumos() {
                 <TableRow>
                   <TableHead>Produto do estoque</TableHead>
                   <TableHead>Saldo / unidade</TableHead>
-                  <TableHead>Insumo correspondente</TableHead>
+                  <TableHead>Ingrediente do Restaurante</TableHead>
                   <TableHead>Fator de embalagem</TableHead>
                   <TableHead className="text-right">Ações</TableHead>
                 </TableRow>
@@ -304,7 +312,7 @@ export default function MapeamentoInsumos() {
                           onChange={(e) =>
                             atualizarRascunho(produto.produtoCatalogoId, { insumoId: e.target.value })
                           }
-                          aria-label={`Insumo de ${produto.nome}`}
+                          aria-label={`Ingrediente do Restaurante para ${produto.nome}`}
                           className="h-10 w-full min-w-48 rounded-md border bg-background px-3 text-sm"
                         >
                           <option value="">Selecione o insumo…</option>

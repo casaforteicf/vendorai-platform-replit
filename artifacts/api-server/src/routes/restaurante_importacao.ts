@@ -551,15 +551,15 @@ async function obterOuCriarInsumo(tx: any, tenantId: string, nome: string, unida
   const [existente] = await tx
     .select({ id: insumosTable.id })
     .from(insumosTable)
-    .where(and(eq(insumosTable.tenantId, tenantId), sql`lower(btrim(${insumosTable.nome})) = lower(btrim(${nome}))`))
+    .where(and(eq(insumosTable.tenantId, tenantId), eq(insumosTable.catalogo, "restaurante"), sql`lower(btrim(${insumosTable.nome})) = lower(btrim(${nome}))`))
     .limit(1);
   if (existente) {
     if (preco) {
-      await tx.update(insumosTable).set({ precoUnitario: preco, updatedAt: new Date() }).where(eq(insumosTable.id, existente.id));
+      await tx.update(insumosTable).set({ precoUnitario: preco, catalogo: "restaurante", updatedAt: new Date() }).where(eq(insumosTable.id, existente.id));
     }
     return existente.id as string;
   }
-  const [criado] = await tx.insert(insumosTable).values({ tenantId, nome, unidade, precoUnitario: preco ?? null }).returning({ id: insumosTable.id });
+  const [criado] = await tx.insert(insumosTable).values({ tenantId, catalogo: "restaurante", nome, unidade, precoUnitario: preco ?? null }).returning({ id: insumosTable.id });
   return criado!.id as string;
 }
 
@@ -578,10 +578,11 @@ router.post("/tenants/:tenantId/restaurante/importacoes/confirmar", async (req, 
             const [existente] = await tx
               .select({ id: insumosTable.id })
               .from(insumosTable)
-              .where(and(eq(insumosTable.tenantId, tenantId), sql`lower(btrim(${insumosTable.nome})) = lower(btrim(${item.nome}))`))
+              .where(and(eq(insumosTable.tenantId, tenantId), eq(insumosTable.catalogo, "restaurante"), sql`lower(btrim(${insumosTable.nome})) = lower(btrim(${item.nome}))`))
               .limit(1);
             if (existente) {
               await tx.update(insumosTable).set({
+                catalogo: "restaurante",
                 unidade: item.unidade,
                 precoUnitario: item.precoUnitario ?? null,
                 categoria: item.categoria ?? null,
@@ -589,7 +590,7 @@ router.post("/tenants/:tenantId/restaurante/importacoes/confirmar", async (req, 
               }).where(eq(insumosTable.id, existente.id));
               resultado.atualizados += 1;
             } else {
-              await tx.insert(insumosTable).values({ tenantId, nome: item.nome, unidade: item.unidade, precoUnitario: item.precoUnitario ?? null, categoria: item.categoria ?? null });
+              await tx.insert(insumosTable).values({ tenantId, catalogo: "restaurante", nome: item.nome, unidade: item.unidade, precoUnitario: item.precoUnitario ?? null, categoria: item.categoria ?? null });
               resultado.criados += 1;
             }
           });

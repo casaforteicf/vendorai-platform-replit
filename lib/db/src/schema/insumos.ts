@@ -49,6 +49,8 @@ export const insumosTable = pgTable("insumos", {
   especificacaoTecnica: jsonb("especificacao_tecnica").$type<Record<string, unknown> | null>(),
   categoria: text("categoria"),
   codigo: text("codigo"),
+  /** Separa o catálogo de alimentos/B&B do catálogo de construção. */
+  catalogo: text("catalogo").notNull().default("construcao"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 });
