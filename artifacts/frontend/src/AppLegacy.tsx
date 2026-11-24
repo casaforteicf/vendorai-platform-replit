@@ -105,6 +105,11 @@ const PartnerCommissions = lazy(() => import("@/pages/partner/PartnerCommissions
 const SiteLandingPage    = lazy(() => import("@/pages/SiteLandingPage"));
 const Marketplace        = lazy(() => import("@/pages/Marketplace"));
 const Estoque            = lazy(() => import("@/pages/Estoque"));
+const HotelDashboard = lazy(() => import("@/pages/hotelaria/HotelDashboard"));
+const HotelManutencao = lazy(() => import("@/pages/hotelaria/Manutencao"));
+const RestaurantDashboard = lazy(() => import("@/pages/hotelaria/RestaurantDashboard"));
+const RestaurantIngredientes = lazy(() => import("@/pages/hotelaria/ab/Ingredientes"));
+const RestaurantImportar = lazy(() => import("@/pages/hotelaria/ab/Importar"));
 const HotelReceitas = lazy(() => import("@/pages/hotelaria/HotelReceitas"));
 const HotelTarifas = lazy(() => import("@/pages/hotelaria/HotelTarifas"));
 const HotelRecepcao = lazy(() => import("@/pages/hotelaria/HotelRecepcao"));
@@ -719,6 +724,25 @@ function AppRoutes() {
         <Route path="/campanhas-nova"><LegacyCampaignHubRedirect /></Route>
         <Route path="/campanhas"><RedirectPage to="/content?tab=campanhas&view=organicas" /></Route>
         <Route path="/estoque">{() => <ProtectedRoute component={Estoque} />}</Route>
+        <Route path="/hotelaria">{() => <ProtectedRoute component={HotelDashboard} />}</Route>
+        <Route path="/hotelaria/hospedagem">{() => <ProtectedRoute component={HotelRecepcao} />}</Route>
+        <Route path="/hotelaria/diarias">{() => <ProtectedRoute component={HotelTarifas} />}</Route>
+        <Route path="/hotelaria/manutencao">{() => <ProtectedRoute component={HotelManutencao} />}</Route>
+        <Route path="/hotelaria/restaurante">{() => <ProtectedRoute component={RestaurantDashboard} />}</Route>
+        <Route path="/hotelaria/restaurante/receitas">{() => <ProtectedRoute component={AbFichaTecnica} />}</Route>
+        <Route path="/hotelaria/restaurante/custos">{() => <ProtectedRoute component={HotelReceitas} />}</Route>
+        <Route path="/hotelaria/restaurante/ingredientes">{() => <ProtectedRoute component={RestaurantIngredientes} />}</Route>
+        <Route path="/hotelaria/restaurante/importar">{() => <ProtectedRoute component={RestaurantImportar} />}</Route>
+        <Route path="/hotelaria/restaurante/cardapios">{() => <ProtectedRoute component={AbCardapios} />}</Route>
+        <Route path="/hotelaria/restaurante/briffing">{() => <ProtectedRoute component={AbBriffing} />}</Route>
+        <Route path="/hotelaria/restaurante/sobras">{() => <ProtectedRoute component={AbSobras} />}</Route>
+        <Route path="/hotelaria/restaurante/compras">{() => <ProtectedRoute component={AbOrdensCompra} />}</Route>
+        <Route path="/hotelaria/restaurante/recebimento">{() => <ProtectedRoute component={AbRecebimento} />}</Route>
+        <Route path="/hotelaria/restaurante/requisicao">{() => <ProtectedRoute component={AbRequisicao} />}</Route>
+        <Route path="/hotelaria/restaurante/cmv">{() => <ProtectedRoute component={AbDashboardCmv} />}</Route>
+        <Route path="/hotelaria/restaurante/mapeamento">{() => <ProtectedRoute component={AbMapeamentoInsumos} />}</Route>
+        <Route path="/hotelaria/restaurante/cargos">{() => <ProtectedRoute component={AbCargos} />}</Route>
+        <Route path="/hotelaria/restaurante/planejamento">{() => <ProtectedRoute component={HotelPlanejamento} />}</Route>
         <Route path="/hotelaria/receitas">{() => <ProtectedRoute component={HotelReceitas} />}</Route>
         <Route path="/hotelaria/tarifas">{() => <ProtectedRoute component={HotelTarifas} />}</Route>
         <Route path="/hotelaria/recepcao">{() => <ProtectedRoute component={HotelRecepcao} />}</Route>
