@@ -42,7 +42,7 @@ router.get("/tenants/:tenantId/ab/insumos", async (req, res) => {
           codigo: insumosTable.codigo,
         })
         .from(insumosTable)
-        .where(eq(insumosTable.tenantId, t))
+        .where(and(eq(insumosTable.tenantId, t), eq(insumosTable.catalogo, "restaurante")))
         .orderBy(asc(insumosTable.nome)),
     );
     return res.json({ insumos });

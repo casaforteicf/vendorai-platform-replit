@@ -58,7 +58,7 @@ router.get("/tenants/:tenantId/restaurante/ingredientes", async (req, res) => {
 
   try {
     const ingredientes = await withTenantTx(tenantId, async (tx) => {
-      const conditions = [eq(insumosTable.tenantId, tenantId)];
+      const conditions = [eq(insumosTable.tenantId, tenantId), eq(insumosTable.catalogo, "restaurante")];
       if (filtro.data.q) conditions.push(ilike(insumosTable.nome, `%${filtro.data.q}%`));
       if (filtro.data.categoria) conditions.push(eq(insumosTable.categoria, filtro.data.categoria));
       return tx
@@ -88,11 +88,12 @@ router.post("/tenants/:tenantId/restaurante/ingredientes", async (req, res) => {
       const [existente] = await tx
         .select({ id: insumosTable.id })
         .from(insumosTable)
-        .where(and(eq(insumosTable.tenantId, tenantId), ilike(insumosTable.nome, input.data.nome)))
+        .where(and(eq(insumosTable.tenantId, tenantId), eq(insumosTable.catalogo, "restaurante"), ilike(insumosTable.nome, input.data.nome)))
         .limit(1);
       if (existente) return { conflito: true as const };
       const [row] = await tx.insert(insumosTable).values({
         tenantId,
+        catalogo: "restaurante",
         nome: input.data.nome,
         unidade: input.data.unidade,
         precoUnitario: input.data.precoUnitario ?? null,
@@ -124,7 +125,7 @@ router.put("/tenants/:tenantId/restaurante/ingredientes/:id", async (req, res) =
 
   try {
     const row = await withTenantTx(tenantId, async (tx) => (
-      await tx.update(insumosTable).set({ ...input.data }).where(and(eq(insumosTable.tenantId, tenantId), eq(insumosTable.id, id))).returning(selectIngrediente())
+      await tx.update(insumosTable).set({ ...input.data, catalogo: "restaurante" }).where(and(eq(insumosTable.tenantId, tenantId), eq(insumosTable.id, id))).returning(selectIngrediente())
     )[0]);
     return row ? res.json(row) : res.status(404).json({ error: "Ingrediente não encontrado" });
   } catch (error) {
