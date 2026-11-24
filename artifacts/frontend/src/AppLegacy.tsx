@@ -110,6 +110,8 @@ const HotelManutencao = lazy(() => import("@/pages/hotelaria/Manutencao"));
 const RestaurantDashboard = lazy(() => import("@/pages/hotelaria/RestaurantDashboard"));
 const RestaurantIngredientes = lazy(() => import("@/pages/hotelaria/ab/Ingredientes"));
 const RestaurantImportar = lazy(() => import("@/pages/hotelaria/ab/Importar"));
+const RestaurantOcupacao = lazy(() => import("@/pages/hotelaria/ab/Ocupacao"));
+const BriffingPrint = lazy(() => import("@/pages/hotelaria/ab/BriffingPrint"));
 const HotelReceitas = lazy(() => import("@/pages/hotelaria/HotelReceitas"));
 const HotelTarifas = lazy(() => import("@/pages/hotelaria/HotelTarifas"));
 const HotelRecepcao = lazy(() => import("@/pages/hotelaria/HotelRecepcao"));
@@ -733,6 +735,8 @@ function AppRoutes() {
         <Route path="/hotelaria/restaurante/custos">{() => <ProtectedRoute component={HotelReceitas} />}</Route>
         <Route path="/hotelaria/restaurante/ingredientes">{() => <ProtectedRoute component={RestaurantIngredientes} />}</Route>
         <Route path="/hotelaria/restaurante/importar">{() => <ProtectedRoute component={RestaurantImportar} />}</Route>
+        <Route path="/hotelaria/restaurante/ocupacao">{() => <ProtectedRoute component={RestaurantOcupacao} />}</Route>
+        <Route path="/hotelaria/restaurante/briffing/imprimir">{() => <ProtectedRoute component={BriffingPrint} />}</Route>
         <Route path="/hotelaria/restaurante/cardapios">{() => <ProtectedRoute component={AbCardapios} />}</Route>
         <Route path="/hotelaria/restaurante/briffing">{() => <ProtectedRoute component={AbBriffing} />}</Route>
         <Route path="/hotelaria/restaurante/sobras">{() => <ProtectedRoute component={AbSobras} />}</Route>

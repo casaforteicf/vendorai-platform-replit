@@ -589,10 +589,12 @@ export type BriffingPrevisao = {
 
 export async function listarPrevisoesBriffing(
   auth: AbAuth,
-  filtro?: { data?: string; servico?: CardapioServico },
+  filtro?: { data?: string; de?: string; ate?: string; servico?: CardapioServico },
 ): Promise<BriffingPrevisao[]> {
   const params = new URLSearchParams();
   if (filtro?.data) params.set("data", filtro.data);
+  if (filtro?.de) params.set("de", filtro.de);
+  if (filtro?.ate) params.set("ate", filtro.ate);
   if (filtro?.servico) params.set("servico", filtro.servico);
   const sufixo = params.toString() ? `/briffing/previsoes?${params.toString()}` : "/briffing/previsoes";
   const resposta = await requisitar<{ previsoes: BriffingPrevisao[] }>(auth, urlAb(auth, sufixo));
@@ -606,6 +608,12 @@ export async function salvarPrevisaoBriffing(
   return requisitar<BriffingPrevisao>(auth, urlAb(auth, "/briffing/previsoes"), {
     method: "PUT",
     body: JSON.stringify(entrada),
+  });
+}
+
+export async function excluirPrevisaoBriffing(auth: AbAuth, id: string): Promise<void> {
+  await requisitar<null>(auth, urlAb(auth, `/briffing/previsoes/${encodeURIComponent(id)}`), {
+    method: "DELETE",
   });
 }
 

@@ -179,20 +179,17 @@ export function parseIngredientesLinhas(linhas: string[], avisos: string[]): Ing
     const partes = limpa.split(/[;|]/).map((parte) => parte.trim());
     const nome = partes[0] ?? "";
     const unidadeRaw = String(partes[1] ?? "").trim().toLowerCase();
-    if (["kg", "quilo", "quilos", "l", "litro", "litros"].includes(unidadeRaw)) {
-      avisos.push(`Use g/ml (unidade base) para preço de ingrediente: ${limpa.slice(0, 120)}`);
-      continue;
-    }
     const unidade = unidadeBase(unidadeRaw);
     if (!nome || !unidade) {
       avisos.push(`Linha de ingrediente ignorada: ${limpa.slice(0, 120)}`);
       continue;
     }
+    const fatorPreco = ["kg", "quilo", "quilos", "l", "litro", "litros"].includes(unidadeRaw) ? 1000 : 1;
     const preco = numero(partes[2] ?? "");
     itens.push({
       nome,
       unidade,
-      precoUnitario: preco !== null ? preco.toFixed(4) : null,
+      precoUnitario: preco !== null ? (preco / fatorPreco).toFixed(4) : null,
       categoria: partes[3]?.trim() || null,
     });
   }
@@ -370,14 +367,11 @@ export function parseIngredientesDelimitado(rows: string[][], avisos: string[]):
   for (const row of dataRows) {
     const nome = String(row[idxNome] ?? "").trim();
     const unidadeRaw = String(row[idxUnidade] ?? "").trim().toLowerCase();
-    if (["kg", "quilo", "quilos", "l", "litro", "litros"].includes(unidadeRaw)) {
-      avisos.push(`Use g/ml (unidade base) para preço de ingrediente: ${row.join(" | ").slice(0, 120)}`);
-      continue;
-    }
     const unidade = unidadeBase(unidadeRaw);
     if (!nome || !unidade) { avisos.push(`Linha de ingrediente ignorada: ${row.join(" | ").slice(0, 120)}`); continue; }
+    const fatorPreco = ["kg", "quilo", "quilos", "l", "litro", "litros"].includes(unidadeRaw) ? 1000 : 1;
     const preco = numero(row[idxPreco] ?? "");
-    itens.push({ nome, unidade, precoUnitario: preco !== null ? preco.toFixed(4) : null, categoria: String(row[idxCategoria] ?? "").trim() || null });
+    itens.push({ nome, unidade, precoUnitario: preco !== null ? (preco / fatorPreco).toFixed(4) : null, categoria: String(row[idxCategoria] ?? "").trim() || null });
   }
   return itens;
 }
@@ -539,14 +533,11 @@ function normalizarJson(tipo: TipoImportacao, rows: unknown[], avisos: string[])
       if (!row || typeof row !== "object") return [];
       const r = row as Record<string, unknown>;
       const unidadeRaw = String(r.unidade ?? r.unit ?? "").trim().toLowerCase();
-      if (["kg", "quilo", "quilos", "l", "litro", "litros"].includes(unidadeRaw)) {
-        avisos.push(`Use g/ml (unidade base) para preço de ingrediente: ${JSON.stringify(row).slice(0, 120)}`);
-        return [];
-      }
       const unidade = unidadeBase(unidadeRaw);
       if (!r.nome || !unidade) { avisos.push(`Ingrediente JSON inválido: ${JSON.stringify(row).slice(0, 120)}`); return []; }
+      const fatorPreco = ["kg", "quilo", "quilos", "l", "litro", "litros"].includes(unidadeRaw) ? 1000 : 1;
       const preco = numero(r.precoUnitario ?? r.preco ?? r.price);
-      return [{ nome: String(r.nome), unidade, precoUnitario: preco !== null ? preco.toFixed(4) : null, categoria: r.categoria ? String(r.categoria) : null }];
+      return [{ nome: String(r.nome), unidade, precoUnitario: preco !== null ? (preco / fatorPreco).toFixed(4) : null, categoria: r.categoria ? String(r.categoria) : null }];
     });
   }
   if (tipo === "receitas") {
@@ -677,6 +668,8 @@ const confirmarSchema = z.discriminatedUnion("tipo", [
   }),
   z.object({
     tipo: z.literal("cardapios"),
+    /** Se true, receita do cardápio sem ficha cria uma ficha vazia para completar depois. */
+    criarFichasFaltantes: z.boolean().optional(),
     itens: z.array(z.object({
       nome: z.string().trim().min(1).max(120),
       data: z.iso.date(),
@@ -721,7 +714,7 @@ router.post("/tenants/:tenantId/restaurante/importacoes/confirmar", async (req, 
   const input = confirmarSchema.safeParse(req.body);
   if (!input.success) return res.status(422).json({ error: "Itens inválidos", fields: camposInvalidos(input.error) });
 
-  const resultado = { criados: 0, atualizados: 0, erros: [] as string[] };
+  const resultado = { criados: 0, atualizados: 0, fichasCriadas: 0, erros: [] as string[] };
   try {
     if (input.data.tipo === "ingredientes") {
       for (const item of input.data.itens) {
@@ -816,8 +809,18 @@ router.post("/tenants/:tenantId/restaurante/importacoes/confirmar", async (req, 
             const porNome = new Map(fichas.map((ficha: { id: string; nome: string }) => [normalizar(ficha.nome), ficha]));
             const consolidados = new Map<string, { fichaId: string; fichaNome: string; porcoesPorPax: number }>();
             for (const item of menu.itens) {
-              const ficha = porNome.get(normalizar(item.receitaNome)) as { id: string; nome: string } | undefined;
-              if (!ficha) throw new Error(`Receita não encontrada: ${item.receitaNome}`);
+              let ficha = porNome.get(normalizar(item.receitaNome)) as { id: string; nome: string } | undefined;
+              if (!ficha) {
+                if (!input.data.criarFichasFaltantes) throw new Error(`Receita não encontrada: ${item.receitaNome}`);
+                const [criada] = await tx.insert(abFichasTecnicasTable).values({
+                  tenantId,
+                  nome: item.receitaNome,
+                  rendimentoPorcoes: "1",
+                }).returning({ id: abFichasTecnicasTable.id, nome: abFichasTecnicasTable.nome });
+                ficha = criada as { id: string; nome: string };
+                porNome.set(normalizar(ficha.nome), ficha);
+                resultado.fichasCriadas += 1;
+              }
               const atual = consolidados.get(ficha.id);
               if (atual) atual.porcoesPorPax += item.porcoesPorPax;
               else consolidados.set(ficha.id, { fichaId: ficha.id, fichaNome: ficha.nome, porcoesPorPax: item.porcoesPorPax });

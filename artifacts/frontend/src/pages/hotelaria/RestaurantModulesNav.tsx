@@ -8,6 +8,7 @@ const LINKS = [
   { href: "/hotelaria/restaurante/briffing", name: "Briffing", aliases: ["/hotelaria/ab/briffing"] },
   { href: "/hotelaria/restaurante/importar", name: "Importar" },
   { href: "/hotelaria/restaurante/planejamento", name: "Planejamento", aliases: ["/hotelaria/planejamento"] },
+  { href: "/hotelaria/restaurante/ocupacao", name: "Ocupação" },
   { href: "/hotelaria/restaurante/sobras", name: "Sobras", aliases: ["/hotelaria/ab/sobras"] },
   { href: "/hotelaria/restaurante/compras", name: "Compras", aliases: ["/hotelaria/ab/ordens-compra"] },
   { href: "/hotelaria/restaurante/recebimento", name: "Recebimento", aliases: ["/hotelaria/ab/recebimento"] },
