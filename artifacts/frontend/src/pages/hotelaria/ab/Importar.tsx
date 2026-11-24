@@ -4,12 +4,13 @@ import { Download, FileUp, Plus, Trash2, Upload } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import RestaurantModulesNav from "../RestaurantModulesNav";
 
-type Tipo = "receitas" | "cardapios" | "ingredientes";
+type Tipo = "receitas" | "cardapios" | "ingredientes" | "briffing";
 type Insumo = { nome: string; unidade: "g" | "ml" | "un"; quantidadePorPorcao: number; fatorCorrecao: number };
 type Receita = { nome: string; rendimentoPorcoes: number; insumos: Insumo[] };
 type ItemCardapio = { receitaNome: string; porcoesPorPax: number };
 type Cardapio = { nome: string; data: string; servico: "cafe_manha" | "almoco" | "jantar" | "outro"; itens: ItemCardapio[] };
 type Ingrediente = { nome: string; unidade: "g" | "ml" | "un"; precoUnitario: string | null; categoria: string | null };
+type Previsao = { data: string; servico: "cafe_manha" | "almoco" | "jantar" | "outro"; ocupacao: number; evento: string | null; observacoes: string | null };
 
 const SERVICOS = [
   { value: "cafe_manha", label: "Café da manhã" },
@@ -33,6 +34,10 @@ const MODELOS: Record<Tipo, { nome: string; csv: string }> = {
     nome: "modelo-ingredientes.csv",
     csv: "nome;unidade;preco;categoria\nArroz;g;0.005;grãos\n",
   },
+  briffing: {
+    nome: "modelo-briffing.csv",
+    csv: "data;servico;ocupacao;evento;observacoes\n25/11/2026;almoco;150;Almoço executivo;Grupo de 150\n",
+  },
 };
 
 export default function Importar() {
@@ -47,6 +52,7 @@ export default function Importar() {
   const [receitas, setReceitas] = useState<Receita[]>([]);
   const [cardapios, setCardapios] = useState<Cardapio[]>([]);
   const [ingredientes, setIngredientes] = useState<Ingrediente[]>([]);
+  const [briffing, setBriffing] = useState<Previsao[]>([]);
   const [avisos, setAvisos] = useState<string[]>([]);
   const [erro, setErro] = useState<string | null>(null);
   const [aviso, setAviso] = useState<string | null>(null);
@@ -57,6 +63,7 @@ export default function Importar() {
     setReceitas([]);
     setCardapios([]);
     setIngredientes([]);
+    setBriffing([]);
     setAvisos([]);
     setErro(null);
     setAviso(null);
@@ -86,6 +93,7 @@ export default function Importar() {
       if (tipo === "receitas") setReceitas(payload.itens ?? []);
       if (tipo === "cardapios") setCardapios(payload.itens ?? []);
       if (tipo === "ingredientes") setIngredientes(payload.itens ?? []);
+      if (tipo === "briffing") setBriffing(payload.itens ?? []);
       setAviso(`${(payload.itens ?? []).length} item(ns) reconhecido(s). Revise e edite antes de confirmar.`);
     } catch (error) {
       setErro(error instanceof Error ? error.message : String(error));
@@ -97,7 +105,7 @@ export default function Importar() {
   async function confirmar() {
     setErro(null);
     setAviso(null);
-    const itens = tipo === "receitas" ? receitas : tipo === "cardapios" ? cardapios : ingredientes;
+    const itens = tipo === "receitas" ? receitas : tipo === "cardapios" ? cardapios : tipo === "ingredientes" ? ingredientes : briffing;
     if (itens.length === 0) { setErro("Nada para importar."); return; }
     setSalvando(true);
     try {
@@ -171,6 +179,7 @@ export default function Importar() {
             <option value="receitas">Receitas</option>
             <option value="cardapios">Cardápios</option>
             <option value="ingredientes">Ingredientes</option>
+            <option value="briffing">Briffing / ocupação</option>
           </select>
         </label>
         <label className="text-sm">Arquivo
@@ -258,7 +267,27 @@ export default function Importar() {
         </section>
       )}
 
-      {(receitas.length > 0 || cardapios.length > 0 || ingredientes.length > 0) && (
+      {tipo === "briffing" && briffing.length > 0 && (
+        <section className="space-y-2 rounded-xl border p-4">
+          <div className="flex items-center justify-between"><h2 className="font-semibold">Briffing / ocupação ({briffing.length})</h2>
+            <button type="button" className="rounded border px-2 py-1 text-xs" onClick={() => setBriffing((lista) => [...lista, { data: hoje(), servico: "almoco", ocupacao: 150, evento: null, observacoes: null }])}><Plus className="mr-1 inline h-3 w-3" />Adicionar</button>
+          </div>
+          {briffing.map((previsao, index) => (
+            <div key={index} className="grid gap-2 rounded-lg border p-3 sm:grid-cols-[140px_150px_110px_1fr_1fr_40px]">
+              <input type="date" className="rounded border p-2 text-sm" value={previsao.data} onChange={(event) => setBriffing((lista) => lista.map((item, i) => i === index ? { ...item, data: event.target.value } : item))} />
+              <select className="rounded border p-2 text-sm" value={previsao.servico} onChange={(event) => setBriffing((lista) => lista.map((item, i) => i === index ? { ...item, servico: event.target.value as Previsao["servico"] } : item))}>
+                {SERVICOS.map((servico) => <option key={servico.value} value={servico.value}>{servico.label}</option>)}
+              </select>
+              <input type="number" min="0" step="1" className="rounded border p-2 text-sm" placeholder="Ocupação/pax" value={previsao.ocupacao} onChange={(event) => setBriffing((lista) => lista.map((item, i) => i === index ? { ...item, ocupacao: Number(event.target.value) } : item))} />
+              <input className="rounded border p-2 text-sm" placeholder="Evento" value={previsao.evento ?? ""} onChange={(event) => setBriffing((lista) => lista.map((item, i) => i === index ? { ...item, evento: event.target.value || null } : item))} />
+              <input className="rounded border p-2 text-sm" placeholder="Observações" value={previsao.observacoes ?? ""} onChange={(event) => setBriffing((lista) => lista.map((item, i) => i === index ? { ...item, observacoes: event.target.value || null } : item))} />
+              <button type="button" className="rounded border p-2" onClick={() => setBriffing((lista) => lista.filter((_, i) => i !== index))}><Trash2 className="h-4 w-4" /></button>
+            </div>
+          ))}
+        </section>
+      )}
+
+      {(receitas.length > 0 || cardapios.length > 0 || ingredientes.length > 0 || briffing.length > 0) && (
         <div className="flex flex-wrap items-center gap-2">
           <button type="button" disabled={salvando} className="inline-flex items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground" onClick={() => void confirmar()}>
             <Upload className="h-4 w-4" /> {salvando ? "Importando..." : "Confirmar importação"}

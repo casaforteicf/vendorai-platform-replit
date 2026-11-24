@@ -27,10 +27,13 @@ import { formatarDataBR, hojeISO } from "@/lib/ab/datas";
 import { useAuth } from "@/contexts/AuthContext";
 import {
   listarFichas,
+  listarPrevisoesBriffing,
   mensagemDoErro,
   obterCardapio,
   type AbAuth,
+  type BriffingPrevisao,
   type Cardapio as CardapioSalvo,
+  type CardapioServico,
   type FichaTecnica,
 } from "@/lib/ab/client";
 
@@ -99,8 +102,12 @@ export default function Briffing() {
   const [selecionadas, setSelecionadas] = useState<Set<string>>(new Set());
   const [porcoesPorFicha, setPorcoesPorFicha] = useState<Record<string, number>>({});
   const [cardapioSalvo, setCardapioSalvo] = useState<CardapioSalvo | null>(null);
+  const [previsao, setPrevisao] = useState<BriffingPrevisao | null>(null);
   const [carregando, setCarregando] = useState(false);
   const [erroLista, setErroLista] = useState<string | null>(null);
+
+  const dataPrevisao = cardapioSalvo?.data ?? hojeISO();
+  const servicoPrevisao = (cardapioSalvo?.servico ?? "almoco") as CardapioServico;
 
   const carregarFichas = useCallback(async () => {
     if (!tenantId || !token) return;
@@ -141,6 +148,18 @@ export default function Briffing() {
   useEffect(() => {
     void carregarFichas();
   }, [carregarFichas]);
+  useEffect(() => {
+    if (!tenantId || !token) return;
+    let cancelado = false;
+    listarPrevisoesBriffing(auth, { data: dataPrevisao, servico: servicoPrevisao })
+      .then((lista) => {
+        if (!cancelado) setPrevisao(lista.find((item) => item.data === dataPrevisao && item.servico === servicoPrevisao) ?? null);
+      })
+      .catch(() => {
+        if (!cancelado) setPrevisao(null);
+      });
+    return () => { cancelado = true; };
+  }, [auth, dataPrevisao, servicoPrevisao, tenantId, token]);
 
   const selecionadasLista = useMemo(
     () => fichas.filter((ficha) => selecionadas.has(ficha.id)),
@@ -218,6 +237,24 @@ export default function Briffing() {
           alimenta a requisição de compra do dia.
         </p>
       </header>
+
+      {previsao && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-4">
+          <div>
+            <p className="text-sm font-semibold text-emerald-950">
+              Previsão importada: {NUMERO.format(previsao.ocupacao)} hóspedes
+            </p>
+            <p className="text-xs text-emerald-900">
+              {formatarDataBR(previsao.data)} · {SERVICO_LABEL[previsao.servico] ?? previsao.servico}
+              {previsao.evento ? ` · ${previsao.evento}` : ""}
+              {previsao.observacoes ? ` · ${previsao.observacoes}` : ""}
+            </p>
+          </div>
+          <Button type="button" size="sm" variant="outline" onClick={() => setOcupacao(String(previsao.ocupacao))}>
+            Usar ocupação
+          </Button>
+        </div>
+      )}
 
       {cardapioSalvo && (
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-muted/30 p-3 text-sm">

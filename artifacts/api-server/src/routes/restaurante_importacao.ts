@@ -4,6 +4,7 @@ import { z } from "zod/v4";
 import mammoth from "mammoth";
 import pdfParse from "pdf-parse";
 import {
+  abBriffingPrevisoesTable,
   abCardapioItensTable,
   abCardapiosTable,
   abFichaInsumosTable,
@@ -25,7 +26,7 @@ const router: IRouter = Router();
  * `confirmar`, que grava em transações por item e devolve erros parciais.
  */
 
-const TIPOS = ["receitas", "cardapios", "ingredientes"] as const;
+const TIPOS = ["receitas", "cardapios", "ingredientes", "briffing"] as const;
 type TipoImportacao = (typeof TIPOS)[number];
 const SERVICOS = ["cafe_manha", "almoco", "jantar", "outro"] as const;
 
@@ -72,6 +73,21 @@ function converterQuantidade(value: number, unidadeOriginal: unknown): { quantid
   return { quantidade: value, unidade: base };
 }
 
+function normalizarServico(value: unknown): (typeof SERVICOS)[number] | null {
+  const raw = normalizar(String(value ?? ""));
+  if (["cafe_manha", "cafe da manha", "café da manhã", "breakfast", "manha", "manhã"].includes(raw)) return "cafe_manha";
+  if (["almoco", "almoço", "lunch"].includes(raw)) return "almoco";
+  if (["jantar", "janta", "dinner"].includes(raw)) return "jantar";
+  if (["outro", "outros", "evento", "eventos"].includes(raw)) return "outro";
+  return null;
+}
+
+function ocupacaoValida(value: unknown): number | null {
+  const parsed = numero(value);
+  if (parsed === null || !Number.isInteger(parsed) || parsed < 0 || parsed > 100_000) return null;
+  return parsed;
+}
+
 export type InsumoImportado = {
   nome: string;
   unidade: "g" | "ml" | "un";
@@ -95,11 +111,18 @@ export type IngredienteImportado = {
   precoUnitario: string | null;
   categoria: string | null;
 };
+export type BriffingImportado = {
+  data: string;
+  servico: (typeof SERVICOS)[number];
+  ocupacao: number;
+  evento: string | null;
+  observacoes: string | null;
+};
 
 type Preview = {
   tipo: TipoImportacao;
   formato: string;
-  itens: ReceitaImportada[] | CardapioImportado[] | IngredienteImportado[];
+  itens: ReceitaImportada[] | CardapioImportado[] | IngredienteImportado[] | BriffingImportado[];
   avisos: string[];
 };
 
@@ -359,6 +382,102 @@ export function parseIngredientesDelimitado(rows: string[][], avisos: string[]):
   return itens;
 }
 
+export function parseBriffingDelimitado(rows: string[][], avisos: string[]): BriffingImportado[] {
+  if (rows.length === 0) return [];
+  const headers = rows[0]!;
+  const primeira = headers.map(chaveHeader);
+  const header = primeira.includes("data") || primeira.includes("ocupacao") || primeira.includes("pax");
+  const idxData = header ? acharColuna(headers, ["data", "date", "dia"]) : 0;
+  const idxServico = header ? acharColuna(headers, ["servico", "serviço", "service", "refeicao", "refeição"]) : 1;
+  const idxOcupacao = header ? acharColuna(headers, ["ocupacao", "ocupação", "pax", "hospedes", "hóspedes", "guests", "quantidade"]) : 2;
+  const idxEvento = header ? acharColuna(headers, ["evento", "event", "grupo"]) : 3;
+  const idxObservacoes = header ? acharColuna(headers, ["observacoes", "observações", "obs", "notas"]) : 4;
+  const dataRows = header ? rows.slice(1) : rows;
+  const mapa = new Map<string, BriffingImportado>();
+  for (const row of dataRows) {
+    const data = normalizarData(row[idxData] ?? "");
+    const ocupacao = ocupacaoValida(row[idxOcupacao] ?? "");
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(data) || ocupacao === null) {
+      avisos.push(`Linha de briffing ignorada (data/ocupação): ${row.join(" | ").slice(0, 140)}`);
+      continue;
+    }
+    const servico = normalizarServico(row[idxServico] ?? "") ?? "outro";
+    mapa.set(`${data}|${servico}`, {
+      data,
+      servico,
+      ocupacao,
+      evento: String(row[idxEvento] ?? "").trim() || null,
+      observacoes: String(row[idxObservacoes] ?? "").trim() || null,
+    });
+  }
+  return [...mapa.values()];
+}
+
+export function parseBriffingTexto(text: string, avisos: string[]): BriffingImportado[] {
+  const itens: BriffingImportado[] = [];
+  let atual: Partial<BriffingImportado> = {};
+
+  function flush() {
+    if (atual.data && atual.ocupacao !== undefined) {
+      itens.push({
+        data: atual.data,
+        servico: atual.servico ?? "outro",
+        ocupacao: atual.ocupacao,
+        evento: atual.evento ?? null,
+        observacoes: atual.observacoes ?? null,
+      });
+    } else if (atual.data || atual.ocupacao !== undefined) {
+      avisos.push(`Previsão incompleta ignorada: data=${atual.data ?? "—"} ocupação=${atual.ocupacao ?? "—"}`);
+    }
+    atual = {};
+  }
+
+  for (const linhaOriginal of text.split(/\r?\n/)) {
+    const linha = linhaOriginal.trim();
+    if (!linha) { flush(); continue; }
+
+    const partes = linha.split(/[;|]/).map((parte) => parte.trim());
+    if (partes.length >= 3 && /^(\d{4}-\d{2}-\d{2}|\d{2}[\/.-]\d{2}[\/.-]\d{4})$/.test((partes[0] ?? "").trim())) {
+      const data = normalizarData(partes[0]);
+      const servico = normalizarServico(partes[1]) ?? "outro";
+      const ocupacao = ocupacaoValida(partes[2]);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(data) || ocupacao === null) {
+        avisos.push(`Linha de briffing ignorada: ${linha.slice(0, 140)}`);
+        continue;
+      }
+      if (atual.data || atual.ocupacao !== undefined) flush();
+      itens.push({ data, servico, ocupacao, evento: partes[3] ?? null, observacoes: partes[4] ?? null });
+      continue;
+    }
+
+    const dataMatch = linha.match(/(\d{4}-\d{2}-\d{2}|\d{2}[\/.-]\d{2}[\/.-]\d{4})/);
+    const servicoMatch = linha.match(/(?:servi[cç]o|service|refei[cç][aã]o)\s*[:\-]?\s*([^|;]+)/i);
+    const ocupacaoMatch = linha.match(/(?:ocupa[cç][aã]o|pax|h[oó]spedes|guests|quantidade)\s*[:\-]?\s*(\d+)/i);
+    const eventoMatch = linha.match(/(?:evento|event|grupo)\s*[:\-]?\s*([^|;]+)/i);
+    const obsMatch = linha.match(/(?:observa[cç][oõ]es|obs|notas)\s*[:\-]?\s*([^|;]+)/i);
+
+    const data = dataMatch ? normalizarData(dataMatch[1]) : undefined;
+    if (data && atual.data && atual.ocupacao !== undefined && data !== atual.data) flush();
+    if (data) atual.data = data;
+    if (servicoMatch) atual.servico = normalizarServico(servicoMatch[1]) ?? "outro";
+    if (ocupacaoMatch) {
+      const ocupacao = ocupacaoValida(ocupacaoMatch[1]);
+      if (ocupacao === null) {
+        avisos.push(`Ocupação inválida: ${linha.slice(0, 140)}`);
+        continue;
+      }
+      atual.ocupacao = ocupacao;
+    }
+    if (eventoMatch) atual.evento = eventoMatch[1]!.trim();
+    if (obsMatch) atual.observacoes = obsMatch[1]!.trim();
+
+    // Linha única com data + serviço + ocupação fecha o registro na hora.
+    if (data && servicoMatch && ocupacaoMatch) flush();
+  }
+  flush();
+  return itens;
+}
+
 async function extrairTexto(buffer: Buffer, filename: string): Promise<{ texto: string; formato: string }> {
   const ext = filename.split(".").pop()?.toLowerCase() ?? "";
   const magic = buffer.subarray(0, 5).toString("ascii");
@@ -387,7 +506,7 @@ function parseJson(texto: string, tipo: TipoImportacao): unknown[] {
   if (Array.isArray(parsed)) return parsed;
   if (parsed && typeof parsed === "object") {
     const record = parsed as Record<string, unknown>;
-    for (const key of ["itens", "receitas", "cardapios", "ingredientes", "data"]) {
+    for (const key of ["itens", "receitas", "cardapios", "ingredientes", "briffing", "previsoes", "data"]) {
       if (Array.isArray(record[key])) return record[key] as unknown[];
     }
     return [parsed];
@@ -395,7 +514,26 @@ function parseJson(texto: string, tipo: TipoImportacao): unknown[] {
   return [];
 }
 
-function normalizarJson(tipo: TipoImportacao, rows: unknown[], avisos: string[]): ReceitaImportada[] | CardapioImportado[] | IngredienteImportado[] {
+function normalizarJson(tipo: TipoImportacao, rows: unknown[], avisos: string[]): ReceitaImportada[] | CardapioImportado[] | IngredienteImportado[] | BriffingImportado[] {
+  if (tipo === "briffing") {
+    return rows.flatMap((row) => {
+      if (!row || typeof row !== "object") return [];
+      const r = row as Record<string, unknown>;
+      const data = normalizarData(r.data ?? r.dia);
+      const ocupacao = ocupacaoValida(r.ocupacao ?? r.pax ?? r.hospedes ?? r.guests ?? r.quantidade);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(data) || ocupacao === null) {
+        avisos.push(`Previsão JSON inválida: ${JSON.stringify(row).slice(0, 140)}`);
+        return [];
+      }
+      return [{
+        data,
+        servico: normalizarServico(r.servico ?? r.service ?? r.refeicao) ?? "outro",
+        ocupacao,
+        evento: r.evento ? String(r.evento) : null,
+        observacoes: r.observacoes ? String(r.observacoes) : (r.obs ? String(r.obs) : null),
+      }];
+    });
+  }
   if (tipo === "ingredientes") {
     return rows.flatMap((row) => {
       if (!row || typeof row !== "object") return [];
@@ -475,7 +613,7 @@ router.post("/tenants/:tenantId/restaurante/importacoes/preview", async (req, re
   const avisos: string[] = [];
   try {
     const { texto, formato } = await extrairTexto(buffer, input.data.filename);
-    let itens: ReceitaImportada[] | CardapioImportado[] | IngredienteImportado[];
+    let itens: ReceitaImportada[] | CardapioImportado[] | IngredienteImportado[] | BriffingImportado[];
     if (formato === "json") {
       itens = normalizarJson(input.data.tipo, parseJson(texto, input.data.tipo), avisos);
     } else if (formato === "csv") {
@@ -484,11 +622,15 @@ router.post("/tenants/:tenantId/restaurante/importacoes/preview", async (req, re
         ? parseReceitasDelimitado(rows, avisos)
         : input.data.tipo === "cardapios"
           ? parseCardapiosDelimitado(rows)
-          : parseIngredientesDelimitado(rows, avisos);
+          : input.data.tipo === "briffing"
+            ? parseBriffingDelimitado(rows, avisos)
+            : parseIngredientesDelimitado(rows, avisos);
     } else if (input.data.tipo === "receitas") {
       itens = parseReceitasTexto(texto, input.data.filename, avisos);
     } else if (input.data.tipo === "cardapios") {
       itens = parseCardapiosTexto(texto, avisos);
+    } else if (input.data.tipo === "briffing") {
+      itens = parseBriffingTexto(texto, avisos);
     } else {
       itens = parseIngredientesLinhas(texto.split(/\r?\n/), avisos);
     }
@@ -544,6 +686,16 @@ const confirmarSchema = z.discriminatedUnion("tipo", [
         porcoesPorPax: z.number().finite().positive(),
       })).min(1).max(200),
     })).min(1).max(500),
+  }),
+  z.object({
+    tipo: z.literal("briffing"),
+    itens: z.array(z.object({
+      data: z.iso.date(),
+      servico: z.enum(SERVICOS),
+      ocupacao: z.number().int().min(0).max(100_000),
+      evento: z.string().trim().max(255).nullable().optional(),
+      observacoes: z.string().trim().max(2000).nullable().optional(),
+    })).min(1).max(1000),
   }),
 ]);
 
@@ -653,7 +805,7 @@ router.post("/tenants/:tenantId/restaurante/importacoes/confirmar", async (req, 
           resultado.erros.push(`${receita.nome}: ${error instanceof Error ? error.message : String(error)}`);
         }
       }
-    } else {
+    } else if (input.data.tipo === "cardapios") {
       for (const menu of input.data.itens) {
         try {
           await withTenantTx(tenantId, async (tx) => {
@@ -691,6 +843,44 @@ router.post("/tenants/:tenantId/restaurante/importacoes/confirmar", async (req, 
           });
         } catch (error) {
           resultado.erros.push(`${menu.nome}: ${error instanceof Error ? error.message : String(error)}`);
+        }
+      }
+    } else {
+      for (const previsao of input.data.itens) {
+        try {
+          await withTenantTx(tenantId, async (tx) => {
+            const [existente] = await tx
+              .select({ id: abBriffingPrevisoesTable.id })
+              .from(abBriffingPrevisoesTable)
+              .where(and(
+                eq(abBriffingPrevisoesTable.tenantId, tenantId),
+                eq(abBriffingPrevisoesTable.data, previsao.data),
+                eq(abBriffingPrevisoesTable.servico, previsao.servico),
+              ))
+              .limit(1);
+            if (existente) {
+              await tx.update(abBriffingPrevisoesTable).set({
+                ocupacao: previsao.ocupacao,
+                evento: previsao.evento ?? null,
+                observacoes: previsao.observacoes ?? null,
+                updatedAt: new Date(),
+              }).where(eq(abBriffingPrevisoesTable.id, existente.id));
+              resultado.atualizados += 1;
+            } else {
+              await tx.insert(abBriffingPrevisoesTable).values({
+                tenantId,
+                data: previsao.data,
+                servico: previsao.servico,
+                ocupacao: previsao.ocupacao,
+                evento: previsao.evento ?? null,
+                observacoes: previsao.observacoes ?? null,
+                createdBy: req.user?.sub ?? null,
+              });
+              resultado.criados += 1;
+            }
+          });
+        } catch (error) {
+          resultado.erros.push(`${previsao.data} ${previsao.servico}: ${error instanceof Error ? error.message : String(error)}`);
         }
       }
     }

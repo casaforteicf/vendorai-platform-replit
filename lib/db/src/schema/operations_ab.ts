@@ -898,3 +898,46 @@ export const insertAbCardapioItemSchema = createInsertSchema(abCardapioItensTabl
 export const selectAbCardapioItemSchema = createSelectSchema(abCardapioItensTable);
 export type AbCardapioItem = typeof abCardapioItensTable.$inferSelect;
 export type InsertAbCardapioItem = typeof abCardapioItensTable.$inferInsert;
+
+/**
+ * AB-12 — previsão de ocupação do Briffing por data e serviço.
+ *
+ * O Briffing é calculado (não persistido), mas a ocupação que o alimenta pode
+ * vir de uma planilha/documento importado. Esta tabela guarda a previsão
+ * oficial por serviço; a tela usa o valor como sugestão e o usuário confirma.
+ */
+export const abBriffingPrevisoesTable = pgTable(
+  "ab_briffing_previsoes",
+  {
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
+    tenantId: text("tenant_id")
+      .notNull()
+      .references(() => tenantsTable.id, { onDelete: "cascade" }),
+    data: date("data", { mode: "string" }).notNull(),
+    servico: text("servico").notNull(),
+    ocupacao: integer("ocupacao").notNull(),
+    evento: text("evento"),
+    observacoes: text("observacoes"),
+    createdBy: text("created_by"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
+  },
+  (table) => [
+    unique("ab_briffing_previsoes_tenant_id_uq").on(table.tenantId, table.id),
+    unique("ab_briffing_previsoes_data_servico_uq").on(table.tenantId, table.data, table.servico),
+    index("ab_briffing_previsoes_tenant_data_idx").on(table.tenantId, table.data),
+    check(
+      "ab_briffing_previsoes_servico_check",
+      sql`${table.servico} IN ('cafe_manha', 'almoco', 'jantar', 'outro')`,
+    ),
+    check("ab_briffing_previsoes_ocupacao_check", sql`${table.ocupacao} >= 0`),
+  ],
+);
+
+export const selectAbBriffingPrevisaoSchema = createSelectSchema(abBriffingPrevisoesTable);
+export type AbBriffingPrevisao = typeof abBriffingPrevisoesTable.$inferSelect;

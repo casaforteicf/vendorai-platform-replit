@@ -577,6 +577,38 @@ export type Cardapio = {
   itens: CardapioItem[];
 };
 
+export type BriffingPrevisao = {
+  id: string;
+  data: string;
+  servico: CardapioServico;
+  ocupacao: number;
+  evento: string | null;
+  observacoes: string | null;
+  updatedAt: string;
+};
+
+export async function listarPrevisoesBriffing(
+  auth: AbAuth,
+  filtro?: { data?: string; servico?: CardapioServico },
+): Promise<BriffingPrevisao[]> {
+  const params = new URLSearchParams();
+  if (filtro?.data) params.set("data", filtro.data);
+  if (filtro?.servico) params.set("servico", filtro.servico);
+  const sufixo = params.toString() ? `/briffing/previsoes?${params.toString()}` : "/briffing/previsoes";
+  const resposta = await requisitar<{ previsoes: BriffingPrevisao[] }>(auth, urlAb(auth, sufixo));
+  return resposta.previsoes ?? [];
+}
+
+export async function salvarPrevisaoBriffing(
+  auth: AbAuth,
+  entrada: { data: string; servico: CardapioServico; ocupacao: number; evento?: string | null; observacoes?: string | null },
+): Promise<BriffingPrevisao> {
+  return requisitar<BriffingPrevisao>(auth, urlAb(auth, "/briffing/previsoes"), {
+    method: "PUT",
+    body: JSON.stringify(entrada),
+  });
+}
+
 export type CardapioItemInput = {
   fichaId: string;
   porcoesPorPax?: number;

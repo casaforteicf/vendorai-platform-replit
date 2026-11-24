@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   normalizarData,
   numero,
+  parseBriffingDelimitado,
+  parseBriffingTexto,
   parseCardapiosDelimitado,
   parseCardapiosTexto,
   parseDelimited,
@@ -73,6 +75,34 @@ describe("Restaurante — parsers de importação", () => {
     expect(receitas[0]!.nome).toBe("Arroz branco");
     expect(receitas[0]!.rendimentoPorcoes).toBe(10);
     expect(receitas[0]!.insumos).toHaveLength(2);
+  });
+
+  it("lê briffing em CSV com data brasileira e serviço", () => {
+    const { rows } = parseDelimited("data;servico;ocupacao;evento;observacoes\n25/11/2026;almoço;150;Almoço executivo;Grupo\n");
+    const avisos: string[] = [];
+    const itens = parseBriffingDelimitado(rows, avisos);
+    expect(itens).toEqual([{ data: "2026-11-25", servico: "almoco", ocupacao: 150, evento: "Almoço executivo", observacoes: "Grupo" }]);
+    expect(avisos).toHaveLength(0);
+  });
+
+  it("lê briffing em texto de uma linha com data, serviço e ocupação", () => {
+    const avisos: string[] = [];
+    const itens = parseBriffingTexto(
+      "Data: 25/11/2026 | Serviço: jantar | Ocupação: 80 | Evento: Confraternização\n",
+      avisos,
+    );
+    expect(itens).toEqual([{ data: "2026-11-25", servico: "jantar", ocupacao: 80, evento: "Confraternização", observacoes: null }]);
+    expect(avisos).toHaveLength(0);
+  });
+
+  it("lê briffing em bloco de linhas separadas", () => {
+    const avisos: string[] = [];
+    const itens = parseBriffingTexto(
+      "Data: 26/11/2026\nServiço: almoço\nOcupação: 120\nEvento: Grupo\n",
+      avisos,
+    );
+    expect(itens).toEqual([{ data: "2026-11-26", servico: "almoco", ocupacao: 120, evento: "Grupo", observacoes: null }]);
+    expect(avisos).toHaveLength(0);
   });
 
   it("lê cardápio em texto com item no formato receita: porções", () => {
