@@ -361,6 +361,8 @@ export default function ContentProductionQueue({ tenantId }: { tenantId: string 
   const [contentFilter, setContentFilter] = useState<"all" | "ready" | "review" | "approved" | "published">("all");
   const [selectedContentIds, setSelectedContentIds] = useState<string[]>([]);
   const [batchApproving, setBatchApproving] = useState(false);
+  const [approvingPlan, setApprovingPlan] = useState(false);
+  const [planApprovalError, setPlanApprovalError] = useState("");
 
   const planRef = useRef<MediaPlan | null>(null);
   const calendarRef = useRef<CalendarItem[]>([]);
@@ -1041,6 +1043,30 @@ export default function ContentProductionQueue({ tenantId }: { tenantId: string 
     }
   }
 
+  async function approvePlan() {
+    if (!plan || approvingPlan) return;
+    setApprovingPlan(true);
+    setPlanApprovalError("");
+    try {
+      const response = await fetch(`/api/tenants/${tenantId}/media-plan/${plan.id}`, {
+        method: "PATCH",
+        headers: { ...authHeaders(), "Content-Type": "application/json" } as Record<string, string>,
+        body: JSON.stringify({ patch: { campanhas: plan.conteudo.campanhas ?? [] }, aprovar: true }),
+      });
+      const payload = await response.json().catch(() => ({})) as MediaPlan & { error?: string };
+      if (!response.ok) throw new Error(payload.error ?? "Não foi possível aprovar o planejamento.");
+      await load();
+      toast({
+        title: "Planejamento aprovado",
+        description: "Agora você pode aprovar os conteúdos e liberar a produção.",
+      });
+    } catch (error) {
+      setPlanApprovalError(error instanceof Error ? error.message : "Não foi possível aprovar o planejamento.");
+    } finally {
+      setApprovingPlan(false);
+    }
+  }
+
   async function runBatch() {
     if (!plan || batchEligible.length === 0) return;
     setBatchRunning(true);
@@ -1103,6 +1129,34 @@ export default function ContentProductionQueue({ tenantId }: { tenantId: string 
       {planMismatch && (
         <Card className="border-amber-300 bg-amber-50/50">
           <CardContent className="py-3 text-sm text-amber-800">Este link pertence a uma versão anterior do plano. A fila abaixo mostra o planejamento atual.</CardContent>
+        </Card>
+      )}
+
+      {!planApproved && (
+        <Card className="border-amber-300 bg-amber-50/60">
+          <CardContent className="flex flex-wrap items-center justify-between gap-3 py-3">
+            <div>
+              <p className="text-sm font-semibold text-amber-950">O Plano de Mídia ainda está em revisão</p>
+              <p className="text-xs text-amber-900">
+                Aprove o planejamento para liberar o botão <strong>Aprovar e liberar</strong> e a produção dos conteúdos.
+              </p>
+              {planApprovalError ? <p className="mt-1 text-xs font-medium text-red-700">{planApprovalError}</p> : null}
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Button type="button" size="sm" onClick={() => void approvePlan()} disabled={approvingPlan}>
+                {approvingPlan ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="mr-1.5 h-3.5 w-3.5" />}
+                {approvingPlan ? "Aprovando..." : "Aprovar planejamento"}
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() => navigate(`/content?source=media-plan&tab=planejamento&mediaPlanId=${encodeURIComponent(plan.id)}`)}
+              >
+                Revisar planejamento
+              </Button>
+            </div>
+          </CardContent>
         </Card>
       )}
 
