@@ -1,11 +1,11 @@
 import HotelModulesNav from "./HotelModulesNav";
 import {useEffect,useState} from "react";
 import {useAuth} from "@/contexts/AuthContext";
-type Plan={id:string;name:string;currency:string;standard_amount:string;extra_guest_amount:string;active:boolean};
+type Plan={id:string;name:string;currency:string;standard_amount:string;extra_guest_amount:string;room_category:string|null;active:boolean};
 const today=()=>{const d=new Date();return new Date(d.getTime()-d.getTimezoneOffset()*60000).toISOString().slice(0,10);};
 export default function HotelTarifas(){
  const {user,token}=useAuth(),tenantId=user?.tenantId;
- const [plans,setPlans]=useState<Plan[]>([]),[name,setName]=useState(""),[base,setBase]=useState(""),[extra,setExtra]=useState("0");
+ const [plans,setPlans]=useState<Plan[]>([]),[name,setName]=useState(""),[base,setBase]=useState(""),[extra,setExtra]=useState("0"),[planCategory,setPlanCategory]=useState("");
  const [planId,setPlanId]=useState(""),[start,setStart]=useState(today()),[end,setEnd]=useState(today()),[weekday,setWeekday]=useState(""),[special,setSpecial]=useState(""),[priority,setPriority]=useState(0);
  const [arrival,setArrival]=useState(today()),[departure,setDeparture]=useState(""),[guests,setGuests]=useState(2);
  const [quote,setQuote]=useState<{id:string;total_amount:string;nights:{date:string;amount:string}[]}|null>(null);
@@ -26,18 +26,20 @@ export default function HotelTarifas(){
   <header><h1 className="text-2xl font-semibold">Tarifas e diárias · Hotelaria</h1><p className="text-sm text-muted-foreground">Preços editáveis por hotel, período e dia da semana. Cotações não geram cobranças automaticamente.</p></header>
   {message&&<p role="status" className="rounded border p-3 text-sm">{message}</p>}
   <div className="grid gap-4 lg:grid-cols-2">
-   <form className="space-y-3 rounded-lg border p-4" onSubmit={e=>{e.preventDefault();void submit("","POST",{name:name.trim(),standardAmount:money(base),extraGuestAmount:money(extra)},"Plano tarifário criado.");}}>
+   <form className="space-y-3 rounded-lg border p-4" onSubmit={e=>{e.preventDefault();void submit("","POST",{name:name.trim(),standardAmount:money(base),extraGuestAmount:money(extra),roomCategory:planCategory.trim()||null},"Plano tarifário criado.");}}>
     <h2 className="font-semibold">Novo plano tarifário</h2>
     <input required className="w-full rounded border p-2" placeholder="Ex.: Tarifa balcão" value={name} onChange={e=>setName(e.target.value)}/>
     <label className="block text-sm">Valor-base por noite (R$)<input required type="number" step=".01" min="0" className="w-full rounded border p-2" value={base} onChange={e=>setBase(e.target.value)}/></label>
     <label className="block text-sm">Adicional por hóspede/noite (R$)<input required type="number" step=".01" min="0" className="w-full rounded border p-2" value={extra} onChange={e=>setExtra(e.target.value)}/></label>
+    <label className="block text-sm">Categoria de apartamento (opcional)<input maxLength={40} className="w-full rounded border p-2" placeholder="standard, luxo, suíte..." value={planCategory} onChange={e=>setPlanCategory(e.target.value)}/></label>
     <button disabled={busy} className="rounded border px-3 py-2">Criar plano</button>
    </form>
    <section className="space-y-2 rounded-lg border p-4"><h2 className="font-semibold">Planos cadastrados</h2>
     {!plans.length&&<p className="text-sm">Nenhuma tarifa cadastrada.</p>}
     {plans.map(p=><div key={p.id} className="flex flex-wrap items-center justify-between gap-2 border-b p-2 text-sm">
-     <div><strong>{p.name}</strong><p>Base: R$ {p.standard_amount} · Extra: R$ {p.extra_guest_amount}</p><p>{p.active?"Ativo":"Inativo"}</p></div>
-     <div className="flex gap-2"><button type="button" disabled={busy} className="rounded border px-2 py-1" onClick={()=>{const value=window.prompt("Novo valor-base",p.standard_amount);if(value!==null&&Number.isFinite(money(value))&&money(value)>=0)void submit("/"+p.id,"PATCH",{standardAmount:money(value)},"Tarifa atualizada.");}}>Editar valor</button>
+     <div><strong>{p.name}</strong><p>Base: R$ {p.standard_amount} · Extra: R$ {p.extra_guest_amount}</p><p>Categoria: {p.room_category??"todas"}</p><p>{p.active?"Ativo":"Inativo"}</p></div>
+     <div className="flex flex-wrap gap-2"><button type="button" disabled={busy} className="rounded border px-2 py-1" onClick={()=>{const value=window.prompt("Novo valor-base",p.standard_amount);if(value!==null&&Number.isFinite(money(value))&&money(value)>=0)void submit("/"+p.id,"PATCH",{standardAmount:money(value)},"Tarifa atualizada.");}}>Editar valor</button>
+     <button type="button" disabled={busy} className="rounded border px-2 py-1" onClick={()=>{const value=window.prompt("Categoria do apartamento (vazio = todas)",p.room_category??"");if(value!==null)void submit("/"+p.id,"PATCH",{roomCategory:value.trim()||null},"Categoria atualizada.");}}>Editar categoria</button>
      <button type="button" disabled={busy} className="rounded border px-2 py-1" onClick={()=>void submit("/"+p.id,"PATCH",{active:!p.active},"Status atualizado.")}>{p.active?"Desativar":"Ativar"}</button></div>
     </div>)}
    </section>
