@@ -767,3 +767,134 @@ export const insertAbRequisicaoSchema = createInsertSchema(abRequisicoesTable, {
 export const selectAbRequisicaoSchema = createSelectSchema(abRequisicoesTable);
 export type AbRequisicao = typeof abRequisicoesTable.$inferSelect;
 export type InsertAbRequisicao = typeof abRequisicoesTable.$inferInsert;
+
+// ─── 10) Cardápios por data/serviço (AB-10) ──────────────────────────────────
+
+/**
+ * Serviço do cardápio. `outro` cobre eventos e serviços fora do padrão.
+ * Texto + CHECK (não ENUM) segue o padrão do módulo: adicionar um serviço novo
+ * não exige ALTER TYPE em produção.
+ */
+export const AB_SERVICOS_CARDAPIO = [
+  "cafe_manha",
+  "almoco",
+  "jantar",
+  "outro",
+] as const;
+
+export type AbServicoCardapio = (typeof AB_SERVICOS_CARDAPIO)[number];
+
+/**
+ * Cardápio de um serviço em uma data. É a ponte entre a ficha técnica (o que a
+ * cozinha sabe produzir) e o briffing (quanto comprar para a ocupação do dia).
+ *
+ * O nome é único por (hotel, data, serviço) para o operador não criar dois
+ * cardápios iguais sem perceber. Um mesmo prato não entra duas vezes no mesmo
+ * cardápio — a porção por hóspede é um número só.
+ */
+export const abCardapiosTable = pgTable(
+  "ab_cardapios",
+  {
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
+    tenantId: text("tenant_id")
+      .notNull()
+      .references(() => tenantsTable.id, { onDelete: "cascade" }),
+    nome: text("nome").notNull(),
+    data: date("data", { mode: "string" }).notNull(),
+    servico: text("servico").notNull(),
+    ativo: boolean("ativo").notNull().default(true),
+    observacao: text("observacao"),
+    createdBy: text("created_by").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
+  },
+  (table) => [
+    unique("ab_cardapios_tenant_id_uq").on(table.tenantId, table.id),
+    unique("ab_cardapios_tenant_data_servico_nome_uq").on(
+      table.tenantId,
+      table.data,
+      table.servico,
+      table.nome,
+    ),
+    index("ab_cardapios_tenant_data_idx").on(table.tenantId, table.data, table.servico),
+    check("ab_cardapios_nome_nao_vazio", sql`length(btrim(${table.nome})) > 0`),
+    check(
+      "ab_cardapios_servico_valido",
+      sql`${table.servico} IN ('cafe_manha', 'almoco', 'jantar', 'outro')`,
+    ),
+  ],
+);
+
+export const insertAbCardapioSchema = createInsertSchema(abCardapiosTable, {
+  nome: z.string().trim().min(1).max(120),
+  data: dataISO,
+  servico: z.enum(AB_SERVICOS_CARDAPIO),
+  observacao: z.string().trim().max(2000).nullable().optional(),
+}).omit({ id: true, tenantId: true, createdBy: true, createdAt: true, updatedAt: true });
+
+export const selectAbCardapioSchema = createSelectSchema(abCardapiosTable);
+export type AbCardapio = typeof abCardapiosTable.$inferSelect;
+export type InsertAbCardapio = typeof abCardapiosTable.$inferInsert;
+
+/**
+ * Prato do cardápio. `fichaNome` é snapshot: o cardápio impresso/calculado não
+ * muda porque a ficha foi renomeada depois.
+ */
+export const abCardapioItensTable = pgTable(
+  "ab_cardapio_itens",
+  {
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
+    tenantId: text("tenant_id")
+      .notNull()
+      .references(() => tenantsTable.id, { onDelete: "cascade" }),
+    cardapioId: text("cardapio_id").notNull(),
+    fichaId: text("ficha_id").notNull(),
+    fichaNome: text("ficha_nome").notNull(),
+    porcoesPorPax: numeric("porcoes_por_pax", { precision: 8, scale: 3 })
+      .notNull()
+      .default("1"),
+    ordem: integer("ordem").notNull().default(0),
+    observacao: text("observacao"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
+  },
+  (table) => [
+    unique("ab_cardapio_itens_tenant_id_uq").on(table.tenantId, table.id),
+    unique("ab_cardapio_itens_cardapio_ficha_uq").on(
+      table.tenantId,
+      table.cardapioId,
+      table.fichaId,
+    ),
+    index("ab_cardapio_itens_cardapio_idx").on(
+      table.tenantId,
+      table.cardapioId,
+      table.ordem,
+    ),
+    check("ab_cardapio_itens_nome_nao_vazio", sql`length(btrim(${table.fichaNome})) > 0`),
+    check("ab_cardapio_itens_porcoes_positivas", sql`${table.porcoesPorPax} > 0`),
+    check("ab_cardapio_itens_ordem_nao_negativa", sql`${table.ordem} >= 0`),
+  ],
+);
+
+export const insertAbCardapioItemSchema = createInsertSchema(abCardapioItensTable, {
+  cardapioId: z.string().uuid(),
+  fichaId: z.string().uuid(),
+  fichaNome: z.string().trim().min(1).max(120),
+  porcoesPorPax: decimalPositivo.optional(),
+  ordem: z.number().int().min(0).optional(),
+  observacao: z.string().trim().max(1000).nullable().optional(),
+}).omit({ id: true, tenantId: true, createdAt: true, updatedAt: true });
+
+export const selectAbCardapioItemSchema = createSelectSchema(abCardapioItensTable);
+export type AbCardapioItem = typeof abCardapioItensTable.$inferSelect;
+export type InsertAbCardapioItem = typeof abCardapioItensTable.$inferInsert;

@@ -528,3 +528,206 @@ export async function buscarCmv(
   const query = params.toString();
   return requisitar<CmvDashboard>(auth, urlAb(auth, `/dashboard/cmv${query ? `?${query}` : ""}`));
 }
+
+// ─── Cardápios por data/serviço (AB-10) ─────────────────────────────────────
+
+export type CardapioServico = "cafe_manha" | "almoco" | "jantar" | "outro";
+
+export type CardapioItem = {
+  id: string;
+  tenantId: string;
+  cardapioId: string;
+  fichaId: string;
+  fichaNome: string;
+  porcoesPorPax: string;
+  ordem: number;
+  observacao: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type Cardapio = {
+  id: string;
+  tenantId: string;
+  nome: string;
+  data: string;
+  servico: CardapioServico;
+  ativo: boolean;
+  observacao: string | null;
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
+  itens: CardapioItem[];
+};
+
+export type CardapioItemInput = {
+  fichaId: string;
+  porcoesPorPax?: number;
+  ordem?: number;
+  observacao?: string | null;
+};
+
+export type CardapioInput = {
+  nome: string;
+  data: string;
+  servico: CardapioServico;
+  ativo?: boolean;
+  observacao?: string | null;
+  itens: CardapioItemInput[];
+};
+
+export type CardapioPatch = Partial<Omit<CardapioInput, "itens">> & {
+  itens?: CardapioItemInput[];
+};
+
+export async function listarCardapios(
+  auth: AbAuth,
+  filtro: { data?: string; servico?: CardapioServico; incluirInativos?: boolean } = {},
+): Promise<Cardapio[]> {
+  const params = new URLSearchParams();
+  if (filtro.data) params.set("data", filtro.data);
+  if (filtro.servico) params.set("servico", filtro.servico);
+  if (filtro.incluirInativos) params.set("incluirInativos", "true");
+  const query = params.toString();
+  const resposta = await requisitar<{ cardapios: Cardapio[] }>(
+    auth,
+    urlAb(auth, `/cardapios${query ? `?${query}` : ""}`),
+  );
+  return resposta.cardapios ?? [];
+}
+
+export async function obterCardapio(auth: AbAuth, id: string): Promise<Cardapio> {
+  return requisitar<Cardapio>(auth, urlAb(auth, `/cardapios/${encodeURIComponent(id)}`));
+}
+
+export async function criarCardapio(auth: AbAuth, entrada: CardapioInput): Promise<Cardapio> {
+  return requisitar<Cardapio>(auth, urlAb(auth, "/cardapios"), {
+    method: "POST",
+    body: JSON.stringify(entrada),
+  });
+}
+
+export async function atualizarCardapio(
+  auth: AbAuth,
+  id: string,
+  alteracao: CardapioPatch,
+): Promise<Cardapio> {
+  return requisitar<Cardapio>(auth, urlAb(auth, `/cardapios/${encodeURIComponent(id)}`), {
+    method: "PATCH",
+    body: JSON.stringify(alteracao),
+  });
+}
+
+export async function excluirCardapio(auth: AbAuth, id: string): Promise<void> {
+  await requisitar<null>(auth, urlAb(auth, `/cardapios/${encodeURIComponent(id)}`), {
+    method: "DELETE",
+  });
+}
+
+// ─── Ordens de compra do motor preditivo (AB-11) ────────────────────────────
+
+export type OrdemCompraStatus = "sugerida" | "aprovada" | "enviada" | "recebida" | "cancelada";
+
+export type OrdemCompraItem = {
+  id: string;
+  tenantId: string;
+  ordemId: string;
+  insumoId: string;
+  insumoNome: string;
+  quantidade: string;
+  unidade: "g" | "ml" | "un";
+  custoEstimado: string | null;
+  observacao: string | null;
+  createdAt: string;
+};
+
+export type OrdemCompra = {
+  id: string;
+  tenantId: string;
+  coberturaInicio: string;
+  coberturaFim: string;
+  status: OrdemCompraStatus;
+  observacao: string | null;
+  aprovadaPor: string | null;
+  aprovadaEm: string | null;
+  createdAt: string;
+  updatedAt: string;
+  itens: OrdemCompraItem[];
+};
+
+export type ResumoMotorPreditivo = {
+  dataReferencia: string;
+  coberturaFim: string;
+  tenantsAvaliados: number;
+  tenantsComSugestao: number;
+  ordensGeradas: number;
+  itensGerados: number;
+  ordensJaExistentes: number;
+  seco: boolean;
+  erros: Array<{ tenantId: string; erro: string }>;
+};
+
+export async function listarOrdensCompra(
+  auth: AbAuth,
+  filtro: { status?: OrdemCompraStatus } = {},
+): Promise<OrdemCompra[]> {
+  const params = new URLSearchParams();
+  if (filtro.status) params.set("status", filtro.status);
+  const query = params.toString();
+  const resposta = await requisitar<{ ordens: OrdemCompra[] }>(
+    auth,
+    urlAb(auth, `/ordens-compra${query ? `?${query}` : ""}`),
+  );
+  return resposta.ordens ?? [];
+}
+
+export async function obterOrdemCompra(auth: AbAuth, id: string): Promise<OrdemCompra> {
+  return requisitar<OrdemCompra>(auth, urlAb(auth, `/ordens-compra/${encodeURIComponent(id)}`));
+}
+
+export async function gerarOrdemCompra(
+  auth: AbAuth,
+  opcoes: { dataReferencia?: string; diasCobertura?: number; janelaDias?: number } = {},
+): Promise<{ ordem: OrdemCompra | null; resumo: ResumoMotorPreditivo }> {
+  return requisitar<{ ordem: OrdemCompra | null; resumo: ResumoMotorPreditivo }>(
+    auth,
+    urlAb(auth, "/ordens-compra/gerar"),
+    { method: "POST", body: JSON.stringify(opcoes) },
+  );
+}
+
+export async function atualizarOrdemCompra(
+  auth: AbAuth,
+  id: string,
+  alteracao: { status?: OrdemCompraStatus; observacao?: string | null },
+): Promise<OrdemCompra> {
+  return requisitar<OrdemCompra>(auth, urlAb(auth, `/ordens-compra/${encodeURIComponent(id)}`), {
+    method: "PATCH",
+    body: JSON.stringify(alteracao),
+  });
+}
+
+export async function atualizarItemOrdemCompra(
+  auth: AbAuth,
+  ordemId: string,
+  itemId: string,
+  alteracao: { quantidade?: number; custoEstimado?: number | null; observacao?: string | null },
+): Promise<OrdemCompra> {
+  return requisitar<OrdemCompra>(
+    auth,
+    urlAb(auth, `/ordens-compra/${encodeURIComponent(ordemId)}/itens/${encodeURIComponent(itemId)}`),
+    { method: "PATCH", body: JSON.stringify(alteracao) },
+  );
+}
+
+export async function removerItemOrdemCompra(
+  auth: AbAuth,
+  ordemId: string,
+  itemId: string,
+): Promise<OrdemCompra> {
+  return requisitar<OrdemCompra>(
+    auth,
+    urlAb(auth, `/ordens-compra/${encodeURIComponent(ordemId)}/itens/${encodeURIComponent(itemId)}`),
+    { method: "DELETE" },
+  );
+}

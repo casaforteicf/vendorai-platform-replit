@@ -23,9 +23,10 @@ import {
  * — sem isso a RLS de `ab_estoque_saldos` não devolve nada e o motor acharia que
  * nenhum hotel tem saldo.
  *
- * Idempotência: se já existe uma ordem `sugerida` com o mesmo período de
- * cobertura, nada é criado. Rodar o job duas vezes no mesmo dia não duplica
- * pedido de compra.
+ * Idempotência: se já existe uma ordem do mesmo período que ainda representa
+ * uma compra (sugerida/aprovada/enviada/recebida), nada é criado. Rodar o job
+ * duas vezes no mesmo dia — ou gerar de novo depois de aprovar — não duplica
+ * pedido de compra. Só uma ordem cancelada libera nova geração.
  */
 
 export type ResumoMotorPreditivo = {
@@ -106,7 +107,11 @@ export async function executarMotorPreditivo(
         if (saldos.length === 0) return [];
 
         const nomes = await tx
-          .select({ id: insumosTable.id, nome: insumosTable.nome })
+          .select({
+            id: insumosTable.id,
+            nome: insumosTable.nome,
+            precoUnitario: insumosTable.precoUnitario,
+          })
           .from(insumosTable)
           .where(
             inArray(
@@ -115,6 +120,7 @@ export async function executarMotorPreditivo(
             ),
           );
         const nomePorInsumo = new Map(nomes.map((n) => [n.id, n.nome]));
+        const precoPorInsumo = new Map(nomes.map((n) => [n.id, n.precoUnitario]));
 
         const consumos = await tx
           .select({
@@ -160,7 +166,7 @@ export async function executarMotorPreditivo(
           .where(
             and(
               eq(abOrdensCompraTable.tenantId, tenantId),
-              eq(abOrdensCompraTable.status, "sugerida"),
+              inArray(abOrdensCompraTable.status, ["sugerida", "aprovada", "enviada", "recebida"]),
               eq(abOrdensCompraTable.coberturaInicio, dataReferencia),
               eq(abOrdensCompraTable.coberturaFim, coberturaFim),
             ),
@@ -191,6 +197,7 @@ export async function executarMotorPreditivo(
             insumoNome: sugestao.insumoNome,
             quantidade: String(sugestao.quantidadeSugerida),
             unidade: sugestao.unidade,
+            custoEstimado: precoPorInsumo.get(sugestao.insumoId) ?? null,
           })),
         );
 

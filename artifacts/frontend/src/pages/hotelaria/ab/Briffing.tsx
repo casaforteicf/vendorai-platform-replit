@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { Link, useSearch } from "wouter";
 import HotelModulesNav from "../HotelModulesNav";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -24,7 +25,14 @@ import {
 } from "@/lib/ab/briffing";
 import { formatarDataBR, hojeISO } from "@/lib/ab/datas";
 import { useAuth } from "@/contexts/AuthContext";
-import { listarFichas, mensagemDoErro, type AbAuth, type FichaTecnica } from "@/lib/ab/client";
+import {
+  listarFichas,
+  mensagemDoErro,
+  obterCardapio,
+  type AbAuth,
+  type Cardapio as CardapioSalvo,
+  type FichaTecnica,
+} from "@/lib/ab/client";
 
 /**
  * Briffing — resumo de produção de A&B.
@@ -50,11 +58,11 @@ function chaveInsumo(insumo: { insumoId: string | null; insumoNome: string }): s
   return insumo.insumoId ?? `nome:${insumo.insumoNome.trim().toLowerCase()}`;
 }
 
-function fichaParaPrato(ficha: FichaTecnica): Prato {
+function fichaParaPrato(ficha: FichaTecnica, porcoesPorPax = 1): Prato {
   return {
     id: ficha.id,
     nome: ficha.nome,
-    porcoesPorPax: 1,
+    porcoesPorPax,
     ficha: ficha.insumos.map((insumo) => {
       const fator = Number(insumo.fatorCorrecao);
       return {
@@ -68,10 +76,19 @@ function fichaParaPrato(ficha: FichaTecnica): Prato {
   };
 }
 
+const SERVICO_LABEL: Record<string, string> = {
+  cafe_manha: "Café da manhã",
+  almoco: "Almoço",
+  jantar: "Jantar",
+  outro: "Outro",
+};
+
 export default function Briffing() {
   const { user, token } = useAuth();
   const tenantId = user?.tenantId ?? "";
   const auth = useMemo<AbAuth>(() => ({ token: token ?? "", tenantId }), [token, tenantId]);
+  const search = useSearch();
+  const cardapioId = new URLSearchParams(search).get("cardapio");
 
   const [ocupacao, setOcupacao] = useState("150");
   const [resultado, setResultado] = useState<ResultadoBriffing | null>(null);
@@ -80,6 +97,8 @@ export default function Briffing() {
 
   const [fichas, setFichas] = useState<FichaTecnica[]>([]);
   const [selecionadas, setSelecionadas] = useState<Set<string>>(new Set());
+  const [porcoesPorFicha, setPorcoesPorFicha] = useState<Record<string, number>>({});
+  const [cardapioSalvo, setCardapioSalvo] = useState<CardapioSalvo | null>(null);
   const [carregando, setCarregando] = useState(false);
   const [erroLista, setErroLista] = useState<string | null>(null);
 
@@ -90,15 +109,34 @@ export default function Briffing() {
     try {
       const carregadas = await listarFichas(auth);
       setFichas(carregadas);
-      // Começa com todas as fichas ativas selecionadas — o caso comum é o
-      // cardápio usar a maior parte do que está cadastrado.
-      setSelecionadas(new Set(carregadas.filter((f) => f.ativo).map((f) => f.id)));
+
+      if (cardapioId) {
+        try {
+          const menu = await obterCardapio(auth, cardapioId);
+          setCardapioSalvo(menu);
+          setPorcoesPorFicha(
+            Object.fromEntries(menu.itens.map((item) => [item.fichaId, Number(item.porcoesPorPax)])),
+          );
+          setSelecionadas(new Set(menu.itens.map((item) => item.fichaId)));
+        } catch (falha) {
+          setCardapioSalvo(null);
+          setPorcoesPorFicha({});
+          setSelecionadas(new Set(carregadas.filter((f) => f.ativo).map((f) => f.id)));
+          setErroLista(`Cardápio não carregado: ${mensagemDoErro(falha)}. Usando todas as fichas ativas.`);
+        }
+      } else {
+        // Sem cardápio na URL, mantém o comportamento de produção: todas as
+        // fichas ativas entram com uma porção por hóspede.
+        setCardapioSalvo(null);
+        setPorcoesPorFicha({});
+        setSelecionadas(new Set(carregadas.filter((f) => f.ativo).map((f) => f.id)));
+      }
     } catch (falha) {
       setErroLista(mensagemDoErro(falha));
     } finally {
       setCarregando(false);
     }
-  }, [auth, tenantId, token]);
+  }, [auth, cardapioId, tenantId, token]);
 
   useEffect(() => {
     void carregarFichas();
@@ -110,8 +148,11 @@ export default function Briffing() {
   );
 
   const cardapio: CardapioDia = useMemo(
-    () => ({ data: hojeISO(), pratos: selecionadasLista.map(fichaParaPrato) }),
-    [selecionadasLista],
+    () => ({
+      data: cardapioSalvo?.data ?? hojeISO(),
+      pratos: selecionadasLista.map((ficha) => fichaParaPrato(ficha, porcoesPorFicha[ficha.id] ?? 1)),
+    }),
+    [cardapioSalvo?.data, porcoesPorFicha, selecionadasLista],
   );
 
   const valorAtual = Number(ocupacao.trim().replace(",", "."));
@@ -178,6 +219,18 @@ export default function Briffing() {
         </p>
       </header>
 
+      {cardapioSalvo && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-muted/30 p-3 text-sm">
+          <span>
+            Cardápio: <strong>{cardapioSalvo.nome}</strong> · {formatarDataBR(cardapioSalvo.data)} ·{" "}
+            {SERVICO_LABEL[cardapioSalvo.servico] ?? cardapioSalvo.servico}
+          </span>
+          <Link href="/hotelaria/ab/cardapios" className="rounded-md border px-3 py-1.5">
+            Trocar cardápio
+          </Link>
+        </div>
+      )}
+
       <Card>
         <CardHeader>
           <CardTitle>Parâmetros do serviço</CardTitle>
@@ -208,7 +261,9 @@ export default function Briffing() {
               <div className="space-y-1.5">
                 <Label>Cardápio do dia</Label>
                 <p className="flex h-10 items-center text-sm text-muted-foreground">
-                  {dataFormatada} · {cardapio.pratos.length} preparação(ões)
+                  {cardapioSalvo
+                    ? `${cardapioSalvo.nome} · ${cardapio.pratos.length} preparação(ões)`
+                    : `${dataFormatada} · ${cardapio.pratos.length} preparação(ões)`}
                 </p>
               </div>
 
