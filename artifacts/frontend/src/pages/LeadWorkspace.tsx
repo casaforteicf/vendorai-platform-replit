@@ -150,6 +150,25 @@ function userCanOwnStage(user: ResponsibilityUser, stage?: ResponsibilityStage |
   return configured.some((responsible) => refs.has(responsible));
 }
 
+/**
+ * Opções de responsável permitidas pela regra do backend (canChangeDealOwner):
+ * - administrador do CRM escolhe qualquer pessoa elegível para a etapa;
+ * - os demais mantêm o responsável atual (mesmo que a função dele não esteja
+ *   configurada para a etapa) ou assumem um negócio que ainda não tem dono.
+ * Evita oferecer no select uma troca que o servidor recusaria com 403.
+ */
+function ownerOptionsForActor<T extends { id: string }>(
+  allUsers: T[],
+  eligibleUsers: T[],
+  canReassign: boolean,
+  currentOwnerId: string | null | undefined,
+  actorId: string | null | undefined,
+): T[] {
+  if (canReassign) return eligibleUsers;
+  if (currentOwnerId) return allUsers.filter((candidate) => candidate.id === currentOwnerId);
+  return eligibleUsers.filter((candidate) => candidate.id === actorId);
+}
+
 type FullIntelligenceResponse = {
   profile: null | {
     journeyStage?: string | null;
@@ -229,7 +248,11 @@ export default function LeadWorkspace() {
   const { toast } = useToast();
   const qc = useQueryClient();
   const tenantId = user?.tenantId ?? "";
-  const canEditOwner = user?.platformRole === "super_admin" || user?.platformRole === "tenant_admin";
+  // Mesma regra administrativa do backend (crm-visibility): super_admin,
+  // tenant_admin e função "administrador" podem editar/reatribuir o dono.
+  const canEditOwner = user?.platformRole === "super_admin"
+    || user?.platformRole === "tenant_admin"
+    || user?.userFunction === "administrador";
   const search = new URLSearchParams(window.location.search);
   const requestedDealId = search.get("dealId");
   const requestedStage = search.get("targetStage");
@@ -331,13 +354,14 @@ export default function LeadWorkspace() {
     setNextStage(requestedStage);
     const stage = stages.find((candidate) => candidate.key === requestedStage) as ResponsibilityStage | undefined;
     const eligible = users.filter((candidate) => userCanOwnStage(candidate as ResponsibilityUser, stage));
+    const allowed = ownerOptionsForActor(users, eligible, canEditOwner, deal.assignedTo, user?.id);
     setOwner((previous) => {
-      if (eligible.some((candidate) => candidate.id === previous)) return previous;
+      if (allowed.some((candidate) => candidate.id === previous)) return previous;
       return [deal.assignedTo, user?.id].find((candidate) =>
-        Boolean(candidate) && eligible.some((person) => person.id === candidate)
-      ) ?? eligible[0]?.id ?? "";
+        Boolean(candidate) && allowed.some((person) => person.id === candidate)
+      ) ?? allowed[0]?.id ?? "";
     });
-  }, [requestedStage, deal?.id, deal?.assignedTo, stages, users, user?.id]);
+  }, [requestedStage, deal?.id, deal?.assignedTo, stages, users, user?.id, canEditOwner]);
   const [saving, setSaving] = useState(false);
   const [savingAnswers, setSavingAnswers] = useState(false);
   const [ownerEditorOpen, setOwnerEditorOpen] = useState(false);
@@ -435,6 +459,10 @@ export default function LeadWorkspace() {
     () => users.filter((candidate) => userCanOwnStage(candidate as ResponsibilityUser, targetStage as ResponsibilityStage | undefined)),
     [users, targetStage],
   );
+  const advanceOwnerOptions = useMemo(
+    () => ownerOptionsForActor(users, eligibleUsers, canEditOwner, deal?.assignedTo, user?.id),
+    [users, eligibleUsers, canEditOwner, deal?.assignedTo, user?.id],
+  );
   const { data: targetPipelineStages = [] } = useQuery<Array<{ id: string; key: string; label: string; ordem?: number; responsaveisFuncoes?: string[] | null }>>({
     queryKey: ["pipeline-stages", tenantId, targetPipeline],
     enabled: Boolean(tenantId && token && pipelineTransferOpen),
@@ -463,6 +491,13 @@ export default function LeadWorkspace() {
     () => users.filter((candidate) => userCanOwnStage(candidate as ResponsibilityUser, selectedTransferStage as ResponsibilityStage | null)),
     [users, selectedTransferStage],
   );
+  // Sem permissão administrativa, só é possível manter o responsável atual ou
+  // assumir um negócio que ainda não tem dono — a mesma regra do backend em
+  // canChangeDealOwner. Evita oferecer opções que terminariam em 403.
+  const transferOwnerOptions = useMemo(
+    () => ownerOptionsForActor(transferEligibleUsers, transferEligibleUsers, canEditOwner, deal?.assignedTo, user?.id),
+    [canEditOwner, transferEligibleUsers, deal?.assignedTo, user?.id],
+  );
 
   useEffect(() => {
     const firstStage = [...targetPipelineStages].sort((a, b) => (a.ordem ?? 0) - (b.ordem ?? 0))[0];
@@ -472,10 +507,10 @@ export default function LeadWorkspace() {
   useEffect(() => {
     if (!selectedTransferStage) return;
     const preferred = [deal?.assignedTo, user?.id].find((candidateId) =>
-      Boolean(candidateId) && transferEligibleUsers.some((candidate) => candidate.id === candidateId)
+      Boolean(candidateId) && transferOwnerOptions.some((candidate) => candidate.id === candidateId)
     );
-    setTransferOwner(preferred ?? transferEligibleUsers[0]?.id ?? "");
-  }, [selectedTransferStage?.key, deal?.assignedTo, user?.id, transferEligibleUsers]);
+    setTransferOwner(preferred ?? transferOwnerOptions[0]?.id ?? "");
+  }, [selectedTransferStage?.key, deal?.assignedTo, user?.id, transferOwnerOptions]);
   useEffect(() => {
     if (activeParticipation?.partnershipId) {
       setSelectedPartnershipId(activeParticipation.partnershipId);
@@ -581,12 +616,13 @@ export default function LeadWorkspace() {
         try { return userCanOwnStage(candidate as ResponsibilityUser, nextStageConfig); }
         catch { return false; }
       });
+      const allowedOwners = ownerOptionsForActor(users, stageEligibleUsers, canEditOwner, deal.assignedTo, user?.id);
       const preferredOwner = [deal.assignedTo, lead?.assignedTo, user?.id].find((candidateId) =>
-        Boolean(candidateId) && stageEligibleUsers.some((candidate) => candidate.id === candidateId)
+        Boolean(candidateId) && allowedOwners.some((candidate) => candidate.id === candidateId)
       );
       // The confirmation dialog is already opened before optional calculations.
       setNextStage(stage);
-      setOwner(preferredOwner ?? stageEligibleUsers[0]?.id ?? "");
+      setOwner(preferredOwner ?? allowedOwners[0]?.id ?? "");
       setTitle(guidance[stage]?.[1] || "Dar continuidade ao atendimento");
       setDescription("");
       setNote("");
@@ -1369,16 +1405,23 @@ export default function LeadWorkspace() {
                 <Select value={transferOwner} onValueChange={setTransferOwner}>
                   <SelectTrigger><SelectValue placeholder="Selecione o responsável" /></SelectTrigger>
                   <SelectContent>
-                    {transferEligibleUsers.map((targetUser) => (
+                    {transferOwnerOptions.map((targetUser) => (
                       <SelectItem key={targetUser.id} value={targetUser.id}>
                         {targetUser.name || targetUser.email || targetUser.id}
                       </SelectItem>
                     ))}
-                    {transferEligibleUsers.length === 0 && (
+                    {transferOwnerOptions.length === 0 && (
                       <SelectItem value="__none_available__" disabled>Nenhum responsável elegível para esta etapa</SelectItem>
                     )}
                   </SelectContent>
                 </Select>
+                <p className="text-[11px] text-muted-foreground">
+                  {canEditOwner
+                    ? "Como administrador, você pode definir qualquer responsável elegível para a etapa de destino."
+                    : deal?.assignedTo
+                      ? "Trocar o responsável de um negócio já atribuído exige administrador. Você pode mover mantendo o responsável atual."
+                      : "Este negócio ainda não tem responsável: você pode assumir a movimentação."}
+                </p>
               </Field>
               <Field label="Justificativa da movimentação *">
                 <Textarea
@@ -1442,12 +1485,17 @@ export default function LeadWorkspace() {
                 <Select value={owner} onValueChange={setOwner}>
                   <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
                   <SelectContent>
-                    {eligibleUsers.map((u) => <SelectItem key={u.id} value={u.id}>{u.name || u.email || u.id}</SelectItem>)}
-                    {eligibleUsers.length === 0 && (
+                    {advanceOwnerOptions.map((u) => <SelectItem key={u.id} value={u.id}>{u.name || u.email || u.id}</SelectItem>)}
+                    {advanceOwnerOptions.length === 0 && (
                       <SelectItem value="__none_available__" disabled>Nenhum responsável elegível para esta etapa</SelectItem>
                     )}
                   </SelectContent>
                 </Select>
+                {!canEditOwner && (
+                  <p className="text-[11px] text-muted-foreground">
+                    Você pode manter o responsável atual ou assumir um negócio sem responsável. Trocar o responsável de um negócio já atribuído exige administrador.
+                  </p>
+                )}
                 <p className="text-[11px] text-muted-foreground">
                   A lista usa a mesma regra oficial da etapa e do servidor. Administradores ativos podem assumir qualquer etapa; sem funções configuradas, a etapa fica sem restrição por função.
                 </p>
@@ -1469,10 +1517,20 @@ export default function LeadWorkspace() {
 
         <DialogFooter>
           <Button variant="outline" onClick={() => setOpen(false)}>Cancelar</Button>
-          <Button disabled={saving} onClick={advance}>
-            {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            Confirmar e avançar
-          </Button>
+          {pipelineTransferOpen ? (
+            <Button
+              disabled={movingPipeline || !targetPipelineStage || !transferOwner || transferReason.trim().length < 5}
+              onClick={transferPipeline}
+            >
+              {movingPipeline && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Confirmar movimentação
+            </Button>
+          ) : (
+            <Button disabled={saving} onClick={advance}>
+              {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Confirmar e avançar
+            </Button>
+          )}
         </DialogFooter>
       </DialogContent>
     </Dialog>

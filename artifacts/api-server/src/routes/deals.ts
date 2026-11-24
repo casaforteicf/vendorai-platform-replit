@@ -53,6 +53,8 @@ import { extractQuoteData } from "../lib/document-extraction.js";
 import { ObjectStorageService } from "../lib/objectStorage.js";
 import { generateContractPDF } from "../lib/contract-generation.js";
 import { requireRole, buildUserFunctionFilter, type UserFunction } from "../middlewares/auth.js";
+import { canChangeDealOwner } from "../lib/crm-deal-permissions.js";
+import { seesWholeTenantWallet } from "../lib/crm-visibility.js";
 import { captureLeadFeatureSnapshot, backfillResultadoSnapshots } from "../lib/mlFeatureStore.js";
 import { finalizeVehicleReservation } from "../services/vehicle-reservation.js";
 import { finalizeItemReservation } from "../services/item-reservation.js";
@@ -493,17 +495,18 @@ router.post("/deals/:id/transfer-pipeline", async (req, res) => {
   }
 
   // Transfer cannot silently bypass the administrative reassignment rule.
+  // A primeira atribuição (negócio sem responsável) não é reatribuição: o
+  // próprio usuário pode assumir o card ao movê-lo de pipeline.
   const changingOwner = parsed.data.responsavelId !== undefined
     && parsed.data.responsavelId !== deal.assignedTo;
-  const isTransferAdmin = req.user?.platformRole === "super_admin"
-    || req.user?.platformRole === "tenant_admin";
-  if (changingOwner && !isTransferAdmin) {
+  const isTransferAdmin = seesWholeTenantWallet(req.user);
+  if (changingOwner && !canChangeDealOwner(req.user, deal.assignedTo, parsed.data.responsavelId)) {
     res.status(403).json({ error: "Apenas administradores podem reatribuir o responsável na transferência." });
     return;
   }
   const userFunction = req.user?.userFunction as UserFunction | undefined;
   if (!isTransferAdmin && (userFunction === "vendedor" || userFunction === "entrega")
-      && deal.assignedTo !== req.user?.sub) {
+      && deal.assignedTo && deal.assignedTo !== req.user?.sub) {
     res.status(403).json({ error: "Sem permissão para transferir negócio de outro responsável." });
     return;
   }
@@ -1512,7 +1515,7 @@ router.patch("/deals/:id", async (req, res) => {
     return;
   }
 
-  const isAdmin2 = req.user?.platformRole === "super_admin" || req.user?.platformRole === "tenant_admin";
+  const isAdmin2 = seesWholeTenantWallet(req.user);
   const userFn2 = req.user?.userFunction as UserFunction | undefined;
   if (!isAdmin2 && (userFn2 === "vendedor" || userFn2 === "entrega") && existing.assignedTo && existing.assignedTo !== req.user?.sub) {
     res.status(403).json({ error: "Access denied to this deal" });
@@ -1796,8 +1799,9 @@ router.patch("/deals/:id", async (req, res) => {
   const assignedToChanged = nextAssignedTo !== existing.assignedTo;
   const etapaChanged = Boolean(parsed.data.etapa && parsed.data.etapa !== existing.etapa);
   // Reassignment is an administrative action, not an implicit side effect of
-  // moving a card. Validate the new owner even if the stage does not change.
-  if (assignedToChanged && !isAdmin2) {
+  // moving a card. A primeira atribuição de um negócio sem responsável é
+  // permitida para o próprio usuário (ver canChangeDealOwner).
+  if (assignedToChanged && !canChangeDealOwner(req.user, existing.assignedTo, nextAssignedTo)) {
     res.status(403).json({ error: "Apenas o administrador pode reatribuir o negócio." });
     return;
   }
