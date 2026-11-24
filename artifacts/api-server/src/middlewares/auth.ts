@@ -12,6 +12,7 @@ import {
   scoutOportunidadesTable,
 } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
+import { seesWholeTenantWallet } from "../lib/crm-visibility.js";
 
 declare global {
   namespace Express {
@@ -53,9 +54,7 @@ const CRITICAL_TENANT_INTEGRATION_KEYS = new Set([
 ]);
 
 function isConfigurationAdmin(user?: JwtPayload): boolean {
-  return user?.platformRole === "super_admin"
-    || user?.platformRole === "tenant_admin"
-    || user?.userFunction === "administrador";
+  return seesWholeTenantWallet(user);
 }
 
 function isCriticalConfigurationMutation(req: Request): boolean {

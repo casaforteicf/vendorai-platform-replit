@@ -291,7 +291,7 @@ export async function planBrowserAction(
   for (let attempt = 0; attempt < 2; attempt++) {
   const result = await callOpenAI(
     tenantId,
-    "agent_runtime",
+    "intelligence_analysis",
     [
       { role: "system", content: system },
       { role: "user", content: JSON.stringify({ goal, page: state, recentSteps: steps.slice(-6), secretsAvailable, ...(attempt ? { correction: "A resposta anterior era inválida. Retorne uma única ação no formato indicado, com todos os campos obrigatórios." } : {}) }) },

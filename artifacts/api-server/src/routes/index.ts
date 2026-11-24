@@ -530,6 +530,10 @@ router.use(onboardingImplementationRouter);
 
 // Content Generation Hub
 router.use(contentRouter);
+// BLOCO 14 Fase B — Troca de tenant (switch-tenant + switchable-tenants).
+// Precisa ser montado antes das integrações sociais, cujo `GET /auth/:provider`
+// engolia `/auth/switchable-tenants` e respondia 404 provider_not_supported.
+router.use(tenantSwitchRouter);
 router.use(socialIntegrationsRouter);
 router.use(emailIntegrationsRouter);
 router.use(contentReferenceCreatorsRouter);
@@ -681,9 +685,6 @@ router.use(confirmClosureRouter);
 
 // BLOCO 14 — Organizações / painel consolidado multi-loja
 router.use(organizacoesRouter);
-
-// BLOCO 14 Fase B — Troca de tenant (switch-tenant + switchable-tenants)
-router.use(tenantSwitchRouter);
 
 // BLOCO 18 — Painel financeiro da plataforma (super_admin)
 router.use(adminFinancialRouter);

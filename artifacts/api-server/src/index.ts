@@ -1,5 +1,7 @@
 import app from "./app";
 import { logger } from "./lib/logger";
+import { describeStorageConfiguration, inspectStorageConfiguration } from "./lib/objectStorage";
+import { resolveStartupMigrationPolicy } from "./lib/startup-migrations-policy.js";
 import { getServerRuntimeSnapshot, startServerRuntimeSentinel } from "./lib/dev-agent-server-runtime.js";
 import { getMainGovernanceSnapshot, startMainGovernanceGuard } from "./lib/dev-agent-main-governance.js";
 import { authenticate, requireRole } from "./middlewares/auth.js";
@@ -98,16 +100,13 @@ async function runStartupMigrations(): Promise<boolean> {
   try {
     const roleResult = await pool.query<{ current_user: string }>("select current_user");
     const currentRole = roleResult.rows[0]?.current_user;
-    const homologationManagedSchema = ["1", "true"].includes(
-      String(process.env["VENDORAI_HOMOLOGATION_SEED"] ?? "").toLowerCase(),
-    );
-    const railwayEnvironment = String(process.env["RAILWAY_ENVIRONMENT_NAME"] ?? "").toLowerCase();
-    const productionManagedSchema = railwayEnvironment === "production";
+    const { railwayEnvironment, productionManagedSchema, homologationManagedSchema } =
+      resolveStartupMigrationPolicy();
 
     if (homologationManagedSchema || productionManagedSchema) {
       await pool.query("select 1");
       logger.info(
-        { railwayEnvironment, homologationManagedSchema },
+        { railwayEnvironment, productionManagedSchema, homologationManagedSchema },
         "startup migrations: schema gerenciado detectado; migrations ficam a cargo do pipeline privilegiado",
       );
       return true;
@@ -158,6 +157,18 @@ async function runStartupMigrations(): Promise<boolean> {
 
 async function start() {
   const databaseReady = await runStartupMigrations();
+
+  // Log de boot sem segredos: bucket real e backend ativo. Se a configuração
+  // estiver incompleta, o operador vê o motivo aqui (e não só no upload).
+  const storageConfig = inspectStorageConfiguration();
+  if (storageConfig.errors.length > 0) {
+    logger.error(
+      { issues: storageConfig.errors, config: describeStorageConfiguration(storageConfig) },
+      "storage: configuração incompleta; uploads responderão 503 até ser corrigida",
+    );
+  } else {
+    logger.info({ config: describeStorageConfiguration(storageConfig) }, "storage: backend configurado");
+  }
 
   app.listen(port, (err) => {
     if (err) {
