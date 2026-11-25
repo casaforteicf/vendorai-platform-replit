@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { cardsForStage } from "@/lib/pipeline-board";
 import { useLocation } from "wouter";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/contexts/AuthContext";
@@ -626,9 +627,7 @@ export default function PipelineOperacional() {
 
       <div className="flex min-h-0 flex-1 gap-4 overflow-x-auto overflow-y-hidden pb-3">
         {stages.map(([key, label]) => {
-          const stageCards = cards.filter((card) =>
-            card.etapa === key && (!card.leadId || leadMap.has(card.leadId))
-          );
+          const stageCards = cardsForStage(cards, key);
           return (
             <section
               key={key}
