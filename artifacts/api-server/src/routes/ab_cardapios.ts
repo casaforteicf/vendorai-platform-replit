@@ -35,7 +35,8 @@ const itemDoCorpo = z
     porcoesPorPax: z
       .union([z.string(), z.number()])
       .transform((valor) => String(valor))
-      .pipe(z.string().regex(/^\d+(\.\d+)?$/).refine((valor) => Number(valor) > 0, "Deve ser maior que zero"))
+      .pipe(z.string().regex(/^\d+(\.\d+)?$/).refine((valor) => Number(valor) > 0, "Deve ser maior que zero")
+          .refine((valor) => Number(valor) <= 20, "Porções por hóspede não pode passar de 20"))
       .optional(),
     ordem: z.number().int().min(0).optional(),
     observacao: z.string().trim().max(1000).nullable().optional(),
