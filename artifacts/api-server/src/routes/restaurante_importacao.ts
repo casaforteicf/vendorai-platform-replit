@@ -395,6 +395,13 @@ export function parseReceitasTexto(text: string, nomeArquivo: string, avisos: st
         insumo.nome = restante;
       }
     }
+
+    // "1 lagarto (aprox. 2 kg)" -> nome "lagarto"; a quantidade já está
+    // separada no campo próprio. Evita insumo começando com número.
+    insumo.nome = insumo.nome
+      .replace(/^\d+(?:[.,]\d+)?\s+/, "")
+      .replace(/\(\s*(?:aprox\.?|aproximadamente)\s*$/i, "")
+      .trim();
     const existente = receita.insumos.find((item) => normalizar(item.nome) === normalizar(insumo.nome));
     if (existente && existente.unidade === insumo.unidade) {
       existente.quantidadePorPorcao += insumo.quantidadePorPorcao;
