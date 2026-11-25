@@ -125,6 +125,10 @@ export default function Cardapios() {
       setErro("As porções por hóspede precisam ser maiores que zero.");
       return;
     }
+    if (itens.some((item) => item.porcoesPorPax > 20)) {
+      setErro("Porções por hóspede não pode passar de 20. Para 150 hóspedes, mantenha 1: o briffing multiplica pela ocupação.");
+      return;
+    }
     if (new Set(itens.map((item) => item.fichaId)).size !== itens.length) {
       setErro("O mesmo prato não pode aparecer duas vezes.");
       return;
@@ -240,7 +244,10 @@ export default function Cardapios() {
           </label>
 
           <div>
-            <h3 className="mb-2 text-sm font-medium">Pratos e porções por hóspede</h3>
+            <h3 className="mb-1 text-sm font-medium">Pratos e porções por hóspede</h3>
+            <p className="mb-2 text-xs text-muted-foreground">
+              Use 1 para uma porção padrão por hóspede. O briffing multiplica pela ocupação; não informe o total de hóspedes aqui.
+            </p>
             {fichas.length === 0 && <p className="text-sm text-muted-foreground">Nenhuma ficha técnica ativa. Cadastre uma ficha primeiro.</p>}
             <div className="max-h-80 space-y-2 overflow-auto pr-1">
               {fichas.map((ficha) => {
