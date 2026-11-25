@@ -12,9 +12,22 @@ type Ingrediente = {
   categoria: string | null;
   codigo: string | null;
   descricao: string | null;
+  fornecedorPreferencial: string | null;
+  marca: string | null;
+  fabricante: string | null;
 };
 
-const vazio = { nome: "", unidade: "g", precoUnitario: "", categoria: "", codigo: "", descricao: "" };
+const vazio = {
+  nome: "",
+  unidade: "g",
+  precoUnitario: "",
+  categoria: "",
+  codigo: "",
+  descricao: "",
+  fornecedorPreferencial: "",
+  marca: "",
+  fabricante: "",
+};
 
 export default function Ingredientes() {
   const { user, token } = useAuth();
@@ -57,6 +70,9 @@ export default function Ingredientes() {
       categoria: ingrediente.categoria ?? "",
       codigo: ingrediente.codigo ?? "",
       descricao: ingrediente.descricao ?? "",
+      fornecedorPreferencial: ingrediente.fornecedorPreferencial ?? "",
+      marca: ingrediente.marca ?? "",
+      fabricante: ingrediente.fabricante ?? "",
     });
     setErro(null);
     setAviso(null);
@@ -89,6 +105,9 @@ export default function Ingredientes() {
         categoria: form.categoria.trim() || null,
         codigo: form.codigo.trim() || null,
         descricao: form.descricao.trim() || null,
+        fornecedorPreferencial: form.fornecedorPreferencial.trim() || null,
+        marca: form.marca.trim() || null,
+        fabricante: form.fabricante.trim() || null,
       };
       const resposta = await fetch(editandoId ? `${base}/${encodeURIComponent(editandoId)}` : base, {
         method: editandoId ? "PUT" : "POST",
@@ -153,14 +172,22 @@ export default function Ingredientes() {
             </select>
           </label>
           <label className="block text-sm">
-            {form.unidade === "kg" ? "Preço por kg (R$)" : form.unidade === "l" ? "Preço por litro (R$)" : "Preço por unidade base (R$)"}
+            {form.unidade === "kg" ? "Preço médio por kg (R$)" : form.unidade === "l" ? "Preço médio por litro (R$)" : "Preço médio por unidade base (R$)"}
             <input type="number" min="0" step=".01" className="mt-1 w-full rounded-md border p-2" value={form.precoUnitario} onChange={(event) => setForm((current) => ({ ...current, precoUnitario: event.target.value }))} />
-            {(form.unidade === "kg" || form.unidade === "l") && (
-              <span className="mt-1 block text-xs text-muted-foreground">Será convertido para {form.unidade === "kg" ? "g" : "ml"} no catálogo (preço ÷ 1.000).</span>
-            )}
+            <span className="mt-1 block text-xs text-muted-foreground">
+              Preço médio pago ao fornecedor, usado no custo das fichas.
+              {(form.unidade === "kg" || form.unidade === "l") && ` Será convertido para ${form.unidade === "kg" ? "g" : "ml"} (÷ 1.000).`}
+            </span>
+          </label>
+          <label className="block text-sm">Fornecedor preferencial
+            <input className="mt-1 w-full rounded-md border p-2" placeholder="Ex.: Distribuidora Central" value={form.fornecedorPreferencial} onChange={(event) => setForm((current) => ({ ...current, fornecedorPreferencial: event.target.value }))} />
           </label>
           <label className="block text-sm">Categoria<input className="mt-1 w-full rounded-md border p-2" value={form.categoria} onChange={(event) => setForm((current) => ({ ...current, categoria: event.target.value }))} /></label>
           <label className="block text-sm">Código<input className="mt-1 w-full rounded-md border p-2" value={form.codigo} onChange={(event) => setForm((current) => ({ ...current, codigo: event.target.value }))} /></label>
+          <div className="grid grid-cols-2 gap-2">
+            <label className="block text-sm">Marca<input className="mt-1 w-full rounded-md border p-2" value={form.marca} onChange={(event) => setForm((current) => ({ ...current, marca: event.target.value }))} /></label>
+            <label className="block text-sm">Fabricante<input className="mt-1 w-full rounded-md border p-2" value={form.fabricante} onChange={(event) => setForm((current) => ({ ...current, fabricante: event.target.value }))} /></label>
+          </div>
           <label className="block text-sm">Descrição<textarea rows={2} className="mt-1 w-full rounded-md border p-2" value={form.descricao} onChange={(event) => setForm((current) => ({ ...current, descricao: event.target.value }))} /></label>
           <div className="flex flex-wrap gap-2">
             <button type="button" disabled={salvando} className="inline-flex items-center gap-2 rounded-md border px-3 py-2 text-sm" onClick={() => void salvar()}>
@@ -190,6 +217,11 @@ export default function Ingredientes() {
                   <p className="text-xs text-muted-foreground">
                     {ingrediente.unidade} · {ingrediente.precoUnitario ? `R$ ${ingrediente.precoUnitario}` : "sem preço"}{ingrediente.categoria ? ` · ${ingrediente.categoria}` : ""}{ingrediente.codigo ? ` · ${ingrediente.codigo}` : ""}
                   </p>
+                  {(ingrediente.fornecedorPreferencial || ingrediente.marca || ingrediente.fabricante) && (
+                    <p className="text-xs text-muted-foreground">
+                      {[ingrediente.fornecedorPreferencial, ingrediente.marca, ingrediente.fabricante].filter(Boolean).join(" · ")}
+                    </p>
+                  )}
                 </div>
                 <div className="flex gap-1">
                   <button type="button" className="rounded border px-2 py-1 text-xs" onClick={() => editar(ingrediente)}>Editar</button>
