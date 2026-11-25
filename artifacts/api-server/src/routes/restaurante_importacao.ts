@@ -36,6 +36,47 @@ function normalizar(value: string): string {
   return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLowerCase();
 }
 
+/**
+ * Remove a forma de preparo do nome do ingrediente:
+ * "cebola picada" -> "cebola"; "cenoura cortada em tiras" -> "cenoura";
+ * "bacon em cubos pequenos" -> "bacon"; "pimenta do reino preta" -> "pimenta do reino".
+ */
+export function nomeInsumoCanonico(nome: string): string {
+  const preparo = /\b(picad[oa]s?|cortad[oa]s?|ralad[oa]s?|moid[oa]s?|fatiad[oa]s?|em\s+cubos(?:\s+(?:pequenos|m[eé]dios|grandes))?|em\s+tiras|em\s+peda[çc]os(?:\s+(?:pequenos|m[eé]dios|grandes))?|em\s+rodelas|em\s+fatias|fresc[oa]s?|grosseiramente|finamente|bem\s+picad[oa]|a\s+gosto|q\.?\s*b\.?|limpo|lavad[oa]|descascad[oa]|sem\s+pele|sem\s+sementes?|aprox\.?|aproximadamente|preta|preto)\b/gi;
+  const limpo = nome
+    .replace(/\([^)]*\)/g, " ")
+    .split(",")[0]!
+    .replace(preparo, " ")
+    .replace(/\s+/g, " ")
+    .replace(/[.;:]+$/, "")
+    .trim();
+  return limpo || nome.trim();
+}
+
+/** Chave de comparação: sem acento, sem preparo, singularizando palavras. */
+export function chaveInsumo(nome: string): string {
+  return normalizar(nomeInsumoCanonico(nome))
+    .replace(/[^a-z0-9 ]+/g, " ")
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((word) => (word.length > 3 && word.endsWith("s") ? word.slice(0, -1) : word))
+    .join(" ");
+}
+
+/** Canoniza e soma ingredientes repetidos da mesma receita/unidade. */
+export function consolidarInsumos(insumos: InsumoImportado[]): InsumoImportado[] {
+  const consolidados = new Map<string, InsumoImportado>();
+  for (const insumo of insumos) {
+    const nome = nomeInsumoCanonico(insumo.nome);
+    if (!nome) continue;
+    const chave = `${chaveInsumo(nome)}|${insumo.unidade}`;
+    const atual = consolidados.get(chave);
+    if (atual) atual.quantidadePorPorcao += insumo.quantidadePorPorcao;
+    else consolidados.set(chave, { ...insumo, nome });
+  }
+  return [...consolidados.values()];
+}
+
 export function numero(value: unknown): number | null {
   if (typeof value === "number") return Number.isFinite(value) ? value : null;
   if (typeof value !== "string") return null;
@@ -417,7 +458,9 @@ export function parseReceitasTexto(text: string, nomeArquivo: string, avisos: st
       + `${linhasIgnoradas.length > 5 ? ` | +${linhasIgnoradas.length - 5}` : ""}. Revise o preview e complete manualmente.`,
     );
   }
-  return receitas.filter((receita) => receita.insumos.length > 0);
+  return receitas
+    .filter((receita) => receita.insumos.length > 0)
+    .map((receita) => ({ ...receita, insumos: consolidarInsumos(receita.insumos) }));
 }
 
 export function parseCardapiosTexto(text: string, avisos: string[]): CardapioImportado[] {
@@ -488,7 +531,9 @@ export function parseReceitasDelimitado(rows: string[][], avisos: string[]): Rec
     });
     mapa.set(chave, receita);
   }
-  return [...mapa.values()].filter((receita) => receita.insumos.length > 0);
+  return [...mapa.values()]
+    .filter((receita) => receita.insumos.length > 0)
+    .map((receita) => ({ ...receita, insumos: consolidarInsumos(receita.insumos) }));
 }
 
 export function parseCardapiosDelimitado(rows: string[][]): CardapioImportado[] {
@@ -720,7 +765,7 @@ function normalizarJson(tipo: TipoImportacao, rows: unknown[], avisos: string[])
         if (!i.nome || !convertida) { avisos.push(`Insumo inválido na receita "${nome}"`); return []; }
         return [{ nome: String(i.nome), unidade: convertida.unidade, quantidadePorPorcao: convertida.quantidade, fatorCorrecao: numero(i.fatorCorrecao ?? i.fator) ?? 1 }];
       });
-      return insumos.length ? [{ nome, rendimentoPorcoes: numero(r.rendimentoPorcoes ?? r.rendimento) ?? 1, insumos }] : [];
+      return insumos.length ? [{ nome, rendimentoPorcoes: numero(r.rendimentoPorcoes ?? r.rendimento) ?? 1, insumos: consolidarInsumos(insumos) }] : [];
     });
   }
   return rows.flatMap((row) => {
@@ -859,27 +904,56 @@ const confirmarSchema = z.discriminatedUnion("tipo", [
   }),
 ]);
 
+/** Converte a quantidade total da receita para a quantidade por porção. */
+export function quantidadePorPorcao(total: number, rendimentoPorcoes: number): number {
+  if (!Number.isFinite(total) || !Number.isFinite(rendimentoPorcoes) || rendimentoPorcoes <= 0) return total;
+  return Number((total / rendimentoPorcoes).toFixed(4));
+}
+
+type CatalogoInsumo = { id: string; nome: string };
+
+async function carregarCatalogo(tx: any, tenantId: string): Promise<CatalogoInsumo[]> {
+  return tx
+    .select({ id: insumosTable.id, nome: insumosTable.nome })
+    .from(insumosTable)
+    .where(and(eq(insumosTable.tenantId, tenantId), eq(insumosTable.catalogo, "restaurante")));
+}
+
 async function obterOuCriarInsumo(
   tx: any,
   tenantId: string,
   nome: string,
   unidade: "g" | "ml" | "un",
-  preco?: string | null,
-  criar = true,
+  preco: string | null,
+  criar: boolean,
+  catalogo: CatalogoInsumo[],
 ): Promise<{ id: string; criado: boolean }> {
-  const [existente] = await tx
-    .select({ id: insumosTable.id })
-    .from(insumosTable)
-    .where(and(eq(insumosTable.tenantId, tenantId), eq(insumosTable.catalogo, "restaurante"), sql`lower(btrim(${insumosTable.nome})) = lower(btrim(${nome}))`))
-    .limit(1);
+  const canonico = nomeInsumoCanonico(nome);
+  const chave = chaveInsumo(canonico);
+  const existente = catalogo.find((item) => chaveInsumo(item.nome) === chave);
   if (existente) {
-    if (preco) {
-      await tx.update(insumosTable).set({ precoUnitario: preco, catalogo: "restaurante", updatedAt: new Date() }).where(eq(insumosTable.id, existente.id));
+    const patch: Record<string, unknown> = {};
+    if (preco) patch.precoUnitario = preco;
+    if (existente.nome !== canonico) patch.nome = canonico;
+    if (Object.keys(patch).length > 0) {
+      await tx.update(insumosTable).set({ ...patch, catalogo: "restaurante", updatedAt: new Date() }).where(eq(insumosTable.id, existente.id));
     }
-    return { id: existente.id as string, criado: false };
+    if (existente.nome !== canonico) {
+      // Mantém o nome exibido nas fichas alinhado ao catálogo limpo.
+      await tx.update(abFichaInsumosTable).set({ insumoNome: canonico, updatedAt: new Date() }).where(and(
+        eq(abFichaInsumosTable.tenantId, tenantId),
+        eq(abFichaInsumosTable.insumoId, existente.id),
+      ));
+      existente.nome = canonico;
+    }
+    return { id: existente.id, criado: false };
   }
-  if (!criar) throw new Error(`Ingrediente não cadastrado: ${nome}`);
-  const [criado] = await tx.insert(insumosTable).values({ tenantId, catalogo: "restaurante", nome, unidade, precoUnitario: preco ?? null }).returning({ id: insumosTable.id });
+  if (!criar) throw new Error(`Ingrediente não cadastrado: ${canonico}`);
+  const [criado] = await tx
+    .insert(insumosTable)
+    .values({ tenantId, catalogo: "restaurante", nome: canonico, unidade, precoUnitario: preco ?? null })
+    .returning({ id: insumosTable.id });
+  catalogo.push({ id: criado!.id as string, nome: canonico });
   return { id: criado!.id as string, criado: true };
 }
 
@@ -924,20 +998,22 @@ router.post("/tenants/:tenantId/restaurante/importacoes/confirmar", async (req, 
           await withTenantTx(tenantId, async (tx) => {
             const consolidados = new Map<string, InsumoImportado>();
             for (const insumo of receita.insumos) {
-              const chave = normalizar(insumo.nome);
+              const nome = nomeInsumoCanonico(insumo.nome);
+              const chave = chaveInsumo(nome);
               const atual = consolidados.get(chave);
               if (atual) {
                 // A ficha tem índice único por nome; duas unidades diferentes
                 // para o mesmo ingrediente não podem ser somadas sem conversão.
                 if (atual.unidade !== insumo.unidade) {
-                  throw new Error(`Ingrediente "${insumo.nome}" repetido com unidades diferentes (${atual.unidade} e ${insumo.unidade})`);
+                  throw new Error(`Ingrediente "${nome}" repetido com unidades diferentes (${atual.unidade} e ${insumo.unidade})`);
                 }
                 atual.quantidadePorPorcao += insumo.quantidadePorPorcao;
               } else {
-                consolidados.set(chave, { ...insumo });
+                consolidados.set(chave, { ...insumo, nome });
               }
             }
             const insumosConsolidados = [...consolidados.values()];
+            const catalogo = await carregarCatalogo(tx, tenantId);
             const insumoIds: string[] = [];
             for (const insumo of insumosConsolidados) {
               const resolvido = await obterOuCriarInsumo(
@@ -947,6 +1023,7 @@ router.post("/tenants/:tenantId/restaurante/importacoes/confirmar", async (req, 
                 insumo.unidade,
                 null,
                 input.data.criarInsumosFaltantes !== false,
+                catalogo,
               );
               insumoIds.push(resolvido.id);
               if (resolvido.criado) resultado.insumosCriados += 1;
@@ -973,7 +1050,9 @@ router.post("/tenants/:tenantId/restaurante/importacoes/confirmar", async (req, 
               insumoId: insumoIds[index] ?? null,
               insumoNome: insumo.nome,
               unidadeBase: insumo.unidade,
-              quantidadePorPorcao: String(insumo.quantidadePorPorcao),
+              // As quantidades importadas são da receita inteira. A ficha
+              // guarda por porção, então divide pelo rendimento.
+              quantidadePorPorcao: String(quantidadePorPorcao(insumo.quantidadePorPorcao, receita.rendimentoPorcoes)),
               fatorCorrecao: String(insumo.fatorCorrecao),
               ordem: index,
             })));

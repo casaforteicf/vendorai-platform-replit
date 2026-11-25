@@ -40,6 +40,27 @@ só entendia `Nome: 3 kg`, e o modo de preparo era tratado como ingrediente.
 - Cada receita gera a ficha técnica, os vínculos de insumos e o catálogo
   `restaurante`; o custo usa o preço médio cadastrado.
 
+## Quantidade por porção (correção do briffing)
+
+- As quantidades lidas do PDF são da **receita inteira**. A confirmação divide
+  pelo `rendimentoPorcoes` antes de gravar em `ab_ficha_insumos`.
+- Exemplo: `3 kg de costelas` com rendimento 6 vira **500 g por porção**;
+  150 hóspedes pedem 75 kg, não 450 kg.
+- O preview avisa que a quantidade é total e será dividida pelo rendimento.
+- As duas fichas existentes do tenant AJ foram corrigidas em produção
+  (costelas 500 g/porção e lagarto 200 g/porção).
+
+## Ingredientes sem duplicidade
+
+- O parser remove a forma de preparo do nome: `cebola picada` → `cebola`,
+  `cenoura cortada em tiras` → `cenoura`, `bacon em cubos pequenos` → `bacon`,
+  `alho picado grosseiramente` → `alho`, `linguiça calabresa fresca em pedaços
+  médios` → `linguiça calabresa` e `pimenta do reino preta` → `pimenta do reino`.
+- Antes de criar um insumo, a importação procura no catálogo pela chave
+  normalizada (sem acento, sem preparo e singularizada). Se existir, reutiliza e
+  renomeia o cadastro para o nome limpo.
+- O catálogo do tenant AJ foi normalizado e o `Lagarto` duplicado foi removido.
+
 ## Cadastro detalhado do item
 
 Em **Restaurante → Ingredientes**, o formulário ganhou:

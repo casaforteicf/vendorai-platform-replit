@@ -10,6 +10,8 @@ import {
   parseIngredientesDelimitado,
   parseReceitasDelimitado,
   parseReceitasTexto,
+  nomeInsumoCanonico,
+  quantidadePorPorcao,
 } from "../routes/restaurante_importacao.js";
 
 describe("Restaurante — parsers de importação", () => {
@@ -76,6 +78,21 @@ describe("Restaurante — parsers de importação", () => {
     expect(receitas[0]!.nome).toBe("Arroz branco");
     expect(receitas[0]!.rendimentoPorcoes).toBe(10);
     expect(receitas[0]!.insumos).toHaveLength(2);
+  });
+
+  it("calcula a quantidade por porção dividindo pelo rendimento", () => {
+    expect(quantidadePorPorcao(3000, 6)).toBe(500);
+    expect(quantidadePorPorcao(2000, 10)).toBe(200);
+    expect(quantidadePorPorcao(100, 1)).toBe(100);
+  });
+
+  it("remove a forma de preparo do nome do ingrediente", () => {
+    expect(nomeInsumoCanonico("cebola picada")).toBe("cebola");
+    expect(nomeInsumoCanonico("cenoura cortada em tiras")).toBe("cenoura");
+    expect(nomeInsumoCanonico("bacon em cubos pequenos")).toBe("bacon");
+    expect(nomeInsumoCanonico("alho picado grosseiramente")).toBe("alho");
+    expect(nomeInsumoCanonico("linguiça calabresa fresca em pedaços médios")).toBe("linguiça calabresa");
+    expect(nomeInsumoCanonico("pimenta do reino preta")).toBe("pimenta do reino");
   });
 
   it("lê receita de PDF com quantidade antes do ingrediente e ignora o modo de preparo", () => {
