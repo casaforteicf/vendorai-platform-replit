@@ -242,6 +242,9 @@ export default function Importar() {
           <div className="flex items-center justify-between"><h2 className="font-semibold">Receitas ({receitas.length})</h2>
             <button type="button" className="rounded border px-2 py-1 text-xs" onClick={() => setReceitas((lista) => [...lista, { nome: "", rendimentoPorcoes: 1, insumos: [{ nome: "", unidade: "g", quantidadePorPorcao: 1, fatorCorrecao: 1 }] }])}><Plus className="mr-1 inline h-3 w-3" />Adicionar</button>
           </div>
+          <p className="rounded-md bg-muted/40 p-2 text-xs text-muted-foreground">
+            As quantidades abaixo são da receita inteira. Ao confirmar, o sistema divide pelo rendimento e grava a quantidade por porção usada no briffing.
+          </p>
           {receitas.map((receita, ri) => (
             <article key={ri} className="space-y-2 rounded-lg border p-3">
               <div className="grid gap-2 sm:grid-cols-[1fr_140px_40px]">
@@ -253,7 +256,7 @@ export default function Importar() {
                 {receita.insumos.map((insumo, ii) => (
                   <div key={ii} className="grid gap-2 sm:grid-cols-[2fr_100px_100px_100px_40px]">
                     <input className="rounded border p-2 text-sm" placeholder="Ingrediente" value={insumo.nome} onChange={(event) => alterarInsumo(ri, ii, { nome: event.target.value })} />
-                    <input type="number" min="0.001" step="any" className="rounded border p-2 text-sm" placeholder="Qtd" value={insumo.quantidadePorPorcao} onChange={(event) => alterarInsumo(ri, ii, { quantidadePorPorcao: Number(event.target.value) })} />
+                    <input type="number" min="0.001" step="any" className="rounded border p-2 text-sm" placeholder="Qtd total" value={insumo.quantidadePorPorcao} onChange={(event) => alterarInsumo(ri, ii, { quantidadePorPorcao: Number(event.target.value) })} />
                     <select className="rounded border p-2 text-sm" value={insumo.unidade} onChange={(event) => alterarInsumo(ri, ii, { unidade: event.target.value as Insumo["unidade"] })}><option value="g">g</option><option value="ml">ml</option><option value="un">un</option></select>
                     <input type="number" min="0.001" step="any" className="rounded border p-2 text-sm" placeholder="FC" value={insumo.fatorCorrecao} onChange={(event) => alterarInsumo(ri, ii, { fatorCorrecao: Number(event.target.value) })} />
                     <button type="button" className="rounded border p-2" onClick={() => setReceitas((lista) => lista.map((item, i) => i !== ri ? item : { ...item, insumos: item.insumos.filter((_, j) => j !== ii) }))}><Trash2 className="h-4 w-4" /></button>
