@@ -28,6 +28,8 @@ const corpoIngrediente = z.object({
   codigo: z.string().trim().max(100).nullable().optional(),
   descricao: z.string().trim().max(2000).nullable().optional(),
   fornecedorPreferencial: z.string().trim().max(255).nullable().optional(),
+  marca: z.string().trim().max(255).nullable().optional(),
+  fabricante: z.string().trim().max(255).nullable().optional(),
 }).strict();
 
 const corpoEdicao = corpoIngrediente.partial().strict();
@@ -42,6 +44,8 @@ function selectIngrediente() {
     codigo: insumosTable.codigo,
     descricao: insumosTable.descricao,
     fornecedorPreferencial: insumosTable.fornecedorPreferencial,
+    marca: insumosTable.marca,
+    fabricante: insumosTable.fabricante,
     createdAt: insumosTable.createdAt,
     updatedAt: insumosTable.updatedAt,
   };
@@ -101,6 +105,8 @@ router.post("/tenants/:tenantId/restaurante/ingredientes", async (req, res) => {
         codigo: input.data.codigo ?? null,
         descricao: input.data.descricao ?? null,
         fornecedorPreferencial: input.data.fornecedorPreferencial ?? null,
+        marca: input.data.marca ?? null,
+        fabricante: input.data.fabricante ?? null,
       }).returning(selectIngrediente());
       return row;
     });

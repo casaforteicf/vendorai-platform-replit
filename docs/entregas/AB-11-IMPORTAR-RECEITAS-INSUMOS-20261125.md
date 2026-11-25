@@ -1,0 +1,54 @@
+# AB-11 — importar receitas gerando insumos e cadastro detalhado
+
+Atualização: 2026-11-25. Branch: `feat/ab-import-ingredientes-20261125`.
+Base: `8002db561`.
+
+## Sintoma
+
+Ao importar a ficha `01_Costelinhas ao Barbecue Caseiro.pdf`, o preview mostrava
+**0 itens reconhecidos** e uma lista enorme de avisos. As linhas reais de
+ingredientes estavam no formato `3 kg de costelinhas de porco`, enquanto o parser
+só entendia `Nome: 3 kg`, e o modo de preparo era tratado como ingrediente.
+
+## Correção da leitura
+
+- O parser de receitas agora reconhece **quantidade → unidade → nome**
+  (`3 kg de costelinhas`, `300 g ketchup`, `1,5 L de caldo`), além do formato
+  nome → quantidade.
+- Seções `Ingredientes` e `Modo de preparo` delimitam a leitura. Instruções
+  depois do preparo não viram insumo.
+- Rendimento é lido de `Porções: 6`, `Rende 6 porções` ou `Rendimento: 6`.
+- Medidas caseiras comuns são convertidas: xícara/copo = 240 ml, colher de sopa
+  = 15 ml, colher de chá = 5 ml, pitada = 1 g, dente/folha/ramo = 1 un.
+- `Sal a gosto` / `q.b.` entra como 1 g para o insumo existir e ser ajustado.
+- Ingredientes repetidos com a mesma unidade são somados.
+- PDF/DOCX/CSV sem nenhum item agora retorna erro claro em vez de preview vazio.
+- Avisos são resumidos (máximo de 8 na tela).
+
+## Geração automática de insumos
+
+- A confirmação de receita já criava o insumo ausente; agora o retorno informa
+  **`insumosCriados`**.
+- A tela de importação tem a opção **“Criar automaticamente os insumos/ingredientes
+  que ainda não existem”**, ligada por padrão.
+- Se desligada, a confirmação falha com `Ingrediente não cadastrado: ...` em vez
+  de criar silenciosamente.
+- Cada receita gera a ficha técnica, os vínculos de insumos e o catálogo
+  `restaurante`; o custo usa o preço médio cadastrado.
+
+## Cadastro detalhado do item
+
+Em **Restaurante → Ingredientes**, o formulário ganhou:
+
+- **Preço médio** por kg/L/unidade base, com conversão para g/ml.
+- **Fornecedor preferencial**.
+- **Marca** e **fabricante**.
+- Código, categoria e descrição já existentes.
+- A lista mostra fornecedor/marca/fabricante abaixo do preço.
+
+## Validação
+
+- `vitest restaurante-importacao`: **13/13**, incluindo PDF com quantidade
+  primeiro, modo de preparo ignorado, medidas caseiras e nome antes da quantidade.
+- `tsc -p tsconfig.launch-ci.json --noEmit`: exit 0.
+- `vite build`: exit 0.

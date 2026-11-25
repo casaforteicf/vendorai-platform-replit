@@ -78,6 +78,66 @@ describe("Restaurante — parsers de importação", () => {
     expect(receitas[0]!.insumos).toHaveLength(2);
   });
 
+  it("lê receita de PDF com quantidade antes do ingrediente e ignora o modo de preparo", () => {
+    const avisos: string[] = [];
+    const receitas = parseReceitasTexto(
+      "01 Costelinhas ao Barbecue Caseiro\n" +
+      "Porções: 6\n" +
+      "Ingredientes:\n" +
+      "3 kg de costelinhas de porco\n" +
+      "300 g de ketchup\n" +
+      "100 ml de coca-cola\n" +
+      "1,5 kg de batata\n" +
+      "1/2 kg de cebola\n" +
+      "Modo de preparo:\n" +
+      "Tempere as costelinhas e leve à geladeira por 2 horas.\n" +
+      "Asse por 30 minutos, pincele o molho e sirva.\n",
+      "01_Costelinhas.pdf",
+      avisos,
+    );
+    expect(receitas).toHaveLength(1);
+    expect(receitas[0]!.nome).toBe("Costelinhas ao Barbecue Caseiro");
+    expect(receitas[0]!.rendimentoPorcoes).toBe(6);
+    expect(receitas[0]!.insumos).toEqual([
+      { nome: "costelinhas de porco", unidade: "g", quantidadePorPorcao: 3000, fatorCorrecao: 1 },
+      { nome: "ketchup", unidade: "g", quantidadePorPorcao: 300, fatorCorrecao: 1 },
+      { nome: "coca-cola", unidade: "ml", quantidadePorPorcao: 100, fatorCorrecao: 1 },
+      { nome: "batata", unidade: "g", quantidadePorPorcao: 1500, fatorCorrecao: 1 },
+      { nome: "cebola", unidade: "g", quantidadePorPorcao: 500, fatorCorrecao: 1 },
+    ]);
+    expect(avisos).toHaveLength(0);
+  });
+
+  it("converte medidas caseiras e aceita a gosto", () => {
+    const avisos: string[] = [];
+    const receitas = parseReceitasTexto(
+      "Receita: Bolo simples\nIngredientes:\n2 xícaras de açúcar\n3 colheres de sopa de óleo\n1 pitada de sal\nSal a gosto\n",
+      "bolo.txt",
+      avisos,
+    );
+    expect(receitas[0]!.insumos).toEqual([
+      { nome: "açúcar", unidade: "ml", quantidadePorPorcao: 480, fatorCorrecao: 1 },
+      { nome: "óleo", unidade: "ml", quantidadePorPorcao: 45, fatorCorrecao: 1 },
+      { nome: "sal", unidade: "g", quantidadePorPorcao: 2, fatorCorrecao: 1 },
+    ]);
+    expect(avisos).toHaveLength(0);
+  });
+
+  it("lê receita com nome antes da quantidade e remove preparo entre parênteses", () => {
+    const avisos: string[] = [];
+    const receitas = parseReceitasTexto(
+      "Receita: Molho especial\nIngredientes\nMaionese - 200 g\nMostarda: 50 g\nAlho (picado), 10 g\n",
+      "molho.txt",
+      avisos,
+    );
+    expect(receitas[0]!.insumos).toEqual([
+      { nome: "Maionese", unidade: "g", quantidadePorPorcao: 200, fatorCorrecao: 1 },
+      { nome: "Mostarda", unidade: "g", quantidadePorPorcao: 50, fatorCorrecao: 1 },
+      { nome: "Alho", unidade: "g", quantidadePorPorcao: 10, fatorCorrecao: 1 },
+    ]);
+    expect(avisos).toHaveLength(0);
+  });
+
   it("lê briffing em CSV com data brasileira e serviço", () => {
     const { rows } = parseDelimited("data;servico;ocupacao;evento;observacoes\n25/11/2026;almoço;150;Almoço executivo;Grupo\n");
     const avisos: string[] = [];

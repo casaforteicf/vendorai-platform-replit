@@ -196,61 +196,202 @@ export function parseIngredientesLinhas(linhas: string[], avisos: string[]): Ing
   return itens;
 }
 
+const UNIDADES_RECEITA = "kg|g|ml|l|un|und|unidades?";
+
+function limparLinhaReceita(value: string): string {
+  return value.replace(/\u00a0/g, " ").replace(/\s+/g, " ").trim();
+}
+
+function numeroReceita(value: string | undefined): number | null {
+  const raw = String(value ?? "").trim();
+  const fracao = raw.match(/^(\d+)\s*\/\s*(\d+)$/);
+  if (fracao) {
+    const denominador = Number(fracao[2]);
+    return denominador > 0 ? Number(fracao[1]) / denominador : null;
+  }
+  return numero(raw);
+}
+
+/**
+ * Lê uma linha de ingrediente em formatos comuns de ficha técnica/PDF:
+ * - "3 kg de costelinhas de porco" (quantidade primeiro)
+ * - "Costelinhas de porco - 3 kg" (nome primeiro)
+ * - "Costelinhas de porco 3 kg"
+ */
+function parseIngredienteReceita(linha: string): InsumoImportado | null {
+  const item = limparLinhaReceita(linha).replace(/^[-*•]\s*/, "").trim();
+  if (!item) return null;
+
+  let nome = "";
+  let quantidade: number | null = null;
+  let unidade: string | null = null;
+  let match: RegExpMatchArray | null = null;
+
+  // "Sal a gosto" / "Pimenta q.b." não têm quantidade fechada; entram com 1 g
+  // para o insumo existir e possam ser ajustados no preview.
+  const aGosto = item.match(/^(.+?)\s+(?:a gosto|q\.?\s*b\.?)$/i);
+  if (aGosto) {
+    const nome = aGosto[1]!.replace(/[.;:]+$/, "").trim();
+    return nome.length >= 2 ? { nome, unidade: "g", quantidadePorPorcao: 1, fatorCorrecao: 1 } : null;
+  }
+
+  // Medidas caseiras comuns em fichas: convertidas para a unidade base.
+  const caseira = item.match(/^(\d+(?:[.,]\d+)?|\d+\s*\/\s*\d+)\s*(x[ií]caras?|colheres?\s+de\s+sopa|colheres?\s+de\s+ch[aá]|copos?|pitadas?|dentes?|folhas?|ramos?)\b\.?\s*(?:de\s+)?(.+)$/i);
+  if (caseira) {
+    const quantidade = numeroReceita(caseira[1]);
+    const medida = normalizar(caseira[2]!);
+    const nome = caseira[3]!.replace(/[.;:]+$/, "").split(",")[0]!.trim();
+    if (quantidade !== null && nome.length >= 2) {
+      if (medida.startsWith("xicara") || medida.startsWith("copo")) {
+        return { nome, unidade: "ml", quantidadePorPorcao: quantidade * 240, fatorCorrecao: 1 };
+      }
+      if (medida.includes("sopa")) return { nome, unidade: "ml", quantidadePorPorcao: quantidade * 15, fatorCorrecao: 1 };
+      if (medida.includes("cha")) return { nome, unidade: "ml", quantidadePorPorcao: quantidade * 5, fatorCorrecao: 1 };
+      if (medida.startsWith("pitada")) return { nome, unidade: "g", quantidadePorPorcao: quantidade, fatorCorrecao: 1 };
+      return { nome, unidade: "un", quantidadePorPorcao: quantidade, fatorCorrecao: 1 };
+    }
+  }
+
+  // 3 kg de costelinhas / 300g ketchup / 1,5 L de caldo
+  match = item.match(new RegExp(`^(\\d+(?:[.,]\\d+)?|\\d+\\s*\\/\\s*\\d+)\\s*(${UNIDADES_RECEITA})\\b\\.?\\s*(?:(?:de|da|do)\\s+|[-–—]\\s*)?(.+)$`, "i"));
+  if (match) {
+    quantidade = numeroReceita(match[1]);
+    unidade = match[2]!;
+    nome = match[3]!;
+  }
+
+  // Costelinhas de porco - 3 kg / Costelinhas: 3 kg
+  if (quantidade === null) {
+    match = item.match(new RegExp(`^(.+?)\\s*[-–—:]\\s*(\\d+(?:[.,]\\d+)?|\\d+\\s*\\/\\s*\\d+)\\s*(${UNIDADES_RECEITA})\\b`, "i"));
+    if (match) {
+      nome = match[1]!;
+      quantidade = numeroReceita(match[2]);
+      unidade = match[3]!;
+    }
+  }
+
+  // Costelinhas de porco 3 kg
+  if (quantidade === null) {
+    match = item.match(new RegExp(`^(.+?)\\s+(\\d+(?:[.,]\\d+)?|\\d+\\s*\\/\\s*\\d+)\\s*(${UNIDADES_RECEITA})\\b`, "i"));
+    if (match) {
+      nome = match[1]!;
+      quantidade = numeroReceita(match[2]);
+      unidade = match[3]!;
+    }
+  }
+
+  if (!nome || quantidade === null || !unidade) return null;
+  const convertida = converterQuantidade(quantidade, unidade);
+  if (!convertida) return null;
+
+  // Descarta preparo entre parênteses e complementos após vírgula:
+  // "costelinhas de porco (cortadas), limpas" -> "costelinhas de porco".
+  const nomeLimpo = nome
+    .replace(/\([^)]*\)/g, " ")
+    .split(",")[0]!
+    .replace(/^(de|da|do)\s+/i, "")
+    .replace(/[.;:]+$/, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (nomeLimpo.length < 2 || nomeLimpo.length > 120) return null;
+
+  return {
+    nome: nomeLimpo,
+    unidade: convertida.unidade,
+    quantidadePorPorcao: convertida.quantidade,
+    fatorCorrecao: 1,
+  };
+}
+
 export function parseReceitasTexto(text: string, nomeArquivo: string, avisos: string[]): ReceitaImportada[] {
   const receitas: ReceitaImportada[] = [];
   let atual: ReceitaImportada | null = null;
+  let secao: "ingredientes" | "preparo" | null = null;
+  let linhasIgnoradas = 0;
   const inicio = nomeArquivo.replace(/\.[^.]+$/, "").replace(/[_-]+/g, " ").trim() || "Receita importada";
 
-  for (const linhaOriginal of text.split(/\r?\n/)) {
-    const linha = linhaOriginal.trim();
-    if (!linha) continue;
-    const cabecalho = linha.match(/^(receita|ficha|prato)\s*[:\-]\s*(.+)$/i);
-    if (cabecalho) {
-      const nome = cabecalho[2]!.replace(/\s*[|;].*$/, "").trim();
-      const rendimentoMatch = linha.match(/rendimento\s*[:\-]?\s*(\d+(?:[.,]\d+)?)/i);
-      atual = { nome, rendimentoPorcoes: rendimentoMatch ? Number(rendimentoMatch[1]!.replace(",", ".")) : 1, insumos: [] };
-      receitas.push(atual);
-      continue;
-    }
-    const item = linha.replace(/^[-*•]\s*/, "").trim();
-    if (!item) continue;
+  function garantirReceita(): ReceitaImportada {
     if (!atual) {
       atual = { nome: inicio, rendimentoPorcoes: 1, insumos: [] };
       receitas.push(atual);
     }
-    const partes = item.split(/[;|]/).map((parte) => parte.trim());
-    let nome = partes[0] ?? "";
-    let quantidade: number | null = null;
-    let unidade: string | null = null;
-    let fator = 1;
-    if (partes.length >= 3) {
-      quantidade = numero(partes[1] ?? "");
-      unidade = partes[2] ?? "";
-      fator = numero(partes[3] ?? "") ?? 1;
-    } else {
-      const match = item.match(/^(.+?)[\s:]+(\d+(?:[.,]\d+)?)\s*(kg|g|ml|l|un|und|unidade)\b(?:\s*(?:fc|fator)\s*[:=]?\s*(\d+(?:[.,]\d+)?))?/i);
-      if (match) {
-        nome = match[1]!.trim();
-        quantidade = Number(match[2]!.replace(",", "."));
-        unidade = match[3]!;
-        fator = match[4] ? Number(match[4].replace(",", ".")) : 1;
+    return atual;
+  }
+
+  for (const linhaOriginal of text.split(/\r?\n/)) {
+    const linha = limparLinhaReceita(linhaOriginal);
+    if (!linha) continue;
+
+    // Cabeçalho explícito da receita.
+    const cabecalho = linha.match(/^(receita|ficha|prato)\s*[:\-]\s*(.+)$/i);
+    if (cabecalho) {
+      const nome = cabecalho[2]!.replace(/\s*[|;].*$/, "").trim();
+      const rendimentoMatch = linha.match(/rendimento\s*[:\-]?\s*(\d+(?:[.,]\d+)?)/i);
+      atual = {
+        nome: nome || inicio,
+        rendimentoPorcoes: rendimentoMatch ? numeroReceita(rendimentoMatch[1]) ?? 1 : 1,
+        insumos: [],
+      };
+      receitas.push(atual);
+      secao = null;
+      continue;
+    }
+
+    const normalizada = normalizar(linha).replace(/[:.;]+$/, "").trim();
+
+    // Seções da ficha. A partir de "modo de preparo" nada mais é ingrediente.
+    if (/^(ingredientes|lista de ingredientes|ingredientes e temperos)$/.test(normalizada)) {
+      secao = "ingredientes";
+      garantirReceita();
+      continue;
+    }
+    if (/^(modo de preparo|preparo|como fazer|instrucoes|preparacao|finalizacao|montagem)$/.test(normalizada)) {
+      secao = "preparo";
+      continue;
+    }
+
+    // Rendimento pode aparecer em qualquer linha antes do preparo.
+    if (secao !== "preparo") {
+      const rendimento = linha.match(/(?:rendimento|por[cç][oõ]es|rende|serve)\s*[:\-]?\s*(\d+(?:[.,]\d+)?)/i)
+        ?? linha.match(/(\d+(?:[.,]\d+)?)\s*(?:por[cç][oõ]es|pessoas)/i);
+      if (rendimento) {
+        garantirReceita().rendimentoPorcoes = numeroReceita(rendimento[1]) ?? 1;
+        continue;
       }
     }
-    if (!nome || quantidade === null || !unidade) {
-      avisos.push(`Ingrediente não reconhecido em "${atual.nome}": ${item.slice(0, 120)}`);
+
+    // Depois de "modo de preparo", o texto é instrução — não vira insumo.
+    if (secao === "preparo") continue;
+
+    // Metadados comuns de ficha técnica.
+    if (/^(tempo|dificuldade|categoria|chef|autor|fonte|observacoes|dicas?|equipamento|utensilios)\b/.test(normalizada)) continue;
+    if (/^(pagina|página)\s*\d+/i.test(linha) || /^\d+$/.test(linha)) continue;
+
+    // Antes da seção de ingredientes, a primeira linha costuma ser o título.
+    if (!atual && secao === null) {
+      const titulo = linha.replace(/^\d{1,3}\s*[-.)]?\s+/, "").replace(/[.;:]+$/, "").trim();
+      atual = { nome: titulo || inicio, rendimentoPorcoes: 1, insumos: [] };
+      receitas.push(atual);
       continue;
     }
-    const convertida = converterQuantidade(quantidade, unidade);
-    if (!convertida) {
-      avisos.push(`Unidade não suportada em "${atual.nome}": ${unidade}`);
+
+    const insumo = parseIngredienteReceita(linha);
+    if (!insumo) {
+      if (secao === "ingredientes") linhasIgnoradas += 1;
       continue;
     }
-    atual.insumos.push({
-      nome,
-      unidade: convertida.unidade,
-      quantidadePorPorcao: convertida.quantidade,
-      fatorCorrecao: fator > 0 ? fator : 1,
-    });
+
+    const receita = garantirReceita();
+    const existente = receita.insumos.find((item) => normalizar(item.nome) === normalizar(insumo.nome));
+    if (existente && existente.unidade === insumo.unidade) {
+      existente.quantidadePorPorcao += insumo.quantidadePorPorcao;
+    } else {
+      receita.insumos.push(insumo);
+    }
+  }
+
+  if (linhasIgnoradas > 0) {
+    avisos.push(`${linhasIgnoradas} linha(s) da seção de ingredientes não puderam ser lidas. Revise o preview e complete manualmente.`);
   }
   return receitas.filter((receita) => receita.insumos.length > 0);
 }
@@ -626,9 +767,9 @@ router.post("/tenants/:tenantId/restaurante/importacoes/preview", async (req, re
       itens = parseIngredientesLinhas(texto.split(/\r?\n/), avisos);
     }
 
-    if (itens.length === 0 && formato === "txt") {
+    if (itens.length === 0) {
       return res.status(422).json({
-        error: "Não foi possível reconhecer itens no texto. Use o modelo CSV ou revise o arquivo.",
+        error: "Não foi possível reconhecer itens no arquivo. Confira o formato ou use o modelo CSV.",
         formato,
         avisos,
       });
@@ -660,6 +801,8 @@ const confirmarSchema = z.discriminatedUnion("tipo", [
   }),
   z.object({
     tipo: z.literal("receitas"),
+    /** Cria automaticamente o insumo/ingrediente que ainda não existe no catálogo. */
+    criarInsumosFaltantes: z.boolean().optional().default(true),
     itens: z.array(z.object({
       nome: z.string().trim().min(1).max(120),
       rendimentoPorcoes: z.number().finite().positive(),
@@ -692,7 +835,14 @@ const confirmarSchema = z.discriminatedUnion("tipo", [
   }),
 ]);
 
-async function obterOuCriarInsumo(tx: any, tenantId: string, nome: string, unidade: "g" | "ml" | "un", preco?: string | null) {
+async function obterOuCriarInsumo(
+  tx: any,
+  tenantId: string,
+  nome: string,
+  unidade: "g" | "ml" | "un",
+  preco?: string | null,
+  criar = true,
+): Promise<{ id: string; criado: boolean }> {
   const [existente] = await tx
     .select({ id: insumosTable.id })
     .from(insumosTable)
@@ -702,10 +852,11 @@ async function obterOuCriarInsumo(tx: any, tenantId: string, nome: string, unida
     if (preco) {
       await tx.update(insumosTable).set({ precoUnitario: preco, catalogo: "restaurante", updatedAt: new Date() }).where(eq(insumosTable.id, existente.id));
     }
-    return existente.id as string;
+    return { id: existente.id as string, criado: false };
   }
+  if (!criar) throw new Error(`Ingrediente não cadastrado: ${nome}`);
   const [criado] = await tx.insert(insumosTable).values({ tenantId, catalogo: "restaurante", nome, unidade, precoUnitario: preco ?? null }).returning({ id: insumosTable.id });
-  return criado!.id as string;
+  return { id: criado!.id as string, criado: true };
 }
 
 router.post("/tenants/:tenantId/restaurante/importacoes/confirmar", async (req, res) => {
@@ -714,7 +865,7 @@ router.post("/tenants/:tenantId/restaurante/importacoes/confirmar", async (req, 
   const input = confirmarSchema.safeParse(req.body);
   if (!input.success) return res.status(422).json({ error: "Itens inválidos", fields: camposInvalidos(input.error) });
 
-  const resultado = { criados: 0, atualizados: 0, fichasCriadas: 0, erros: [] as string[] };
+  const resultado = { criados: 0, atualizados: 0, fichasCriadas: 0, insumosCriados: 0, erros: [] as string[] };
   try {
     if (input.data.tipo === "ingredientes") {
       for (const item of input.data.itens) {
@@ -765,7 +916,16 @@ router.post("/tenants/:tenantId/restaurante/importacoes/confirmar", async (req, 
             const insumosConsolidados = [...consolidados.values()];
             const insumoIds: string[] = [];
             for (const insumo of insumosConsolidados) {
-              insumoIds.push(await obterOuCriarInsumo(tx, tenantId, insumo.nome, insumo.unidade));
+              const resolvido = await obterOuCriarInsumo(
+                tx,
+                tenantId,
+                insumo.nome,
+                insumo.unidade,
+                null,
+                input.data.criarInsumosFaltantes !== false,
+              );
+              insumoIds.push(resolvido.id);
+              if (resolvido.criado) resultado.insumosCriados += 1;
             }
             const [existente] = await tx
               .select({ id: abFichasTecnicasTable.id })
