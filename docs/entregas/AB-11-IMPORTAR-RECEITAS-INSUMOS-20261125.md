@@ -22,6 +22,10 @@ só entendia `Nome: 3 kg`, e o modo de preparo era tratado como ingrediente.
   = 15 ml, colher de chá = 5 ml, pitada = 1 g, dente/folha/ramo = 1 un.
 - `Sal a gosto` / `q.b.` entra como 1 g para o insumo existir e ser ajustado.
 - Ingredientes repetidos com a mesma unidade são somados.
+- Linhas como `1 peça de aprox. 2 kg` usam o primeiro termo da receita
+  (`Lagarto Recheado` → `Lagarto`) em vez de criar um insumo chamado
+  “1 peça de aprox”.
+- O aviso de linhas não lidas agora mostra até 5 linhas exatas para revisão.
 - PDF/DOCX/CSV sem nenhum item agora retorna erro claro em vez de preview vazio.
 - Avisos são resumidos (máximo de 8 na tela).
 

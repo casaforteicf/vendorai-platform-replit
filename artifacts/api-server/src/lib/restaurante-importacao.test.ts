@@ -108,6 +108,17 @@ describe("Restaurante — parsers de importação", () => {
     expect(avisos).toHaveLength(0);
   });
 
+  it("normaliza peça de aprox. usando o nome da receita", () => {
+    const avisos: string[] = [];
+    const receitas = parseReceitasTexto(
+      "Receita: Lagarto Recheado\nIngredientes:\n1 peça de aprox. 2 kg\n100 g de bacon\n",
+      "lagarto.pdf",
+      avisos,
+    );
+    expect(receitas[0]!.insumos[0]).toEqual({ nome: "Lagarto", unidade: "g", quantidadePorPorcao: 2000, fatorCorrecao: 1 });
+    expect(avisos).toHaveLength(0);
+  });
+
   it("converte medidas caseiras e aceita a gosto", () => {
     const avisos: string[] = [];
     const receitas = parseReceitasTexto(

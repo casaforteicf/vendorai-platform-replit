@@ -307,7 +307,7 @@ export function parseReceitasTexto(text: string, nomeArquivo: string, avisos: st
   const receitas: ReceitaImportada[] = [];
   let atual: ReceitaImportada | null = null;
   let secao: "ingredientes" | "preparo" | null = null;
-  let linhasIgnoradas = 0;
+  const linhasIgnoradas: string[] = [];
   const inicio = nomeArquivo.replace(/\.[^.]+$/, "").replace(/[_-]+/g, " ").trim() || "Receita importada";
 
   function garantirReceita(): ReceitaImportada {
@@ -377,11 +377,24 @@ export function parseReceitasTexto(text: string, nomeArquivo: string, avisos: st
 
     const insumo = parseIngredienteReceita(linha);
     if (!insumo) {
-      if (secao === "ingredientes") linhasIgnoradas += 1;
+      if (secao === "ingredientes") linhasIgnoradas.push(linha.slice(0, 120));
       continue;
     }
 
     const receita = garantirReceita();
+
+    // "1 peça de aprox. 2 kg" não traz o nome do corte. Usa o primeiro termo
+    // da receita ("Lagarto Recheado" -> "Lagarto") para o insumo não nascer
+    // com nome de quantidade.
+    const peca = insumo.nome.match(/^\d+\s+pe[çc]a\s+de\s+(?:(aprox\.?|aproximadamente)\s*)?(.*)$/i);
+    if (peca) {
+      const restante = (peca[2] ?? "").replace(/[.;:]+$/, "").trim();
+      if (!restante || /^(aprox\.?|aproximadamente)$/i.test(restante)) {
+        insumo.nome = receita.nome.replace(/^\d+\s*[-.)]?\s*/, "").split(/\s+/)[0] || "Peça";
+      } else {
+        insumo.nome = restante;
+      }
+    }
     const existente = receita.insumos.find((item) => normalizar(item.nome) === normalizar(insumo.nome));
     if (existente && existente.unidade === insumo.unidade) {
       existente.quantidadePorPorcao += insumo.quantidadePorPorcao;
@@ -390,8 +403,12 @@ export function parseReceitasTexto(text: string, nomeArquivo: string, avisos: st
     }
   }
 
-  if (linhasIgnoradas > 0) {
-    avisos.push(`${linhasIgnoradas} linha(s) da seção de ingredientes não puderam ser lidas. Revise o preview e complete manualmente.`);
+  if (linhasIgnoradas.length > 0) {
+    avisos.push(
+      `${linhasIgnoradas.length} linha(s) da seção de ingredientes não puderam ser lidas: `
+      + `${linhasIgnoradas.slice(0, 5).join(" | ")}`
+      + `${linhasIgnoradas.length > 5 ? ` | +${linhasIgnoradas.length - 5}` : ""}. Revise o preview e complete manualmente.`,
+    );
   }
   return receitas.filter((receita) => receita.insumos.length > 0);
 }
