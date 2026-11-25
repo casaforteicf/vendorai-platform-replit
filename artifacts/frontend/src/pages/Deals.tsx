@@ -1717,8 +1717,8 @@ function EditDealSheet({
   );
 
   async function transferToPipeline() {
-    if (!deal || !transferPipeline || !transferStage || !transferResponsibleId || transferNote.trim().length < 5) {
-      toast({ title: "Selecione pipeline, etapa e responsável e informe uma justificativa.", variant: "destructive" });
+    if (!deal || !transferPipeline || !transferStage || !transferResponsibleId) {
+      toast({ title: "Selecione pipeline, etapa e responsável.", variant: "destructive" });
       return;
     }
     setTransferring(true);
@@ -2217,15 +2217,15 @@ function EditDealSheet({
                     </Select>
                   </div>
                   <div className="space-y-1.5">
-                    <label className="text-sm font-medium">Justificativa do movimento</label>
+                    <label className="text-sm font-medium">Justificativa do movimento (opcional)</label>
                     <textarea
                       className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm min-h-24"
                       value={transferNote}
                       onChange={(e) => setTransferNote(e.target.value)}
-                      placeholder="Explique por que o lead está sendo movido para esta pipeline..."
+                      placeholder="Opcional: explique por que o lead está sendo movido para esta pipeline..."
                     />
                   </div>
-                  <Button type="button" className="w-full" onClick={transferToPipeline} disabled={transferring || !transferPipeline || !transferStage || !transferResponsibleId || transferNote.trim().length < 5}>
+                  <Button type="button" className="w-full" onClick={transferToPipeline} disabled={transferring || !transferPipeline || !transferStage || !transferResponsibleId}>
                     {transferring ? "Movendo..." : "Confirmar movimento"}
                   </Button>
                 </div>
