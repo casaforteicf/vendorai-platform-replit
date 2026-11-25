@@ -1,6 +1,7 @@
 import { Router, type IRouter } from "express";
 import { randomUUID, createHash } from "node:crypto";
 import { canAllocateQuantity, remainingQuantity, quantityUnits } from "../lib/crm-partial-execution.js";
+import { userMatchesStageResponsibleFunctions } from "../lib/stage-responsible.js";
 import { and, desc, eq, inArray, isNotNull, isNull, notExists, sql } from "drizzle-orm";
 import multer from "multer";
 import {
@@ -82,20 +83,6 @@ const COMMERCIAL_STAGE_TASKS: Record<string, string> = {
   contrato: "Providenciar e acompanhar contrato",
   ganho: "Confirmar pedido e transferir para execução",
 };
-
-function userMatchesStageResponsibleFunctions(
-  user: { active: boolean | null; userFunction: string | null; customFunctionId: string | null },
-  responsibleFunctions: string[] | null | undefined,
-): boolean {
-  if (user.active !== true) return false;
-  const configured = responsibleFunctions ?? [];
-  if (configured.length === 0) return false;
-
-  const refs = new Set<string>();
-  if (user.userFunction) refs.add(`builtin:${user.userFunction}`);
-  if (user.customFunctionId) refs.add(`custom:${user.customFunctionId}`);
-  return configured.some((responsible) => refs.has(responsible));
-}
 
 async function ensureCommercialStageTasks(deal: typeof dealsTable.$inferSelect) {
   if (!deal.leadId) return;
@@ -516,6 +503,7 @@ router.post("/deals/:id/transfer-pipeline", async (req, res) => {
     const [responsavel] = await db.select({
       id: usersTable.id,
       active: usersTable.active,
+      platformRole: usersTable.platformRole,
       userFunction: usersTable.userFunction,
       customFunctionId: usersTable.customFunctionId,
     }).from(usersTable).where(and(
@@ -1366,6 +1354,7 @@ router.post("/deals/:id/return-to-qualified", async (req, res) => {
     .select({
       id: usersTable.id,
       active: usersTable.active,
+      platformRole: usersTable.platformRole,
       userFunction: usersTable.userFunction,
       customFunctionId: usersTable.customFunctionId,
     })
@@ -1712,6 +1701,7 @@ router.patch("/deals/:id", async (req, res) => {
       const [owner] = await db.select({
         id: usersTable.id,
         active: usersTable.active,
+        platformRole: usersTable.platformRole,
         userFunction: usersTable.userFunction,
         customFunctionId: usersTable.customFunctionId,
       }).from(usersTable).where(and(
@@ -1837,6 +1827,7 @@ router.patch("/deals/:id", async (req, res) => {
     const [nextOwner] = await db.select({
       id: usersTable.id,
       active: usersTable.active,
+      platformRole: usersTable.platformRole,
       userFunction: usersTable.userFunction,
       customFunctionId: usersTable.customFunctionId,
     }).from(usersTable).where(and(

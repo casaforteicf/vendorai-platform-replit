@@ -262,6 +262,7 @@ async function extractQuoteWithRetry(tenantId: string, file: File): Promise<any>
 type StageResponsibleUser = {
   id: string;
   active?: boolean | null;
+  platformRole?: string | null;
   userFunction?: string | null;
   customFunctionId?: string | null;
 };
@@ -271,8 +272,21 @@ function isUserResponsibleForStage(
   stage?: Pick<PipelineStage, "responsaveisFuncoes"> | null,
 ): boolean {
   if (user.active !== true) return false;
+
+  // Administradores podem assumir qualquer etapa.
+  if (
+    user.platformRole === "super_admin"
+    || user.platformRole === "tenant_admin"
+    || user.userFunction === "administrador"
+  ) {
+    return true;
+  }
+
   const responsibleFunctions = stage?.responsaveisFuncoes ?? [];
-  if (responsibleFunctions.length === 0) return false;
+
+  // Etapa sem função responsável configurada não esvazia o seletor:
+  // qualquer usuário ativo do tenant pode assumir.
+  if (responsibleFunctions.length === 0) return true;
 
   const refs = new Set<string>();
   if (user.userFunction) refs.add(`builtin:${user.userFunction}`);
