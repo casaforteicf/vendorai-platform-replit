@@ -6,7 +6,7 @@ import RestaurantModulesNav from "../RestaurantModulesNav";
 
 type Tipo = "receitas" | "cardapios" | "ingredientes" | "briffing";
 type Insumo = { nome: string; unidade: "g" | "ml" | "un"; quantidadePorPorcao: number; fatorCorrecao: number };
-type Receita = { nome: string; rendimentoPorcoes: number; insumos: Insumo[] };
+type Receita = { nome: string; rendimentoPorcoes: number; modoPreparo: string; insumos: Insumo[] };
 type ItemCardapio = { receitaNome: string; porcoesPorPax: number };
 type Cardapio = { nome: string; data: string; servico: "cafe_manha" | "almoco" | "jantar" | "outro"; itens: ItemCardapio[] };
 type Ingrediente = { nome: string; unidade: "g" | "ml" | "un"; precoUnitario: string | null; categoria: string | null };
@@ -95,7 +95,7 @@ export default function Importar() {
       }
       setFormato(payload.formato ?? "");
       setAvisos(payload.avisos ?? []);
-      if (tipo === "receitas") setReceitas(payload.itens ?? []);
+      if (tipo === "receitas") setReceitas((payload.itens ?? []).map((receita: Receita) => ({ ...receita, modoPreparo: receita.modoPreparo ?? "" })));
       if (tipo === "cardapios") setCardapios(payload.itens ?? []);
       if (tipo === "ingredientes") setIngredientes(payload.itens ?? []);
       if (tipo === "briffing") setBriffing(payload.itens ?? []);
@@ -240,7 +240,7 @@ export default function Importar() {
       {tipo === "receitas" && receitas.length > 0 && (
         <section className="space-y-3 rounded-xl border p-4">
           <div className="flex items-center justify-between"><h2 className="font-semibold">Receitas ({receitas.length})</h2>
-            <button type="button" className="rounded border px-2 py-1 text-xs" onClick={() => setReceitas((lista) => [...lista, { nome: "", rendimentoPorcoes: 1, insumos: [{ nome: "", unidade: "g", quantidadePorPorcao: 1, fatorCorrecao: 1 }] }])}><Plus className="mr-1 inline h-3 w-3" />Adicionar</button>
+            <button type="button" className="rounded border px-2 py-1 text-xs" onClick={() => setReceitas((lista) => [...lista, { nome: "", rendimentoPorcoes: 1, modoPreparo: "", insumos: [{ nome: "", unidade: "g", quantidadePorPorcao: 1, fatorCorrecao: 1 }] }])}><Plus className="mr-1 inline h-3 w-3" />Adicionar</button>
           </div>
           <p className="rounded-md bg-muted/40 p-2 text-xs text-muted-foreground">
             As quantidades abaixo são da receita inteira. Ao confirmar, o sistema divide pelo rendimento e grava a quantidade por porção usada no briffing.
@@ -264,6 +264,9 @@ export default function Importar() {
                 ))}
                 <button type="button" className="rounded border px-2 py-1 text-xs" onClick={() => setReceitas((lista) => lista.map((item, i) => i !== ri ? item : { ...item, insumos: [...item.insumos, { nome: "", unidade: "g", quantidadePorPorcao: 1, fatorCorrecao: 1 }] }))}><Plus className="mr-1 inline h-3 w-3" />Insumo</button>
               </div>
+              <label className="block text-sm">Modo de preparo
+                <textarea rows={4} className="mt-1 w-full rounded border p-2 text-sm" placeholder="Como preparar esta receita" value={receita.modoPreparo} onChange={(event) => setReceitas((lista) => lista.map((item, i) => i !== ri ? item : { ...item, modoPreparo: event.target.value }))} />
+              </label>
             </article>
           ))}
         </section>

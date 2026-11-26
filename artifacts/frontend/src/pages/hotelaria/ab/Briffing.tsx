@@ -18,6 +18,7 @@ import {
 import {
   calcularBriffing,
   formatarQuantidade,
+  hospedesEquivalentes,
   validarOcupacao,
   type CardapioDia,
   type Prato,
@@ -79,6 +80,12 @@ function fichaParaPrato(ficha: FichaTecnica, porcoesPorPax = 1): Prato {
   };
 }
 
+const CATEGORIA_LABEL: Record<string, string> = {
+  proteina: "Proteína",
+  acompanhamento: "Acompanhamento",
+  outro: "Outro",
+};
+
 const SERVICO_LABEL: Record<string, string> = {
   cafe_manha: "Café da manhã",
   almoco: "Almoço",
@@ -94,8 +101,13 @@ export default function Briffing() {
   const cardapioId = new URLSearchParams(search).get("cardapio");
 
   const [ocupacao, setOcupacao] = useState("150");
+  const [criancas712, setCriancas712] = useState("0");
+  const [criancas06, setCriancas06] = useState("0");
+  const [proteinaPorAdulto, setProteinaPorAdulto] = useState("300");
+  const [acompanhamentoPorAdulto, setAcompanhamentoPorAdulto] = useState("150");
   const [resultado, setResultado] = useState<ResultadoBriffing | null>(null);
   const [ocupacaoCalculada, setOcupacaoCalculada] = useState<number | null>(null);
+  const [equivalentesCalculados, setEquivalentesCalculados] = useState<number | null>(null);
   const [erro, setErro] = useState<string | null>(null);
 
   const [fichas, setFichas] = useState<FichaTecnica[]>([]);
@@ -166,12 +178,56 @@ export default function Briffing() {
     [fichas, selecionadas],
   );
 
+  const criancas712Num = Math.max(0, Number(criancas712.replace(",", ".")) || 0);
+  const criancas06Num = Math.max(0, Number(criancas06.replace(",", ".")) || 0);
+  const criancasTotal = criancas712Num + criancas06Num;
+  const totalNum = Math.max(0, Number(ocupacao.replace(",", ".")) || 0);
+  const adultosNum = Math.max(0, totalNum - criancasTotal);
+  const equivalentes = hospedesEquivalentes(adultosNum, criancas712Num, criancas06Num);
+  const proteinaNum = Math.max(0, Number(proteinaPorAdulto.replace(",", ".")) || 0);
+  const acompanhamentoNum = Math.max(0, Number(acompanhamentoPorAdulto.replace(",", ".")) || 0);
+
+  function itemDoMenu(fichaId: string) {
+    return cardapioSalvo?.itens.find((item) => item.fichaId === fichaId) ?? null;
+  }
+
+  function referenciaGramas(ficha: FichaTecnica): number {
+    const grams = ficha.insumos
+      .filter((insumo) => insumo.unidadeBase !== "un")
+      .map((insumo) => Number(insumo.quantidadePorPorcao))
+      .filter((valor) => Number.isFinite(valor) && valor > 0);
+    return grams.length > 0 ? Math.max(...grams) : 0;
+  }
+
+  function categoriaDaFicha(fichaId: string) {
+    return itemDoMenu(fichaId)?.categoria ?? "outro";
+  }
+
+  function percentualDaFicha(fichaId: string): number {
+    const item = itemDoMenu(fichaId);
+    if (!item) return 0;
+    if (item.percentualRateio) return Number(item.percentualRateio);
+    const categoria = item.categoria;
+    const doGrupo = selecionadasLista.filter((ficha) => categoriaDaFicha(ficha.id) === categoria);
+    return doGrupo.length > 0 ? 100 / doGrupo.length : 0;
+  }
+
+  function porcoesDoPratoCalculado(ficha: FichaTecnica): number {
+    const categoria = categoriaDaFicha(ficha.id);
+    if (categoria === "outro") return porcoesPorFicha[ficha.id] ?? 1;
+    const referencia = referenciaGramas(ficha);
+    if (referencia <= 0) return porcoesPorFicha[ficha.id] ?? 1;
+    const alvo = (categoria === "proteina" ? proteinaNum : acompanhamentoNum) * (percentualDaFicha(ficha.id) / 100);
+    return alvo > 0 ? alvo / referencia : 0;
+  }
+
   const cardapio: CardapioDia = useMemo(
     () => ({
       data: cardapioSalvo?.data ?? hojeISO(),
-      pratos: selecionadasLista.map((ficha) => fichaParaPrato(ficha, porcoesPorFicha[ficha.id] ?? 1)),
+      pratos: selecionadasLista.map((ficha) => fichaParaPrato(ficha, porcoesDoPratoCalculado(ficha))),
     }),
-    [cardapioSalvo?.data, porcoesPorFicha, selecionadasLista],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [cardapioSalvo?.data, porcoesPorFicha, selecionadasLista, proteinaNum, acompanhamentoNum],
   );
 
   const valorAtual = Number(ocupacao.trim().replace(",", "."));
@@ -201,12 +257,24 @@ export default function Briffing() {
       return;
     }
 
+    if (criancasTotal > validada.valor) {
+      setErro("A soma de crianças não pode ser maior que a ocupação total.");
+      return;
+    }
+    if (proteinaNum <= 0 && selecionadasLista.some((ficha) => categoriaDaFicha(ficha.id) === "proteina")) {
+      setErro("Informe a proteína por adulto.");
+      return;
+    }
+
     try {
-      setResultado(calcularBriffing(validada.valor, cardapio));
+      const equivalentesCalculados = hospedesEquivalentes(validada.valor - criancasTotal, criancas712Num, criancas06Num);
+      setResultado(calcularBriffing(equivalentesCalculados, cardapio));
       setOcupacaoCalculada(validada.valor);
+      setEquivalentesCalculados(equivalentesCalculados);
     } catch (falha) {
       setResultado(null);
       setOcupacaoCalculada(null);
+      setEquivalentesCalculados(null);
       setErro(falha instanceof Error ? falha.message : "Não foi possível calcular a produção.");
     }
   }
@@ -214,6 +282,7 @@ export default function Briffing() {
   function limpar() {
     setResultado(null);
     setOcupacaoCalculada(null);
+    setEquivalentesCalculados(null);
     setErro(null);
   }
 
@@ -283,42 +352,41 @@ export default function Briffing() {
         </CardHeader>
         <CardContent>
           <form onSubmit={calcular} className="space-y-4">
-            <div className="grid gap-3 sm:grid-cols-3">
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
               <div className="space-y-1.5">
-                <Label htmlFor="ocupacao">
-                  Ocupação (hóspedes) <span className="text-red-600">*</span>
-                </Label>
-                <Input
-                  id="ocupacao"
-                  type="number"
-                  inputMode="numeric"
-                  min={0}
-                  step={1}
-                  value={ocupacao}
-                  onChange={(e) => setOcupacao(e.target.value)}
-                  placeholder="Ex.: 150"
-                  aria-invalid={erro !== null ? true : undefined}
-                />
+                <Label htmlFor="ocupacao">Ocupação total (hóspedes) <span className="text-red-600">*</span></Label>
+                <Input id="ocupacao" type="number" inputMode="numeric" min={0} step={1} value={ocupacao} onChange={(e) => setOcupacao(e.target.value)} placeholder="Ex.: 150" aria-invalid={erro !== null ? true : undefined} />
+                <p className="text-xs text-muted-foreground">{NUMERO.format(adultosNum)} adulto(s) · {NUMERO.format(criancasTotal)} criança(s)</p>
               </div>
-
+              <div className="space-y-1.5">
+                <Label htmlFor="criancas712">Crianças 7–12 anos (50%)</Label>
+                <Input id="criancas712" type="number" min={0} step={1} value={criancas712} onChange={(e) => setCriancas712(e.target.value)} />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="criancas06">Crianças 0–6 anos (30%)</Label>
+                <Input id="criancas06" type="number" min={0} step={1} value={criancas06} onChange={(e) => setCriancas06(e.target.value)} />
+              </div>
               <div className="space-y-1.5">
                 <Label>Cardápio do dia</Label>
                 <p className="flex h-10 items-center text-sm text-muted-foreground">
-                  {cardapioSalvo
-                    ? `${cardapioSalvo.nome} · ${cardapio.pratos.length} preparação(ões)`
-                    : `${dataFormatada} · ${cardapio.pratos.length} preparação(ões)`}
+                  {cardapioSalvo ? `${cardapioSalvo.nome} · ${cardapio.pratos.length} preparação(ões)` : `${dataFormatada} · ${cardapio.pratos.length} preparação(ões)`}
                 </p>
               </div>
-
+              <div className="space-y-1.5">
+                <Label htmlFor="proteina">Proteína por adulto (g)</Label>
+                <Input id="proteina" type="number" min={0} step={1} value={proteinaPorAdulto} onChange={(e) => setProteinaPorAdulto(e.target.value)} />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="acompanhamento">Acompanhamento por adulto (g)</Label>
+                <Input id="acompanhamento" type="number" min={0} step={1} value={acompanhamentoPorAdulto} onChange={(e) => setAcompanhamentoPorAdulto(e.target.value)} />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Hóspedes equivalentes</Label>
+                <p className="flex h-10 items-center text-sm font-medium">{NUMERO.format(equivalentes)}</p>
+              </div>
               <div className="flex items-end gap-2">
-                <Button type="submit" className="flex-1">
-                  Calcular Produção
-                </Button>
-                {resultado && (
-                  <Button type="button" variant="outline" onClick={limpar}>
-                    Limpar
-                  </Button>
-                )}
+                <Button type="submit" className="flex-1">Calcular Produção</Button>
+                {resultado && <Button type="button" variant="outline" onClick={limpar}>Limpar</Button>}
               </div>
             </div>
 
@@ -334,7 +402,8 @@ export default function Briffing() {
             {desatualizado && (
               <p className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
                 A ocupação mudou — o resultado abaixo ainda é de{" "}
-                <strong>{NUMERO.format(ocupacaoCalculada ?? 0)} hóspedes</strong>. Clique em
+                <strong>{NUMERO.format(ocupacaoCalculada ?? 0)} hóspedes</strong>
+                {equivalentesCalculados !== null ? ` (${NUMERO.format(equivalentesCalculados)} equivalentes)` : ""}. Clique em
                 Calcular Produção para atualizar.
               </p>
             )}
@@ -389,6 +458,8 @@ export default function Briffing() {
                 <TableRow>
                   <TableHead className="w-10">Dia</TableHead>
                   <TableHead>Prato</TableHead>
+                  <TableHead>Categoria</TableHead>
+                  <TableHead>Rateio</TableHead>
                   <TableHead>Porções totais</TableHead>
                   <TableHead>Ficha técnica</TableHead>
                 </TableRow>
@@ -413,6 +484,17 @@ export default function Briffing() {
                         {!ficha.ativo && (
                           <span className="ml-2 text-xs text-muted-foreground">(inativa)</span>
                         )}
+                      </TableCell>
+                      <TableCell className="text-xs">
+                        {CATEGORIA_LABEL[categoriaDaFicha(ficha.id)] ?? "Outro"}
+                      </TableCell>
+                      <TableCell className="text-xs">
+                        {categoriaDaFicha(ficha.id) === "outro"
+                          ? "1 porção"
+                          : `${NUMERO.format(percentualDaFicha(ficha.id))}% · ${NUMERO.format(
+                              (categoriaDaFicha(ficha.id) === "proteina" ? proteinaNum : acompanhamentoNum)
+                              * (percentualDaFicha(ficha.id) / 100),
+                            )} g/adulto`}
                       </TableCell>
                       <TableCell>
                         {porcoes === null ? (
@@ -449,7 +531,7 @@ export default function Briffing() {
             <CardTitle>Produção consolidada</CardTitle>
             {resultado && (
               <p className="text-xs text-muted-foreground">
-                {NUMERO.format(resultado.ocupacao)} hóspedes · {resultado.consolidado.length}{" "}
+                {NUMERO.format(resultado.ocupacao)} hóspedes equivalentes · {resultado.consolidado.length}{" "}
                 insumo(s)
               </p>
             )}

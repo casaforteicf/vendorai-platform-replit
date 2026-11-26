@@ -12,6 +12,7 @@ import {
   type AbAuth,
   type Cardapio,
   type CardapioServico,
+  type CategoriaItemCardapio,
   type FichaTecnica,
 } from "@/lib/ab/client";
 import { formatarDataBR, hojeISO } from "@/lib/ab/datas";
@@ -27,6 +28,8 @@ const rotuloServico = (servico: CardapioServico) =>
   SERVICOS.find((item) => item.valor === servico)?.rotulo ?? servico;
 
 type Selecao = Record<string, string>;
+type Categorias = Record<string, CategoriaItemCardapio>;
+type Percentuais = Record<string, string>;
 
 export default function Cardapios() {
   const { user, token } = useAuth();
@@ -38,6 +41,8 @@ export default function Cardapios() {
   const [fichas, setFichas] = useState<FichaTecnica[]>([]);
   const [cardapios, setCardapios] = useState<Cardapio[]>([]);
   const [selecao, setSelecao] = useState<Selecao>({});
+  const [categorias, setCategorias] = useState<Categorias>({});
+  const [percentuais, setPercentuais] = useState<Percentuais>({});
   const [nome, setNome] = useState("");
   const [observacao, setObservacao] = useState("");
   const [editandoId, setEditandoId] = useState<string | null>(null);
@@ -80,6 +85,8 @@ export default function Cardapios() {
     setNome("");
     setObservacao("");
     setSelecao({});
+    setCategorias({});
+    setPercentuais({});
   }
 
   function alternarFicha(fichaId: string) {
@@ -91,6 +98,7 @@ export default function Cardapios() {
       }
       return { ...anterior, [fichaId]: "1" };
     });
+    setCategorias((anterior) => (fichaId in anterior ? anterior : { ...anterior, [fichaId]: "outro" }));
   }
 
   function editar(cardapio: Cardapio) {
@@ -99,6 +107,12 @@ export default function Cardapios() {
     setObservacao(cardapio.observacao ?? "");
     setSelecao(
       Object.fromEntries(cardapio.itens.map((item) => [item.fichaId, item.porcoesPorPax])),
+    );
+    setCategorias(
+      Object.fromEntries(cardapio.itens.map((item) => [item.fichaId, item.categoria ?? "outro"])),
+    );
+    setPercentuais(
+      Object.fromEntries(cardapio.itens.map((item) => [item.fichaId, item.percentualRateio ?? ""])),
     );
     setErro(null);
     setAviso(null);
@@ -111,6 +125,10 @@ export default function Cardapios() {
     const itens = Object.entries(selecao).map(([fichaId, porcoesPorPax], ordem) => ({
       fichaId,
       porcoesPorPax: Number(String(porcoesPorPax).replace(",", ".")),
+      categoria: categorias[fichaId] ?? "outro",
+      percentualRateio: (categorias[fichaId] ?? "outro") === "outro"
+        ? null
+        : Number(String(percentuais[fichaId] ?? "0").replace(",", ".")),
       ordem,
     }));
     if (!nome.trim()) {
@@ -132,6 +150,19 @@ export default function Cardapios() {
     if (new Set(itens.map((item) => item.fichaId)).size !== itens.length) {
       setErro("O mesmo prato não pode aparecer duas vezes.");
       return;
+    }
+    for (const categoria of ["proteina", "acompanhamento"] as const) {
+      const grupo = itens.filter((item) => item.categoria === categoria);
+      if (grupo.length === 0) continue;
+      const soma = grupo.reduce((total, item) => total + (item.percentualRateio ?? 0), 0);
+      if (grupo.some((item) => item.percentualRateio === null || item.percentualRateio === 0)) {
+        setErro(`Informe o percentual de cada prato de ${categoria}.`);
+        return;
+      }
+      if (Math.abs(soma - 100) > 0.01) {
+        setErro(`A soma dos percentuais de ${categoria} precisa ser 100% (está ${soma.toFixed(2)}%).`);
+        return;
+      }
     }
 
     setSalvando(true);
@@ -181,6 +212,9 @@ export default function Cardapios() {
           O que será servido no dia e quantas porções por hóspede. O briffing usa este cardápio
           para calcular a produção e a compra.
         </p>
+        <Link href="/hotelaria/restaurante/cardapios-modelos" className="mt-2 inline-flex rounded-md border px-3 py-1.5 text-sm hover:bg-muted">
+          Modelos de cardápio e grade semanal
+        </Link>
       </header>
 
       {erro && <div role="alert" className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-800">{erro}</div>}
@@ -272,6 +306,34 @@ export default function Cardapios() {
                           className="w-24 rounded-md border p-1"
                           value={selecao[ficha.id] ?? "1"}
                           onChange={(event) => setSelecao((anterior) => ({ ...anterior, [ficha.id]: event.target.value }))}
+                        />
+                      </label>
+                    )}
+                    {selecionada && (
+                      <label className="flex items-center gap-2">
+                        <span className="text-xs text-muted-foreground">categoria</span>
+                        <select
+                          className="rounded-md border p-1 text-xs"
+                          value={categorias[ficha.id] ?? "outro"}
+                          onChange={(event) => setCategorias((anterior) => ({ ...anterior, [ficha.id]: event.target.value as CategoriaItemCardapio }))}
+                        >
+                          <option value="proteina">Proteína</option>
+                          <option value="acompanhamento">Acompanhamento</option>
+                          <option value="outro">Outro</option>
+                        </select>
+                      </label>
+                    )}
+                    {selecionada && (categorias[ficha.id] ?? "outro") !== "outro" && (
+                      <label className="flex items-center gap-2">
+                        <span className="text-xs text-muted-foreground">%</span>
+                        <input
+                          type="number"
+                          min="0"
+                          max="100"
+                          step="0.01"
+                          className="w-20 rounded-md border p-1 text-xs"
+                          value={percentuais[ficha.id] ?? ""}
+                          onChange={(event) => setPercentuais((anterior) => ({ ...anterior, [ficha.id]: event.target.value }))}
                         />
                       </label>
                     )}

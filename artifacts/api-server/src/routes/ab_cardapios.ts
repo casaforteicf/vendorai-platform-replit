@@ -2,6 +2,7 @@ import { Router, type IRouter } from "express";
 import { and, asc, eq, inArray } from "drizzle-orm";
 import { z } from "zod/v4";
 import {
+  AB_CATEGORIAS_ITEM_CARDAPIO,
   AB_SERVICOS_CARDAPIO,
   abCardapioItensTable,
   abCardapiosTable,
@@ -38,6 +39,8 @@ const itemDoCorpo = z
       .pipe(z.string().regex(/^\d+(\.\d+)?$/).refine((valor) => Number(valor) > 0, "Deve ser maior que zero")
           .refine((valor) => Number(valor) <= 20, "Porções por hóspede não pode passar de 20"))
       .optional(),
+    categoria: z.enum(AB_CATEGORIAS_ITEM_CARDAPIO).optional(),
+    percentualRateio: z.union([z.string(), z.number()]).nullable().optional(),
     ordem: z.number().int().min(0).optional(),
     observacao: z.string().trim().max(1000).nullable().optional(),
   })
@@ -82,7 +85,14 @@ async function carregarFichas(
 function itensParaGravar(
   tenantId: string,
   cardapioId: string,
-  itens: Array<{ fichaId: string; porcoesPorPax?: string; ordem?: number; observacao?: string | null }>,
+  itens: Array<{
+    fichaId: string;
+    porcoesPorPax?: string;
+    categoria?: "proteina" | "acompanhamento" | "outro";
+    percentualRateio?: string | number | null;
+    ordem?: number;
+    observacao?: string | null;
+  }>,
   fichas: Map<string, { id: string; nome: string }>,
 ) {
   return itens.map((item, index) => ({
@@ -90,6 +100,10 @@ function itensParaGravar(
     cardapioId,
     fichaId: item.fichaId,
     fichaNome: fichas.get(item.fichaId)!.nome,
+    categoria: item.categoria ?? "outro",
+    percentualRateio: item.categoria === "outro" || item.percentualRateio === null || item.percentualRateio === undefined
+      ? null
+      : String(item.percentualRateio),
     porcoesPorPax: item.porcoesPorPax ?? "1",
     ordem: item.ordem ?? index,
     observacao: item.observacao ?? null,

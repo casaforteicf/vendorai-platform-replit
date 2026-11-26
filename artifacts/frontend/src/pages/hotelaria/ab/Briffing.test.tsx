@@ -54,6 +54,8 @@ const { FICHAS, listarFichasMock } = vi.hoisted(() => ({
 
 vi.mock("@/lib/ab/client", () => ({
   listarFichas: listarFichasMock,
+  listarPrevisoesBriffing: vi.fn(async () => []),
+  obterCardapio: vi.fn(async () => null),
   mensagemDoErro: (erro: unknown) => String(erro),
 }));
 

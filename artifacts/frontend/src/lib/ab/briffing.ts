@@ -72,6 +72,17 @@ export type ResultadoBriffing = {
   consolidado: InsumoCalculado[];
 };
 
+/** Converte adultos + crianças em hóspedes equivalentes para o cálculo. */
+export function hospedesEquivalentes(
+  adultos: number,
+  criancas712: number,
+  criancas06: number,
+  fator712 = 0.5,
+  fator06 = 0.3,
+): number {
+  return adultos + criancas712 * fator712 + criancas06 * fator06;
+}
+
 /** Arredonda para 3 casas na unidade base (precisão de grama/mililitro). */
 export function arredondar(valor: number, casas = 3): number {
   const fator = 10 ** casas;

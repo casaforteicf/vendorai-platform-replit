@@ -94,6 +94,10 @@ const decimalOptional = decimal.optional();
  * Postgres recusaria no CHECK e o erro sairia como 500 em vez de 422.
  */
 const decimalPositivo = decimal.refine((v) => Number(v) > 0, "Deve ser maior que zero");
+const decimalPercentual = decimal.refine(
+  (v) => Number(v) >= 0 && Number(v) <= 100,
+  "Percentual deve ficar entre 0 e 100",
+);
 
 const dataISO = z
   .string()
@@ -121,6 +125,8 @@ export const abFichasTecnicasTable = pgTable(
     nome: text("nome").notNull(),
     /** Rendimento em porções (o que a tela de FichaTecnica pede). */
     rendimentoPorcoes: numeric("rendimento_porcoes", { precision: 12, scale: 3 }).notNull(),
+    /** Modo de preparo em texto livre, preservando quebras de linha do PDF. */
+    modoPreparo: text("modo_preparo"),
     observacoes: text("observacoes"),
     ativo: boolean("ativo").notNull().default(true),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
@@ -143,6 +149,7 @@ export const abFichasTecnicasTable = pgTable(
 export const insertAbFichaTecnicaSchema = createInsertSchema(abFichasTecnicasTable, {
   nome: z.string().trim().min(1).max(120),
   rendimentoPorcoes: decimalPositivo,
+  modoPreparo: z.string().trim().max(20000).nullable().optional(),
   observacoes: z.string().trim().max(2000).nullable().optional(),
 }).omit({ id: true, tenantId: true, createdAt: true, updatedAt: true });
 
@@ -784,6 +791,102 @@ export const AB_SERVICOS_CARDAPIO = [
 
 export type AbServicoCardapio = (typeof AB_SERVICOS_CARDAPIO)[number];
 
+/** Categoria do prato no rateio do briffing. */
+export const AB_CATEGORIAS_ITEM_CARDAPIO = ["proteina", "acompanhamento", "outro"] as const;
+export type AbCategoriaItemCardapio = (typeof AB_CATEGORIAS_ITEM_CARDAPIO)[number];
+
+/**
+ * Modelo de cardápio reutilizável. O serviço é fixo; a escala do dia copia os
+ * itens do modelo para um cardápio concreto (snapshot).
+ */
+export const abCardapioModelosTable = pgTable(
+  "ab_cardapio_modelos",
+  {
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
+    tenantId: text("tenant_id")
+      .notNull()
+      .references(() => tenantsTable.id, { onDelete: "cascade" }),
+    nome: text("nome").notNull(),
+    servico: text("servico").notNull(),
+    ativo: boolean("ativo").notNull().default(true),
+    observacao: text("observacao"),
+    createdBy: text("created_by").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
+  },
+  (table) => [
+    unique("ab_cardapio_modelos_tenant_id_uq").on(table.tenantId, table.id),
+    unique("ab_cardapio_modelos_tenant_servico_nome_uq").on(table.tenantId, table.servico, table.nome),
+    index("ab_cardapio_modelos_tenant_servico_idx").on(table.tenantId, table.servico, table.ativo),
+    check("ab_cardapio_modelos_nome_nao_vazio", sql`length(btrim(${table.nome})) > 0`),
+    check("ab_cardapio_modelos_servico_valido", sql`${table.servico} IN ('cafe_manha', 'almoco', 'jantar', 'outro')`),
+  ],
+);
+
+export const abCardapioModeloItensTable = pgTable(
+  "ab_cardapio_modelo_itens",
+  {
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
+    tenantId: text("tenant_id")
+      .notNull()
+      .references(() => tenantsTable.id, { onDelete: "cascade" }),
+    modeloId: text("modelo_id").notNull(),
+    fichaId: text("ficha_id").notNull(),
+    fichaNome: text("ficha_nome").notNull(),
+    categoria: text("categoria").notNull().default("outro"),
+    percentualRateio: numeric("percentual_rateio", { precision: 5, scale: 2 }),
+    ordem: integer("ordem").notNull().default(0),
+    observacao: text("observacao"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
+  },
+  (table) => [
+    unique("ab_cardapio_modelo_itens_tenant_id_uq").on(table.tenantId, table.id),
+    unique("ab_cardapio_modelo_itens_modelo_ficha_uq").on(table.tenantId, table.modeloId, table.fichaId),
+    index("ab_cardapio_modelo_itens_modelo_idx").on(table.tenantId, table.modeloId, table.ordem),
+    check("ab_cardapio_modelo_itens_categoria_valida", sql`${table.categoria} IN ('proteina', 'acompanhamento', 'outro')`),
+    check("ab_cardapio_modelo_itens_percentual_valido", sql`${table.percentualRateio} IS NULL OR (${table.percentualRateio} >= 0 AND ${table.percentualRateio} <= 100)`),
+  ],
+);
+
+/** Grade semanal: dia da semana + serviço aponta para um modelo. */
+export const abCardapioGradeTable = pgTable(
+  "ab_cardapio_grade",
+  {
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
+    tenantId: text("tenant_id")
+      .notNull()
+      .references(() => tenantsTable.id, { onDelete: "cascade" }),
+    diaSemana: integer("dia_semana").notNull(),
+    servico: text("servico").notNull(),
+    modeloId: text("modelo_id").notNull(),
+    ativo: boolean("ativo").notNull().default(true),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
+  },
+  (table) => [
+    unique("ab_cardapio_grade_tenant_id_uq").on(table.tenantId, table.id),
+    unique("ab_cardapio_grade_tenant_dia_servico_uq").on(table.tenantId, table.diaSemana, table.servico),
+    check("ab_cardapio_grade_dia_valido", sql`${table.diaSemana} BETWEEN 0 AND 6`),
+    check("ab_cardapio_grade_servico_valido", sql`${table.servico} IN ('cafe_manha', 'almoco', 'jantar', 'outro')`),
+  ],
+);
+
 /**
  * Cardápio de um serviço em uma data. É a ponte entre a ficha técnica (o que a
  * cozinha sabe produzir) e o briffing (quanto comprar para a ocupação do dia).
@@ -804,6 +907,8 @@ export const abCardapiosTable = pgTable(
     nome: text("nome").notNull(),
     data: date("data", { mode: "string" }).notNull(),
     servico: text("servico").notNull(),
+    /** Modelo que originou esta escala; nulo em cardápio avulso. */
+    modeloId: text("modelo_id"),
     ativo: boolean("ativo").notNull().default(true),
     observacao: text("observacao"),
     createdBy: text("created_by").notNull(),
@@ -822,6 +927,7 @@ export const abCardapiosTable = pgTable(
       table.nome,
     ),
     index("ab_cardapios_tenant_data_idx").on(table.tenantId, table.data, table.servico),
+    index("ab_cardapios_tenant_modelo_idx").on(table.tenantId, table.modeloId),
     check("ab_cardapios_nome_nao_vazio", sql`length(btrim(${table.nome})) > 0`),
     check(
       "ab_cardapios_servico_valido",
@@ -829,6 +935,39 @@ export const abCardapiosTable = pgTable(
     ),
   ],
 );
+
+export const insertAbCardapioModeloSchema = createInsertSchema(abCardapioModelosTable, {
+  nome: z.string().trim().min(1).max(120),
+  servico: z.enum(AB_SERVICOS_CARDAPIO),
+  observacao: z.string().trim().max(2000).nullable().optional(),
+}).omit({ id: true, tenantId: true, createdBy: true, createdAt: true, updatedAt: true });
+
+export const selectAbCardapioModeloSchema = createSelectSchema(abCardapioModelosTable);
+export type AbCardapioModelo = typeof abCardapioModelosTable.$inferSelect;
+export type InsertAbCardapioModelo = typeof abCardapioModelosTable.$inferInsert;
+
+export const insertAbCardapioModeloItemSchema = createInsertSchema(abCardapioModeloItensTable, {
+  fichaId: z.string().uuid(),
+  fichaNome: z.string().trim().min(1).max(120),
+  categoria: z.enum(AB_CATEGORIAS_ITEM_CARDAPIO).optional(),
+  percentualRateio: decimalPercentual.optional(),
+  ordem: z.number().int().min(0).optional(),
+  observacao: z.string().trim().max(1000).nullable().optional(),
+}).omit({ id: true, tenantId: true, createdAt: true, updatedAt: true });
+
+export const selectAbCardapioModeloItemSchema = createSelectSchema(abCardapioModeloItensTable);
+export type AbCardapioModeloItem = typeof abCardapioModeloItensTable.$inferSelect;
+export type InsertAbCardapioModeloItem = typeof abCardapioModeloItensTable.$inferInsert;
+
+export const insertAbCardapioGradeSchema = createInsertSchema(abCardapioGradeTable, {
+  diaSemana: z.number().int().min(0).max(6),
+  servico: z.enum(AB_SERVICOS_CARDAPIO),
+  modeloId: z.string().uuid(),
+}).omit({ id: true, tenantId: true, createdAt: true, updatedAt: true });
+
+export const selectAbCardapioGradeSchema = createSelectSchema(abCardapioGradeTable);
+export type AbCardapioGrade = typeof abCardapioGradeTable.$inferSelect;
+export type InsertAbCardapioGrade = typeof abCardapioGradeTable.$inferInsert;
 
 export const insertAbCardapioSchema = createInsertSchema(abCardapiosTable, {
   nome: z.string().trim().min(1).max(120),
@@ -857,6 +996,9 @@ export const abCardapioItensTable = pgTable(
     cardapioId: text("cardapio_id").notNull(),
     fichaId: text("ficha_id").notNull(),
     fichaNome: text("ficha_nome").notNull(),
+    categoria: text("categoria").notNull().default("outro"),
+    percentualRateio: numeric("percentual_rateio", { precision: 5, scale: 2 }),
+    modeloItemId: text("modelo_item_id"),
     porcoesPorPax: numeric("porcoes_por_pax", { precision: 8, scale: 3 })
       .notNull()
       .default("1"),
@@ -881,6 +1023,8 @@ export const abCardapioItensTable = pgTable(
       table.ordem,
     ),
     check("ab_cardapio_itens_nome_nao_vazio", sql`length(btrim(${table.fichaNome})) > 0`),
+    check("ab_cardapio_itens_categoria_valida", sql`${table.categoria} IN ('proteina', 'acompanhamento', 'outro')`),
+    check("ab_cardapio_itens_percentual_valido", sql`${table.percentualRateio} IS NULL OR (${table.percentualRateio} >= 0 AND ${table.percentualRateio} <= 100)`),
     check("ab_cardapio_itens_porcoes_positivas", sql`${table.porcoesPorPax} > 0`),
     check("ab_cardapio_itens_ordem_nao_negativa", sql`${table.ordem} >= 0`),
   ],
@@ -890,6 +1034,9 @@ export const insertAbCardapioItemSchema = createInsertSchema(abCardapioItensTabl
   cardapioId: z.string().uuid(),
   fichaId: z.string().uuid(),
   fichaNome: z.string().trim().min(1).max(120),
+  categoria: z.enum(AB_CATEGORIAS_ITEM_CARDAPIO).optional(),
+  percentualRateio: decimalPercentual.optional(),
+  modeloItemId: z.string().uuid().nullable().optional(),
   porcoesPorPax: decimalPositivo.optional(),
   ordem: z.number().int().min(0).optional(),
   observacao: z.string().trim().max(1000).nullable().optional(),

@@ -97,6 +97,7 @@ router.post("/tenants/:tenantId/ab/fichas-tecnicas", async (req, res) => {
           tenantId: t,
           nome: parsed.data.nome,
           rendimentoPorcoes: parsed.data.rendimentoPorcoes,
+          modoPreparo: parsed.data.modoPreparo ?? null,
           observacoes: parsed.data.observacoes ?? null,
           ativo: parsed.data.ativo ?? true,
         })

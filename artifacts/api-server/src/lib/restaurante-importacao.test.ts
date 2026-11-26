@@ -115,6 +115,8 @@ describe("Restaurante — parsers de importação", () => {
     expect(receitas).toHaveLength(1);
     expect(receitas[0]!.nome).toBe("Costelinhas ao Barbecue Caseiro");
     expect(receitas[0]!.rendimentoPorcoes).toBe(6);
+    expect(receitas[0]!.modoPreparo).toContain("Tempere as costelinhas");
+    expect(receitas[0]!.modoPreparo).toContain("Asse por 30 minutos");
     expect(receitas[0]!.insumos).toEqual([
       { nome: "costelinhas de porco", unidade: "g", quantidadePorPorcao: 3000, fatorCorrecao: 1 },
       { nome: "ketchup", unidade: "g", quantidadePorPorcao: 300, fatorCorrecao: 1 },

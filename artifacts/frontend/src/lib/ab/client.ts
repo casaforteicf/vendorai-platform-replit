@@ -296,6 +296,7 @@ export type FichaTecnica = {
   id: string;
   nome: string;
   rendimentoPorcoes: string;
+  modoPreparo: string | null;
   observacoes: string | null;
   ativo: boolean;
   insumos: FichaInsumo[];
@@ -304,6 +305,7 @@ export type FichaTecnica = {
 export type FichaInput = {
   nome: string;
   rendimentoPorcoes: number;
+  modoPreparo?: string | null;
   observacoes?: string | null;
   insumos: Array<{
     insumoNome: string;
@@ -556,6 +558,9 @@ export type CardapioItem = {
   cardapioId: string;
   fichaId: string;
   fichaNome: string;
+  categoria: "proteina" | "acompanhamento" | "outro";
+  percentualRateio: string | null;
+  modeloItemId: string | null;
   porcoesPorPax: string;
   ordem: number;
   observacao: string | null;
@@ -569,6 +574,7 @@ export type Cardapio = {
   nome: string;
   data: string;
   servico: CardapioServico;
+  modeloId: string | null;
   ativo: boolean;
   observacao: string | null;
   createdBy: string;
@@ -617,8 +623,12 @@ export async function excluirPrevisaoBriffing(auth: AbAuth, id: string): Promise
   });
 }
 
+export type CategoriaItemCardapio = "proteina" | "acompanhamento" | "outro";
+
 export type CardapioItemInput = {
   fichaId: string;
+  categoria?: CategoriaItemCardapio;
+  percentualRateio?: number | null;
   porcoesPorPax?: number;
   ordem?: number;
   observacao?: string | null;
@@ -678,6 +688,106 @@ export async function atualizarCardapio(
 export async function excluirCardapio(auth: AbAuth, id: string): Promise<void> {
   await requisitar<null>(auth, urlAb(auth, `/cardapios/${encodeURIComponent(id)}`), {
     method: "DELETE",
+  });
+}
+
+// ─── Modelos de cardápio, grade e escala ────────────────────────────────────
+
+export type CardapioModeloItem = {
+  id: string;
+  modeloId: string;
+  fichaId: string;
+  fichaNome: string;
+  categoria: CategoriaItemCardapio;
+  percentualRateio: string | null;
+  ordem: number;
+  observacao: string | null;
+};
+
+export type CardapioModelo = {
+  id: string;
+  nome: string;
+  servico: CardapioServico;
+  ativo: boolean;
+  observacao: string | null;
+  itens: CardapioModeloItem[];
+};
+
+export type CardapioModeloInput = {
+  nome: string;
+  servico: CardapioServico;
+  ativo?: boolean;
+  observacao?: string | null;
+  itens: Array<{
+    fichaId: string;
+    categoria: CategoriaItemCardapio;
+    percentualRateio?: number | null;
+    ordem?: number;
+    observacao?: string | null;
+  }>;
+};
+
+export type CardapioGradeRegra = {
+  id: string;
+  diaSemana: number;
+  servico: CardapioServico;
+  modeloId: string;
+  ativo: boolean;
+};
+
+export async function listarModelosCardapio(auth: AbAuth): Promise<CardapioModelo[]> {
+  const resposta = await requisitar<{ modelos: CardapioModelo[] }>(auth, urlAb(auth, "/cardapio-modelos"));
+  return resposta.modelos ?? [];
+}
+
+export async function criarModeloCardapio(auth: AbAuth, entrada: CardapioModeloInput): Promise<CardapioModelo> {
+  return requisitar<CardapioModelo>(auth, urlAb(auth, "/cardapio-modelos"), {
+    method: "POST",
+    body: JSON.stringify(entrada),
+  });
+}
+
+export async function atualizarModeloCardapio(
+  auth: AbAuth,
+  id: string,
+  entrada: CardapioModeloInput,
+): Promise<CardapioModelo> {
+  return requisitar<CardapioModelo>(auth, urlAb(auth, `/cardapio-modelos/${encodeURIComponent(id)}`), {
+    method: "PATCH",
+    body: JSON.stringify(entrada),
+  });
+}
+
+export async function excluirModeloCardapio(auth: AbAuth, id: string): Promise<void> {
+  await requisitar<null>(auth, urlAb(auth, `/cardapio-modelos/${encodeURIComponent(id)}`), { method: "DELETE" });
+}
+
+export async function listarGradeCardapio(auth: AbAuth): Promise<CardapioGradeRegra[]> {
+  const resposta = await requisitar<{ regras: CardapioGradeRegra[] }>(auth, urlAb(auth, "/cardapio-grade"));
+  return resposta.regras ?? [];
+}
+
+export async function salvarRegraGrade(
+  auth: AbAuth,
+  entrada: { diaSemana: number; servico: CardapioServico; modeloId: string; ativo?: boolean },
+): Promise<CardapioGradeRegra> {
+  return requisitar<CardapioGradeRegra>(auth, urlAb(auth, "/cardapio-grade"), {
+    method: "POST",
+    body: JSON.stringify(entrada),
+  });
+}
+
+export async function excluirRegraGrade(auth: AbAuth, id: string): Promise<void> {
+  await requisitar<null>(auth, urlAb(auth, `/cardapio-grade/${encodeURIComponent(id)}`), { method: "DELETE" });
+}
+
+export async function gerarEscalaCardapio(
+  auth: AbAuth,
+  entrada: { dataInicio?: string; dias?: number } = {},
+): Promise<{ totalCriados: number; totalIgnorados: number; criados: string[]; ignorados: string[] }> {
+  return requisitar(auth, urlAb(auth, "/cardapio-grade/gerar"), {
+    method: "POST",
+    body: JSON.stringify(entrada),
   });
 }
 

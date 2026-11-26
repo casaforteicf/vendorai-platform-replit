@@ -138,6 +138,7 @@ export type InsumoImportado = {
 export type ReceitaImportada = {
   nome: string;
   rendimentoPorcoes: number;
+  modoPreparo: string;
   insumos: InsumoImportado[];
 };
 export type CardapioImportado = {
@@ -353,7 +354,7 @@ export function parseReceitasTexto(text: string, nomeArquivo: string, avisos: st
 
   function garantirReceita(): ReceitaImportada {
     if (!atual) {
-      atual = { nome: inicio, rendimentoPorcoes: 1, insumos: [] };
+      atual = { nome: inicio, rendimentoPorcoes: 1, modoPreparo: "", insumos: [] };
       receitas.push(atual);
     }
     return atual;
@@ -371,6 +372,7 @@ export function parseReceitasTexto(text: string, nomeArquivo: string, avisos: st
       atual = {
         nome: nome || inicio,
         rendimentoPorcoes: rendimentoMatch ? numeroReceita(rendimentoMatch[1]) ?? 1 : 1,
+        modoPreparo: "",
         insumos: [],
       };
       receitas.push(atual);
@@ -402,7 +404,11 @@ export function parseReceitasTexto(text: string, nomeArquivo: string, avisos: st
     }
 
     // Depois de "modo de preparo", o texto é instrução — não vira insumo.
-    if (secao === "preparo") continue;
+    if (secao === "preparo") {
+      const receita = garantirReceita();
+      receita.modoPreparo = [receita.modoPreparo, linha].filter(Boolean).join("\n");
+      continue;
+    }
 
     // Metadados comuns de ficha técnica.
     if (/^(tempo|dificuldade|categoria|chef|autor|fonte|observacoes|dicas?|equipamento|utensilios)\b/.test(normalizada)) continue;
@@ -411,7 +417,7 @@ export function parseReceitasTexto(text: string, nomeArquivo: string, avisos: st
     // Antes da seção de ingredientes, a primeira linha costuma ser o título.
     if (!atual && secao === null) {
       const titulo = linha.replace(/^\d{1,3}\s*[-.)]?\s+/, "").replace(/[.;:]+$/, "").trim();
-      atual = { nome: titulo || inicio, rendimentoPorcoes: 1, insumos: [] };
+      atual = { nome: titulo || inicio, rendimentoPorcoes: 1, modoPreparo: "", insumos: [] };
       receitas.push(atual);
       continue;
     }
@@ -512,6 +518,7 @@ export function parseReceitasDelimitado(rows: string[][], avisos: string[]): Rec
   const idxQuantidade = header ? acharColuna(headers, ["quantidade", "qtd", "quantity"]) : 3;
   const idxUnidade = header ? acharColuna(headers, ["unidade", "unit", "medida"]) : 4;
   const idxFator = header ? acharColuna(headers, ["fator", "fator correcao", "fator de correcao", "fc"]) : 5;
+  const idxModoPreparo = header ? acharColuna(headers, ["modo preparo", "modo de preparo", "preparo"]) : -1;
   const dataRows = header ? rows.slice(1) : rows;
   const mapa = new Map<string, ReceitaImportada>();
   for (const row of dataRows) {
@@ -519,7 +526,9 @@ export function parseReceitasDelimitado(rows: string[][], avisos: string[]): Rec
     const ingrediente = String(row[idxIngrediente] ?? "").trim();
     if (!nome || !ingrediente) { avisos.push(`Linha sem receita/ingrediente ignorada: ${row.join(" | ").slice(0, 120)}`); continue; }
     const chave = normalizar(nome);
-    const receita = mapa.get(chave) ?? { nome, rendimentoPorcoes: numero(row[idxRendimento] ?? "") ?? 1, insumos: [] };
+    const modoPreparo = idxModoPreparo >= 0 ? String(row[idxModoPreparo] ?? "").trim() : "";
+    const receita = mapa.get(chave) ?? { nome, rendimentoPorcoes: numero(row[idxRendimento] ?? "") ?? 1, modoPreparo, insumos: [] };
+    if (!receita.modoPreparo && modoPreparo) receita.modoPreparo = modoPreparo;
     const quantidade = numero(row[idxQuantidade] ?? "");
     const convertida = quantidade !== null ? converterQuantidade(quantidade, row[idxUnidade]) : null;
     if (!convertida) { avisos.push(`Quantidade/unidade inválida em "${nome}": ${row.join(" | ").slice(0, 120)}`); continue; }
@@ -765,7 +774,12 @@ function normalizarJson(tipo: TipoImportacao, rows: unknown[], avisos: string[])
         if (!i.nome || !convertida) { avisos.push(`Insumo inválido na receita "${nome}"`); return []; }
         return [{ nome: String(i.nome), unidade: convertida.unidade, quantidadePorPorcao: convertida.quantidade, fatorCorrecao: numero(i.fatorCorrecao ?? i.fator) ?? 1 }];
       });
-      return insumos.length ? [{ nome, rendimentoPorcoes: numero(r.rendimentoPorcoes ?? r.rendimento) ?? 1, insumos: consolidarInsumos(insumos) }] : [];
+      return insumos.length ? [{
+        nome,
+        rendimentoPorcoes: numero(r.rendimentoPorcoes ?? r.rendimento) ?? 1,
+        modoPreparo: String(r.modoPreparo ?? r.modo_preparo ?? r.preparo ?? "").trim(),
+        insumos: consolidarInsumos(insumos),
+      }] : [];
     });
   }
   return rows.flatMap((row) => {
@@ -875,6 +889,7 @@ const confirmarSchema = z.discriminatedUnion("tipo", [
     itens: z.array(z.object({
       nome: z.string().trim().min(1).max(120),
       rendimentoPorcoes: z.number().finite().positive(),
+      modoPreparo: z.string().max(20000).optional().default(""),
       insumos: z.array(insumoImportadoSchema).min(1).max(200),
     })).min(1).max(500),
   }),

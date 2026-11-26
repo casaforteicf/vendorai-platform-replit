@@ -3,6 +3,7 @@ import {
   calcularBriffing,
   consolidarBriffings,
   formatarQuantidade,
+  hospedesEquivalentes,
   validarOcupacao,
   type CardapioDia,
   type Prato,
@@ -28,6 +29,13 @@ function prato(overrides: Partial<Prato> = {}): Prato {
 function cardapio(pratos: Prato[], data = "2026-11-02"): CardapioDia {
   return { data, pratos };
 }
+
+describe("hospedesEquivalentes", () => {
+  it("aplica 50% para 7-12 e 30% para 0-6", () => {
+    expect(hospedesEquivalentes(130, 12, 8)).toBeCloseTo(138.4, 3);
+    expect(hospedesEquivalentes(150, 0, 0)).toBe(150);
+  });
+});
 
 describe("calcularBriffing", () => {
   it("100 hóspedes × 1 porção × 100 g = 10 kg", () => {
