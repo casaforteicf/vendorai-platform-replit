@@ -5,10 +5,10 @@
 | Lote | ALINHA-01-IMPL |
 | Versão | 1.0 |
 | Data | 2026-11-26 |
-| Branch | `feat/alinha-01-runtime` (base: `docs/alinha-01-diagnostico`, commit `15f9a07eb`) |
+| Branch | `feat/alinha-01-runtime` → PR #3769 → `main` (`02a41138`); deploy de `main` em `7d89136` |
 | Autorização | Solicitante: “pode fazer e isso deve ser para todos os tenants” (2026-11-26) |
 | Escopo autorizado | Executar os lotes L0–L4 do diagnóstico; correções genéricas, sem dado de tenant no código |
-| Estado | **Implementado e validado tecnicamente. Não homologado. Não publicado.** |
+| Estado | **Implementado, validado tecnicamente e publicado em produção (2026-11-26).** Nenhum conteúdo foi publicado. |
 | Diagnóstico de referência | [ALINHA-01-MARKETING-DIAGNOSTICO.md](ALINHA-01-MARKETING-DIAGNOSTICO.md) |
 
 ## 1. Objetivo
@@ -143,3 +143,24 @@ A correção é de plataforma, não de tenant: não existe flag, script ou ajust
 2. Homologação **multi-tenant** (não só AJ): um tenant por vertical/plano, aprovando lote e gerando 1 item de cada tipo; conferir `contextAudit`, claim, estado de vídeo, anúncio derivado e cor da marca.
 3. Release: PR + merge em `main` (auto-deploy Contabo faz homologação e produção com healthcheck/rollback), acompanhando `last-status` e logs do worker.
 4. Iniciar L5 e L6 em lotes separados, com o mesmo critério de evidência.
+
+
+## 8. Deploy e verificação em produção (2026-11-26)
+
+- **PR #3769** mergeado em `main` (`02a41138fabf`), deployado junto com o commit seguinte `7d89136df` (AB #3770), que contém o merge como ancestral.
+- **Backend:** imagem `vendorai-api:main-7d89136df` em produção e homologação; `/api/auth/healthz` = **200**; `last-status` = `OK 20261126-223921`.
+- **Frontend:** release `7d89136df652591973bf7d48c7a23b7f28da0881`; `last-frontend-status` = `OK 20261126-225245`; bundle publicado contém o novo rótulo “Produzir lote”.
+- **Migration 576:** aplicada em produção (coluna + registro em `vendorai_schema_migrations`), beneficiando todos os tenants de imediato.
+- **Claims presos:** o worker novo liberou os 3 claims `auto-producing:` antigos no primeiro ciclo (`count: 3` no log) e a base ficou com **0** claims.
+- **Publicação:** `content_calendar_items.status='publicado'` continua **0**; nada foi publicado e nenhum plano foi colocado em modo automático.
+- **Rota nova:** `POST .../content-calendar/:id/iniciar-producao` responde **401** sem autenticação (existe e está protegida; não é 404).
+
+### Incidente de deploy e correção operacional
+
+O primeiro deploy falhou com `failed to export layer / lease does not exist`. Causa: o `disk-guard` rodou às 22:00 (disco em 87%) **durante o build** e removeu snapshots/camadas em uso no containerd. Correções aplicadas fora do repositório (com backup `.bak-alinha-20261126`):
+
+- `deploy-backend.sh` agora exporta `DOCKER_BUILDKIT=1` (Docker 29 + containerd; builder legado travava na exportação).
+- `disk-guard.sh` não executa limpeza enquanto `/opt/vendorai/deploy.lock` estiver em uso.
+- Docker/containerd reiniciados para limpar o estado de snapshots; containers voltaram com `unless-stopped` e health 200.
+
+O deploy bem-sucedido usou BuildKit/buildx após a limpeza. O caminho de auto-deploy segue o mesmo fluxo (homolog → healthcheck → prod → healthcheck → rollback).
