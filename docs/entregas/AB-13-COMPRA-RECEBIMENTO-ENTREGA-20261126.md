@@ -29,3 +29,18 @@ entrega → recebimento por lote → baixa da pendência.
 - `vitest Recebimento.test.tsx`: 8/8.
 - `tsc -p tsconfig.launch-ci.json --noEmit`: exit 0.
 - `vite build`: exit 0.
+
+## Teste controlado em produção
+
+Ordem de teste com 1.000 g de costelas e produto temporário mapeado:
+
+- recebimento de 400 g → ordem `parcialmente_recebida`, item com 400 g recebidos;
+- recebimento de 600 g → ordem `recebida`, item com 1.000 g;
+- tentativa de receber 1 g depois de fechada → HTTP 409;
+- dados de teste removidos (recebimentos, ordem, item, produto e mapa).
+
+O retorno de estoque informou “Nenhum local de estoque ativo” porque o hotel ainda
+não tinha local cadastrado. Foi criado o local **Estoque Central** para o tenant
+AJ. A entrada em `hotel_stock_location_balances` exige também que o insumo
+esteja mapeado para um produto do catálogo (`ab_insumo_produto`); o tenant AJ
+ainda não possui produtos de catálogo, então esse mapeamento continua pendente.
