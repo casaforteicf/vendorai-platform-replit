@@ -13,6 +13,7 @@ import {
   setMediaProjectStatus,
 } from "./media-library.js";
 import { applyBrandIntroOutro } from "./media-brand-video.js";
+import { ensureFfmpegOnPath } from "../lib/ffmpeg.js";
 
 const execFileAsync = promisify(execFile);
 const objectStorage = new ObjectStorageService();
@@ -86,6 +87,7 @@ export async function startVendorAiPhotoVideo(input: {
   format?: PhotoVideoFormat;
   fit?: PhotoVideoFit;
 }) {
+  ensureFfmpegOnPath();
   const assetIds = [...new Set(input.assetIds.map((id) => id.trim()).filter(Boolean))];
   if (assetIds.length < 2 || assetIds.length > 30) {
     throw new PhotoVideoValidationError("Selecione de 2 a 30 imagens para montar o vídeo");
