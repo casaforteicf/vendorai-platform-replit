@@ -338,6 +338,9 @@ export async function createVendorAiMediaGenerationJob(input: {
         fit: "cover",
       });
     }
+    throw new Error(
+      "Vídeo indisponível: nenhum provedor de IA de vídeo está configurado e há menos de 2 fotos na Biblioteca para montar o Reel. Envie fotos do negócio ou configure REPLICATE_API_TOKEN/Vertex.",
+    );
   }
   const initialContext = input.operation === "video_generate"
     ? {

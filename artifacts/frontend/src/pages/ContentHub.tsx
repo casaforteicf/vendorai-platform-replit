@@ -11,6 +11,7 @@ import VisitorIntelligence from "@/pages/VisitorIntelligence";
 import ContentProductionQueue from "@/components/marketing/ContentProductionQueue";
 import LeadCaptureFreeToolBuilder from "@/components/marketing/LeadCaptureFreeToolBuilder";
 import SearchConsoleInsightsPanel from "@/components/marketing/SearchConsoleInsightsPanel";
+import { MarketingResultsSummary } from "@/components/marketing/MarketingResultsSummary";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -650,6 +651,9 @@ export default function ContentHub() {
           </TabsContent>
 
           <TabsContent value="resultados" className="mt-5">
+            <div className="mb-4">
+              <MarketingResultsSummary tenantId={tenantId} />
+            </div>
             <Card className="border-primary/20 bg-primary/[0.02]">
               <CardContent className="py-5">
                 <p className="text-sm font-semibold">O que merece atenção agora?</p>
