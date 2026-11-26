@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { Link } from "wouter";
 import HotelModulesNav from "../HotelModulesNav";
 import { useAuth } from "@/contexts/AuthContext";
 import {
@@ -19,7 +20,8 @@ import { formatarDataBR, hojeISO } from "@/lib/ab/datas";
 const STATUS: Array<{ valor: OrdemCompraStatus; rotulo: string; classe: string }> = [
   { valor: "sugerida", rotulo: "Sugerida", classe: "bg-amber-100 text-amber-900" },
   { valor: "aprovada", rotulo: "Aprovada", classe: "bg-sky-100 text-sky-900" },
-  { valor: "enviada", rotulo: "Enviada", classe: "bg-indigo-100 text-indigo-900" },
+  { valor: "pendente_entrega", rotulo: "Pendente de entrega", classe: "bg-indigo-100 text-indigo-900" },
+  { valor: "parcialmente_recebida", rotulo: "Parcialmente recebida", classe: "bg-amber-100 text-amber-900" },
   { valor: "recebida", rotulo: "Recebida", classe: "bg-emerald-100 text-emerald-900" },
   { valor: "cancelada", rotulo: "Cancelada", classe: "bg-muted text-muted-foreground" },
 ];
@@ -103,7 +105,7 @@ export default function OrdensCompra() {
   }
 
   async function mudarStatus(ordem: OrdemCompra, status: OrdemCompraStatus) {
-    if (["cancelada", "recebida"].includes(status) && !window.confirm(`Confirmar status "${rotuloStatus(status)}"?`)) return;
+    if (status === "cancelada" && !window.confirm(`Confirmar status "${rotuloStatus(status)}"?`)) return;
     setErro(null);
     try {
       const atualizada = await atualizarOrdemCompra(auth, ordem.id, { status });
@@ -246,15 +248,45 @@ export default function OrdensCompra() {
                     <button type="button" className="rounded-md border px-3 py-2 text-sm" onClick={() => void mudarStatus(selecionada, "aprovada")}>Aprovar</button>
                   )}
                   {selecionada.status === "aprovada" && (
-                    <button type="button" className="rounded-md border px-3 py-2 text-sm" onClick={() => void mudarStatus(selecionada, "enviada")}>Marcar enviada</button>
+                    <button type="button" className="rounded-md border px-3 py-2 text-sm" onClick={() => void mudarStatus(selecionada, "pendente_entrega")}>Enviar ao fornecedor</button>
                   )}
-                  {selecionada.status === "enviada" && (
-                    <button type="button" className="rounded-md border px-3 py-2 text-sm" onClick={() => void mudarStatus(selecionada, "recebida")}>Marcar recebida</button>
+                  {["aprovada", "pendente_entrega", "parcialmente_recebida"].includes(selecionada.status) && (
+                    <Link href="/hotelaria/restaurante/recebimento" className="rounded-md border px-3 py-2 text-sm hover:bg-muted">
+                      Registrar recebimento
+                    </Link>
                   )}
-                  {["sugerida", "aprovada", "enviada"].includes(selecionada.status) && (
+                  {["sugerida", "aprovada", "pendente_entrega", "parcialmente_recebida"].includes(selecionada.status) && (
                     <button type="button" className="rounded-md border px-3 py-2 text-sm" onClick={() => void mudarStatus(selecionada, "cancelada")}>Cancelar</button>
                   )}
                 </div>
+              </div>
+
+              <div className="grid gap-2 sm:grid-cols-2">
+                <label className="text-xs">Fornecedor
+                  <input
+                    key={`${selecionada.id}-fornecedor`}
+                    defaultValue={selecionada.fornecedor ?? ""}
+                    disabled={["recebida", "cancelada"].includes(selecionada.status)}
+                    className="mt-1 w-full rounded-md border p-1.5 text-sm disabled:bg-muted"
+                    onBlur={(event) => {
+                      const valor = event.target.value.trim() || null;
+                      if (valor !== (selecionada.fornecedor ?? null)) void atualizarOrdemCompra(auth, selecionada.id, { fornecedor: valor }).then(setSelecionada).catch((falha) => setErro(mensagemDoErro(falha)));
+                    }}
+                  />
+                </label>
+                <label className="text-xs">Entrega prevista
+                  <input
+                    key={`${selecionada.id}-entrega`}
+                    type="date"
+                    defaultValue={selecionada.dataEntregaPrevista ?? ""}
+                    disabled={["recebida", "cancelada"].includes(selecionada.status)}
+                    className="mt-1 w-full rounded-md border p-1.5 text-sm disabled:bg-muted"
+                    onBlur={(event) => {
+                      const valor = event.target.value || null;
+                      if (valor !== (selecionada.dataEntregaPrevista ?? null)) void atualizarOrdemCompra(auth, selecionada.id, { dataEntregaPrevista: valor }).then(setSelecionada).catch((falha) => setErro(mensagemDoErro(falha)));
+                    }}
+                  />
+                </label>
               </div>
 
               {selecionada.itens.length === 0 && <p className="text-sm text-muted-foreground">Ordem sem itens.</p>}
@@ -264,6 +296,9 @@ export default function OrdensCompra() {
                     <div>
                       <strong className="text-sm">{item.insumoNome}</strong>
                       <p className="text-xs text-muted-foreground">Unidade base: {item.unidade}</p>
+                      <p className="text-xs text-muted-foreground">
+                        Recebido: {Number(item.quantidadeRecebida)} · Pendente: {Math.max(0, Number(item.quantidade) - Number(item.quantidadeRecebida))}
+                      </p>
                     </div>
                     <label className="text-xs">
                       Quantidade

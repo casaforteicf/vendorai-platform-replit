@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import HotelModulesNav from "../HotelModulesNav";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -16,7 +16,15 @@ import {
   TEMPERATURA_MAXIMA_CARNE_C,
   type EtiquetaFefo,
 } from "@/lib/ab/fefo";
-import { criarRecebimento, mensagemDoErro, type AbAuth } from "@/lib/ab/client";
+import {
+  criarRecebimento,
+  listarEntregasPendentes,
+  listarProdutosRecebimento,
+  mensagemDoErro,
+  type AbAuth,
+  type EntregaPendente,
+  type ProdutoRecebimento,
+} from "@/lib/ab/client";
 
 /**
  * Recebimento de mercadorias com lote, temperatura e etiqueta FEFO (AB-06).
@@ -25,8 +33,8 @@ import { criarRecebimento, mensagemDoErro, type AbAuth } from "@/lib/ab/client";
  * nada: a API recalcula FEFO e status no POST. Se divergirem, vale o servidor —
  * é ele que grava o registro auditável.
  *
- * Catálogo de produtos é mock (não existe endpoint de produtos); a gravação é
- * real em `POST /ab/recebimentos`.
+ * O catálogo real vem de `/produtos-catalogo`; o mock fica apenas como fallback
+ * visual enquanto a lista carrega (e nos testes de tela).
  */
 
 const PRODUTOS_MOCK = [
@@ -71,6 +79,8 @@ type Formulario = {
   temperatura: string;
   quantidade: string;
   unidade: "g" | "ml" | "un";
+  ordemId: string;
+  ordemItemId: string;
 };
 
 const FORM_VAZIO: Formulario = {
@@ -82,6 +92,8 @@ const FORM_VAZIO: Formulario = {
   temperatura: "",
   quantidade: "",
   unidade: "g",
+  ordemId: "",
+  ordemItemId: "",
 };
 
 function paraNumero(texto: string): number | null {
@@ -97,6 +109,8 @@ export default function Recebimento() {
   const auth = useMemo<AbAuth>(() => ({ token: token ?? "", tenantId }), [token, tenantId]);
 
   const [form, setForm] = useState<Formulario>(FORM_VAZIO);
+  const [produtos, setProdutos] = useState<ProdutoRecebimento[]>(PRODUTOS_MOCK.map((p) => ({ id: p.produtoCatalogoId, nome: p.nome, categoriaNome: p.categoria })));
+  const [pedidos, setPedidos] = useState<EntregaPendente[]>([]);
   const [enviando, setEnviando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
   const [salvo, setSalvo] = useState<{
@@ -106,15 +120,37 @@ export default function Recebimento() {
     estoque?: { aplicado: boolean; motivo?: string; quantidadeEstoque?: number; unidadeEstoque?: string } | null;
   } | null>(null);
 
-  const produto = PRODUTOS_MOCK.find((p) => p.produtoCatalogoId === form.produtoCatalogoId);
+  useEffect(() => {
+    if (!tenantId || !token) return;
+    let cancelado = false;
+    void Promise.all([listarProdutosRecebimento(auth), listarEntregasPendentes(auth)])
+      .then(([listaProdutos, listaPedidos]) => {
+        if (cancelado) return;
+        if (listaProdutos.length > 0) {
+          setProdutos(listaProdutos);
+          setForm((atual) => listaProdutos.some((item) => item.id === atual.produtoCatalogoId)
+            ? atual
+            : { ...atual, produtoCatalogoId: listaProdutos[0]!.id });
+        }
+        setPedidos(listaPedidos);
+      })
+      .catch(() => {
+        // O mock inicial mantém a tela útil em ambientes sem catálogo.
+      });
+    return () => { cancelado = true; };
+  }, [auth, tenantId, token]);
+
+  const produto = produtos.find((p) => p.id === form.produtoCatalogoId);
+  const pedidoSelecionado = pedidos.find((pedido) => pedido.id === form.ordemId) ?? null;
+  const itemSelecionado = pedidoSelecionado?.itens.find((item) => item.id === form.ordemItemId) ?? null;
   const temperatura = paraNumero(form.temperatura);
   const hoje = hojeISO();
 
   const sanidade = avaliarSanidade({
-    categoriaNome: produto?.categoria,
+    categoriaNome: produto?.categoriaNome,
     temperaturaC: temperatura,
   });
-  const temperaturaObrigatoria = exigeTemperatura(produto?.categoria);
+  const temperaturaObrigatoria = exigeTemperatura(produto?.categoriaNome);
 
   // Etiqueta ao vivo (o servidor recalcula no salvamento).
   const etiquetaPrevista: EtiquetaFefo | null =
@@ -173,6 +209,7 @@ export default function Recebimento() {
         temperaturaC: temperatura,
         quantidade,
         unidade: form.unidade,
+        ...(form.ordemId && form.ordemItemId ? { ordemId: form.ordemId, ordemItemId: form.ordemItemId } : {}),
       });
 
       setSalvo({
@@ -219,6 +256,61 @@ export default function Recebimento() {
           <form onSubmit={registrar} className="space-y-4">
             <div className="grid gap-3 sm:grid-cols-3">
               <div className="space-y-1.5 sm:col-span-2">
+                <Label htmlFor="pedido">Entrega pendente (opcional)</Label>
+                <select
+                  id="pedido"
+                  className="block h-10 w-full rounded-md border bg-background px-3 text-sm"
+                  value={form.ordemId}
+                  onChange={(e) => {
+                    const pedido = pedidos.find((item) => item.id === e.target.value) ?? null;
+                    const item = pedido?.itens[0] ?? null;
+                    atualizar({
+                      ordemId: e.target.value,
+                      ordemItemId: item?.id ?? "",
+                      ...(item?.produtoCatalogoId ? { produtoCatalogoId: item.produtoCatalogoId } : {}),
+                      ...(item ? { quantidade: String(Number(item.quantidade) - Number(item.quantidadeRecebida)), unidade: item.unidade } : {}),
+                    });
+                  }}
+                >
+                  <option value="">Compra avulsa / sem pedido</option>
+                  {pedidos.map((pedido) => (
+                    <option key={pedido.id} value={pedido.id}>
+                      {pedido.coberturaInicio} → {pedido.coberturaFim}{pedido.fornecedor ? ` · ${pedido.fornecedor}` : ""} · {pedido.status}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {pedidoSelecionado && (
+                <div className="space-y-1.5 sm:col-span-2">
+                  <Label htmlFor="pedido-item">Item do pedido</Label>
+                  <select
+                    id="pedido-item"
+                    className="block h-10 w-full rounded-md border bg-background px-3 text-sm"
+                    value={form.ordemItemId}
+                    onChange={(e) => {
+                      const item = pedidoSelecionado.itens.find((atual) => atual.id === e.target.value) ?? null;
+                      atualizar({
+                        ordemItemId: e.target.value,
+                        ...(item?.produtoCatalogoId ? { produtoCatalogoId: item.produtoCatalogoId } : {}),
+                        ...(item ? { quantidade: String(Number(item.quantidade) - Number(item.quantidadeRecebida)), unidade: item.unidade } : {}),
+                      });
+                    }}
+                  >
+                    <option value="">Selecione o item</option>
+                    {pedidoSelecionado.itens.map((item) => (
+                      <option key={item.id} value={item.id}>
+                        {item.insumoNome} · pendente {Number(item.quantidade) - Number(item.quantidadeRecebida)} {item.unidade}
+                      </option>
+                    ))}
+                  </select>
+                  {itemSelecionado && !itemSelecionado.produtoCatalogoId && (
+                    <p className="text-xs text-amber-700">Insumo sem produto de estoque mapeado; selecione o produto manualmente.</p>
+                  )}
+                </div>
+              )}
+
+              <div className="space-y-1.5">
                 <Label htmlFor="produto">Produto</Label>
                 <select
                   id="produto"
@@ -226,9 +318,9 @@ export default function Recebimento() {
                   onChange={(e) => atualizar({ produtoCatalogoId: e.target.value })}
                   className="block h-10 w-full rounded-md border bg-background px-3 text-sm"
                 >
-                  {PRODUTOS_MOCK.map((p) => (
-                    <option key={p.produtoCatalogoId} value={p.produtoCatalogoId}>
-                      {p.nome} · {p.categoria}
+                  {produtos.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.nome}{p.categoriaNome ? ` · ${p.categoriaNome}` : ""}
                     </option>
                   ))}
                 </select>

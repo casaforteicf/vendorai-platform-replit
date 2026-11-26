@@ -1,6 +1,9 @@
 import { Router, type IRouter } from "express";
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import {
+  abInsumoProdutoTable,
+  abOrdemCompraItensTable,
+  abOrdensCompraTable,
   abRecebimentosTable,
   categoriasProdutoTable,
   insertAbRecebimentoSchema,
@@ -32,6 +35,69 @@ function hojeISO(): string {
     .toISOString()
     .slice(0, 10);
 }
+
+// ── GET /tenants/:tenantId/ab/recebimentos/pendentes ─────────────────────────
+router.get("/tenants/:tenantId/ab/recebimentos/pendentes", async (req, res) => {
+  const t = String(req.params.tenantId);
+  if (!abAllowed(req, t)) return res.status(403).json({ error: "Forbidden" });
+  try {
+    const pedidos = await withTenantTx(t, async (tx) => {
+      const ordens = await tx
+        .select()
+        .from(abOrdensCompraTable)
+        .where(and(
+          eq(abOrdensCompraTable.tenantId, t),
+          inArray(abOrdensCompraTable.status, ["aprovada", "pendente_entrega", "parcialmente_recebida"]),
+        ))
+        .orderBy(desc(abOrdensCompraTable.coberturaInicio));
+      if (ordens.length === 0) return [];
+      const ids = ordens.map((ordem) => ordem.id);
+      const itens = await tx
+        .select({
+          id: abOrdemCompraItensTable.id,
+          ordemId: abOrdemCompraItensTable.ordemId,
+          insumoId: abOrdemCompraItensTable.insumoId,
+          insumoNome: abOrdemCompraItensTable.insumoNome,
+          quantidade: abOrdemCompraItensTable.quantidade,
+          quantidadeRecebida: abOrdemCompraItensTable.quantidadeRecebida,
+          unidade: abOrdemCompraItensTable.unidade,
+          produtoCatalogoId: abInsumoProdutoTable.produtoCatalogoId,
+          produtoNome: produtosCatalogoTable.nome,
+        })
+        .from(abOrdemCompraItensTable)
+        .leftJoin(
+          abInsumoProdutoTable,
+          and(
+            eq(abInsumoProdutoTable.tenantId, abOrdemCompraItensTable.tenantId),
+            eq(abInsumoProdutoTable.insumoId, abOrdemCompraItensTable.insumoId),
+          ),
+        )
+        .leftJoin(
+          produtosCatalogoTable,
+          and(
+            eq(produtosCatalogoTable.tenantId, abInsumoProdutoTable.tenantId),
+            eq(produtosCatalogoTable.id, abInsumoProdutoTable.produtoCatalogoId),
+          ),
+        )
+        .where(and(
+          eq(abOrdemCompraItensTable.tenantId, t),
+          inArray(abOrdemCompraItensTable.ordemId, ids),
+          sql`${abOrdemCompraItensTable.quantidadeRecebida} < ${abOrdemCompraItensTable.quantidade}`,
+        ))
+        .orderBy(abOrdemCompraItensTable.insumoNome);
+      return ordens
+        .map((ordem) => ({
+          ...ordem,
+          itens: itens.filter((item) => item.ordemId === ordem.id),
+        }))
+        .filter((ordem) => ordem.itens.length > 0);
+    });
+    return res.json({ pedidos });
+  } catch (e) {
+    console.error("[ab-recebimentos] pendentes", e);
+    return res.status(500).json({ error: "Não foi possível listar as entregas pendentes" });
+  }
+});
 
 // ── POST /tenants/:tenantId/ab/recebimentos ──────────────────────────────────
 router.post("/tenants/:tenantId/ab/recebimentos", async (req, res) => {
@@ -94,6 +160,41 @@ router.post("/tenants/:tenantId/ab/recebimentos", async (req, res) => {
 
       const etiquetaFefo = classificarFefo(dados.dataValidade, hojeISO());
 
+      let ordemItem: { id: string; ordemId: string; quantidade: string; quantidadeRecebida: string; unidade: string } | null = null;
+      if (dados.ordemItemId || dados.ordemId) {
+        if (!dados.ordemId || !dados.ordemItemId) {
+          return { ordemIncompleta: true as const };
+        }
+        const [item] = await tx
+          .select({
+            id: abOrdemCompraItensTable.id,
+            ordemId: abOrdemCompraItensTable.ordemId,
+            quantidade: abOrdemCompraItensTable.quantidade,
+            quantidadeRecebida: abOrdemCompraItensTable.quantidadeRecebida,
+            unidade: abOrdemCompraItensTable.unidade,
+          })
+          .from(abOrdemCompraItensTable)
+          .where(and(
+            eq(abOrdemCompraItensTable.tenantId, t),
+            eq(abOrdemCompraItensTable.id, dados.ordemItemId),
+            eq(abOrdemCompraItensTable.ordemId, dados.ordemId),
+          ));
+        if (!item) return { ordemNaoEncontrada: true as const };
+        const [ordem] = await tx.select().from(abOrdensCompraTable).where(and(
+          eq(abOrdensCompraTable.tenantId, t),
+          eq(abOrdensCompraTable.id, dados.ordemId),
+        ));
+        if (!ordem) return { ordemNaoEncontrada: true as const };
+        if (!["aprovada", "pendente_entrega", "parcialmente_recebida"].includes(ordem.status)) {
+          return { ordemStatusInvalido: true as const, status: ordem.status };
+        }
+        const restante = Number(item.quantidade) - Number(item.quantidadeRecebida);
+        if (Number(dados.quantidade) > restante + 0.0001) {
+          return { quantidadeAcimaDoPendente: true as const, restante, unidade: item.unidade };
+        }
+        ordemItem = item;
+      }
+
       const [criado] = await tx
         .insert(abRecebimentosTable)
         .values({
@@ -109,12 +210,40 @@ router.post("/tenants/:tenantId/ab/recebimentos", async (req, res) => {
           etiquetaFefo,
           status: sanidade.status,
           motivoBloqueio: sanidade.motivoBloqueio,
+          ordemId: dados.ordemId ?? null,
+          ordemItemId: dados.ordemItemId ?? null,
           locationId: dados.locationId ?? null,
           recebidoPor: req.user?.sub ?? null,
         })
         .returning();
 
-      return { recebimento: criado, produto };
+      let ordemAtualizada: { id: string; status: string } | null = null;
+      if (sanidade.status === "aprovado" && ordemItem) {
+        await tx
+          .update(abOrdemCompraItensTable)
+          .set({ quantidadeRecebida: sql`${abOrdemCompraItensTable.quantidadeRecebida} + ${String(dados.quantidade)}` })
+          .where(and(
+            eq(abOrdemCompraItensTable.tenantId, t),
+            eq(abOrdemCompraItensTable.id, ordemItem.id),
+          ));
+        const itens = await tx
+          .select({ quantidade: abOrdemCompraItensTable.quantidade, recebida: abOrdemCompraItensTable.quantidadeRecebida })
+          .from(abOrdemCompraItensTable)
+          .where(and(
+            eq(abOrdemCompraItensTable.tenantId, t),
+            eq(abOrdemCompraItensTable.ordemId, ordemItem.ordemId),
+          ));
+        const todosRecebidos = itens.every((item: any) => Number(item.recebida) >= Number(item.quantidade) - 0.0001);
+        const algumRecebido = itens.some((item: any) => Number(item.recebida) > 0);
+        const novoStatus = todosRecebidos ? "recebida" : algumRecebido ? "parcialmente_recebida" : "pendente_entrega";
+        await tx.update(abOrdensCompraTable).set({ status: novoStatus, updatedAt: new Date() }).where(and(
+          eq(abOrdensCompraTable.tenantId, t),
+          eq(abOrdensCompraTable.id, ordemItem.ordemId),
+        ));
+        ordemAtualizada = { id: ordemItem.ordemId, status: novoStatus };
+      }
+
+      return { recebimento: criado, produto, ordemAtualizada };
     });
 
     if ("naoEncontrado" in resultado) {
@@ -125,6 +254,21 @@ router.post("/tenants/:tenantId/ab/recebimentos", async (req, res) => {
         error: "Temperatura obrigatória para esta categoria",
         fields: ["temperaturaC"],
         categoria: resultado.categoria,
+      });
+    }
+    if ("ordemIncompleta" in resultado) {
+      return res.status(422).json({ error: "Informe a ordem e o item da ordem para vincular a entrega" });
+    }
+    if ("ordemNaoEncontrada" in resultado) {
+      return res.status(404).json({ error: "Ordem ou item da ordem não encontrado" });
+    }
+    if ("ordemStatusInvalido" in resultado) {
+      return res.status(409).json({ error: `Ordem com status ${resultado.status} não aceita recebimento` });
+    }
+    if ("quantidadeAcimaDoPendente" in resultado) {
+      return res.status(409).json({
+        error: `Quantidade acima do pendente da ordem (${resultado.restante} ${resultado.unidade})`,
+        restante: resultado.restante,
       });
     }
 
@@ -148,6 +292,7 @@ router.post("/tenants/:tenantId/ab/recebimentos", async (req, res) => {
       produtoNome: resultado.produto?.nome ?? null,
       categoria: resultado.produto?.categoriaNome ?? null,
       estoque,
+      ordem: resultado.ordemAtualizada,
     });
   } catch (e) {
     if (isForeignKeyViolation(e)) {

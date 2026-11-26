@@ -13,8 +13,9 @@ import { AB_STATUS_ORDEM_COMPRA, type AbStatusOrdemCompra } from "@workspace/db"
  */
 const TRANSICOES: Record<AbStatusOrdemCompra, readonly AbStatusOrdemCompra[]> = {
   sugerida: ["aprovada", "cancelada"],
-  aprovada: ["enviada", "cancelada"],
-  enviada: ["recebida", "cancelada"],
+  aprovada: ["pendente_entrega", "cancelada"],
+  pendente_entrega: ["parcialmente_recebida", "recebida", "cancelada"],
+  parcialmente_recebida: ["recebida", "cancelada"],
   recebida: [],
   cancelada: [],
 };
@@ -44,7 +45,8 @@ export function ordemEditavel(status: AbStatusOrdemCompra): boolean {
 export const ROTULO_STATUS_ORDEM: Record<AbStatusOrdemCompra, string> = {
   sugerida: "Sugerida",
   aprovada: "Aprovada",
-  enviada: "Enviada",
+  pendente_entrega: "Pendente de entrega",
+  parcialmente_recebida: "Parcialmente recebida",
   recebida: "Recebida",
   cancelada: "Cancelada",
 };

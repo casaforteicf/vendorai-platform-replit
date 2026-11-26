@@ -49,7 +49,7 @@ export default function RestaurantDashboard() {
   }, [headers, tenantId, token]);
 
   const activeFichas = fichas.filter((ficha) => ficha.ativo).length;
-  const openOrders = ordens.filter((ordem) => ["sugerida", "aprovada", "enviada"].includes(ordem.status)).length;
+  const openOrders = ordens.filter((ordem) => ["sugerida", "aprovada", "pendente_entrega", "parcialmente_recebida"].includes(ordem.status)).length;
 
   const cards = [
     { href: "/hotelaria/restaurante/receitas", icon: BookOpen, title: "Receitas", description: "Fichas técnicas, rendimento, insumos e fator de correção.", stats: [`${activeFichas} ficha(s) ativa(s)`] },

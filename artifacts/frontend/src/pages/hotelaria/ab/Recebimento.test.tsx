@@ -11,6 +11,8 @@ const { criarRecebimentoMock } = vi.hoisted(() => ({ criarRecebimentoMock: vi.fn
 
 vi.mock("@/lib/ab/client", () => ({
   criarRecebimento: criarRecebimentoMock,
+  listarProdutosRecebimento: vi.fn(async () => []),
+  listarEntregasPendentes: vi.fn(async () => []),
   mensagemDoErro: (erro: unknown) => (erro instanceof Error ? erro.message : String(erro)),
 }));
 
