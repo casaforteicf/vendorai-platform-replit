@@ -78,6 +78,32 @@ export type { MarketingAgentRuntimeContext, MarketingAgentPlan } from './marketi
 export { MarketingPageContextSource, toMarketingAgentRuntimeContext } from './marketing-context'
 export type { MarketingPageContext } from './marketing-context'
 export { resolveMarketingRuntime, resolveMarketingSignalDecision } from './marketing-runtime'
+export {
+  campaignNameFromPilar,
+  contentPillarFromPilar,
+  findCampaignForItem,
+  channelForItem,
+  normalizeLabel as normalizeMediaPlanLabel,
+  resolveAdObjective,
+  resolveAdDestination,
+  resolveVideoDurationSeconds,
+  resolveAdFlightWindow,
+  deriveOperationalState,
+  operationalStateLabel,
+  executionKindForType,
+  isVideoType,
+  DEFAULT_VIDEO_DURATION_SECONDS,
+} from './media-plan-execution'
+export type {
+  MediaPlanCampaignShape,
+  MediaPlanChannelShape,
+  MediaPlanCalendarItemShape,
+  MarketingAdObjective,
+  MarketingAdDestination,
+  OperationalState,
+  OperationalStateCode,
+  OperationalStateTone,
+} from './media-plan-execution'
 export type { MarketingCampaignContextInput, MarketingRuntimeResolution, MarketingSignalDecision } from './marketing-runtime'
 export { inferMarketingSurface, buildMarketingAgentUiCard } from './marketing-agent-ui'
 export type { MarketingSurface, MarketingAgentUiCard } from './marketing-agent-ui'

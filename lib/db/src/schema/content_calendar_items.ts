@@ -28,10 +28,13 @@ export type ContentCalendarTipo = (typeof CONTENT_CALENDAR_TIPOS)[number];
 
 // "aprovado" e "recusado" são estados editoriais do Planejador. O usuário
 // pode revisar cada ação antes da produção, sem confundir revisão estratégica
-// com os estados posteriores de geração/publicação.
+// com os estados posteriores de geração/publicação. "processando" é o estado
+// operacional de uma produção em andamento (ex.: roteiro criado e vídeo ainda
+// em render) — nunca significa peça pronta para revisão.
 export const CONTENT_CALENDAR_STATUS = [
   "planejado",
   "aprovado",
+  "processando",
   "recusado",
   "gerado",
   "publicado",

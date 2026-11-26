@@ -281,6 +281,7 @@ describe("marketing content generation context isolation", () => {
     expect(res.body.result.contextAudit.allowedSources).toEqual([
       "business_profile",
       "validated_media_plan_campaign",
+      "tenant_brand",
     ]);
   });
 });

@@ -1,6 +1,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { CheckCircle2, ChevronDown, ChevronUp, Loader2, Play, RefreshCw, TriangleAlert } from "lucide-react";
+import {
+  contentPillarFromPilar,
+  executionKindForType,
+  findCampaignForItem,
+  resolveAdDestination,
+  resolveAdFlightWindow,
+  resolveAdObjective,
+  resolveVideoDurationSeconds,
+} from "@workspace/vendor-brain/media-plan-execution";
 
 const USER_CACHE_KEY = "vendorai_user_cache";
 const OVERRIDE_KEY = "vendorai_sa_tenant_override";
@@ -132,19 +141,18 @@ function mediaUrl(value: string) {
   return value.startsWith("/objects/") ? `/api/storage${value}` : value;
 }
 
-function campaignNameFromPilar(pilar: string) {
-  return pilar.split(" · ")[0] || "Campanha do período";
-}
-
 function campaignForItem(plan: MediaPlan, item: CalendarItem) {
-  const campaigns = plan.conteudo.campanhas ?? [];
-  const name = normalize(campaignNameFromPilar(item.pilar));
-  return campaigns.find((campaign) => normalize(campaign.nome) === name) ?? campaigns[0] ?? null;
+  // Sem fallback para outra campanha: item órfão precisa falhar explicitamente.
+  return findCampaignForItem(plan.conteudo.campanhas ?? [], item);
 }
 
-function contentPillar(item: CalendarItem) {
-  const parts = item.pilar.split(" · ");
-  return parts.length > 1 ? parts.slice(1).join(" · ") : item.pilar;
+function planStartDate(plan: MediaPlan, calendar: CalendarItem[]) {
+  const dates = calendar
+    .filter((item) => !item.mediaPlanId || item.mediaPlanId === plan.id)
+    .map((item) => item.dataAgendada)
+    .filter(Boolean)
+    .sort();
+  return dates[0] ?? null;
 }
 
 function textTokens(value: string) {
@@ -185,7 +193,7 @@ function marketingContext(plan: MediaPlan, campaign: MediaPlanCampaign, item: Ca
     specificDetails: [
       `Canal: ${item.canal}`,
       `Formato: ${item.tipo.replaceAll("_", " ")}`,
-      `Pilar: ${contentPillar(item)}`,
+      `Pilar: ${contentPillarFromPilar(item.pilar)}`,
       `Oferta: ${campaign.oferta}`,
       channel?.funcao ? `Função desta mídia: ${channel.funcao}` : "",
     ].filter(Boolean).join(" | "),
@@ -247,12 +255,6 @@ function extractImages(variation: GenerationVariation | undefined) {
   return typeof variation.imageUrl === "string" && variation.imageUrl ? [variation.imageUrl] : [];
 }
 
-function addDays(dateIso: string, days: number) {
-  const date = new Date(`${dateIso}T12:00:00`);
-  date.setDate(date.getDate() + Math.max(1, days));
-  return date.toISOString().slice(0, 10);
-}
-
 function specialAdCategory(text: string) {
   const value = normalize(text);
   if (/\b(vaga|emprego|recrutamento|contratando)\b/.test(value)) return "EMPLOYMENT";
@@ -260,15 +262,6 @@ function specialAdCategory(text: string) {
   if (/\b(emprestimo|credito|cartao de credito|financiamento|consorcio)\b/.test(value)) return "CREDIT";
   if (/\b(candidato|eleicao|partido politico|campanha eleitoral)\b/.test(value)) return "ISSUES_ELECTIONS_POLITICS";
   return "NONE";
-}
-
-function mediaProjectKind(type: string) {
-  if (VIDEO_TYPES.has(type)) return "video";
-  if (SITE_TYPES.has(type)) return "site";
-  if (AD_TYPES.has(type)) return "ad";
-  if (MESSAGE_TYPES.has(type)) return "message";
-  if (type === "stories") return "story";
-  return "feed";
 }
 
 export function MediaPlanAutoProductionBridge() {
@@ -284,6 +277,8 @@ export function MediaPlanAutoProductionBridge() {
   const [showDetails, setShowDetails] = useState(false);
   const [progress, setProgress] = useState({ done: 0, total: 0, failed: 0 });
   const [results, setResults] = useState<ProductionResult[]>([]);
+  const [brandColor, setBrandColor] = useState<string | null>(null);
+  const [availableGenerations, setAvailableGenerations] = useState(0);
   const startingRef = useRef(false);
 
   const onPlanQueue = useMemo(() => {
@@ -307,12 +302,13 @@ export function MediaPlanAutoProductionBridge() {
   const load = useCallback(async () => {
     if (!tenantId || !onPlanQueue) return;
     try {
-      const [planRes, calendarRes, projectsRes, imageRes, videoRes] = await Promise.all([
+      const [planRes, calendarRes, projectsRes, imageRes, videoRes, usageRes] = await Promise.all([
         fetch(`/api/tenants/${tenantId}/media-plan`, { headers: authHeaders(), cache: "no-store" }),
         fetch(`/api/tenants/${tenantId}/content-calendar`, { headers: authHeaders(), cache: "no-store" }),
         fetch(`/api/tenants/${tenantId}/media/projects?limit=200`, { headers: authHeaders(), cache: "no-store" }),
         fetch(`/api/tenants/${tenantId}/media/assets?type=image&limit=150`, { headers: authHeaders(), cache: "no-store" }),
         fetch(`/api/tenants/${tenantId}/media/assets?type=video&limit=150`, { headers: authHeaders(), cache: "no-store" }),
+        fetch(`/api/tenants/${tenantId}/content`, { headers: authHeaders(), cache: "no-store" }),
       ]);
       if (planRes.ok) setPlan(await planRes.json() as MediaPlan);
       if (calendarRes.ok) {
@@ -322,6 +318,11 @@ export function MediaPlanAutoProductionBridge() {
       if (projectsRes.ok) {
         const data = await projectsRes.json() as { projects?: MediaProject[] };
         setProjects(data.projects ?? []);
+      }
+      if (usageRes.ok) {
+        const usage = await usageRes.json() as { availableGenerations?: number; monthlyUsed?: number; monthlyLimit?: number; extraRemaining?: number };
+        const fallback = Math.max(0, Number(usage.monthlyLimit ?? 0) - Number(usage.monthlyUsed ?? 0));
+        setAvailableGenerations(Math.max(0, Math.floor(Number(usage.availableGenerations ?? fallback))));
       }
       const nextAssets: MediaAsset[] = [];
       for (const response of [imageRes, videoRes]) {
@@ -341,6 +342,20 @@ export function MediaPlanAutoProductionBridge() {
     const timer = window.setInterval(() => { if (!running) void load(); }, 12_000);
     return () => window.clearInterval(timer);
   }, [load, onPlanQueue, running]);
+
+  // Identidade visual do tenant: cor oficial vem de tenants.corPrimaria e é a
+  // única fonte usada em LP/site do plano. Sem valor, o servidor decide.
+  useEffect(() => {
+    if (!tenantId) return;
+    let cancelled = false;
+    fetch(`/api/tenants/${tenantId}`, { headers: authHeaders(), cache: "no-store" })
+      .then((response) => (response.ok ? response.json() : null))
+      .then((tenant: { corPrimaria?: string | null } | null) => {
+        if (!cancelled) setBrandColor(tenant?.corPrimaria?.trim() || null);
+      })
+      .catch(() => { if (!cancelled) setBrandColor(null); });
+    return () => { cancelled = true; };
+  }, [tenantId]);
 
   const projectByItem = useMemo(() => {
     const map = new Map<string, MediaProject>();
@@ -428,7 +443,7 @@ export function MediaPlanAutoProductionBridge() {
       headers: authHeaders(true),
       body: JSON.stringify({
         title: `${campaign.nome} · ${item.temaSugerido}`,
-        kind: mediaProjectKind(item.tipo),
+        kind: executionKindForType(item.tipo),
         source: "content_generator",
         context: {
           source: "media-plan",
@@ -481,7 +496,12 @@ export function MediaPlanAutoProductionBridge() {
     const referenceImages = selectedImages.filter((asset) => asset.metadata?.aiRole !== "final_material");
     const response = await fetch(`/api/tenants/${tenantId}/content/generate`, {
       method: "POST",
-      headers: authHeaders(true),
+      headers: {
+        ...authHeaders(true),
+        "x-vendorai-media-plan-id": plan?.id ?? "",
+        "x-vendorai-campaign-id": campaign.id,
+        "x-vendorai-calendar-item-id": item.id,
+      },
       body: JSON.stringify({
         type: generatorType,
         theme: direction.slice(0, 8000),
@@ -493,7 +513,10 @@ export function MediaPlanAutoProductionBridge() {
       }),
     });
     const payload = await response.json().catch(() => ({})) as ContentGeneration & { error?: string };
-    if (!response.ok || !payload.id) throw new Error(payload.error ?? "O gerador não criou o rascunho.");
+    if (!response.ok || !payload.id) {
+      if (response.status === 402) throw new Error("quota_exhausted:" + (payload.error ?? "Franquia de gerações esgotada."));
+      throw new Error(payload.error ?? "O gerador não criou o rascunho.");
+    }
 
     let variation = (payload.result?.variations ?? [])[0] as GenerationVariation | undefined;
     const needsVisual = options.visual === true;
@@ -515,7 +538,7 @@ export function MediaPlanAutoProductionBridge() {
     }
 
     return { generation: payload, variation, selectedImages };
-  }, [assets, tenantId]);
+  }, [assets, plan?.id, tenantId]);
 
   const materializeDirect = useCallback(async (item: CalendarItem, campaign: MediaPlanCampaign, project: MediaProject) => {
     const generated = await generateContent(item, campaign, {
@@ -564,7 +587,7 @@ export function MediaPlanAutoProductionBridge() {
           prompt: prompt.slice(0, 4000),
           style: item.tipo === "youtube_video" ? "cinematic, premium, photorealistic, polished commercial production" : "dynamic social media reel, energetic camera language, punchy modern composition",
           aspectRatio: item.tipo === "youtube_video" ? "landscape" : "portrait",
-          duration: item.tipo === "youtube_video" ? 30 : 16,
+          duration: resolveVideoDurationSeconds(item.tipo),
           generationMode: references.length > 0 ? "hybrid" : "ai_only",
           mediaInputs: references.map((asset, index) => ({ assetId: asset.id, type: asset.type, role: asset.metadata?.aiRole ?? asset.role ?? "reference", importance: "high", order: index })),
           effects: {
@@ -595,7 +618,9 @@ export function MediaPlanAutoProductionBridge() {
     });
     const body = await response.json().catch(() => ({})) as { projectId?: string; jobId?: string; error?: string };
     if (!response.ok || !body.projectId || !body.jobId) throw new Error(body.error ?? "Não foi possível iniciar o vídeo real.");
-    await patchCalendar(item.id, { status: "gerado", contentGenerationId: script.generation.id, variationIdx: 0 });
+    // O roteiro existe, o vídeo ainda não: estado operacional é "processando".
+    // Só o reconciliador (ou a revisão com vídeo final) promove para "gerado".
+    await patchCalendar(item.id, { status: "processando", contentGenerationId: script.generation.id, variationIdx: 0 });
     const projectResponse = await fetch(`/api/tenants/${tenantId}/media/projects/${body.projectId}`, { headers: authHeaders() });
     let project: MediaProject | undefined;
     if (projectResponse.ok) {
@@ -625,8 +650,10 @@ export function MediaPlanAutoProductionBridge() {
     const hook = String(variation.hook ?? caption.split(/[.!?\n]/)[0] ?? item.temaSugerido).trim();
     const images = extractImages(variation);
     if (visual && images.length === 0) throw new Error("O criativo do anúncio ficou sem imagem.");
-    const startDate = item.dataAgendada;
-    const endDate = addDays(startDate, Math.min(30, Math.max(1, campaign.duracaoDias ?? 7)));
+    // Objetivo, destino e janela vêm do plano/canal; nunca de constante fixa.
+    const objective = resolveAdObjective(campaign, item);
+    const destination = resolveAdDestination(campaign, item);
+    const flight = resolveAdFlightWindow(campaign, planStartDate(plan!, calendar), item.dataAgendada);
     const specialCategory = specialAdCategory(`${campaign.produtoServico} ${campaign.nome} ${item.temaSugerido}`);
     const context = marketingContext(plan!, campaign, item);
     const adResponse = await fetch(`/api/tenants/${tenantId}/ads/campaigns`, {
@@ -639,17 +666,21 @@ export function MediaPlanAutoProductionBridge() {
         itemTipo: "livre",
         itemLabel: item.temaSugerido.slice(0, 180),
         modo: "unico",
-        destinoClique: "whatsapp",
+        destinoClique: destination,
         orcamentoDiario: "0.00",
         segmentacao: {
           marketingContext: context,
           campaignControl: {
-            objective: "awareness",
-            startDate,
-            endDate,
+            objective,
+            startDate: flight.startDate,
+            endDate: flight.endDate,
             totalBudget: 0,
             specialAdCategory: specialCategory,
-            conversionTracking: { mode: "clicks", confirmed: true },
+            // Objetivo de contato/conversão não pode declarar medição por
+            // clique (a rota rejeita). Awareness/visita usam cliques.
+            conversionTracking: objective === "awareness" || objective === "visit"
+              ? { mode: "clicks" as const, confirmed: true }
+              : { mode: "vendorai" as const, confirmed: true },
             automation: { autoPauseNoResults: true, allowBudgetIncrease: false },
           },
           mediaPlanDraft: { source: "media-plan", requiresBudgetBeforePublish: true, generatedAt: new Date().toISOString() },
@@ -674,7 +705,7 @@ export function MediaPlanAutoProductionBridge() {
     });
     await recordVersion(updated, item, { kind: "ad", adCampaignId: ad.id, contentGenerationId: source.generation.id, images: images.length });
     return { itemId: item.id, status: "ready", kind: "ad", label: item.temaSugerido, executorUrl: `/ads?campaignId=${encodeURIComponent(ad.id)}&from=media-plan`, detail: "Rascunho de anúncio criado" } satisfies ProductionResult;
-  }, [generateContent, patchCalendar, plan, recordVersion, tenantId, updateProject]);
+  }, [calendar, generateContent, patchCalendar, plan, recordVersion, tenantId, updateProject]);
 
   const materializeSite = useCallback(async (item: CalendarItem, campaign: MediaPlanCampaign, project: MediaProject) => {
     const copy = await generateContent(item, campaign, {
@@ -696,7 +727,7 @@ export function MediaPlanAutoProductionBridge() {
         pain: campaign.objetivo,
         tone: "profissional, claro, confiável e orientado à conversão",
         cta: campaign.oferta || "Fale com nossa equipe",
-        color: "#4F46E5",
+        ...(brandColor ? { color: brandColor } : {}),
         products: [],
         images,
         videos,
@@ -742,41 +773,101 @@ export function MediaPlanAutoProductionBridge() {
       }
     }
     return { itemId: item.id, status: "processing", kind: "site", label: item.temaSugerido, executorUrl: String(updated.context?.executorUrl ?? ""), detail: "Página continua em geração" } satisfies ProductionResult;
-  }, [assets, generateContent, patchCalendar, plan, recordVersion, tenantId, updateProject]);
+  }, [assets, brandColor, generateContent, patchCalendar, plan, recordVersion, tenantId, updateProject]);
+
+  /**
+   * Reserva atômica da produção no servidor. Retorna "busy" quando outra
+   * sessão/worker já está produzindo o item (nunca gera duas vezes).
+   */
+  const claimProduction = useCallback(async (itemId: string): Promise<"claimed" | "already" | "busy"> => {
+    const response = await fetch(`/api/tenants/${tenantId}/content-calendar/${itemId}/iniciar-producao`, {
+      method: "POST",
+      headers: authHeaders(true),
+    });
+    if (response.status === 409) return "busy";
+    const body = await response.json().catch(() => ({})) as { claimed?: boolean; error?: string };
+    if (!response.ok) throw new Error(body.error ?? "Não foi possível reservar a produção desta ação.");
+    return body.claimed ? "claimed" : "already";
+  }, [tenantId]);
+
+  const releaseClaim = useCallback(async (itemId: string, restoreStatus: string) => {
+    await fetch(`/api/content-calendar/${itemId}`, {
+      method: "PATCH",
+      headers: authHeaders(true),
+      body: JSON.stringify({ contentGenerationId: null, variationIdx: null, status: restoreStatus }),
+    }).catch(() => null);
+  }, []);
 
   const materializeOne = useCallback(async (item: CalendarItem): Promise<ProductionResult> => {
     if (!plan) throw new Error("Plano não carregado.");
     const campaign = campaignForItem(plan, item);
     if (!campaign) throw new Error("Campanha do item não encontrada.");
-    if (VIDEO_TYPES.has(item.tipo)) return materializeVideo(item, campaign);
-    const project = await ensureProject(item, campaign);
-    await updateProject(project, { materializationStatus: "processing", executorKind: item.tipo, executorDetail: "Produção iniciada" });
+
+    const claim = await claimProduction(item.id);
+    if (claim === "busy") {
+      return { itemId: item.id, status: "processing", kind: item.tipo, label: item.temaSugerido, detail: "Produção já iniciada em outra sessão" };
+    }
+    const release = async () => { if (claim === "claimed") await releaseClaim(item.id, item.status); };
+
     try {
-      if (DIRECT_TYPES.has(item.tipo)) return await materializeDirect(item, campaign, project);
-      if (AD_TYPES.has(item.tipo)) return await materializeAd(item, campaign, project);
-      if (SITE_TYPES.has(item.tipo)) return await materializeSite(item, campaign, project);
-      if (MESSAGE_TYPES.has(item.tipo)) return await materializeMessage(item, campaign, project);
-      throw new Error(`Formato ${item.tipo} ainda não possui executor materializável.`);
+      if (VIDEO_TYPES.has(item.tipo)) return await materializeVideo(item, campaign);
+      const project = await ensureProject(item, campaign);
+      await updateProject(project, { materializationStatus: "processing", executorKind: item.tipo, executorDetail: "Produção iniciada" });
+      try {
+        if (DIRECT_TYPES.has(item.tipo)) return await materializeDirect(item, campaign, project);
+        if (AD_TYPES.has(item.tipo)) return await materializeAd(item, campaign, project);
+        if (SITE_TYPES.has(item.tipo)) return await materializeSite(item, campaign, project);
+        if (MESSAGE_TYPES.has(item.tipo)) return await materializeMessage(item, campaign, project);
+        throw new Error(`Formato ${item.tipo} ainda não possui executor materializável.`);
+      } catch (error) {
+        const quotaExhausted = error instanceof Error && error.message.startsWith("quota_exhausted:");
+        await updateProject(project, {
+          materializationStatus: quotaExhausted ? "planned" : "failed",
+          executorKind: item.tipo,
+          executorDetail: quotaExhausted ? "Aguardando novas gerações" : error instanceof Error ? error.message : "Falha na produção",
+        }).catch(() => null);
+        throw error;
+      }
     } catch (error) {
-      await updateProject(project, {
-        materializationStatus: "failed",
-        executorKind: item.tipo,
-        executorDetail: error instanceof Error ? error.message : "Falha na produção",
-      }).catch(() => null);
+      await release();
       throw error;
     }
-  }, [ensureProject, materializeAd, materializeDirect, materializeMessage, materializeSite, materializeVideo, plan, updateProject]);
+  }, [claimProduction, ensureProject, materializeAd, materializeDirect, materializeMessage, materializeSite, materializeVideo, plan, releaseClaim, updateProject]);
 
   const runAll = useCallback(async () => {
     if (!plan || plan.conteudo.statusPlanejamento !== "aprovado" || running || startingRef.current) return;
-    const queue = missing.filter((item) => item.status === "aprovado" || item.status === "gerado");
+    const eligible = missing.filter((item) => item.status === "aprovado" && !item.contentGenerationId);
+    if (eligible.length === 0) return;
+
+    // Gate de permissão e de quota antes de gastar IA: o backend devolve os
+    // itens autorizados (máx. 10) e o teto disponível do tenant.
+    const authorizationResponse = await fetch(`/api/tenants/${tenantId}/content-calendar/${plan.id}/autorizar-producao-lote`, {
+      method: "POST",
+      headers: authHeaders(true),
+      body: JSON.stringify({}),
+    });
+    const authorizationPayload = await authorizationResponse.json().catch(() => ({})) as { authorized?: boolean; itemIds?: string[]; items?: number; error?: string };
+    if (!authorizationResponse.ok || !authorizationPayload.authorized) {
+      setResults([{
+        itemId: "authorization",
+        status: "failed",
+        kind: "permission",
+        label: "Produção não autorizada",
+        detail: authorizationPayload.error ?? "Somente Administradores ou usuários com permissão explícita de Marketing podem iniciar produção com IA.",
+      }]);
+      return;
+    }
+    const authorizedIds = new Set(authorizationPayload.itemIds ?? []);
+    const maxAllowed = Math.max(0, Math.min(10, availableGenerations, authorizationPayload.items ?? 10));
+    const queue = eligible.filter((item) => authorizedIds.has(item.id)).slice(0, maxAllowed);
     if (queue.length === 0) return;
+
     startingRef.current = true;
     setRunning(true);
     setProgress({ done: 0, total: queue.length, failed: 0 });
     setResults([]);
     try {
-      sessionStorage.setItem(`${AUTO_KEY_PREFIX}${plan.id}`, new Date().toISOString());
+      sessionStorage.setItem(`${AUTO_KEY_PREFIX}${plan.id}`, `manual:${queue.length}:${availableGenerations}`);
     } catch {}
 
     let nextIndex = 0;
@@ -792,6 +883,10 @@ export function MediaPlanAutoProductionBridge() {
           const result = await materializeOne(item);
           output.push(result);
         } catch (error) {
+          if (error instanceof Error && error.message.startsWith("quota_exhausted:")) {
+            setAvailableGenerations(0);
+            return;
+          }
           failed += 1;
           output.push({ itemId: item.id, status: "failed", kind: item.tipo, label: item.temaSugerido, detail: error instanceof Error ? error.message : "Falha na produção" });
         }
@@ -805,21 +900,12 @@ export function MediaPlanAutoProductionBridge() {
     setRunning(false);
     startingRef.current = false;
     await load();
-  }, [load, materializeOne, missing, plan, running]);
+  }, [availableGenerations, load, materializeOne, missing, plan, running, tenantId]);
 
-  // O plano aprovado é a autorização para produzir rascunhos. A primeira abertura
-  // da fila dispara uma única execução automática; falhas ficam visíveis para retry.
-  useEffect(() => {
-    if (!onPlanQueue || !plan || plan.conteudo.statusPlanejamento !== "aprovado" || missing.length === 0 || running || startingRef.current) return;
-    // Planos em publicação automática são produzidos pelo worker do backend,
-    // que reivindica cada item antes de gastar IA. Evita produção duplicada.
-    if (plan.conteudo.publicacaoOrganica?.modo === "automatico") return;
-    let alreadyStarted = false;
-    try { alreadyStarted = Boolean(sessionStorage.getItem(`${AUTO_KEY_PREFIX}${plan.id}`)); } catch {}
-    if (alreadyStarted) return;
-    const timer = window.setTimeout(() => { void runAll(); }, 1200);
-    return () => window.clearTimeout(timer);
-  }, [missing.length, onPlanQueue, plan, runAll, running]);
+  // Segurança de custo: a produção NUNCA inicia ao abrir a tela, por timer ou
+  // por efeito. Só um clique explícito no botão "Produzir lote" chama runAll().
+  // (Antes, o build reescrevia este arquivo para aplicar essa regra; agora ela
+  // é parte do código-fonte.)
 
   const shownResults = results.length > 0 ? results : evidenceResults;
   const readyCount = shownResults.filter((item) => item.status === "ready").length;
@@ -838,7 +924,7 @@ export function MediaPlanAutoProductionBridge() {
             </button>
           ) : missing.length > 0 ? (
             <button type="button" onClick={() => void runAll()} className="inline-flex h-8 items-center gap-1.5 rounded-md bg-primary px-3 text-xs font-semibold text-primary-foreground hover:bg-primary/90">
-              <Play className="h-3.5 w-3.5" /> Produzir plano completo ({missing.length})
+              <Play className="h-3.5 w-3.5" /> Produzir lote ({Math.min(missing.filter((item) => item.status === "aprovado" && !item.contentGenerationId).length, 10, availableGenerations)})
             </button>
           ) : (
             <span className="inline-flex h-8 items-center gap-1.5 rounded-md border border-emerald-200 bg-emerald-50 px-3 text-xs font-semibold text-emerald-800">

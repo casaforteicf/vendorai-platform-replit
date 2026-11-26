@@ -69,7 +69,8 @@ function openActionDetails() {
 
 function findProductionButton() {
   return Array.from(document.querySelectorAll<HTMLButtonElement>(`[data-vendorai-plan-production] button`))
-    .find((button) => normalizedText(button.textContent ?? "").startsWith("Produzir plano completo"));
+    .find((button) => ["Produzir lote", "Produzir plano completo", "Produzir agora"]
+      .some((prefix) => normalizedText(button.textContent ?? "").startsWith(prefix)));
 }
 
 export function MediaPlanBatchControl() {

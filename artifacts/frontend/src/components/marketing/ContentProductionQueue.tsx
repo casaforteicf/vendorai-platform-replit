@@ -4,6 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
+import { deriveOperationalState } from "@workspace/vendor-brain/media-plan-execution";
 import {
   AlertTriangle,
   CheckCircle2,
@@ -310,16 +311,26 @@ function runAutomaticReview(
   };
 }
 
+/**
+ * Rótulo/estado operacional vem do contrato único (vendor-brain). A fila não
+ * mantém uma segunda máquina de estados: o mesmo item tem o mesmo rótulo em
+ * todas as telas e no backend.
+ */
 function derivedStatus(item: CalendarItem) {
-  if (item.status === "publicado") return { label: "Publicado", tone: "success" as const };
-  if (item.status === "recusado") return { label: "Recusado", tone: "muted" as const };
-  if (item.status === "pulado") return { label: "Ignorado", tone: "muted" as const };
-  if (item.status === "planejado") return { label: "Aguardando aprovação", tone: "muted" as const };
-  if (item.status === "gerado" && item.contentGenerationId) return { label: "Em revisão", tone: "warning" as const };
-  if (item.status === "gerado") return { label: "Em produção", tone: "warning" as const };
-  if (item.status === "aprovado" && item.contentGenerationId) return { label: "Conteúdo aprovado", tone: "success" as const };
-  if (item.status === "aprovado") return { label: "Pronto para produzir", tone: "ready" as const };
-  return { label: item.status, tone: "muted" as const };
+  const state = deriveOperationalState({
+    calendarStatus: item.status,
+    hasGeneration: Boolean(item.contentGenerationId),
+    isVideo: ["reels", "tiktok", "youtube_short", "youtube_video"].includes(item.tipo),
+  });
+  return { label: state.label, tone: state.tone === "danger" ? "warning" as const : state.tone === "muted" ? "muted" as const : state.tone };
+}
+
+function operationalCode(item: CalendarItem) {
+  return deriveOperationalState({
+    calendarStatus: item.status,
+    hasGeneration: Boolean(item.contentGenerationId),
+    isVideo: ["reels", "tiktok", "youtube_short", "youtube_video"].includes(item.tipo),
+  }).code;
 }
 
 function statusClass(tone: ReturnType<typeof derivedStatus>["tone"]) {
@@ -621,11 +632,11 @@ export default function ContentProductionQueue({ tenantId }: { tenantId: string 
   const productionSummary = useMemo(() => {
     const values = { ready: 0, review: 0, approved: 0, published: 0, pending: 0 };
     visibleItems.forEach((item) => {
-      const status = derivedStatus(item).label;
-      if (status === "Pronto para produzir") values.ready += 1;
-      else if (status === "Em revisão" || status === "Em produção") values.review += 1;
-      else if (status === "Conteúdo aprovado") values.approved += 1;
-      else if (status === "Publicado") values.published += 1;
+      const code = operationalCode(item);
+      if (code === "authorized") values.ready += 1;
+      else if (code === "in_review" || code === "producing") values.review += 1;
+      else if (code === "approved" || code === "scheduled") values.approved += 1;
+      else if (code === "published") values.published += 1;
       else if (!FINAL_STATUSES.has(item.status)) values.pending += 1;
     });
     return values;
@@ -639,11 +650,11 @@ export default function ContentProductionQueue({ tenantId }: { tenantId: string 
   const filteredItems = useMemo(() => {
     if (contentFilter === "all") return visibleItems;
     return visibleItems.filter((item) => {
-      const label = derivedStatus(item).label;
-      if (contentFilter === "ready") return label === "Pronto para produzir";
-      if (contentFilter === "review") return label === "Em revisão" || label === "Em produção";
-      if (contentFilter === "approved") return label === "Conteúdo aprovado";
-      if (contentFilter === "published") return label === "Publicado";
+      const code = operationalCode(item);
+      if (contentFilter === "ready") return code === "authorized";
+      if (contentFilter === "review") return code === "in_review" || code === "producing";
+      if (contentFilter === "approved") return code === "approved" || code === "scheduled";
+      if (contentFilter === "published") return code === "published";
       return true;
     });
   }, [contentFilter, visibleItems]);
@@ -740,6 +751,7 @@ export default function ContentProductionQueue({ tenantId }: { tenantId: string 
     setActionBusy(item.id);
     const previousStatus = item.status;
     const previousGenerationId = item.contentGenerationId ?? null;
+    const previousVariationIdx = item.variationIdx ?? null;
     const selectedMedia = selectRelevantOwnedMedia(
       assetsRef.current,
       campaign,
@@ -770,8 +782,22 @@ export default function ContentProductionQueue({ tenantId }: { tenantId: string 
 
     prepareExecutionContext(item, campaign);
 
+    let claimed = false;
     try {
-      await patchCalendar(item.id, { status: "gerado" });
+      // Claim atômico no servidor: duas abas (ou tela + worker) não geram a
+      // mesma peça duas vezes. 409 = outra produção já está em andamento.
+      const claimResponse = await fetch(`/api/tenants/${tenantId}/content-calendar/${item.id}/iniciar-producao`, {
+        method: "POST",
+        headers: authHeaders(),
+      });
+      if (claimResponse.status === 409) {
+        if (!silent) toast({ title: "Esta peça já está em produção", description: "Outra sessão ou o worker já iniciou esta ação.", variant: "destructive" });
+        return false;
+      }
+      const claimBody = await claimResponse.json().catch(() => ({})) as { claimed?: boolean; error?: string };
+      if (!claimResponse.ok) throw new Error(claimBody.error ?? "Não foi possível reservar a produção desta peça.");
+      claimed = Boolean(claimBody.claimed);
+
       const response = await fetch(`/api/tenants/${tenantId}/content/generate`, {
         method: "POST",
         headers: {
@@ -828,6 +854,7 @@ export default function ContentProductionQueue({ tenantId }: { tenantId: string 
       await patchCalendar(item.id, {
         status: previousStatus,
         contentGenerationId: previousGenerationId,
+        ...(claimed ? { variationIdx: previousVariationIdx } : {}),
       }).catch(() => undefined);
       await recordProjectEvent(item, campaign, {
         operation: "generation_failed",

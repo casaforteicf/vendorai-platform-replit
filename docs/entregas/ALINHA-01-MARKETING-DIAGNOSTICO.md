@@ -12,7 +12,9 @@
 | Método | Leitura de código e documentos + consultas SQL **somente-leitura** no banco de produção (`SET default_transaction_read_only = on` em toda sessão) + verificação do tenant AJ Termas Irani. |
 | Restrições respeitadas | Sem Replit, Railway ou GitHub Actions; sem publicar conteúdo; sem contratar serviço externo; sem dados fictícios; sem tocar no Arqdor; sem criar agente, store ou arquitetura paralela. |
 
-> **Encaminhamento:** este relatório deve ir para a auditoria independente **antes** de qualquer lote de implementação (checklist no Anexo D). Nenhum branch de implementação, merge ou deploy foi criado por esta missão; o único artefato é este documento, registrado em branch apenas de documentação e sem push.
+> **Encaminhamento:** este relatório deve ir para a auditoria independente **antes** de qualquer lote de implementação (checklist no Anexo D). Ele foi produzido em branch apenas de documentação, sem push, merge ou deploy.
+>
+> **Atualização (2026-11-26):** após autorização do solicitante (“pode fazer e isso deve ser para todos os tenants”), os lotes **L0–L4** foram implementados no branch `feat/alinha-01-runtime`. O registro de execução, arquivos, evidências e pendências está em [ALINHA-01-IMPLEMENTACAO.md](ALINHA-01-IMPLEMENTACAO.md). O diagnóstico abaixo permanece como baseline auditável; o Anexo E registra o que a implementação corrigiu e o que ainda falta.
 
 ---
 
@@ -367,8 +369,9 @@ Legenda de lote: L0 governança · L1 contexto · L2 estado/idempotência · L3 
 | D-24 | Navegação | 27 bridges globais em toda rota | `WorkspaceEnhancements.tsx:92-116` | Polling e mutação de DOM em cascata | Migrar comportamento para os componentes donos | L6 |
 | D-25 | Estrutura | Dois componentes exportam `MediaPlanAutoProductionBridge` | `MediaPlanAutoProductionBridge.tsx` e `QuotaSafe…tsx` | Confusão de importação | Renomear o wrapper | L6 |
 | D-26 | Governança | Encoding corrompido em 5 arquivos | U+FFFD/NUL em `onboarding.ts` (279), `content.ts` (160), `changelog.ts` (49), `media-plan-auto-production.ts` (33), `ai-gateway.ts` (26) | Prompts e mensagens corrompidos | Corrigir bytes + gate de CI | L0 |
-| D-27 | Governança | Migration 209 não aplicada | `vendorai_schema_migrations` versão 209 = “multi whatsapp numbers”; coluna ausente | Autonomia quebra ao ler/escrever | Renumerar migration e aplicar | L0 |
+| D-27 | Governança | Migration 209 não aplicada | `vendorai_schema_migrations` versão 209 = “multi whatsapp numbers”; coluna ausente. Corrigido no L0: arquivo renumerado para `576_marketing_autonomy_policy.sql` (ainda não aplicado) | Autonomia quebra ao ler/escrever | Renumerar migration e aplicar | L0 |
 | D-28 | Documentação | Blueprint descreve Cloudflare/Railway | `vendorai-platform-foundation.md` vs `CLAUDE.md` | Decisões erradas de deploy | Atualizar documento | L0 |
+| D-29 | Build | Comportamento de produção (quota, gate de permissão, auto-start desligado) era injetado reescrevendo o `.tsx` em tempo de build pelo plugin `media-plan-available-quota` | `artifacts/frontend/vite.config.ts` (transform com `replaceExact`); qualquer edição no bridge quebrava o build | Fonte ≠ bundle publicado; testes/revisão não veem a regra real; manutenção frágil | Mover a regra para o código-fonte e remover o plugin (feito no L3) | L3 |
 
 ---
 
@@ -428,7 +431,10 @@ O plano já contém objetivo, etapa de funil, KPI, oferta, região, formatos e r
 **Causa contribuinte 6 — Governança de migrations e documentação.**
 A colisão de versão 209 impediu a criação da coluna de autonomia. O documento de fundação descreve uma infraestrutura que não é a real. Nenhum dos dois é marketing, mas ambos quebram funcionalidades de marketing.
 
-**Causa contribuinte 7 — Ausência de provedor de vídeo.**
+**Causa contribuinte 7 — Regra de produção escondida no build.**
+O plugin `media-plan-available-quota` reescrevia o `MediaPlanAutoProductionBridge.tsx` durante o `vite build` para inserir quota, gate de permissão e desligar a produção automática. Isso explica por que o arquivo-fonte (auditado aqui) mostra auto-start e ausência de gate, enquanto o bundle publicado se comporta de outra forma. Foi eliminado no L3.
+
+**Causa contribuinte 8 — Ausência de provedor de vídeo.**
 O Reels falha por falta de `GOOGLE_SERVICE_ACCOUNT_JSON`/`VENDORAI_VERTEX_VIDEO_GCS_URI` ou `REPLICATE_API_TOKEN` (já registrado em MKT-01). O fallback por fotos existe, mas não rodou porque a automação não está ligada e o item foi aprovado antes.
 
 ---
@@ -739,7 +745,7 @@ split(" · ")[0]       → "Aquisição de novas oportunidades"          → cas
 | `artifacts/api-server/src/services/media-plan-auto-production.ts` | 33 | 0 |
 | `artifacts/api-server/src/lib/ai-gateway.ts` | 26 | 585 |
 
-**Migrations:** `vendorai_schema_migrations` tem 495 registros; a versão `209` aplicada é “multi whatsapp numbers”. O arquivo `lib/db/migrations/209_marketing_autonomy_policy.sql` não foi aplicado; a coluna `content_autopilot_config.marketing_autonomy_policy` não existe (verificado por `information_schema.columns`). Há **46** migrations com versão do repositório sem correspondência aplicada (colisões de numeração), o que exige auditoria própria — aqui só se registra o impacto em Marketing.
+**Migrations:** `vendorai_schema_migrations` tem 495 registros; a versão `209` aplicada é “multi whatsapp numbers”. O arquivo `lib/db/migrations/209_marketing_autonomy_policy.sql` não foi aplicado (renumerado para `576_marketing_autonomy_policy.sql` no L0); a coluna `content_autopilot_config.marketing_autonomy_policy` não existe (verificado por `information_schema.columns`). Há **46** migrations com versão do repositório sem correspondência aplicada (colisões de numeração), o que exige auditoria própria — aqui só se registra o impacto em Marketing.
 
 **Correspondência com produção:** o checkout de produção (`/opt/vendorai/deploy-src`, HEAD `1d212c6d4`, PR #3767) tem os quatro arquivos centrais **byte-idênticos** ao checkout auditado (`0af9d7fc3`): `routes/content.ts`, `services/media-plan-auto-production.ts`, `MediaPlanAutoProductionBridge.tsx` e `ContentHub.tsx`. O arquivo `/opt/vendorai/deploy-state/last-status` registra outro SHA (`1266aa5d7`) para o último deploy — divergência de contabilidade de deploy que deve ser confirmada pela operação, sem impacto no diagnóstico acima (os arquivos conferem).
 
@@ -772,3 +778,15 @@ split(" · ")[0]       → "Aquisição de novas oportunidades"          → cas
 - E. Duração de vídeo: aceitar 15/30 s como padrão documentado (sem campo no plano) ou incluir `duracaoSegundos` no contrato do canal? (Recomendo incluir no contrato, com default atual.)
 
 **Situação:** relatório pronto para auditoria. **Nenhum lote iniciado.** Após o aceite da auditoria, o próximo passo é abrir branch/PR do LOTE 0 (governança e encoding) — sem merge em `main` e sem deploy automático.
+
+---
+
+# Anexo E — Adendo pós-implementação (2026-11-26)
+
+Este adendo corrige/expande três pontos do diagnóstico original, à luz do que a implementação revelou:
+
+1. **Fonte ≠ bundle (D-29).** O `MediaPlanAutoProductionBridge.tsx` auditado era a fonte bruta. O bundle publicado era reescrito pelo plugin `media-plan-available-quota` (quota, gate de permissão, auto-start desligado). Portanto os achados AL-005/AL-006/AL-007 descrevem corretamente a **fonte**, mas o comportamento efetivo em produção incluía aquelas transformações. O plugin foi removido e a regra passou para o código (L3).
+2. **Split corrigido.** `content.ts` e `media-plan-auto-production.ts` não derivam mais o nome da campanha por conta própria; usam `lib/vendor-brain/src/media-plan-execution.ts`. O 409 por contexto não deve mais ocorrer para item válido.
+3. **Rastreabilidade e claim.** Toda geração do plano (inclusive pela tela) grava `contextAudit`/`automation`; a produção iniciada pela tela passou a usar claim atômico no servidor, com liberação automática de claims órfãos.
+
+O que **não** mudou: L5 (atribuição por campanha), L6 (consolidação dos bridges/navegação), projeto por imagem gerada, aplicação da migration 576, homologação e publicação. Ver [ALINHA-01-IMPLEMENTACAO.md](ALINHA-01-IMPLEMENTACAO.md), seção 5.

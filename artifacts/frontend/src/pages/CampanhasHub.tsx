@@ -1,4 +1,5 @@
 import { VendorBackButton } from "@/components/ui/back-button";
+import { deriveOperationalState } from "@workspace/vendor-brain/media-plan-execution";
 import { useEffect, useMemo, useState } from "react";
 import { useLocation, useSearch } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
@@ -73,12 +74,8 @@ function campaignNameFromPilar(pilar: string) {
 }
 
 function statusLabel(status: string) {
-  if (status === "publicado") return "Publicado";
-  if (status === "gerado") return "Em produção";
-  if (status === "aprovado") return "Pronto para produzir";
-  if (status === "recusado") return "Recusado";
-  if (status === "pulado") return "Ignorado";
-  return "Planejado";
+  // Mesmo contrato de estado das outras telas do Marketing.
+  return deriveOperationalState({ calendarStatus: status }).label;
 }
 
 function statusIcon(status: string) {
