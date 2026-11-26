@@ -12,6 +12,7 @@ import {
   resolveAdFlightWindow,
   resolveAdObjective,
   resolveVideoDurationSeconds,
+  selectRoundRobinByTenant,
 } from "./media-plan-execution";
 
 const campaign = {
@@ -160,5 +161,36 @@ describe("estado operacional único", () => {
     expect(deriveOperationalState({ calendarStatus: "recusado" }).code).toBe("rejected");
     expect(deriveOperationalState({ calendarStatus: "pulado" }).code).toBe("skipped");
     expect(deriveOperationalState({ calendarStatus: "planejado" }).code).toBe("planned");
+  });
+});
+
+describe("lote justo entre tenants", () => {
+  const rows = [
+    { id: "a1", tenant: "A" },
+    { id: "a2", tenant: "A" },
+    { id: "a3", tenant: "A" },
+    { id: "b1", tenant: "B" },
+    { id: "c1", tenant: "C" },
+    { id: "c2", tenant: "C" },
+  ];
+
+  it("alterna tenants antes de repetir o mesmo tenant", () => {
+    const selected = selectRoundRobinByTenant(rows, (row) => row.tenant, 1, 3);
+    expect(selected.map((row) => row.id)).toEqual(["a1", "b1", "c1"]);
+  });
+
+  it("respeita o teto por tenant e o total", () => {
+    const selected = selectRoundRobinByTenant(rows, (row) => row.tenant, 2, 5);
+    expect(selected.map((row) => row.id)).toEqual(["a1", "b1", "c1", "a2", "c2"]);
+  });
+
+  it("devolve lote vazio quando o total é zero", () => {
+    expect(selectRoundRobinByTenant(rows, (row) => row.tenant, 2, 0)).toEqual([]);
+  });
+
+  it("não perde tenants com um único item", () => {
+    const selected = selectRoundRobinByTenant(rows, (row) => row.tenant, 10, 10);
+    expect(new Set(selected.map((row) => row.tenant))).toEqual(new Set(["A", "B", "C"]));
+    expect(selected).toHaveLength(rows.length);
   });
 });

@@ -31,6 +31,7 @@ import {
 import {
   findCampaignForItem,
   resolveVideoDurationSeconds,
+  selectRoundRobinByTenant,
 } from "@workspace/vendor-brain/media-plan-execution";
 
 const PLAN_LIMITS: Record<string, number> = {
@@ -41,6 +42,12 @@ const PLAN_LIMITS: Record<string, number> = {
 const DEFAULT_TIMEZONE = process.env["MARKETING_SCHEDULE_TIMEZONE"] || "America/Sao_Paulo";
 const PRODUCTION_LEAD_HOURS = Math.max(1, Number(process.env["MARKETING_PRODUCTION_LEAD_HOURS"] || 24));
 const MAX_ITEMS_PER_TICK = 8;
+// Teto por tenant no mesmo ciclo: sem isso, o backlog antigo de um tenant
+// consome todas as vagas e os demais nunca produzem.
+const MAX_ITEMS_PER_TENANT_PER_TICK = Math.max(
+  1,
+  Number(process.env["MARKETING_MAX_ITEMS_PER_TENANT_TICK"] || 2),
+);
 const AUTO_PRODUCTION_FOR_ALL_PLANS =
   process.env["MARKETING_AUTO_PRODUCTION_ENABLED"] === "true";
 const AUTO_PRODUCTION_MONTHLY_LIMIT = Math.max(
@@ -441,17 +448,25 @@ export async function produceUpcomingMediaPlanOrganicContent(now = new Date()) {
     .orderBy(asc(contentCalendarItemsTable.dataAgendada))
     .limit(MAX_ITEMS_PER_TICK * 4);
 
-  let produced = 0;
-  let attempted = 0;
-  for (const row of rows) {
-    if (attempted >= MAX_ITEMS_PER_TICK) break;
-    if (!row.mediaPlanId || !AUTO_TYPES.has(row.tipo) || !providerSupported(row.canal)) continue;
+  // Filtro barato -> lote justo entre tenants -> claim atômico por item.
+  const candidates = rows.flatMap((row) => {
+    if (!row.mediaPlanId || !AUTO_TYPES.has(row.tipo) || !providerSupported(row.canal)) return [];
     const content = row.planContent as PlanContent;
-    if (!planAllowsAutomaticProduction(content.publicacaoOrganica, AUTO_PRODUCTION_FOR_ALL_PLANS)) continue;
-    if (!shouldProduce(row.dataAgendada, content.publicacaoOrganica, now)) continue;
+    if (!planAllowsAutomaticProduction(content.publicacaoOrganica, AUTO_PRODUCTION_FOR_ALL_PLANS)) return [];
+    if (!shouldProduce(row.dataAgendada, content.publicacaoOrganica, now)) return [];
     const campaign = campaignForItem(content, row.pilar);
-    if (!campaign) continue;
+    if (!campaign) return [];
+    return [{ row, content, campaign }];
+  });
+  const batch = selectRoundRobinByTenant(
+    candidates,
+    (candidate) => candidate.row.tenantId,
+    MAX_ITEMS_PER_TENANT_PER_TICK,
+    MAX_ITEMS_PER_TICK,
+  );
 
+  let produced = 0;
+  for (const { row, content, campaign } of batch) {
     const claim = `auto-producing:${crypto.randomUUID()}`;
     const [claimed] = await db.update(contentCalendarItemsTable).set({
       contentGenerationId: claim,
@@ -464,7 +479,6 @@ export async function produceUpcomingMediaPlanOrganicContent(now = new Date()) {
       isNull(contentCalendarItemsTable.variationIdx),
     )).returning({ id: contentCalendarItemsTable.id });
     if (!claimed) continue;
-    attempted += 1;
 
     try {
       const theme = directionText(campaign, row);

@@ -68,6 +68,19 @@ Decisões de projeto que valem para qualquer tenant:
 - **Estado compartilhado nos painéis**: `ContentProductionQueue`, `MarketingOverviewBridge` e `CampanhasHub` usam `deriveOperationalState`; “gerado” não é mais contado como “em produção” e “aprovado sem geração” é “Pronto para produzir”.
 - **Resultados resiliente**: `MarketingResultsSummary` usa `Promise.allSettled`, limpa estado ao trocar de tenant e mostra “—” para a fonte indisponível, em vez de zero/valor antigo.
 
+## 2.1 Rollout para todos os tenants
+
+A correção é de plataforma, não de tenant: não existe flag, script ou ajuste por cliente. O que muda para todos:
+
+- **Migration aplicada (produção, 2026-11-26):** `576_marketing_autonomy_policy.sql` criou `content_autopilot_config.marketing_autonomy_policy` (`ADD COLUMN IF NOT EXISTS`, default `{"level":0,"maxTransferFractionPerCycle":0.20}`) e registrou a versão 576 em `vendorai_schema_migrations`. Isso conserta a autonomia de todos os tenants imediatamente, inclusive no código já publicado.
+- **Claims presos liberados pelo worker em todos os tenants:** a liberação de claims é global (sem filtro de tenant) e roda a cada ciclo. Havia 3 claims `auto-producing:` presos desde 2026-09-15 no tenant `1d4ea673…`; eles passam a ser liberados automaticamente.
+- **Lote justo por tenant:** produção e publicação passaram a usar `selectRoundRobinByTenant` (máx. 2 itens/tenant por ciclo de produção; 10/tenant por ciclo de publicação). Sem isso, o tenant com 428 itens atrasados consumiria todas as vagas e os outros 5 nunca produziriam.
+- **Estado e contexto globais:** `processando`, claim atômico, `contextAudit`/`automation` e parâmetros derivados valem para qualquer plano aprovado, sem configuração.
+
+**Diagnóstico system-wide (somente leitura, 2026-11-26):** 11 tenants, 6 com plano de mídia, 4 com itens de calendário — **658 itens** (457 planejados, 154 gerados, 47 aprovados, **0 publicados**), 12 planos e **nenhum** com `publicacaoOrganica.modo=automatico`; 206 gerações e **206 sem `contextAudit`**; 1 vídeo aprovado sem arquivo (AJ). Ou seja: o problema descrito no diagnóstico não era do AJ — era do sistema.
+
+> Publicação continua **opt-in por plano**. Nada foi publicado e nenhum plano foi colocado em modo automático por este lote; habilitar publicação exige decisão do tenant e revisão humana.
+
 ## 3. Arquivos alterados
 
 **Backend**
@@ -102,7 +115,7 @@ Decisões de projeto que valem para qualquer tenant:
 
 | Check | Comando | Resultado |
 |---|---|---|
-| Testes do contrato | `vitest` em `lib/vendor-brain/src/media-plan-execution.test.ts` | **22/22 OK** |
+| Testes do contrato | `vitest` em `lib/vendor-brain/src/media-plan-execution.test.ts` | **26/26 OK** (inclui lote justo entre tenants) |
 | Testes backend focados | `vitest` (content-final-media, policy, context library, isolamento) | **21/21 OK** |
 | Gate real da API | `node ./build.mjs` | **EXIT 0** |
 | Build do frontend | `pnpm --filter @workspace/frontend run build` | **EXIT 0** (bundle budget OK) |
@@ -115,7 +128,7 @@ Decisões de projeto que valem para qualquer tenant:
 1. **L5 — atribuição comercial por campanha.** `origin_campaign_id` existe no lead, mas a captura de LP/WhatsApp ainda não grava a campanha do plano; painel por campanha não foi implementado. Depende da decisão C do diagnóstico.
 2. **L6 — consolidação dos 27 bridges e da navegação.** O comportamento crítico (quota, permissão, auto-start) saiu do build, mas os bridges continuam montados; a migração para os componentes donos é incremental e não foi iniciada.
 3. **Projeto por imagem gerada.** `captureGeneratedMedia` continua criando um projeto por mídia; vincular ao projeto da peça exige mudança na biblioteca e ficou fora deste lote.
-4. **Migration 576 não aplicada.** Precisa de homologação e aplicação controlada; sem ela, a aba de autonomia continua falhando em produção.
+4. ~~Migration 576 não aplicada~~ **Aplicada em produção em 2026-11-26** (aditiva, verificada).
 5. **Homologação, PR e publicação.** Nada foi enviado para `main`, nenhum deploy, nenhuma publicação de conteúdo.
 
 ## 6. Riscos e rollback
@@ -127,6 +140,6 @@ Decisões de projeto que valem para qualquer tenant:
 ## 7. Próximo passo
 
 1. Auditoria independente do diff deste lote (não do diagnóstico).
-2. Homologação na Contabo com um **clone** do plano AJ Termas: aprovar lote, gerar 1 item de cada tipo, conferir `contextAudit`, claim, estado de vídeo, anúncio com objetivo/destino/janela e LP com `#dcd509`.
-3. Aplicar a migration 576 em homologação e depois produção.
+2. Homologação **multi-tenant** (não só AJ): um tenant por vertical/plano, aprovando lote e gerando 1 item de cada tipo; conferir `contextAudit`, claim, estado de vídeo, anúncio derivado e cor da marca.
+3. Release: PR + merge em `main` (auto-deploy Contabo faz homologação e produção com healthcheck/rollback), acompanhando `last-status` e logs do worker.
 4. Iniciar L5 e L6 em lotes separados, com o mesmo critério de evidência.

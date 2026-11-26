@@ -92,6 +92,7 @@ export {
   operationalStateLabel,
   executionKindForType,
   isVideoType,
+  selectRoundRobinByTenant,
   DEFAULT_VIDEO_DURATION_SECONDS,
 } from './media-plan-execution'
 export type {

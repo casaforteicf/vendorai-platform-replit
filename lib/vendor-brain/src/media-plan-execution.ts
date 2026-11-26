@@ -300,3 +300,48 @@ export function executionKindForType(tipo: string | null | undefined): string {
   if (value === "stories") return "story";
   return "feed";
 }
+
+
+/**
+ * Seleciona um lote justo entre tenants: round-robin na ordem de primeira
+ * aparição, com teto por tenant e teto total. Evita que o backlog antigo de um
+ * tenant consuma todas as vagas do worker e deixe os demais sem produção.
+ */
+export function selectRoundRobinByTenant<T>(
+  items: readonly T[],
+  getTenantId: (item: T) => string,
+  maxPerTenant: number,
+  maxTotal: number,
+): T[] {
+  const total = Math.max(0, Math.floor(maxTotal));
+  const perTenant = Math.max(1, Math.floor(maxPerTenant));
+  if (total === 0) return [];
+
+  const buckets = new Map<string, T[]>();
+  const order: string[] = [];
+  for (const item of items) {
+    const tenant = getTenantId(item);
+    if (!buckets.has(tenant)) {
+      buckets.set(tenant, []);
+      order.push(tenant);
+    }
+    buckets.get(tenant)!.push(item);
+  }
+
+  const selected: T[] = [];
+  let index = 0;
+  while (selected.length < total) {
+    let progressed = false;
+    for (const tenant of order) {
+      if (selected.length >= total) break;
+      const bucket = buckets.get(tenant)!;
+      if (index < bucket.length && index < perTenant) {
+        selected.push(bucket[index]!);
+        progressed = true;
+      }
+    }
+    if (!progressed) break;
+    index += 1;
+  }
+  return selected;
+}
