@@ -650,7 +650,9 @@ export async function reconcileAutomatedReelVideos() {
             ...automation,
             status: "video_failed",
             contentType: row.tipo,
-            error: job.error ?? "Falha no Media Engine",
+            error: !aiVideoProviderReady()
+              ? "Sem provedor de vídeo de IA e menos de 2 fotos na Biblioteca: envie fotos do negócio para montar o Reel automaticamente."
+              : (job.error ?? "Falha no Media Engine"),
             updatedAt: new Date().toISOString(),
           },
         } as any,
