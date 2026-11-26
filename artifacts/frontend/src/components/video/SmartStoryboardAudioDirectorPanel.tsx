@@ -645,7 +645,11 @@ export default function SmartStoryboardAudioDirectorPanel() {
         <div className="mx-4 mb-4 flex flex-col gap-3 rounded-2xl border border-emerald-500/25 bg-emerald-500/[0.06] p-4 sm:mx-5 sm:mb-5 lg:flex-row lg:items-center lg:justify-between">
           <div><div className="flex items-center gap-2 text-sm font-semibold text-emerald-700 dark:text-emerald-300"><CheckCircle2 className="h-4 w-4" />Master audiovisual final pronto</div><p className="mt-1 text-xs text-muted-foreground">Versão final normalizada em -14 LUFS e salva na Biblioteca. As pranchetas e o Master visual permanecem editáveis.</p></div>
           <div className="flex flex-wrap gap-2">
-            {(result?.assetId || manifest?.audioMaster?.assetId) && <button type="button" onClick={() => navigate(`/content-studio/video/edicao?mediaAssetId=${encodeURIComponent(result?.assetId || manifest?.audioMaster?.assetId || "")}`)} className="inline-flex h-9 items-center gap-2 rounded-xl border border-border px-3 text-xs font-medium hover:bg-muted"><Volume2 className="h-3.5 w-3.5" />Abrir versão final</button>}
+            {result?.assetId ? (
+              <button type="button" onClick={() => navigate(`/content-studio/video/edicao?mediaAssetId=${encodeURIComponent(result.assetId)}`)} className="inline-flex h-9 items-center gap-2 rounded-xl border border-border px-3 text-xs font-medium hover:bg-muted"><Volume2 className="h-3.5 w-3.5" />Abrir versão final</button>
+            ) : (
+              <button type="button" onClick={() => navigate("/midias")} className="inline-flex h-9 items-center gap-2 rounded-xl border border-border px-3 text-xs font-medium hover:bg-muted"><Volume2 className="h-3.5 w-3.5" />Ouvir áudio final na Biblioteca</button>
+            )}
             <button type="button" onClick={() => navigate("/midias")} className="inline-flex h-9 items-center gap-2 rounded-xl border border-border px-3 text-xs font-medium hover:bg-muted"><Library className="h-3.5 w-3.5" />Biblioteca</button>
           </div>
         </div>
