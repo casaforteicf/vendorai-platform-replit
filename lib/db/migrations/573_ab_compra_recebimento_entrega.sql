@@ -34,6 +34,7 @@ BEGIN
 END $$;
 
 -- Migra o status antigo e amplia o CHECK.
+ALTER TABLE ab_ordens_compra DROP CONSTRAINT IF EXISTS ab_ordens_compra_status_check;
 ALTER TABLE ab_ordens_compra DROP CONSTRAINT IF EXISTS ab_ordens_compra_status_valido;
 UPDATE ab_ordens_compra SET status = 'pendente_entrega' WHERE status = 'enviada';
 ALTER TABLE ab_ordens_compra
