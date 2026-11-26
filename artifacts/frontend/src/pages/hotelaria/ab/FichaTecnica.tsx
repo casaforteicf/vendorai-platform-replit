@@ -38,6 +38,7 @@ export default function FichaTecnica() {
 
   const [nomePrato, setNomePrato] = useState('');
   const [rendimento, setRendimento] = useState('');
+  const [modoPreparo, setModoPreparo] = useState('');
   const [insumos, setInsumos] = useState<Insumo[]>([novoInsumo()]);
   const [enviando, setEnviando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
@@ -116,6 +117,7 @@ export default function FichaTecnica() {
       const corpo = {
         nome,
         rendimentoPorcoes: porcoes,
+        modoPreparo: modoPreparo.trim() || null,
         insumos: insumos.map((i) => ({
           insumoNome: i.nome.trim(),
           unidadeBase: i.unidade,
@@ -143,6 +145,7 @@ export default function FichaTecnica() {
     setEditandoId(null);
     setNomePrato('');
     setRendimento('');
+    setModoPreparo('');
     setInsumos([novoInsumo()]);
   };
 
@@ -150,6 +153,7 @@ export default function FichaTecnica() {
     setEditandoId(ficha.id);
     setNomePrato(ficha.nome);
     setRendimento(String(Number(ficha.rendimentoPorcoes)));
+    setModoPreparo(ficha.modoPreparo ?? '');
     setInsumos(ficha.insumos.map((insumo) => ({
       id: crypto.randomUUID(),
       nome: insumo.insumoNome,
@@ -242,6 +246,22 @@ export default function FichaTecnica() {
                 />
               </div>
             </div>
+          </div>
+
+          {/* Seção: Modo de preparo */}
+          <div className="p-6 border-b border-gray-100">
+            <div className="flex items-center gap-2 mb-3">
+              <ChefHat className="w-5 h-5 text-indigo-600" />
+              <h2 className="text-base font-semibold text-gray-900">Modo de preparo</h2>
+            </div>
+            <textarea
+              value={modoPreparo}
+              onChange={(e) => setModoPreparo(e.target.value)}
+              rows={6}
+              placeholder="Descreva o preparo, a ordem dos ingredientes, tempo de forno e finalização."
+              className="w-full px-3.5 py-2.5 rounded-lg border border-gray-200 bg-gray-50 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500 focus:bg-white transition"
+            />
+            <p className="mt-2 text-xs text-gray-500">O texto é salvo na ficha e sai na impressão da receita.</p>
           </div>
 
           {/* Seção: Insumos */}
@@ -410,6 +430,11 @@ export default function FichaTecnica() {
                       )
                       .join(' · ')}
                   </p>
+                  {ficha.modoPreparo && (
+                    <p className="mt-2 line-clamp-2 whitespace-pre-line text-xs text-gray-600">
+                      <strong>Preparo:</strong> {ficha.modoPreparo}
+                    </p>
+                  )}
                   <div className="mt-2 flex gap-2">
                     <button type="button" onClick={() => editar(ficha)} className="inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-xs text-gray-700 hover:bg-gray-50">
                       <Pencil className="h-3 w-3" /> Editar
