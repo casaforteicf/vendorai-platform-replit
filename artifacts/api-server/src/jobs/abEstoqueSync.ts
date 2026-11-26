@@ -103,7 +103,6 @@ export async function sincronizarSaldosAb(opcoes: OpcoesAbSync = {}): Promise<Re
 
         const linhas = (resultado as unknown as { rows: LinhaSaldo[] }).rows ?? [];
         resumo.linhasLidas += linhas.length;
-        if (linhas.length === 0) return;
 
         const porInsumo = new Map<string, { unidade: string; total: number }>();
 
@@ -143,6 +142,34 @@ export async function sincronizarSaldosAb(opcoes: OpcoesAbSync = {}): Promise<Re
             });
           }
         }
+
+        const saldosInsumos = (await tx.execute(sql`
+          SELECT e.insumo_id AS insumo_id,
+                 e.quantidade::text AS quantidade,
+                 i.unidade AS unidade_insumo,
+                 i.nome AS insumo_nome
+            FROM ab_estoque_insumos e
+            JOIN insumos i
+              ON i.tenant_id = e.tenant_id AND i.id = e.insumo_id
+           WHERE e.tenant_id = ${tenantId}
+        `) as unknown as { rows: Array<{ insumo_id: string; quantidade: string; unidade_insumo: string | null; insumo_nome: string | null }> }).rows ?? [];
+        resumo.linhasLidas += saldosInsumos.length;
+        for (const linha of saldosInsumos) {
+          const unidade = unidadeBaseDoInsumo(linha.unidade_insumo);
+          if (!unidade) {
+            resumo.errosConversao.push({
+              tenantId,
+              produtoId: `insumo:${linha.insumo_id}`,
+              erro: `Insumo com unidade base inválida: "${linha.unidade_insumo ?? ""}"`,
+            });
+            continue;
+          }
+          const atual = porInsumo.get(linha.insumo_id) ?? { unidade, total: 0 };
+          atual.total = arredondar(atual.total + Number(linha.quantidade));
+          porInsumo.set(linha.insumo_id, atual);
+        }
+
+        if (porInsumo.size === 0) return;
 
         if (dryRun) {
           resumo.insumosAtualizados += porInsumo.size;

@@ -406,21 +406,23 @@ export async function removerMapeamento(auth: AbAuth, produtoCatalogoId: string)
   );
 }
 
-export type ProdutoRecebimento = {
+export type InsumoRecebimento = {
   id: string;
   nome: string;
-  categoriaNome?: string | null;
+  unidade: "g" | "ml" | "un" | string;
+  categoria: string | null;
 };
 
-export async function listarProdutosRecebimento(auth: AbAuth): Promise<ProdutoRecebimento[]> {
-  const resposta = await requisitar<Array<Record<string, unknown>>>(
+export async function listarInsumosRecebimento(auth: AbAuth): Promise<InsumoRecebimento[]> {
+  const resposta = await requisitar<{ ingredientes: Array<Record<string, unknown>> }>(
     auth,
-    `/api/tenants/${encodeURIComponent(auth.tenantId)}/produtos-catalogo`,
+    `/api/tenants/${encodeURIComponent(auth.tenantId)}/restaurante/ingredientes`,
   );
-  return (resposta ?? []).map((produto) => ({
-    id: String(produto.id),
-    nome: String(produto.nome ?? "Produto"),
-    categoriaNome: produto.categoriaNome ? String(produto.categoriaNome) : null,
+  return (resposta.ingredientes ?? []).map((insumo) => ({
+    id: String(insumo.id),
+    nome: String(insumo.nome ?? "Insumo"),
+    unidade: String(insumo.unidade ?? "un"),
+    categoria: insumo.categoria ? String(insumo.categoria) : null,
   }));
 }
 
@@ -432,8 +434,6 @@ export type EntregaPendenteItem = {
   quantidade: string;
   quantidadeRecebida: string;
   unidade: "g" | "ml" | "un";
-  produtoCatalogoId: string | null;
-  produtoNome: string | null;
 };
 
 export type EntregaPendente = {
@@ -466,6 +466,8 @@ export type Recebimento = {
   temperaturaC: string | null;
   quantidade: string;
   unidade: string;
+  insumoId?: string | null;
+  produtoCatalogoId?: string | null;
   ordemId?: string | null;
   ordemItemId?: string | null;
   /** Calculado no servidor — nunca enviado pelo cliente. */
@@ -485,7 +487,8 @@ export type Recebimento = {
 };
 
 export type RecebimentoInput = {
-  produtoCatalogoId: string;
+  produtoCatalogoId?: string | null;
+  insumoId?: string | null;
   notaFiscal: string;
   fornecedor?: string | null;
   lote: string;
