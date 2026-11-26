@@ -20,6 +20,7 @@ import {
   Plus,
   RefreshCw,
   Save,
+  Send,
   Sparkles,
   Trash2,
   X,
@@ -86,6 +87,11 @@ interface MediaPlan {
     periodoDias?: 30 | 60 | 90;
     statusPlanejamento?: "gerado" | "em_revisao" | "aprovado";
     campanhas?: MediaPlanCampaign[];
+    publicacaoOrganica?: {
+      modo?: "manual" | "automatico";
+      horario?: string;
+      timezone?: string;
+    };
   };
 }
 
@@ -363,6 +369,7 @@ export default function ContentProductionQueue({ tenantId }: { tenantId: string 
   const [batchApproving, setBatchApproving] = useState(false);
   const [approvingPlan, setApprovingPlan] = useState(false);
   const [planApprovalError, setPlanApprovalError] = useState("");
+  const [savingPublicationMode, setSavingPublicationMode] = useState(false);
 
   const planRef = useRef<MediaPlan | null>(null);
   const calendarRef = useRef<CalendarItem[]>([]);
@@ -1043,6 +1050,54 @@ export default function ContentProductionQueue({ tenantId }: { tenantId: string 
     }
   }
 
+  async function updatePublicationMode(modo: "manual" | "automatico") {
+    const currentPlan = planRef.current;
+    if (!currentPlan || savingPublicationMode) return;
+    if (modo === "automatico") {
+      const confirmed = window.confirm(
+        "Ativar publicação automática?\n\nA IA produz as peças pendentes do plano (até 50 gerações por mês). Depois que você aprovar cada peça, o VendorAI publica nos canais conectados na data e hora do calendário, sem pedir confirmação.",
+      );
+      if (!confirmed) return;
+    }
+    setSavingPublicationMode(true);
+    try {
+      const settings = currentPlan.conteudo.publicacaoOrganica;
+      const response = await fetch(`/api/tenants/${tenantId}/media-plan/${currentPlan.id}`, {
+        method: "PATCH",
+        headers: { ...authHeaders(), "Content-Type": "application/json" },
+        body: JSON.stringify({
+          patch: {
+            publicacaoOrganica: {
+              modo,
+              horario: settings?.horario ?? "10:00",
+              timezone: settings?.timezone ?? "America/Sao_Paulo",
+            },
+          },
+          aprovar: currentPlan.conteudo.statusPlanejamento === "aprovado",
+        }),
+      });
+      if (!response.ok) {
+        const payload = await response.json().catch(() => null) as { error?: string } | null;
+        throw new Error(payload?.error || "Não foi possível salvar o modo de publicação.");
+      }
+      toast({
+        title: modo === "automatico" ? "Publicação automática ativada" : "Publicação manual ativada",
+        description: modo === "automatico"
+          ? "As peças aprovadas serão publicadas nos canais conectados seguindo o calendário."
+          : "As peças aprovadas vão aguardar publicação manual.",
+      });
+      await load();
+    } catch (error) {
+      toast({
+        title: "Não foi possível alterar a publicação",
+        description: error instanceof Error ? error.message : "Tente novamente.",
+        variant: "destructive",
+      });
+    } finally {
+      setSavingPublicationMode(false);
+    }
+  }
+
   async function approvePlan() {
     if (!plan || approvingPlan) return;
     setApprovingPlan(true);
@@ -1121,11 +1176,12 @@ export default function ContentProductionQueue({ tenantId }: { tenantId: string 
   }
 
   const planApproved = plan.conteudo.statusPlanejamento === "aprovado";
+  const automaticPublication = plan.conteudo.publicacaoOrganica?.modo === "automatico";
   const currentProject = currentItem ? projectByItem.get(currentItem.id) : undefined;
   const planMismatch = Boolean(requestedMediaPlanId && requestedMediaPlanId !== plan.id);
 
   return (
-    <div className="px-4 pt-4 md:px-6 space-y-3">
+    <div className="px-4 pt-4 md:px-6 space-y-3" data-vendorai-content-queue>
       {planMismatch && (
         <Card className="border-amber-300 bg-amber-50/50">
           <CardContent className="py-3 text-sm text-amber-800">Este link pertence a uma versão anterior do plano. A fila abaixo mostra o planejamento atual.</CardContent>
@@ -1190,7 +1246,30 @@ export default function ContentProductionQueue({ tenantId }: { tenantId: string 
             </div>
           </div>
 
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
+          <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border bg-background px-3 py-2 text-[11px]">
+            <span className="inline-flex flex-wrap items-center gap-1.5">
+              <Send className={`h-3.5 w-3.5 ${automaticPublication ? "text-emerald-600" : "text-muted-foreground"}`} />
+              <span className="font-semibold">{automaticPublication ? "Publicação automática ativada" : "Publicação manual"}</span>
+              <span className="text-muted-foreground">
+                {automaticPublication
+                  ? "Após sua aprovação, a peça segue para os canais conectados na data e hora do calendário."
+                  : "As peças aprovadas ficam aguardando publicação manual."}
+              </span>
+            </span>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className="h-7 text-xs"
+              disabled={savingPublicationMode}
+              onClick={() => void updatePublicationMode(automaticPublication ? "manual" : "automatico")}
+            >
+              {savingPublicationMode ? <Loader2 className="h-3 w-3 mr-1 animate-spin" /> : <Send className="h-3 w-3 mr-1" />}
+              {automaticPublication ? "Revisar antes de publicar" : "Ativar publicação automática"}
+            </Button>
+          </div>
+
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-2" data-vendorai-queue-metrics>
             {[
               ["Prontos", productionSummary.ready],
               ["Em revisão", productionSummary.review],
@@ -1264,7 +1343,7 @@ export default function ContentProductionQueue({ tenantId }: { tenantId: string 
         </Card>
       )}
 
-      <div className="flex flex-wrap items-center gap-2 rounded-lg border bg-background p-2">
+      <div className="flex flex-wrap items-center gap-2 rounded-lg border bg-background p-2" data-vendorai-queue-toolbar>
         {[
           ["all", "Todos", visibleItems.length],
           ["ready", "A gerar", productionSummary.ready],
@@ -1306,7 +1385,14 @@ export default function ContentProductionQueue({ tenantId }: { tenantId: string 
           const itemCampaign = campaignForItem(plan, item);
           const refs = itemCampaign ? referenceMediaForItem(assets, itemCampaign, item) : [];
           return (
-            <div key={item.id} className={`rounded-lg border bg-background px-3 py-2.5 ${item.id === requestedCalendarItemId ? "ring-1 ring-primary/40" : ""}`}>
+            <div
+              key={item.id}
+              className={`rounded-lg border bg-background px-3 py-2.5 ${item.id === requestedCalendarItemId ? "ring-1 ring-primary/40" : ""}`}
+              data-vendorai-queue-item
+              data-vendorai-item-id={item.id}
+              data-vendorai-item-status={status.label}
+              data-vendorai-item-failures={failureCount}
+            >
               <div className="flex items-start justify-between gap-3 flex-wrap">
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-1.5 flex-wrap">

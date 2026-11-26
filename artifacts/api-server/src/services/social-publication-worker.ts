@@ -162,11 +162,11 @@ export async function processPendingSocialPublications() {
   if (running || databaseAuthBlocked) return;
   running = true;
   try {
-    if (AUTO_MEDIA_PLAN_PRODUCTION_ENABLED) {
-      await produceUpcomingMediaPlanOrganicContent().catch((error) => {
-        logger.warn({ error }, "Worker social não conseguiu produzir conteúdos próximos do Plano de Mídia");
-      });
-    }
+    // A produção automática é opt-in por plano (publicação automática), com
+    // override global por MARKETING_AUTO_PRODUCTION_ENABLED e teto mensal próprio.
+    await produceUpcomingMediaPlanOrganicContent().catch((error) => {
+      logger.warn({ error }, "Worker social não conseguiu produzir conteúdos próximos do Plano de Mídia");
+    });
 
     await reconcileAutomatedReelVideos().catch((error) => {
       logger.warn({ error }, "Worker social não conseguiu reconciliar vídeos automáticos do Plano de Mídia");
@@ -231,7 +231,8 @@ export function startSocialPublicationWorker() {
       performanceIntervalMs: PERFORMANCE_INTERVAL_MS,
       performancePostAgeMs: PERFORMANCE_POST_AGE_MS,
       youtubeAutomationIntervalMs: YOUTUBE_AUTOMATION_INTERVAL_MS,
-      autoMediaPlanProductionEnabled: AUTO_MEDIA_PLAN_PRODUCTION_ENABLED,
+      autoMediaPlanProduction: "por plano (publicacaoOrganica.modo=automatico)",
+      autoMediaPlanProductionGlobalOverride: AUTO_MEDIA_PLAN_PRODUCTION_ENABLED,
     },
     "Worker de publicações sociais iniciado",
   );

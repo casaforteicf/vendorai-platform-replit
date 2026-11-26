@@ -19,6 +19,11 @@ import {
 } from "../lib/content-generation.js";
 import { logger } from "../lib/logger.js";
 import { createVendorAiMediaGenerationJob } from "./vendorai-media-engine.js";
+import {
+  automaticProductionLimit,
+  DEFAULT_AUTOMATIC_MONTHLY_LIMIT,
+  planAllowsAutomaticProduction,
+} from "./media-plan-auto-production-policy.js";
 
 const PLAN_LIMITS: Record<string, number> = {
   starter: 20,
@@ -28,6 +33,12 @@ const PLAN_LIMITS: Record<string, number> = {
 const DEFAULT_TIMEZONE = process.env["MARKETING_SCHEDULE_TIMEZONE"] || "America/Sao_Paulo";
 const PRODUCTION_LEAD_HOURS = Math.max(1, Number(process.env["MARKETING_PRODUCTION_LEAD_HOURS"] || 24));
 const MAX_ITEMS_PER_TICK = 8;
+const AUTO_PRODUCTION_FOR_ALL_PLANS =
+  process.env["MARKETING_AUTO_PRODUCTION_ENABLED"] === "true";
+const AUTO_PRODUCTION_MONTHLY_LIMIT = Math.max(
+  1,
+  Number(process.env["MARKETING_AUTO_PRODUCTION_MONTHLY_LIMIT"] || DEFAULT_AUTOMATIC_MONTHLY_LIMIT),
+);
 const BILLING_CIRCUIT_MS = Math.max(
   5 * 60_000,
   Number(process.env["MARKETING_AI_BILLING_COOLDOWN_MS"] || 60 * 60_000),
@@ -162,7 +173,8 @@ async function monthlyAllowance(tenantId: string) {
       .set({ contentGenerationsThisMonth: 0, contentGenerationsResetAt: now })
       .where(eq(agentConfigsTable.id, config.id));
   }
-  const limit = PLAN_LIMITS[subscription?.plano ?? "starter"] ?? 20;
+  const planLimit = PLAN_LIMITS[subscription?.plano ?? "starter"] ?? 20;
+  const limit = automaticProductionLimit(planLimit, AUTO_PRODUCTION_MONTHLY_LIMIT);
   return { allowed: used < limit, configId: config.id, used, limit };
 }
 
@@ -402,6 +414,7 @@ export async function produceUpcomingMediaPlanOrganicContent(now = new Date()) {
     if (attempted >= MAX_ITEMS_PER_TICK) break;
     if (!row.mediaPlanId || !AUTO_TYPES.has(row.tipo) || !providerSupported(row.canal)) continue;
     const content = row.planContent as PlanContent;
+    if (!planAllowsAutomaticProduction(content.publicacaoOrganica, AUTO_PRODUCTION_FOR_ALL_PLANS)) continue;
     if (!shouldProduce(row.dataAgendada, content.publicacaoOrganica, now)) continue;
     const campaign = campaignForItem(content, row.pilar);
     if (!campaign) continue;
