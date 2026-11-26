@@ -177,6 +177,8 @@ router.patch("/tenants/:tenantId/ab/ordens-compra/:id", async (req, res) => {
   const input = z
     .object({
       status: z.enum(AB_STATUS_ORDEM_COMPRA).optional(),
+      fornecedor: z.string().trim().max(120).nullable().optional(),
+      dataEntregaPrevista: z.iso.date().nullable().optional(),
       observacao: z.string().trim().max(1000).nullable().optional(),
     })
     .strict()
@@ -205,10 +207,22 @@ router.patch("/tenants/:tenantId/ab/ordens-compra/:id", async (req, res) => {
             permitidos: proximosStatusOrdem(atual),
           };
         }
+        if (input.data.status === "recebida") {
+          const itens = await tx
+            .select()
+            .from(abOrdemCompraItensTable)
+            .where(and(eq(abOrdemCompraItensTable.tenantId, tenantId), eq(abOrdemCompraItensTable.ordemId, ordemId)));
+          const pendentes = itens.filter((item: any) => Number(item.quantidadeRecebida) < Number(item.quantidade));
+          if (pendentes.length > 0) {
+            return { tipo: "recebimento_pendente" as const, pendentes: pendentes.length };
+          }
+        }
       }
 
       const alteracoes: Record<string, unknown> = {};
       if (input.data.status !== undefined) alteracoes.status = input.data.status;
+      if (input.data.fornecedor !== undefined) alteracoes.fornecedor = input.data.fornecedor;
+      if (input.data.dataEntregaPrevista !== undefined) alteracoes.dataEntregaPrevista = input.data.dataEntregaPrevista;
       if (input.data.observacao !== undefined) alteracoes.observacao = input.data.observacao;
       if (input.data.status === "aprovada" && ordem.status !== "aprovada") {
         alteracoes.aprovadaPor = req.user!.sub;
@@ -230,6 +244,11 @@ router.patch("/tenants/:tenantId/ab/ordens-compra/:id", async (req, res) => {
       return res.status(409).json({
         error: `Não é possível passar de ${resultado.atual} para ${input.data.status}`,
         permitidos: resultado.permitidos,
+      });
+    }
+    if (resultado.tipo === "recebimento_pendente") {
+      return res.status(409).json({
+        error: `Ainda há ${resultado.pendentes} item(ns) sem recebimento total. Registre a entrega antes de marcar como recebida.`,
       });
     }
     return res.json(resultado.ordem);
@@ -270,6 +289,12 @@ router.patch("/tenants/:tenantId/ab/ordens-compra/:id/itens/:itemId", async (req
       if (!ordemEditavel(ordem.status as AbStatusOrdemCompra)) {
         return { tipo: "nao_editavel" as const, status: ordem.status };
       }
+      if (input.data.quantidade !== undefined) {
+        const atual = ordem.itens.find((item: any) => item.id === itemId);
+        if (atual && Number(input.data.quantidade) < Number(atual.quantidadeRecebida ?? 0)) {
+          return { tipo: "abaixo_recebido" as const, recebido: atual.quantidadeRecebida };
+        }
+      }
       const alteracoes: Record<string, unknown> = {};
       if (input.data.quantidade !== undefined) alteracoes.quantidade = input.data.quantidade;
       if (input.data.custoEstimado !== undefined) alteracoes.custoEstimado = input.data.custoEstimado;
@@ -294,6 +319,9 @@ router.patch("/tenants/:tenantId/ab/ordens-compra/:id/itens/:itemId", async (req
     if (resultado.tipo === "item_nao_encontrado") return res.status(404).json({ error: "Item não encontrado" });
     if (resultado.tipo === "nao_editavel") {
       return res.status(409).json({ error: "Só é possível editar itens de uma ordem sugerida", status: resultado.status });
+    }
+    if (resultado.tipo === "abaixo_recebido") {
+      return res.status(409).json({ error: `A quantidade não pode ser menor que o já recebido (${resultado.recebido}).` });
     }
     return res.json(resultado.ordem);
   } catch (erro) {

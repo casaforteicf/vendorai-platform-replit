@@ -406,6 +406,54 @@ export async function removerMapeamento(auth: AbAuth, produtoCatalogoId: string)
   );
 }
 
+export type ProdutoRecebimento = {
+  id: string;
+  nome: string;
+  categoriaNome?: string | null;
+};
+
+export async function listarProdutosRecebimento(auth: AbAuth): Promise<ProdutoRecebimento[]> {
+  const resposta = await requisitar<Array<Record<string, unknown>>>(
+    auth,
+    `/api/tenants/${encodeURIComponent(auth.tenantId)}/produtos-catalogo`,
+  );
+  return (resposta ?? []).map((produto) => ({
+    id: String(produto.id),
+    nome: String(produto.nome ?? "Produto"),
+    categoriaNome: produto.categoriaNome ? String(produto.categoriaNome) : null,
+  }));
+}
+
+export type EntregaPendenteItem = {
+  id: string;
+  ordemId: string;
+  insumoId: string;
+  insumoNome: string;
+  quantidade: string;
+  quantidadeRecebida: string;
+  unidade: "g" | "ml" | "un";
+  produtoCatalogoId: string | null;
+  produtoNome: string | null;
+};
+
+export type EntregaPendente = {
+  id: string;
+  coberturaInicio: string;
+  coberturaFim: string;
+  status: string;
+  fornecedor: string | null;
+  dataEntregaPrevista: string | null;
+  itens: EntregaPendenteItem[];
+};
+
+export async function listarEntregasPendentes(auth: AbAuth): Promise<EntregaPendente[]> {
+  const resposta = await requisitar<{ pedidos: EntregaPendente[] }>(
+    auth,
+    urlAb(auth, "/recebimentos/pendentes"),
+  );
+  return resposta.pedidos ?? [];
+}
+
 // ─── Recebimentos (AB-06) ────────────────────────────────────────────────────
 
 export type Recebimento = {
@@ -418,6 +466,8 @@ export type Recebimento = {
   temperaturaC: string | null;
   quantidade: string;
   unidade: string;
+  ordemId?: string | null;
+  ordemItemId?: string | null;
   /** Calculado no servidor — nunca enviado pelo cliente. */
   etiquetaFefo: string;
   status: string;
@@ -443,6 +493,8 @@ export type RecebimentoInput = {
   temperaturaC?: number | null;
   quantidade: number;
   unidade: "g" | "ml" | "un";
+  ordemId?: string | null;
+  ordemItemId?: string | null;
 };
 
 export async function criarRecebimento(
@@ -793,7 +845,7 @@ export async function gerarEscalaCardapio(
 
 // ─── Ordens de compra do motor preditivo (AB-11) ────────────────────────────
 
-export type OrdemCompraStatus = "sugerida" | "aprovada" | "enviada" | "recebida" | "cancelada";
+export type OrdemCompraStatus = "sugerida" | "aprovada" | "pendente_entrega" | "parcialmente_recebida" | "recebida" | "cancelada";
 
 export type OrdemCompraItem = {
   id: string;
@@ -802,6 +854,7 @@ export type OrdemCompraItem = {
   insumoId: string;
   insumoNome: string;
   quantidade: string;
+  quantidadeRecebida: string;
   unidade: "g" | "ml" | "un";
   custoEstimado: string | null;
   observacao: string | null;
@@ -814,6 +867,8 @@ export type OrdemCompra = {
   coberturaInicio: string;
   coberturaFim: string;
   status: OrdemCompraStatus;
+  fornecedor: string | null;
+  dataEntregaPrevista: string | null;
   observacao: string | null;
   aprovadaPor: string | null;
   aprovadaEm: string | null;
@@ -866,7 +921,7 @@ export async function gerarOrdemCompra(
 export async function atualizarOrdemCompra(
   auth: AbAuth,
   id: string,
-  alteracao: { status?: OrdemCompraStatus; observacao?: string | null },
+  alteracao: { status?: OrdemCompraStatus; fornecedor?: string | null; dataEntregaPrevista?: string | null; observacao?: string | null },
 ): Promise<OrdemCompra> {
   return requisitar<OrdemCompra>(auth, urlAb(auth, `/ordens-compra/${encodeURIComponent(id)}`), {
     method: "PATCH",

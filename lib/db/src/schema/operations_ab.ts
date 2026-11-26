@@ -69,7 +69,8 @@ export const AB_ORIGENS_CONSUMO = ["producao", "ajuste", "manual"] as const;
 export const AB_STATUS_ORDEM_COMPRA = [
   "sugerida",
   "aprovada",
-  "enviada",
+  "pendente_entrega",
+  "parcialmente_recebida",
   "recebida",
   "cancelada",
 ] as const;
@@ -437,6 +438,8 @@ export const abOrdensCompraTable = pgTable(
     coberturaInicio: date("cobertura_inicio", { mode: "string" }).notNull(),
     coberturaFim: date("cobertura_fim", { mode: "string" }).notNull(),
     status: text("status").notNull().default("sugerida"),
+    fornecedor: text("fornecedor"),
+    dataEntregaPrevista: date("data_entrega_prevista", { mode: "string" }),
     observacao: text("observacao"),
     aprovadaPor: text("aprovada_por"),
     aprovadaEm: timestamp("aprovada_em", { withTimezone: true }),
@@ -455,7 +458,7 @@ export const abOrdensCompraTable = pgTable(
     ),
     check(
       "ab_ordens_compra_status_valido",
-      sql`${table.status} IN ('sugerida', 'aprovada', 'enviada', 'recebida', 'cancelada')`,
+      sql`${table.status} IN ('sugerida', 'aprovada', 'pendente_entrega', 'parcialmente_recebida', 'recebida', 'cancelada')`,
     ),
     check(
       "ab_ordens_compra_periodo_valido",
@@ -468,6 +471,8 @@ export const insertAbOrdemCompraSchema = createInsertSchema(abOrdensCompraTable,
   coberturaInicio: dataISO,
   coberturaFim: dataISO,
   status: z.enum(AB_STATUS_ORDEM_COMPRA).optional(),
+  fornecedor: z.string().trim().max(120).nullable().optional(),
+  dataEntregaPrevista: dataISO.nullable().optional(),
   observacao: z.string().trim().max(1000).nullable().optional(),
   aprovadaPor: z.string().uuid().nullable().optional(),
 }).omit({ id: true, tenantId: true, createdAt: true, updatedAt: true, aprovadaEm: true })
@@ -501,6 +506,7 @@ export const abOrdemCompraItensTable = pgTable(
     insumoId: text("insumo_id").notNull(),
     insumoNome: text("insumo_nome").notNull(),
     quantidade: numeric("quantidade", { precision: 15, scale: 4 }).notNull(),
+    quantidadeRecebida: numeric("quantidade_recebida", { precision: 15, scale: 4 }).notNull().default("0"),
     unidade: text("unidade").notNull(),
     custoEstimado: numeric("custo_estimado", { precision: 15, scale: 4 }),
     observacao: text("observacao"),
@@ -515,6 +521,8 @@ export const abOrdemCompraItensTable = pgTable(
     index("ab_ordem_compra_itens_ordem_idx").on(table.tenantId, table.ordemId),
     check("ab_ordem_compra_itens_nome_nao_vazio", sql`length(btrim(${table.insumoNome})) > 0`),
     check("ab_ordem_compra_itens_quantidade_positiva", sql`${table.quantidade} > 0`),
+    check("ab_ordem_compra_itens_recebida_nao_negativa", sql`${table.quantidadeRecebida} >= 0`),
+    check("ab_ordem_compra_itens_recebida_limite", sql`${table.quantidadeRecebida} <= ${table.quantidade}`),
     check("ab_ordem_compra_itens_unidade_valida", sql`${table.unidade} IN ('g', 'ml', 'un')`),
     check(
       "ab_ordem_compra_itens_custo_nao_negativo",
@@ -528,6 +536,7 @@ export const insertAbOrdemCompraItemSchema = createInsertSchema(abOrdemCompraIte
   insumoId: z.string().uuid(),
   insumoNome: z.string().trim().min(1).max(120),
   quantidade: decimalPositivo,
+  quantidadeRecebida: decimal.nullable().optional(),
   unidade: z.enum(AB_UNIDADES),
   custoEstimado: decimal.nullable().optional(),
   observacao: z.string().trim().max(1000).nullable().optional(),
@@ -624,6 +633,9 @@ export const abRecebimentosTable = pgTable(
     etiquetaFefo: text("etiqueta_fefo").notNull(),
     status: text("status").notNull(),
     motivoBloqueio: text("motivo_bloqueio"),
+    /** Ordem/item de compra que originou esta entrega (opcional em compra avulsa). */
+    ordemId: text("ordem_id"),
+    ordemItemId: text("ordem_item_id"),
     /** Local de destino no estoque (AB-07). Nulo = usa o local padrão do hotel. */
     locationId: text("location_id"),
     /** Marca que a quantidade já foi somada em hotel_stock_location_balances. */
@@ -646,6 +658,8 @@ export const abRecebimentosTable = pgTable(
     index("ab_recebimentos_tenant_created_idx").on(table.tenantId, table.createdAt.desc()),
     index("ab_recebimentos_tenant_status_idx").on(table.tenantId, table.status, table.createdAt.desc()),
     index("ab_recebimentos_lote_idx").on(table.tenantId, table.produtoCatalogoId, table.lote),
+    index("ab_recebimentos_ordem_idx").on(table.tenantId, table.ordemId),
+    index("ab_recebimentos_ordem_item_idx").on(table.tenantId, table.ordemItemId),
     check("ab_recebimentos_nf_nao_vazia", sql`length(btrim(${table.notaFiscal})) > 0`),
     check("ab_recebimentos_lote_nao_vazio", sql`length(btrim(${table.lote})) > 0`),
     check("ab_recebimentos_quantidade_positiva", sql`${table.quantidade} > 0`),
@@ -675,6 +689,8 @@ export const insertAbRecebimentoSchema = createInsertSchema(abRecebimentosTable,
   quantidade: decimalPositivo,
   unidade: z.enum(AB_UNIDADES),
   locationId: z.string().uuid().nullable().optional(),
+  ordemId: z.string().uuid().nullable().optional(),
+  ordemItemId: z.string().uuid().nullable().optional(),
 }).omit({
   id: true,
   tenantId: true,
