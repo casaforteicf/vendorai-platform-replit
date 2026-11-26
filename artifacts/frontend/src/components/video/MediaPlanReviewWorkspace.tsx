@@ -143,6 +143,7 @@ export default function MediaPlanReviewWorkspace() {
   const [brandColor, setBrandColor] = useState("#2563EB");
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [approving, setApproving] = useState(false);
+  const [buildingVideo, setBuildingVideo] = useState(false);
   const [generatedMedia, setGeneratedMedia] = useState<ReferenceMedia | null>(null);
   const [productionState, setProductionState] = useState<"idle" | "processing" | "ready" | "failed">("idle");
   const [productionDetail, setProductionDetail] = useState("");
@@ -270,6 +271,30 @@ export default function MediaPlanReviewWorkspace() {
     toast({ title: "Ajustes salvos", description: "Texto, CTA e direção foram atualizados sem consumir créditos de IA." });
   };
 
+  const buildPhotoVideo = async () => {
+    if (!execution?.calendarItem?.id || buildingVideo) return;
+    setBuildingVideo(true);
+    try {
+      const response = await fetch(`/api/tenants/${execution.tenantId}/content-calendar/${execution.calendarItem.id}/photo-video`, {
+        method: "POST",
+        headers: authHeaders(true),
+      });
+      const body = await response.json().catch(() => ({})) as { error?: string };
+      if (!response.ok) throw new Error(body.error || "Não foi possível montar o vídeo com as fotos.");
+      setProductionState("processing");
+      setProductionDetail("Montando o vídeo com as fotos do negócio…");
+      toast({ title: "Montando vídeo com as fotos", description: "A prévia atualiza em instantes." });
+    } catch (error) {
+      toast({
+        title: "Não foi possível montar o vídeo",
+        description: error instanceof Error ? error.message : "Tente novamente.",
+        variant: "destructive",
+      });
+    } finally {
+      setBuildingVideo(false);
+    }
+  };
+
   const approve = async () => {
     if (!execution?.calendarItem?.id) return;
     if (isVideoItem && !hasFinalVideo) {
@@ -392,7 +417,18 @@ export default function MediaPlanReviewWorkspace() {
               {productionDetail ? <p className={`mt-2 text-xs ${productionState === "failed" ? "text-red-700" : "text-muted-foreground"}`}>{productionDetail}</p> : null}
             </div>
 
-            <Button className="mt-4 h-12 w-full rounded-xl bg-blue-500 text-base hover:bg-blue-600" onClick={() => void approve()} disabled={approving || !previewUrl || (isVideoItem && !hasFinalVideo)}>{approving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : productionState === "processing" ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Check className="mr-2 h-4 w-4" />}{isVideoItem && !hasFinalVideo ? (productionState === "processing" ? "Montando o vídeo…" : "Aguardando vídeo do Reel") : productionState === "processing" ? "Aguardando mídia da IA" : !previewUrl ? "Gere a mídia para aprovar" : "Aprovar material"}</Button>
+            {isVideoItem && !hasFinalVideo ? (
+              <Button
+                className="mt-4 h-12 w-full rounded-xl bg-blue-500 text-base hover:bg-blue-600"
+                onClick={() => void buildPhotoVideo()}
+                disabled={buildingVideo || productionState === "processing"}
+              >
+                {buildingVideo || productionState === "processing" ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Film className="mr-2 h-4 w-4" />}
+                {buildingVideo || productionState === "processing" ? "Montando o vídeo…" : "Montar vídeo com as fotos"}
+              </Button>
+            ) : (
+              <Button className="mt-4 h-12 w-full rounded-xl bg-blue-500 text-base hover:bg-blue-600" onClick={() => void approve()} disabled={approving || !previewUrl}>{approving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : productionState === "processing" ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Check className="mr-2 h-4 w-4" />}{productionState === "processing" ? "Aguardando mídia da IA" : !previewUrl ? "Gere a mídia para aprovar" : "Aprovar material"}</Button>
+            )}
             <div className="mt-2 grid grid-cols-3 gap-2">
               <Button variant="outline" className="h-11" onClick={() => quickEditRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })}><Pencil className="mr-1.5 h-4 w-4" />Editar texto</Button>
               <Button variant="outline" className="h-11" onClick={openAdvanced}><ImageIcon className="mr-1.5 h-4 w-4" />Trocar mídia</Button>
