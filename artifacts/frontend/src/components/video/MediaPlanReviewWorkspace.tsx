@@ -229,6 +229,9 @@ export default function MediaPlanReviewWorkspace() {
   const media = generatedMedia ? [generatedMedia, ...(execution?.referenceMedia ?? [])] : (execution?.referenceMedia ?? []);
   const mainMedia = media[0];
   const previewUrl = mediaUrl(mainMedia?.storageUrl);
+  const itemTipo = String(currentItem?.tipo ?? execution?.calendarItem?.tipo ?? "").toLowerCase();
+  const isVideoItem = ["reels", "tiktok", "youtube_short", "youtube_video"].includes(itemTipo);
+  const hasFinalVideo = generatedMedia?.type === "video";
   const score = storedDesign?.plan?.overallScore ?? scoreFor(headline, supportingText, cta, Boolean(previewUrl));
   const sortedItems = useMemo(() => [...calendar].sort((a, b) => String(a.dataAgendada ?? "").localeCompare(String(b.dataAgendada ?? ""))), [calendar]);
   const currentIndex = Math.max(0, sortedItems.findIndex((item) => item.id === execution?.calendarItem?.id));
@@ -269,6 +272,14 @@ export default function MediaPlanReviewWorkspace() {
 
   const approve = async () => {
     if (!execution?.calendarItem?.id) return;
+    if (isVideoItem && !hasFinalVideo) {
+      toast({
+        title: "Vídeo ainda não está pronto",
+        description: "Este material só pode ser aprovado depois que o arquivo final do vídeo existir. A montagem com as fotos acontece automaticamente.",
+        variant: "destructive",
+      });
+      return;
+    }
     if (!previewUrl) {
       toast({ title: "Mídia ainda não está pronta", description: productionState === "processing" ? "A IA ainda está montando o material. Aguarde a conclusão." : "Gere a mídia com IA ou selecione uma mídia própria antes de aprovar.", variant: "destructive" });
       return;
@@ -306,6 +317,7 @@ export default function MediaPlanReviewWorkspace() {
   ];
   const suggestions = [
     headline.length > 70 ? "Encurtar a headline para leitura mais rápida" : null,
+    isVideoItem && !hasFinalVideo ? "Aguardar a montagem do vídeo (fotos do negócio) antes de aprovar" : null,
     !previewUrl ? productionState === "processing" ? "Aguardar a IA concluir a mídia principal" : "Gerar a mídia principal com IA antes da aprovação" : null,
     supportingText.length > 140 ? "Reduzir o texto de apoio" : null,
   ].filter(Boolean) as string[];
@@ -380,7 +392,7 @@ export default function MediaPlanReviewWorkspace() {
               {productionDetail ? <p className={`mt-2 text-xs ${productionState === "failed" ? "text-red-700" : "text-muted-foreground"}`}>{productionDetail}</p> : null}
             </div>
 
-            <Button className="mt-4 h-12 w-full rounded-xl bg-blue-500 text-base hover:bg-blue-600" onClick={() => void approve()} disabled={approving || !previewUrl}>{approving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : productionState === "processing" ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Check className="mr-2 h-4 w-4" />}{productionState === "processing" ? "Aguardando mídia da IA" : !previewUrl ? "Gere a mídia para aprovar" : "Aprovar material"}</Button>
+            <Button className="mt-4 h-12 w-full rounded-xl bg-blue-500 text-base hover:bg-blue-600" onClick={() => void approve()} disabled={approving || !previewUrl || (isVideoItem && !hasFinalVideo)}>{approving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : productionState === "processing" ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Check className="mr-2 h-4 w-4" />}{isVideoItem && !hasFinalVideo ? (productionState === "processing" ? "Montando o vídeo…" : "Aguardando vídeo do Reel") : productionState === "processing" ? "Aguardando mídia da IA" : !previewUrl ? "Gere a mídia para aprovar" : "Aprovar material"}</Button>
             <div className="mt-2 grid grid-cols-3 gap-2">
               <Button variant="outline" className="h-11" onClick={() => quickEditRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })}><Pencil className="mr-1.5 h-4 w-4" />Editar texto</Button>
               <Button variant="outline" className="h-11" onClick={openAdvanced}><ImageIcon className="mr-1.5 h-4 w-4" />Trocar mídia</Button>

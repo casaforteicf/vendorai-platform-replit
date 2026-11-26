@@ -537,7 +537,10 @@ export async function reconcileAutomatedReelVideos() {
       eq(contentGenerationsTable.tenantId, contentCalendarItemsTable.tenantId),
     ))
     .where(and(
-      eq(contentCalendarItemsTable.status, "gerado"),
+      // "aprovado" inclui o caso em que o usuário aprovou antes de existir o
+      // arquivo final (comportamento antigo da tela de revisão). Esses itens
+      // também precisam ser curados para não travar a publicação.
+      inArray(contentCalendarItemsTable.status, ["gerado", "aprovado"]),
       inArray(contentCalendarItemsTable.tipo, [...VIDEO_AUTO_TYPES]),
       isNotNull(contentCalendarItemsTable.contentGenerationId),
       isNull(contentCalendarItemsTable.contentIdPublicado),
