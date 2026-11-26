@@ -157,11 +157,11 @@ export default function Ocupacao() {
           <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Restaurante</p>
           <h1 className="mt-1 text-2xl font-semibold">Ocupação por data e refeição</h1>
           <p className="text-sm text-muted-foreground">
-            Defina quantos hóspedes serão servidos em cada turno. O Briffing usa essa previsão para calcular a produção.
+            A ocupação pode ser digitada ou importada por planilha/API. Defina a data, o serviço e salve; o Briffing usa essa previsão para calcular a produção.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Link href="/hotelaria/restaurante/importar" className="rounded-md border px-3 py-2 text-sm hover:bg-muted">Importar planilha</Link>
+          <Link href="/hotelaria/restaurante/importar?tipo=briffing" className="rounded-md border px-3 py-2 text-sm hover:bg-muted">Importar ocupação/API</Link>
           <Link href={`/hotelaria/restaurante/briffing/imprimir?data=${inicio}`} className="inline-flex items-center gap-2 rounded-md border px-3 py-2 text-sm hover:bg-muted">
             <Printer className="h-4 w-4" /> Imprimir briffing
           </Link>
