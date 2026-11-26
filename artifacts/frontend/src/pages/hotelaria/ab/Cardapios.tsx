@@ -212,9 +212,14 @@ export default function Cardapios() {
           O que será servido no dia e quantas porções por hóspede. O briffing usa este cardápio
           para calcular a produção e a compra.
         </p>
-        <Link href="/hotelaria/restaurante/cardapios-modelos" className="mt-2 inline-flex rounded-md border px-3 py-1.5 text-sm hover:bg-muted">
-          Modelos de cardápio e grade semanal
-        </Link>
+        <div className="mt-2 flex flex-wrap gap-2">
+          <Link href="/hotelaria/restaurante/cardapios-modelos" className="inline-flex rounded-md border px-3 py-1.5 text-sm hover:bg-muted">
+            Modelos de cardápio e grade semanal
+          </Link>
+          <Link href="/hotelaria/restaurante/importar?tipo=receitas" className="inline-flex rounded-md border px-3 py-1.5 text-sm hover:bg-muted">
+            Importar receitas
+          </Link>
+        </div>
       </header>
 
       {erro && <div role="alert" className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-800">{erro}</div>}

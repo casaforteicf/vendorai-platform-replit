@@ -198,7 +198,11 @@ export default function FichaTecnica() {
               </p>
             </div>
           </div>
-          <button
+          <div className="flex gap-2">
+            <a href="/hotelaria/restaurante/importar?tipo=receitas" className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white text-indigo-700 text-sm font-medium ring-1 ring-indigo-200 hover:bg-indigo-50">
+              Importar receita
+            </a>
+            <button
             type="button"
             onClick={cancelar}
             title="Limpar formulário para nova receita"
@@ -206,7 +210,8 @@ export default function FichaTecnica() {
           >
             <Plus className="w-4 h-4" />
             Nova Receita
-          </button>
+            </button>
+          </div>
         </div>
 
         {/* Card Principal */}
