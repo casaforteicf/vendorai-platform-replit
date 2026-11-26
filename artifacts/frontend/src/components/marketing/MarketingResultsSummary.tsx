@@ -12,6 +12,10 @@ type SocialPublication = {
   createdAt?: string | null;
 };
 
+type DashboardSummary = {
+  ganhosMes?: { count?: number; somaValor?: string | number | null } | null;
+};
+
 type PerformanceInsight = {
   baseadoEmPosts?: number;
   atualizadoEm?: string | null;
@@ -38,6 +42,7 @@ function formatDate(value?: string | null) {
 export function MarketingResultsSummary({ tenantId }: { tenantId: string }) {
   const [insight, setInsight] = useState<PerformanceInsight | null>(null);
   const [publications, setPublications] = useState<SocialPublication[]>([]);
+  const [ganhos, setGanhos] = useState<{ count: number; value: number }>({ count: 0, value: 0 });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -46,15 +51,23 @@ export function MarketingResultsSummary({ tenantId }: { tenantId: string }) {
     setLoading(true);
     setError("");
     try {
-      const [insightResponse, publicationsResponse] = await Promise.all([
+      const [insightResponse, publicationsResponse, dashboardResponse] = await Promise.all([
         fetch(`/api/tenants/${tenantId}/content-performance/insights`, { headers: authHeaders(), cache: "no-store" }),
         fetch(`/api/tenants/${tenantId}/social-publications`, { headers: authHeaders(), cache: "no-store" }),
+        fetch(`/api/tenants/${tenantId}/dashboard`, { headers: authHeaders(), cache: "no-store" }),
       ]);
       if (!insightResponse.ok) throw new Error("Não foi possível carregar o desempenho agora.");
       setInsight(await insightResponse.json() as PerformanceInsight);
       if (publicationsResponse.ok) {
         const body = await publicationsResponse.json().catch(() => ({})) as { publications?: SocialPublication[] };
         setPublications(Array.isArray(body.publications) ? body.publications : []);
+      }
+      if (dashboardResponse.ok) {
+        const body = await dashboardResponse.json().catch(() => ({})) as DashboardSummary;
+        setGanhos({
+          count: Number(body.ganhosMes?.count ?? 0),
+          value: Number(body.ganhosMes?.somaValor ?? 0),
+        });
       }
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Não foi possível carregar o desempenho agora.");
@@ -102,7 +115,7 @@ export function MarketingResultsSummary({ tenantId }: { tenantId: string }) {
           </Button>
         </div>
 
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
           <div className="rounded-lg border bg-background px-3 py-2">
             <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Publicados</p>
             <p className="mt-0.5 text-lg font-semibold">{published.length}</p>
@@ -118,6 +131,12 @@ export function MarketingResultsSummary({ tenantId }: { tenantId: string }) {
           <div className="rounded-lg border bg-background px-3 py-2">
             <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Última publicação</p>
             <p className="mt-0.5 text-sm font-semibold">{formatDate(lastPublishedAt) || "—"}</p>
+          </div>
+          <div className="rounded-lg border bg-background px-3 py-2">
+            <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Fechados no mês (CRM)</p>
+            <p className="mt-0.5 text-sm font-semibold">
+              {ganhos.count} · {ganhos.value.toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 })}
+            </p>
           </div>
         </div>
 
