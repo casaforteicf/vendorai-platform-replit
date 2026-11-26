@@ -4,12 +4,14 @@ import { z } from "zod/v4";
 import {
   db,
   contentCalendarItemsTable,
+  contentGenerationsTable,
   mediaPlansTable,
   usersTable,
   CONTENT_CALENDAR_STATUS,
   CONTENT_CALENDAR_TIPOS,
 } from "@workspace/db";
 import { generateContentCalendar, ContentCalendarError } from "../services/content-calendar.js";
+import { generationHasFinalVideo, isVideoCalendarType } from "../services/content-final-media.js";
 
 const router: IRouter = Router();
 const CALENDAR_BATCH_SIZE = 10;
@@ -346,7 +348,13 @@ const patchBodySchema = z.object({
 
 router.patch("/content-calendar/:id", async (req, res) => {
   const [existing] = await db
-    .select({ id: contentCalendarItemsTable.id, tenantId: contentCalendarItemsTable.tenantId })
+    .select({
+      id: contentCalendarItemsTable.id,
+      tenantId: contentCalendarItemsTable.tenantId,
+      status: contentCalendarItemsTable.status,
+      tipo: contentCalendarItemsTable.tipo,
+      contentGenerationId: contentCalendarItemsTable.contentGenerationId,
+    })
     .from(contentCalendarItemsTable)
     .where(eq(contentCalendarItemsTable.id, String(req.params.id)));
   if (!existing) {
@@ -377,6 +385,31 @@ router.patch("/content-calendar/:id", async (req, res) => {
     return;
   }
 
+  // Reels/Shorts só podem ser aprovados com o arquivo final de vídeo. Sem isso
+  // o item entrava na fila de publicação e falhava sem aviso claro na tela.
+  if (
+    parsed.data.status === "aprovado"
+    && existing.status !== "aprovado"
+    && existing.contentGenerationId
+    && isVideoCalendarType(existing.tipo)
+  ) {
+    const [generation] = await db
+      .select({ result: contentGenerationsTable.result })
+      .from(contentGenerationsTable)
+      .where(and(
+        eq(contentGenerationsTable.id, existing.contentGenerationId),
+        eq(contentGenerationsTable.tenantId, existing.tenantId),
+      ))
+      .limit(1);
+    if (!generation || !generationHasFinalVideo(generation.result as { variations?: unknown; automation?: unknown } | null)) {
+      res.status(422).json({
+        error: "Este vídeo ainda não tem arquivo final. Gere ou monte o vídeo antes de aprovar — a publicação falharia sem a mídia.",
+        code: "VIDEO_NOT_READY",
+      });
+      return;
+    }
+  }
+
   const [updated] = await db
     .update(contentCalendarItemsTable)
     .set({ ...parsed.data, updatedAt: new Date() })
@@ -387,7 +420,13 @@ router.patch("/content-calendar/:id", async (req, res) => {
 
 router.delete("/content-calendar/:id", async (req, res) => {
   const [existing] = await db
-    .select({ id: contentCalendarItemsTable.id, tenantId: contentCalendarItemsTable.tenantId })
+    .select({
+      id: contentCalendarItemsTable.id,
+      tenantId: contentCalendarItemsTable.tenantId,
+      status: contentCalendarItemsTable.status,
+      tipo: contentCalendarItemsTable.tipo,
+      contentGenerationId: contentCalendarItemsTable.contentGenerationId,
+    })
     .from(contentCalendarItemsTable)
     .where(eq(contentCalendarItemsTable.id, String(req.params.id)));
   if (!existing) {
