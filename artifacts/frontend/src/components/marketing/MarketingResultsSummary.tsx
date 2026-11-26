@@ -4,6 +4,14 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 
+type SocialPublication = {
+  id: string;
+  provider?: string | null;
+  status?: string | null;
+  publishedAt?: string | null;
+  createdAt?: string | null;
+};
+
 type PerformanceInsight = {
   baseadoEmPosts?: number;
   atualizadoEm?: string | null;
@@ -29,6 +37,7 @@ function formatDate(value?: string | null) {
 
 export function MarketingResultsSummary({ tenantId }: { tenantId: string }) {
   const [insight, setInsight] = useState<PerformanceInsight | null>(null);
+  const [publications, setPublications] = useState<SocialPublication[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -37,12 +46,16 @@ export function MarketingResultsSummary({ tenantId }: { tenantId: string }) {
     setLoading(true);
     setError("");
     try {
-      const response = await fetch(`/api/tenants/${tenantId}/content-performance/insights`, {
-        headers: authHeaders(),
-        cache: "no-store",
-      });
-      if (!response.ok) throw new Error("Não foi possível carregar o desempenho agora.");
-      setInsight(await response.json() as PerformanceInsight);
+      const [insightResponse, publicationsResponse] = await Promise.all([
+        fetch(`/api/tenants/${tenantId}/content-performance/insights`, { headers: authHeaders(), cache: "no-store" }),
+        fetch(`/api/tenants/${tenantId}/social-publications`, { headers: authHeaders(), cache: "no-store" }),
+      ]);
+      if (!insightResponse.ok) throw new Error("Não foi possível carregar o desempenho agora.");
+      setInsight(await insightResponse.json() as PerformanceInsight);
+      if (publicationsResponse.ok) {
+        const body = await publicationsResponse.json().catch(() => ({})) as { publications?: SocialPublication[] };
+        setPublications(Array.isArray(body.publications) ? body.publications : []);
+      }
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Não foi possível carregar o desempenho agora.");
     } finally {
@@ -58,6 +71,13 @@ export function MarketingResultsSummary({ tenantId }: { tenantId: string }) {
   const learnings = insight?.aprendizados ?? null;
   const posts = Number(insight?.baseadoEmPosts ?? 0);
   const hasData = posts > 0 && Boolean(learnings);
+  const published = publications.filter((item) => item.status === "published");
+  const inFlight = publications.filter((item) => ["queued", "scheduled", "publishing"].includes(String(item.status ?? "")));
+  const lastPublishedAt = published
+    .map((item) => item.publishedAt ?? item.createdAt ?? "")
+    .filter(Boolean)
+    .sort()
+    .at(-1);
   const works = (learnings?.temasQueFuncionam ?? []).filter(Boolean).slice(0, 4);
   const misses = (learnings?.temasQueNaoFuncionam ?? []).filter(Boolean).slice(0, 4);
 
@@ -80,6 +100,25 @@ export function MarketingResultsSummary({ tenantId }: { tenantId: string }) {
             {loading ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="mr-1.5 h-3.5 w-3.5" />}
             Atualizar
           </Button>
+        </div>
+
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+          <div className="rounded-lg border bg-background px-3 py-2">
+            <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Publicados</p>
+            <p className="mt-0.5 text-lg font-semibold">{published.length}</p>
+          </div>
+          <div className="rounded-lg border bg-background px-3 py-2">
+            <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Na fila</p>
+            <p className="mt-0.5 text-lg font-semibold">{inFlight.length}</p>
+          </div>
+          <div className="rounded-lg border bg-background px-3 py-2">
+            <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Posts analisados</p>
+            <p className="mt-0.5 text-lg font-semibold">{posts}</p>
+          </div>
+          <div className="rounded-lg border bg-background px-3 py-2">
+            <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Última publicação</p>
+            <p className="mt-0.5 text-sm font-semibold">{formatDate(lastPublishedAt) || "—"}</p>
+          </div>
         </div>
 
         {error ? (
