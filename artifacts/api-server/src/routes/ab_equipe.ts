@@ -48,6 +48,21 @@ const COLUNAS = `e.id, e.tenant_id, e.nome, e.cargo_id, c.nome AS cargo_nome,
   e.dias_semana, e.hora_inicio, e.intervalo_inicio, e.intervalo_fim, e.hora_fim,
   e.ativo, e.created_at, e.updated_at`;
 
+function mapear(row: any) {
+  return {
+    id: row.id,
+    nome: row.nome,
+    cargoId: row.cargo_id ?? null,
+    cargoNome: row.cargo_nome ?? null,
+    diasSemana: Array.isArray(row.dias_semana) ? row.dias_semana : [],
+    horaInicio: row.hora_inicio,
+    intervaloInicio: row.intervalo_inicio ?? null,
+    intervaloFim: row.intervalo_fim ?? null,
+    horaFim: row.hora_fim,
+    ativo: row.ativo,
+  };
+}
+
 router.get("/tenants/:tenantId/ab/equipe", async (req, res) => {
   const t = String(req.params.tenantId);
   if (!allowed(req, t)) return res.status(403).json({ error: "Forbidden" });
@@ -57,7 +72,7 @@ router.get("/tenants/:tenantId/ab/equipe", async (req, res) => {
        LEFT JOIN ab_cargos c ON c.id = e.cargo_id AND c.tenant_id = e.tenant_id
        WHERE e.tenant_id = $1 ORDER BY e.nome`, [t],
     )).rows);
-    return res.json({ equipe: rows });
+    return res.json({ equipe: rows.map(mapear) });
   } catch (error) {
     console.error("[ab-equipe] list", error);
     return res.status(500).json({ error: "Não foi possível listar a equipe" });
@@ -77,7 +92,7 @@ router.post("/tenants/:tenantId/ab/equipe", async (req, res) => {
         parsed.data.horaInicio, parsed.data.intervaloInicio ?? null, parsed.data.intervaloFim ?? null,
         parsed.data.horaFim, parsed.data.ativo ?? true],
     )).rows[0]);
-    return res.status(201).json(row);
+    return res.status(201).json(mapear(row));
   } catch (error) {
     console.error("[ab-equipe] create", error);
     return res.status(500).json({ error: "Não foi possível criar a pessoa" });
@@ -109,7 +124,7 @@ router.patch("/tenants/:tenantId/ab/equipe/:id", async (req, res) => {
     const row = await transact(t, async (c) => (await c.query(
       `UPDATE ab_equipe SET ${sets.join(", ")} WHERE tenant_id=$1 AND id=$2 RETURNING *`, values,
     )).rows[0]);
-    return row ? res.json(row) : res.status(404).json({ error: "Pessoa não encontrada" });
+    return row ? res.json(mapear(row)) : res.status(404).json({ error: "Pessoa não encontrada" });
   } catch (error) {
     console.error("[ab-equipe] update", error);
     return res.status(500).json({ error: "Não foi possível atualizar a pessoa" });
