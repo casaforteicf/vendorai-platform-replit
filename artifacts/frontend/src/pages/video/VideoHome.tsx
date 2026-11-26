@@ -212,7 +212,9 @@ export default function VideoHome() {
             return {
               ...group,
               previewUrl: assetUrl(outputAsset),
-              assetId: latestVersion?.assetId || latestJob?.output?.videoAssetId || latestJob?.output?.assetId || outputAsset?.id || "",
+              // Prioriza sempre um vídeo final; versões podem apontar para áudio/imagem
+              // e a tela de edição recusa asset que não seja vídeo da Biblioteca.
+              assetId: latestJob?.output?.videoAssetId || outputAsset?.id || latestJob?.output?.assetId || latestVersion?.assetId || "",
             } satisfies RecentProject;
           } catch {
             return { ...group, previewUrl: "", assetId: "" } satisfies RecentProject;
