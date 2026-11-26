@@ -19,11 +19,11 @@ import {
 import {
   criarRecebimento,
   listarEntregasPendentes,
-  listarProdutosRecebimento,
+  listarInsumosRecebimento,
   mensagemDoErro,
   type AbAuth,
   type EntregaPendente,
-  type ProdutoRecebimento,
+  type InsumoRecebimento,
 } from "@/lib/ab/client";
 
 /**
@@ -33,25 +33,25 @@ import {
  * nada: a API recalcula FEFO e status no POST. Se divergirem, vale o servidor —
  * é ele que grava o registro auditável.
  *
- * O catálogo real vem de `/produtos-catalogo`; o mock fica apenas como fallback
- * visual enquanto a lista carrega (e nos testes de tela).
+ * O catálogo real vem dos insumos do restaurante; o mock fica apenas como
+ * fallback visual enquanto a lista carrega (e nos testes de tela).
  */
 
-const PRODUTOS_MOCK = [
+const INSUMOS_MOCK = [
   {
-    produtoCatalogoId: "11111111-1111-4111-8111-111111111111",
+    id: "11111111-1111-4111-8111-111111111111",
     nome: "Carne de Gado — Patinho",
-    categoria: "Carnes",
+    unidade: "g",
   },
   {
-    produtoCatalogoId: "22222222-2222-4222-8222-222222222222",
+    id: "22222222-2222-4222-8222-222222222222",
     nome: "Queijo Mussarela",
-    categoria: "Laticínios",
+    unidade: "g",
   },
   {
-    produtoCatalogoId: "33333333-3333-4333-8333-333333333333",
+    id: "33333333-3333-4333-8333-333333333333",
     nome: "Alface Crespa",
-    categoria: "Hortifruti",
+    unidade: "un",
   },
 ] as const;
 
@@ -71,7 +71,7 @@ const ESTILO_ETIQUETA: Record<EtiquetaFefo, { card: string; chip: string }> = {
 };
 
 type Formulario = {
-  produtoCatalogoId: string;
+  insumoId: string;
   notaFiscal: string;
   fornecedor: string;
   lote: string;
@@ -84,7 +84,7 @@ type Formulario = {
 };
 
 const FORM_VAZIO: Formulario = {
-  produtoCatalogoId: PRODUTOS_MOCK[0].produtoCatalogoId,
+  insumoId: INSUMOS_MOCK[0].id,
   notaFiscal: "",
   fornecedor: "",
   lote: "",
@@ -109,7 +109,7 @@ export default function Recebimento() {
   const auth = useMemo<AbAuth>(() => ({ token: token ?? "", tenantId }), [token, tenantId]);
 
   const [form, setForm] = useState<Formulario>(FORM_VAZIO);
-  const [produtos, setProdutos] = useState<ProdutoRecebimento[]>(PRODUTOS_MOCK.map((p) => ({ id: p.produtoCatalogoId, nome: p.nome, categoriaNome: p.categoria })));
+  const [insumos, setInsumos] = useState<InsumoRecebimento[]>(INSUMOS_MOCK.map((item) => ({ ...item, categoria: null })));
   const [pedidos, setPedidos] = useState<EntregaPendente[]>([]);
   const [enviando, setEnviando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
@@ -123,14 +123,14 @@ export default function Recebimento() {
   useEffect(() => {
     if (!tenantId || !token) return;
     let cancelado = false;
-    void Promise.all([listarProdutosRecebimento(auth), listarEntregasPendentes(auth)])
-      .then(([listaProdutos, listaPedidos]) => {
+    void Promise.all([listarInsumosRecebimento(auth), listarEntregasPendentes(auth)])
+      .then(([listaInsumos, listaPedidos]) => {
         if (cancelado) return;
-        if (listaProdutos.length > 0) {
-          setProdutos(listaProdutos);
-          setForm((atual) => listaProdutos.some((item) => item.id === atual.produtoCatalogoId)
+        if (listaInsumos.length > 0) {
+          setInsumos(listaInsumos);
+          setForm((atual) => listaInsumos.some((item) => item.id === atual.insumoId)
             ? atual
-            : { ...atual, produtoCatalogoId: listaProdutos[0]!.id });
+            : { ...atual, insumoId: listaInsumos[0]!.id });
         }
         setPedidos(listaPedidos);
       })
@@ -140,17 +140,17 @@ export default function Recebimento() {
     return () => { cancelado = true; };
   }, [auth, tenantId, token]);
 
-  const produto = produtos.find((p) => p.id === form.produtoCatalogoId);
+  const insumo = insumos.find((item) => item.id === form.insumoId);
   const pedidoSelecionado = pedidos.find((pedido) => pedido.id === form.ordemId) ?? null;
   const itemSelecionado = pedidoSelecionado?.itens.find((item) => item.id === form.ordemItemId) ?? null;
   const temperatura = paraNumero(form.temperatura);
   const hoje = hojeISO();
 
   const sanidade = avaliarSanidade({
-    categoriaNome: produto?.categoriaNome,
+    categoriaNome: insumo?.categoria ?? null,
     temperaturaC: temperatura,
   });
-  const temperaturaObrigatoria = exigeTemperatura(produto?.categoriaNome);
+  const temperaturaObrigatoria = exigeTemperatura(insumo?.categoria);
 
   // Etiqueta ao vivo (o servidor recalcula no salvamento).
   const etiquetaPrevista: EtiquetaFefo | null =
@@ -201,7 +201,7 @@ export default function Recebimento() {
     setEnviando(true);
     try {
       const criado = await criarRecebimento(auth, {
-        produtoCatalogoId: form.produtoCatalogoId,
+        insumoId: form.insumoId,
         notaFiscal: form.notaFiscal.trim(),
         fornecedor: form.fornecedor.trim() || null,
         lote: form.lote.trim(),
@@ -267,8 +267,7 @@ export default function Recebimento() {
                     atualizar({
                       ordemId: e.target.value,
                       ordemItemId: item?.id ?? "",
-                      ...(item?.produtoCatalogoId ? { produtoCatalogoId: item.produtoCatalogoId } : {}),
-                      ...(item ? { quantidade: String(Number(item.quantidade) - Number(item.quantidadeRecebida)), unidade: item.unidade } : {}),
+                      ...(item ? { insumoId: item.insumoId, quantidade: String(Number(item.quantidade) - Number(item.quantidadeRecebida)), unidade: item.unidade } : {}),
                     });
                   }}
                 >
@@ -292,8 +291,7 @@ export default function Recebimento() {
                       const item = pedidoSelecionado.itens.find((atual) => atual.id === e.target.value) ?? null;
                       atualizar({
                         ordemItemId: e.target.value,
-                        ...(item?.produtoCatalogoId ? { produtoCatalogoId: item.produtoCatalogoId } : {}),
-                        ...(item ? { quantidade: String(Number(item.quantidade) - Number(item.quantidadeRecebida)), unidade: item.unidade } : {}),
+                        ...(item ? { insumoId: item.insumoId, quantidade: String(Number(item.quantidade) - Number(item.quantidadeRecebida)), unidade: item.unidade } : {}),
                       });
                     }}
                   >
@@ -304,23 +302,23 @@ export default function Recebimento() {
                       </option>
                     ))}
                   </select>
-                  {itemSelecionado && !itemSelecionado.produtoCatalogoId && (
-                    <p className="text-xs text-amber-700">Insumo sem produto de estoque mapeado; selecione o produto manualmente.</p>
+                  {itemSelecionado && (
+                    <p className="text-xs text-muted-foreground">Insumo do A&B: {itemSelecionado.insumoNome}</p>
                   )}
                 </div>
               )}
 
               <div className="space-y-1.5">
-                <Label htmlFor="produto">Produto</Label>
+                <Label htmlFor="insumo">Insumo</Label>
                 <select
-                  id="produto"
-                  value={form.produtoCatalogoId}
-                  onChange={(e) => atualizar({ produtoCatalogoId: e.target.value })}
+                  id="insumo"
+                  value={form.insumoId}
+                  onChange={(e) => atualizar({ insumoId: e.target.value })}
                   className="block h-10 w-full rounded-md border bg-background px-3 text-sm"
                 >
-                  {produtos.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.nome}{p.categoriaNome ? ` · ${p.categoriaNome}` : ""}
+                  {insumos.map((item) => (
+                    <option key={item.id} value={item.id}>
+                      {item.nome} · {item.unidade}
                     </option>
                   ))}
                 </select>
@@ -484,7 +482,7 @@ export default function Recebimento() {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-1 text-sm">
-            <p className="font-semibold">{produto?.nome ?? "—"}</p>
+            <p className="font-semibold">{insumo?.nome ?? "—"}</p>
             <p>
               Lote {form.lote || salvo ? form.lote || "—" : "—"} · validade{" "}
               {form.dataValidade ? new Date(`${form.dataValidade}T12:00:00`).toLocaleDateString("pt-BR") : "—"}

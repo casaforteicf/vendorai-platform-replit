@@ -41,6 +41,12 @@ Ordem de teste com 1.000 g de costelas e produto temporário mapeado:
 
 O retorno de estoque informou “Nenhum local de estoque ativo” porque o hotel ainda
 não tinha local cadastrado. Foi criado o local **Estoque Central** para o tenant
-AJ. A entrada em `hotel_stock_location_balances` exige também que o insumo
-esteja mapeado para um produto do catálogo (`ab_insumo_produto`); o tenant AJ
-ainda não possui produtos de catálogo, então esse mapeamento continua pendente.
+AJ.
+
+## Insumo é o produto de estoque
+
+No A&B o insumo é o próprio produto. A migração 574 adiciona
+`ab_estoque_insumos` (saldo físico por local e insumo), aceita `insumo_id` no
+recebimento e soma esses saldos no sync do motor preditivo. O caminho antigo por
+`produtos_catalogo` continua válido para recebimentos legados, mas não é mais
+necessário para o fluxo de restaurante.

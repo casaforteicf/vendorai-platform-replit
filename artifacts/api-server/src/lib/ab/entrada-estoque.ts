@@ -28,9 +28,12 @@ export type ResultadoEntradaEstoque =
   | {
       aplicado: true;
       locationId: string;
-      inventoryItemId: string;
-      quantidadeEstoque: number;
-      unidadeEstoque: string;
+      inventoryItemId?: string;
+      insumoId?: string;
+      quantidadeEstoque?: number;
+      unidadeEstoque?: string;
+      quantidadeBase?: number;
+      unidadeBase?: "g" | "ml" | "un";
     }
   | { aplicado: false; motivo: string };
 
@@ -198,6 +201,67 @@ export async function aplicarEntradaNoEstoque(params: {
   }
 }
 
+/**
+ * Entrada de insumo do A&B direto no saldo físico de insumos.
+ * Não depende de produtos_catalogo nem de inventory_items.
+ */
+export async function aplicarEntradaNoEstoqueInsumo(params: {
+  tenantId: string;
+  recebimentoId: string;
+  insumoId: string;
+  quantidadeBase: number;
+  unidadeBase: "g" | "ml" | "un";
+  locationId?: string | null;
+}): Promise<ResultadoEntradaEstoque> {
+  const { tenantId, recebimentoId, insumoId, quantidadeBase, unidadeBase } = params;
+  try {
+    return await withTenantTx(tenantId, async (tx) => {
+      const localId = await resolverLocal(tx, tenantId, params.locationId);
+      if (!localId) {
+        throw new Error(
+          "Nenhum local de estoque ativo no hotel. Cadastre um local (central, câmara fria…) antes de receber.",
+        );
+      }
+      if (!(quantidadeBase > 0)) throw new Error("Quantidade de entrada inválida");
+      await tx.execute(sql`
+        INSERT INTO ab_estoque_insumos (id, tenant_id, location_id, insumo_id, quantidade)
+        VALUES (${crypto.randomUUID()}, ${tenantId}, ${localId}, ${insumoId}, ${String(quantidadeBase)})
+        ON CONFLICT (tenant_id, location_id, insumo_id)
+        DO UPDATE SET quantidade = ab_estoque_insumos.quantidade + EXCLUDED.quantidade,
+                      updated_at = now()
+      `);
+      await tx
+        .update(abRecebimentosTable)
+        .set({
+          locationId: localId,
+          estoqueAplicadoEm: new Date(),
+          motivoNaoAplicado: null,
+          updatedAt: new Date(),
+        })
+        .where(and(eq(abRecebimentosTable.tenantId, tenantId), eq(abRecebimentosTable.id, recebimentoId)));
+      return {
+        aplicado: true as const,
+        locationId: localId,
+        insumoId,
+        quantidadeBase,
+        unidadeBase,
+      };
+    });
+  } catch (erro) {
+    const motivo = erro instanceof Error ? erro.message : String(erro);
+    try {
+      await withTenantTx(tenantId, async (tx) =>
+        tx.update(abRecebimentosTable)
+          .set({ motivoNaoAplicado: motivo.slice(0, 500), updatedAt: new Date() })
+          .where(and(eq(abRecebimentosTable.tenantId, tenantId), eq(abRecebimentosTable.id, recebimentoId))),
+      );
+    } catch (falha) {
+      console.error("[ab-entrada-estoque] não consegui gravar o motivo do insumo", falha);
+    }
+    return { aplicado: false, motivo };
+  }
+}
+
 export type ResumoReprocessamento = {
   analisados: number;
   aplicados: number;
@@ -232,6 +296,7 @@ export async function reprocessarRecebimentosPendentes(opcoes: {
         .select({
           id: abRecebimentosTable.id,
           produtoCatalogoId: abRecebimentosTable.produtoCatalogoId,
+          insumoId: abRecebimentosTable.insumoId,
           quantidade: abRecebimentosTable.quantidade,
           unidade: abRecebimentosTable.unidade,
           locationId: abRecebimentosTable.locationId,
@@ -249,14 +314,23 @@ export async function reprocessarRecebimentosPendentes(opcoes: {
 
     for (const pendente of pendentes) {
       resumo.analisados += 1;
-      const resultado = await aplicarEntradaNoEstoque({
-        tenantId,
-        recebimentoId: pendente.id,
-        produtoCatalogoId: pendente.produtoCatalogoId,
-        quantidadeBase: Number(pendente.quantidade),
-        unidadeBase: pendente.unidade as "g" | "ml" | "un",
-        locationId: pendente.locationId,
-      });
+      const resultado = pendente.insumoId
+        ? await aplicarEntradaNoEstoqueInsumo({
+            tenantId,
+            recebimentoId: pendente.id,
+            insumoId: pendente.insumoId,
+            quantidadeBase: Number(pendente.quantidade),
+            unidadeBase: pendente.unidade as "g" | "ml" | "un",
+            locationId: pendente.locationId,
+          })
+        : await aplicarEntradaNoEstoque({
+            tenantId,
+            recebimentoId: pendente.id,
+            produtoCatalogoId: pendente.produtoCatalogoId!,
+            quantidadeBase: Number(pendente.quantidade),
+            unidadeBase: pendente.unidade as "g" | "ml" | "un",
+            locationId: pendente.locationId,
+          });
 
       if (resultado.aplicado) {
         resumo.aplicados += 1;

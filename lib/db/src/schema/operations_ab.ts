@@ -596,6 +596,46 @@ export const selectAbInsumoProdutoSchema = createSelectSchema(abInsumoProdutoTab
 export type AbInsumoProduto = typeof abInsumoProdutoTable.$inferSelect;
 export type InsertAbInsumoProduto = typeof abInsumoProdutoTable.$inferInsert;
 
+/**
+ * Saldo físico de insumos do A&B por local.
+ * O insumo é o próprio produto de estoque; não exige produtos_catalogo.
+ */
+export const abEstoqueInsumosTable = pgTable(
+  "ab_estoque_insumos",
+  {
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
+    tenantId: text("tenant_id")
+      .notNull()
+      .references(() => tenantsTable.id, { onDelete: "cascade" }),
+    locationId: text("location_id").notNull(),
+    insumoId: text("insumo_id").notNull(),
+    quantidade: numeric("quantidade", { precision: 15, scale: 4 }).notNull().default("0"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
+  },
+  (table) => [
+    unique("ab_estoque_insumos_tenant_id_uq").on(table.tenantId, table.id),
+    unique("ab_estoque_insumos_local_insumo_uq").on(table.tenantId, table.locationId, table.insumoId),
+    index("ab_estoque_insumos_tenant_insumo_idx").on(table.tenantId, table.insumoId),
+    check("ab_estoque_insumos_quantidade_nao_negativa", sql`${table.quantidade} >= 0`),
+  ],
+);
+
+export const insertAbEstoqueInsumoSchema = createInsertSchema(abEstoqueInsumosTable, {
+  locationId: z.string().uuid(),
+  insumoId: z.string().uuid(),
+  quantidade: decimal.nullable().optional(),
+}).omit({ id: true, tenantId: true, createdAt: true, updatedAt: true });
+
+export const selectAbEstoqueInsumoSchema = createSelectSchema(abEstoqueInsumosTable);
+export type AbEstoqueInsumo = typeof abEstoqueInsumosTable.$inferSelect;
+export type InsertAbEstoqueInsumo = typeof abEstoqueInsumosTable.$inferInsert;
+
 // ─── 9) Recebimento de mercadorias com lote (AB-06) ──────────────────────────
 
 /** Etiqueta FEFO calculada no servidor a partir da validade. */
@@ -620,7 +660,9 @@ export const abRecebimentosTable = pgTable(
     tenantId: text("tenant_id")
       .notNull()
       .references(() => tenantsTable.id, { onDelete: "cascade" }),
-    produtoCatalogoId: text("produto_catalogo_id").notNull(),
+    produtoCatalogoId: text("produto_catalogo_id"),
+    /** No A&B o insumo é o produto de estoque; um dos dois é obrigatório. */
+    insumoId: text("insumo_id"),
     notaFiscal: text("nota_fiscal").notNull(),
     fornecedor: text("fornecedor"),
     lote: text("lote").notNull(),
@@ -660,6 +702,7 @@ export const abRecebimentosTable = pgTable(
     index("ab_recebimentos_lote_idx").on(table.tenantId, table.produtoCatalogoId, table.lote),
     index("ab_recebimentos_ordem_idx").on(table.tenantId, table.ordemId),
     index("ab_recebimentos_ordem_item_idx").on(table.tenantId, table.ordemItemId),
+    index("ab_recebimentos_insumo_idx").on(table.tenantId, table.insumoId),
     check("ab_recebimentos_nf_nao_vazia", sql`length(btrim(${table.notaFiscal})) > 0`),
     check("ab_recebimentos_lote_nao_vazio", sql`length(btrim(${table.lote})) > 0`),
     check("ab_recebimentos_quantidade_positiva", sql`${table.quantidade} > 0`),
@@ -680,7 +723,8 @@ export const abRecebimentosTable = pgTable(
  * `motivoBloqueio` e `recebidoPor` são calculados/preenchidos no servidor.
  */
 export const insertAbRecebimentoSchema = createInsertSchema(abRecebimentosTable, {
-  produtoCatalogoId: z.string().uuid(),
+  produtoCatalogoId: z.string().uuid().nullable().optional(),
+  insumoId: z.string().uuid().nullable().optional(),
   notaFiscal: z.string().trim().min(1).max(60),
   fornecedor: z.string().trim().max(120).nullable().optional(),
   lote: z.string().trim().min(1).max(60),
@@ -702,6 +746,9 @@ export const insertAbRecebimentoSchema = createInsertSchema(abRecebimentosTable,
   motivoNaoAplicado: true,
   createdAt: true,
   updatedAt: true,
+}).refine((v) => Boolean(v.produtoCatalogoId || v.insumoId), {
+  message: "Informe o produto ou o insumo de estoque",
+  path: ["insumoId"],
 });
 
 export const selectAbRecebimentoSchema = createSelectSchema(abRecebimentosTable);

@@ -11,7 +11,7 @@ const { criarRecebimentoMock } = vi.hoisted(() => ({ criarRecebimentoMock: vi.fn
 
 vi.mock("@/lib/ab/client", () => ({
   criarRecebimento: criarRecebimentoMock,
-  listarProdutosRecebimento: vi.fn(async () => []),
+  listarInsumosRecebimento: vi.fn(async () => []),
   listarEntregasPendentes: vi.fn(async () => []),
   mensagemDoErro: (erro: unknown) => (erro instanceof Error ? erro.message : String(erro)),
 }));
@@ -118,7 +118,7 @@ describe("Recebimento — tela", () => {
 
     expect(criarRecebimentoMock).toHaveBeenCalledTimes(1);
     expect(criarRecebimentoMock.mock.calls[0]![1]).toMatchObject({
-      produtoCatalogoId: PRODUTO_CARNE,
+      insumoId: PRODUTO_CARNE,
       notaFiscal: "12345",
       lote: "L-2026-11",
       dataValidade: emDias(40),
