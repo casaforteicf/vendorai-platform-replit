@@ -237,7 +237,7 @@ const mediaPlanAvailableQuotaPlugin = {
     );
     contents = replaceExact(
       contents,
-      `  useEffect(() => {\n    if (!onPlanQueue || !plan || plan.conteudo.statusPlanejamento !== "aprovado" || missing.length === 0 || running || startingRef.current) return;\n    let alreadyStarted = false;\n    try { alreadyStarted = Boolean(sessionStorage.getItem(\`\${AUTO_KEY_PREFIX}\${plan.id}\`)); } catch {}\n    if (alreadyStarted) return;\n    const timer = window.setTimeout(() => { void runAll(); }, 1200);\n    return () => window.clearTimeout(timer);\n  }, [missing.length, onPlanQueue, plan, runAll, running]);`,
+      `  useEffect(() => {\n    if (!onPlanQueue || !plan || plan.conteudo.statusPlanejamento !== "aprovado" || missing.length === 0 || running || startingRef.current) return;\n    // Planos em publicação automática são produzidos pelo worker do backend,\n    // que reivindica cada item antes de gastar IA. Evita produção duplicada.\n    if (plan.conteudo.publicacaoOrganica?.modo === "automatico") return;\n    let alreadyStarted = false;\n    try { alreadyStarted = Boolean(sessionStorage.getItem(\`\${AUTO_KEY_PREFIX}\${plan.id}\`)); } catch {}\n    if (alreadyStarted) return;\n    const timer = window.setTimeout(() => { void runAll(); }, 1200);\n    return () => window.clearTimeout(timer);\n  }, [missing.length, onPlanQueue, plan, runAll, running]);`,
       `  // Segurança de custo: produção nunca inicia ao abrir a tela ou por efeito.\n  // Somente um clique explícito no botão de produção pode chamar runAll().`,
       "disable auto start",
     );

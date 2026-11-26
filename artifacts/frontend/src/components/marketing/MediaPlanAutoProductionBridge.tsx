@@ -47,6 +47,7 @@ type MediaPlan = {
     periodoDias?: number;
     statusPlanejamento?: string;
     campanhas?: MediaPlanCampaign[];
+    publicacaoOrganica?: { modo?: string };
   };
 };
 
@@ -810,6 +811,9 @@ export function MediaPlanAutoProductionBridge() {
   // da fila dispara uma única execução automática; falhas ficam visíveis para retry.
   useEffect(() => {
     if (!onPlanQueue || !plan || plan.conteudo.statusPlanejamento !== "aprovado" || missing.length === 0 || running || startingRef.current) return;
+    // Planos em publicação automática são produzidos pelo worker do backend,
+    // que reivindica cada item antes de gastar IA. Evita produção duplicada.
+    if (plan.conteudo.publicacaoOrganica?.modo === "automatico") return;
     let alreadyStarted = false;
     try { alreadyStarted = Boolean(sessionStorage.getItem(`${AUTO_KEY_PREFIX}${plan.id}`)); } catch {}
     if (alreadyStarted) return;

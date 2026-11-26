@@ -230,7 +230,7 @@ const contentGenerationAllowancePlugin = {
         contents = replaceRegex(
           contents,
           /async function monthlyAllowance\(tenantId: string\) \{[\s\S]*?\n}\n\nasync function generateDraft/,
-          `async function monthlyAllowance(tenantId: string) {\n  const allowance = await getContentGenerationAllowance(tenantId);\n  return {\n    allowed: allowance.available > 0,\n    configId: allowance.configId,\n    used: allowance.baseUsed + allowance.extraUsed,\n    limit: allowance.baseLimit + allowance.extraPurchased,\n  };\n}\n\nasync function generateDraft`,
+          `async function monthlyAllowance(tenantId: string) {\n  const allowance = await getContentGenerationAllowance(tenantId);\n  const used = allowance.baseUsed + allowance.extraUsed;\n  const limit = automaticProductionLimit(allowance.baseLimit + allowance.extraPurchased, AUTO_PRODUCTION_MONTHLY_LIMIT);\n  return {\n    allowed: used < limit,\n    configId: allowance.configId,\n    used,\n    limit,\n  };\n}\n\nasync function generateDraft`,
           "auto production allowance",
         );
         contents = replaceExact(

@@ -94,14 +94,24 @@ export async function resolveContentContext(input: {
   const preferredProducts = new Set(input.productIds ?? []);
   const limit = Math.min(Math.max(input.limit ?? 8, 1), 15);
 
-  const entries = entriesResult.rows
+  const rankedEntries = entriesResult.rows
     .map((item) => ({
       item,
       score: score([item.title, item.kind, item.summary, item.details, ...(item.tags ?? [])].join(" "), queryTerms, preferredEntries, item.id),
     }))
+    .sort((a, b) => b.score - a.score);
+
+  const matchedEntries = rankedEntries
     .filter(({ score: itemScore }) => itemScore > 0 || queryTerms.length === 0)
-    .sort((a, b) => b.score - a.score)
     .slice(0, limit);
+
+  // Se o tema não casar com nenhuma fonte por palavra-chave, ainda assim usamos
+  // as informações aprovadas mais recentes da empresa como contexto geral.
+  // Sem isso a IA gerava somente com o briefing do plano e ignorava a Biblioteca.
+  const usedGeneralFallback = matchedEntries.length === 0 && rankedEntries.length > 0;
+  const entries = usedGeneralFallback
+    ? rankedEntries.slice(0, Math.min(3, limit))
+    : matchedEntries;
 
   const products = productsResult.rows
     .map((item) => ({
@@ -140,6 +150,9 @@ export async function resolveContentContext(input: {
   const promptBlock = sources.length
     ? [
         "BIBLIOTECA DE INFORMAÇÕES E CATÁLOGO — FONTES APROVADAS:",
+        usedGeneralFallback
+          ? "OBS.: nenhuma fonte casou palavra-chave com o tema; use as informações gerais aprovadas abaixo apenas no que for pertinente a este conteúdo."
+          : null,
         ...sources.map((source, index) => `${index + 1}. [${source.type}/${source.kind}] ${source.title}: ${source.summary}`),
         "",
         "REGRAS DE USO:",
@@ -147,7 +160,7 @@ export async function resolveContentContext(input: {
         "- Não invente preço, especificação, resultado, garantia, promoção, depoimento ou característica ausente.",
         "- Prefira produto, foto, obra, case e linguagem reais da empresa a exemplos genéricos.",
         "- Se a informação for insuficiente, escreva de forma segura sem completar fatos por suposição.",
-      ].join("\n")
+      ].filter((line): line is string => line !== null).join("\n")
     : [
         "BIBLIOTECA DE INFORMAÇÕES E CATÁLOGO:",
         "Nenhuma fonte aprovada relevante foi encontrada para este pedido.",
