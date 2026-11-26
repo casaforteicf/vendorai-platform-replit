@@ -423,6 +423,70 @@ export const selectAbHistoricoConsumoSchema = createSelectSchema(abHistoricoCons
 export type AbHistoricoConsumo = typeof abHistoricoConsumoTable.$inferSelect;
 export type InsertAbHistoricoConsumo = typeof abHistoricoConsumoTable.$inferInsert;
 
+// ─── 5.1) Cotações do A&B ───────────────────────────────────────────────────
+
+export const AB_STATUS_COTACAO = ["aberta", "respondida", "adjudicada", "cancelada"] as const;
+export const AB_STATUS_COTACAO_FORNECEDOR = ["convidado", "respondido", "selecionado", "descartado"] as const;
+
+export const abCotacoesTable = pgTable(
+  "ab_cotacoes",
+  {
+    id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+    tenantId: text("tenant_id").notNull().references(() => tenantsTable.id, { onDelete: "cascade" }),
+    origem: text("origem").notNull().default("planejamento"),
+    dataInicio: date("data_inicio", { mode: "string" }).notNull(),
+    dataFim: date("data_fim", { mode: "string" }).notNull(),
+    status: text("status").notNull().default("aberta"),
+    observacao: text("observacao"),
+    createdBy: text("created_by"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
+  },
+  (table) => [
+    unique("ab_cotacoes_tenant_id_uq").on(table.tenantId, table.id),
+    index("ab_cotacoes_tenant_status_idx").on(table.tenantId, table.status, table.dataInicio.desc()),
+  ],
+);
+
+export const abCotacaoItensTable = pgTable(
+  "ab_cotacao_itens",
+  {
+    id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+    tenantId: text("tenant_id").notNull().references(() => tenantsTable.id, { onDelete: "cascade" }),
+    cotacaoId: text("cotacao_id").notNull(),
+    insumoId: text("insumo_id").notNull(),
+    insumoNome: text("insumo_nome").notNull(),
+    quantidade: numeric("quantidade", { precision: 15, scale: 4 }).notNull(),
+    unidade: text("unidade").notNull(),
+    ordem: integer("ordem").notNull().default(0),
+  },
+  (table) => [
+    unique("ab_cotacao_itens_tenant_id_uq").on(table.tenantId, table.id),
+    index("ab_cotacao_itens_cotacao_idx").on(table.tenantId, table.cotacaoId, table.ordem),
+  ],
+);
+
+export const abCotacaoFornecedoresTable = pgTable(
+  "ab_cotacao_fornecedores",
+  {
+    id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+    tenantId: text("tenant_id").notNull().references(() => tenantsTable.id, { onDelete: "cascade" }),
+    cotacaoId: text("cotacao_id").notNull(),
+    fornecedorId: text("fornecedor_id").notNull(),
+    status: text("status").notNull().default("convidado"),
+    valorTotal: numeric("valor_total", { precision: 15, scale: 2 }),
+    prazoEntregaDias: integer("prazo_entrega_dias"),
+    condicoesPagamento: text("condicoes_pagamento"),
+    observacao: text("observacao"),
+    respondidoEm: timestamp("respondido_em", { withTimezone: true }),
+  },
+  (table) => [
+    unique("ab_cotacao_fornecedores_tenant_id_uq").on(table.tenantId, table.id),
+    unique("ab_cotacao_fornecedores_cotacao_fornecedor_uq").on(table.tenantId, table.cotacaoId, table.fornecedorId),
+    index("ab_cotacao_fornecedores_cotacao_idx").on(table.tenantId, table.cotacaoId),
+  ],
+);
+
 // ─── 6) Ordens de compra ─────────────────────────────────────────────────────
 
 /** Ordem de compra por período de cobertura, gerada pelo motor preditivo. */
@@ -439,6 +503,8 @@ export const abOrdensCompraTable = pgTable(
     coberturaFim: date("cobertura_fim", { mode: "string" }).notNull(),
     status: text("status").notNull().default("sugerida"),
     fornecedor: text("fornecedor"),
+    fornecedorId: text("fornecedor_id"),
+    cotacaoId: text("cotacao_id"),
     dataEntregaPrevista: date("data_entrega_prevista", { mode: "string" }),
     observacao: text("observacao"),
     aprovadaPor: text("aprovada_por"),

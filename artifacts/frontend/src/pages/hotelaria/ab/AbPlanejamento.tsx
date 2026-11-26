@@ -4,7 +4,9 @@ import HotelModulesNav from "../HotelModulesNav";
 import { useAuth } from "@/contexts/AuthContext";
 import {
   aplicarHospedesPeriodo,
+  criarCotacao,
   criarOrdemCompraManual,
+  listarFornecedores,
   listarNecessidadesPlanejamento,
   mensagemDoErro,
   type AbAuth,
@@ -40,12 +42,16 @@ export default function AbPlanejamento() {
   const [erro, setErro] = useState<string | null>(null);
   const [aviso, setAviso] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [fornecedores, setFornecedores] = useState<Array<{ id: string; nome: string; ativo: boolean }>>([]);
 
   const carregar = useCallback(async () => {
     if (!tenantId || !token) return;
     setBusy(true);
     setErro(null);
     try {
+      if (fornecedores.length === 0) {
+        setFornecedores((await listarFornecedores(auth)).filter((item) => item.ativo));
+      }
       setDados(await listarNecessidadesPlanejamento(auth, {
         dataInicio: inicio,
         dataFim: fim,
@@ -74,6 +80,34 @@ export default function AbPlanejamento() {
       });
       await carregar();
       setAviso(`${resultado.dias} dia(s) com ${hospedes} hóspede(s) no serviço selecionado.`);
+    } catch (falha) {
+      setErro(mensagemDoErro(falha));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function gerarCotacao() {
+    const itens = (dados?.necessidades ?? [])
+      .filter((item) => item.comprar > 0)
+      .filter((item) => /^[0-9a-f-]{36}$/i.test(item.insumoId))
+      .map((item) => ({ insumoId: item.insumoId, quantidade: item.comprar }));
+    if (itens.length === 0) { setErro("Não há faltas com insumo vinculado para cotar."); return; }
+    const ativos = fornecedores.length > 0 ? fornecedores : (await listarFornecedores(auth)).filter((item) => item.ativo);
+    if (ativos.length === 0) { setErro("Cadastre ao menos um fornecedor ativo para cotar."); return; }
+    const ids = window.prompt(`Fornecedores (IDs separados por vírgula).\n\n${ativos.map((f) => `${f.nome}: ${f.id}`).join("\n")}`)?.split(",").map((id) => id.trim()).filter(Boolean) ?? [];
+    if (ids.length === 0) return;
+    setBusy(true);
+    try {
+      const cotacao = await criarCotacao(auth, {
+        dataInicio: inicio,
+        dataFim: fim,
+        observacao: "Gerada do planejamento integrado",
+        itens,
+        fornecedorIds: ids,
+      });
+      setAviso(`Cotação ${cotacao.id} criada com ${ids.length} fornecedor(es).`);
+      window.location.href = "/hotelaria/restaurante/cotacoes";
     } catch (falha) {
       setErro(mensagemDoErro(falha));
     } finally {
@@ -114,6 +148,7 @@ export default function AbPlanejamento() {
         <div className="mt-2 flex flex-wrap gap-2">
           <Link href="/hotelaria/restaurante/cardapios" className="rounded-md border px-3 py-1.5 text-sm hover:bg-muted">Cardápios do dia</Link>
           <Link href="/hotelaria/restaurante/compras" className="rounded-md border px-3 py-1.5 text-sm hover:bg-muted">Compras</Link>
+          <Link href="/hotelaria/restaurante/cotacoes" className="rounded-md border px-3 py-1.5 text-sm hover:bg-muted">Cotações</Link>
         </div>
       </header>
 
@@ -154,9 +189,14 @@ export default function AbPlanejamento() {
         <div className="rounded-lg border p-4">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <h2 className="font-semibold">Necessidades e compras</h2>
-            <button type="button" disabled={busy || faltas.length === 0} onClick={() => void gerarCompra()} className="rounded-md bg-indigo-600 px-3 py-2 text-sm text-white disabled:opacity-50">
-              Gerar ordem de compra ({faltas.length})
-            </button>
+            <div className="flex flex-wrap gap-2">
+              <button type="button" disabled={busy || faltas.length === 0} onClick={() => void gerarCotacao()} className="rounded-md bg-indigo-600 px-3 py-2 text-sm text-white disabled:opacity-50">
+                Gerar cotação ({faltas.length})
+              </button>
+              <button type="button" disabled={busy || faltas.length === 0} onClick={() => void gerarCompra()} className="rounded-md border px-3 py-2 text-sm disabled:opacity-50">
+                Compra direta
+              </button>
+            </div>
           </div>
           {(dados?.necessidades.length ?? 0) === 0 && <p className="mt-2 text-sm text-muted-foreground">Nenhuma necessidade calculada.</p>}
           <div className="mt-2 max-h-[420px] overflow-auto">

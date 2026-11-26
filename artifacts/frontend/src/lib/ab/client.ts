@@ -889,6 +889,77 @@ export async function gerarEscalaCardapio(
   });
 }
 
+// ─── Cotações do A&B ────────────────────────────────────────────────────────
+
+export type Fornecedor = { id: string; nome: string; ativo: boolean };
+
+export type CotacaoItem = {
+  id: string;
+  insumoId: string;
+  insumoNome: string;
+  quantidade: string;
+  unidade: string;
+  ordem: number;
+};
+
+export type CotacaoFornecedor = {
+  id: string;
+  fornecedorId: string;
+  nome: string | null;
+  status: "convidado" | "respondido" | "selecionado" | "descartado";
+  valorTotal: string | null;
+  prazoEntregaDias: number | null;
+  condicoesPagamento: string | null;
+  observacao: string | null;
+};
+
+export type Cotacao = {
+  id: string;
+  origem: string;
+  dataInicio: string;
+  dataFim: string;
+  status: "aberta" | "respondida" | "adjudicada" | "cancelada";
+  observacao: string | null;
+  itens?: CotacaoItem[];
+  fornecedores?: CotacaoFornecedor[];
+};
+
+export async function listarFornecedores(auth: AbAuth): Promise<Fornecedor[]> {
+  return requisitar<Fornecedor[]>(auth, `/api/tenants/${encodeURIComponent(auth.tenantId)}/fornecedores`);
+}
+
+export async function listarCotacoes(auth: AbAuth): Promise<Cotacao[]> {
+  const resposta = await requisitar<{ cotacoes: Cotacao[] }>(auth, urlAb(auth, "/cotacoes"));
+  return resposta.cotacoes ?? [];
+}
+
+export async function obterCotacao(auth: AbAuth, id: string): Promise<Cotacao> {
+  return requisitar<Cotacao>(auth, urlAb(auth, `/cotacoes/${encodeURIComponent(id)}`));
+}
+
+export async function criarCotacao(
+  auth: AbAuth,
+  entrada: { dataInicio: string; dataFim: string; observacao?: string | null; itens: Array<{ insumoId: string; quantidade: number }>; fornecedorIds: string[] },
+): Promise<Cotacao> {
+  return requisitar<Cotacao>(auth, urlAb(auth, "/cotacoes"), { method: "POST", body: JSON.stringify(entrada) });
+}
+
+export async function responderCotacao(
+  auth: AbAuth,
+  id: string,
+  entrada: { fornecedorId: string; valorTotal: number; prazoEntregaDias: number; condicoesPagamento?: string | null; observacao?: string | null },
+): Promise<Cotacao> {
+  return requisitar<Cotacao>(auth, urlAb(auth, `/cotacoes/${encodeURIComponent(id)}/resposta`), { method: "POST", body: JSON.stringify(entrada) });
+}
+
+export async function selecionarCotacao(
+  auth: AbAuth,
+  id: string,
+  fornecedorId: string,
+): Promise<{ ordemId: string; fornecedor: string | null }> {
+  return requisitar(auth, urlAb(auth, `/cotacoes/${encodeURIComponent(id)}/selecionar`), { method: "POST", body: JSON.stringify({ fornecedorId }) });
+}
+
 // ─── Planejamento integrado do restaurante ─────────────────────────────────
 
 export type NecessidadePlanejamento = {

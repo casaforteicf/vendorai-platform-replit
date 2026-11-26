@@ -11,6 +11,7 @@ const LINKS = [
   { href: "/hotelaria/restaurante/ocupacao", name: "Ocupação" },
   { href: "/hotelaria/restaurante/sobras", name: "Sobras", aliases: ["/hotelaria/ab/sobras"] },
   { href: "/hotelaria/restaurante/compras", name: "Compras", aliases: ["/hotelaria/ab/ordens-compra"] },
+  { href: "/hotelaria/restaurante/cotacoes", name: "Cotações", aliases: ["/hotelaria/ab/cotacoes"] },
   { href: "/hotelaria/restaurante/recebimento", name: "Recebimento", aliases: ["/hotelaria/ab/recebimento"] },
   { href: "/hotelaria/restaurante/requisicao", name: "Requisição", aliases: ["/hotelaria/ab/requisicao"] },
   { href: "/hotelaria/restaurante/cmv", name: "CMV", aliases: ["/hotelaria/ab/cmv"] },
