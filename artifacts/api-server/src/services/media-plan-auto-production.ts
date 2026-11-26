@@ -140,7 +140,7 @@ function aiVideoProviderReady() {
  * Fotos reais do tenant para o fallback de vídeo (quando não há provedor de IA
  * de vídeo configurado). Prioriza uploads/importadas mais recentes.
  */
-async function selectTenantImageAssetIds(tenantId: string, limit = 4): Promise<string[]> {
+export async function selectTenantImageAssetIds(tenantId: string, limit = 4): Promise<string[]> {
   const rows = await db.select({ id: mediaAssetsTable.id })
     .from(mediaAssetsTable)
     .where(and(

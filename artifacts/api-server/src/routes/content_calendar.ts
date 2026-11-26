@@ -1,17 +1,20 @@
 import { Router, type IRouter } from "express";
-import { and, asc, desc, eq, gte, inArray, isNull, lte } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, isNull, lte, sql } from "drizzle-orm";
 import { z } from "zod/v4";
 import {
   db,
   contentCalendarItemsTable,
   contentGenerationsTable,
   mediaPlansTable,
+  mediaProjectsTable,
   usersTable,
   CONTENT_CALENDAR_STATUS,
   CONTENT_CALENDAR_TIPOS,
 } from "@workspace/db";
 import { generateContentCalendar, ContentCalendarError } from "../services/content-calendar.js";
 import { generationHasFinalVideo, isVideoCalendarType } from "../services/content-final-media.js";
+import { selectTenantImageAssetIds } from "../services/media-plan-auto-production.js";
+import { startVendorAiPhotoVideo } from "../services/vendorai-photo-video.js";
 
 const router: IRouter = Router();
 const CALENDAR_BATCH_SIZE = 10;
@@ -416,6 +419,145 @@ router.patch("/content-calendar/:id", async (req, res) => {
     .where(eq(contentCalendarItemsTable.id, existing.id))
     .returning();
   res.json(updated);
+});
+
+
+/**
+ * Monta um vídeo vertical com as fotos do tenant para um item de vídeo do
+ * Plano de Mídia. Ação explícita do usuário — não depende de provedor de IA de
+ * vídeo nem da varredura automática do worker.
+ */
+router.post("/tenants/:tenantId/content-calendar/:id/photo-video", async (req, res) => {
+  const tenantId = String(req.params.tenantId);
+  if (!canAccess(req, tenantId)) {
+    res.status(403).json({ error: "Access denied to this tenant" });
+    return;
+  }
+
+  const [item] = await db
+    .select({
+      id: contentCalendarItemsTable.id,
+      tipo: contentCalendarItemsTable.tipo,
+      temaSugerido: contentCalendarItemsTable.temaSugerido,
+      status: contentCalendarItemsTable.status,
+      contentGenerationId: contentCalendarItemsTable.contentGenerationId,
+    })
+    .from(contentCalendarItemsTable)
+    .where(and(
+      eq(contentCalendarItemsTable.id, String(req.params.id)),
+      eq(contentCalendarItemsTable.tenantId, tenantId),
+    ))
+    .limit(1);
+
+  if (!item) {
+    res.status(404).json({ error: "Item não encontrado." });
+    return;
+  }
+  if (!isVideoCalendarType(item.tipo)) {
+    res.status(422).json({ error: "Este item não é um formato de vídeo." });
+    return;
+  }
+  if (item.contentGenerationId) {
+    const [generation] = await db
+      .select({ result: contentGenerationsTable.result })
+      .from(contentGenerationsTable)
+      .where(and(
+        eq(contentGenerationsTable.id, item.contentGenerationId),
+        eq(contentGenerationsTable.tenantId, tenantId),
+      ))
+      .limit(1);
+    if (generation && generationHasFinalVideo(generation.result as { variations?: unknown; automation?: unknown } | null)) {
+      res.status(409).json({ error: "Este vídeo já tem arquivo final." });
+      return;
+    }
+  }
+
+  const assetIds = await selectTenantImageAssetIds(tenantId, 4);
+  if (assetIds.length < 2) {
+    res.status(422).json({
+      error: "Envie pelo menos 2 fotos do negócio para a Biblioteca (fotos com upload/importação) para montar o vídeo.",
+    });
+    return;
+  }
+
+  const job = await startVendorAiPhotoVideo({
+    tenantId,
+    userId: req.user?.sub ?? null,
+    title: `Vídeo do Plano de Mídia · ${item.temaSugerido}`.slice(0, 120),
+    assetIds,
+    secondsPerImage: 4,
+    format: "9:16",
+    fit: "cover",
+  });
+
+  if (item.contentGenerationId) {
+    const [generation] = await db
+      .select({ result: contentGenerationsTable.result })
+      .from(contentGenerationsTable)
+      .where(and(
+        eq(contentGenerationsTable.id, item.contentGenerationId),
+        eq(contentGenerationsTable.tenantId, tenantId),
+      ))
+      .limit(1);
+    if (generation) {
+      const result = (generation.result ?? {}) as Record<string, unknown>;
+      const automation = result["automation"] && typeof result["automation"] === "object" && !Array.isArray(result["automation"])
+        ? result["automation"] as Record<string, unknown>
+        : {};
+      await db
+        .update(contentGenerationsTable)
+        .set({
+          result: {
+            ...result,
+            automation: {
+              ...automation,
+              status: "video_processing",
+              jobId: job.jobId,
+              projectId: job.projectId,
+              photoFallbackAt: new Date().toISOString(),
+              error: null,
+              updatedAt: new Date().toISOString(),
+            },
+          } as any,
+        })
+        .where(and(
+          eq(contentGenerationsTable.id, item.contentGenerationId),
+          eq(contentGenerationsTable.tenantId, tenantId),
+        ));
+    }
+  }
+
+  const [planProject] = await db
+    .select({ id: mediaProjectsTable.id, context: mediaProjectsTable.context })
+    .from(mediaProjectsTable)
+    .where(and(
+      eq(mediaProjectsTable.tenantId, tenantId),
+      sql`${mediaProjectsTable.context}->>'calendarItemId' = ${item.id}`,
+    ))
+    .limit(1);
+
+  if (planProject) {
+    await db
+      .update(mediaProjectsTable)
+      .set({
+        status: "processing",
+        updatedAt: new Date(),
+        context: {
+          ...(planProject.context ?? {}),
+          executorProjectId: job.projectId,
+          executorJobId: job.jobId,
+          materializationStatus: "processing",
+          executorDetail: null,
+        },
+      })
+      .where(eq(mediaProjectsTable.id, planProject.id));
+  }
+
+  res.status(202).json({
+    jobId: job.jobId,
+    projectId: job.projectId,
+    assetCount: assetIds.length,
+  });
 });
 
 router.delete("/content-calendar/:id", async (req, res) => {
