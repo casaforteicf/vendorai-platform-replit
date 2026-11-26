@@ -41,6 +41,7 @@ onlyBuiltDependencies:
   - '@swc/core'
   - core-js
   - esbuild
+  - ffmpeg-static
   - msw
   - unrs-resolver
 

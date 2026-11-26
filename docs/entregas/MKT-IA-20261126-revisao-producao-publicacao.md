@@ -61,3 +61,32 @@ IA produz → usuário aprova → sistema publica, com teto de 50 gerações/mê
 - Homologação na Contabo e promoção conforme processo de release.
 - Conectar Instagram/Meta e ativar publicação automática no plano do tenant.
 - Aprovar as 10 peças existentes para o ciclo andar.
+
+## Complemento — fallback de vídeo por fotos (2026-11-26)
+
+O Reels do Plano de Mídia falhava porque a produção não tem provedor de vídeo
+(`REPLICATE_API_TOKEN` ou Vertex/Veo) — pendência já registrada no MKT-01.
+Sem provedor, a tela mostrava "Geração de vídeo indisponível" e o material não
+podia ser aprovado nem publicado.
+
+Correção sem custo por vídeo:
+
+- `vendorai-media-engine`: `video_generate` sem provedor de IA passa a montar o
+  vídeo com as fotos reais do tenant pelo motor existente `photo_video`
+  (quando há 2+ imagens no contexto).
+- `media-plan-auto-production`: o job do plano agora envia as fotos do tenant
+  (`mediaInputs`) e o reconciliador faz **auto-cura**: job de vídeo com erro,
+  sem provedor, é remontado uma única vez por fotos (`photoFallbackAt`).
+  Ao concluir, o vídeo é gravado na geração e no projeto do Plano de Mídia
+  (`executorOutputUrl`), liberando a prévia e a publicação.
+- `lib/ffmpeg.ts` + `ffmpeg-static`: garante o binário do ffmpeg no PATH do
+  processo (usa o do sistema se existir; senão o binário do pacote).
+
+Validação:
+- `node ./build.mjs`: EXIT 0.
+- Render local de teste (3 imagens → segmentos → concat): MP4 válido gerado
+  (`ftyp`), usando o binário do `ffmpeg-static` injetado no PATH.
+- Testes backend existentes: 9/9.
+
+Pendente: homologar na Contabo; os itens de Reels que já falharam devem se
+recuperar sozinhos na próxima varredura do worker (até ~60s) após o deploy.

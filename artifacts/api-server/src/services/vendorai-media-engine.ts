@@ -8,6 +8,7 @@ import { startVendorAiAiImageTool } from "./vendorai-ai-image-tools.js";
 import { generateVendorAiMusic } from "./vendorai-music-engine.js";
 import { generateVendorAiLipSync } from "./vendorai-lipsync-engine.js";
 import { prepareGuidedVideoAudio } from "./guided-video-audio-director.js";
+import { mediaProviderAvailable } from "./media-provider-router.js";
 
 export type VendorAiMediaCapability =
   | "video_edit"
@@ -290,10 +291,54 @@ async function assertVideoGenerationWithinTenantLimits(input: {
   }
 }
 
+function aiVideoProviderReady() {
+  return mediaProviderAvailable("google-vertex", "video_standard")
+    || mediaProviderAvailable("replicate", "video_standard");
+}
+
+function imageAssetIdsFromContext(context: Record<string, unknown>): string[] {
+  const ids: string[] = [];
+  const inputs = Array.isArray(context["mediaInputs"]) ? context["mediaInputs"] : [];
+  for (const entry of inputs) {
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)) continue;
+    const row = entry as Record<string, unknown>;
+    const type = String(row["type"] ?? "image");
+    if (type !== "image") continue;
+    const id = String(row["assetId"] ?? "").trim();
+    if (id) ids.push(id);
+  }
+  if (Array.isArray(context["assetIds"])) {
+    for (const value of context["assetIds"]) {
+      const id = String(value ?? "").trim();
+      if (id) ids.push(id);
+    }
+  }
+  return [...new Set(ids)];
+}
+
 export async function createVendorAiMediaGenerationJob(input: {
   tenantId: string; userId?: string | null; title: string; operation: VendorAiMediaCapability; context?: Record<string, unknown>;
 }) {
   const suppliedContext = input.context ?? {};
+
+  // Sem provedor de vídeo (Vertex/Veo ou Replicate), monta o vídeo com as fotos
+  // reais do tenant em vez de falhar. Mantém o fluxo do Plano de Mídia andando
+  // sem custo de geração de vídeo por IA.
+  if (input.operation === "video_generate" && !aiVideoProviderReady()) {
+    const assetIds = imageAssetIdsFromContext(suppliedContext);
+    if (assetIds.length >= 2) {
+      const landscape = String(suppliedContext["aspectRatio"] ?? "").toLowerCase() === "landscape";
+      return startVendorAiPhotoVideo({
+        tenantId: input.tenantId,
+        userId: input.userId ?? null,
+        title: input.title,
+        assetIds: assetIds.slice(0, 8),
+        secondsPerImage: 4,
+        format: landscape ? "16:9" : "9:16",
+        fit: "cover",
+      });
+    }
+  }
   const initialContext = input.operation === "video_generate"
     ? {
         ...suppliedContext,

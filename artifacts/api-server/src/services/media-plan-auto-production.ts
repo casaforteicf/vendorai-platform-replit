@@ -1,12 +1,14 @@
-import { and, asc, eq, inArray, isNotNull, isNull, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNotNull, isNull, sql } from "drizzle-orm";
 import {
   agentConfigsTable,
   businessProfilesTable,
   contentCalendarItemsTable,
   contentGenerationsTable,
   db,
+  mediaAssetsTable,
   mediaJobsTable,
   mediaPlansTable,
+  mediaProjectsTable,
   subscriptionsTable,
 } from "@workspace/db";
 import {
@@ -19,6 +21,8 @@ import {
 } from "../lib/content-generation.js";
 import { logger } from "../lib/logger.js";
 import { createVendorAiMediaGenerationJob } from "./vendorai-media-engine.js";
+import { mediaProviderAvailable } from "./media-provider-router.js";
+import { startVendorAiPhotoVideo } from "./vendorai-photo-video.js";
 import {
   automaticProductionLimit,
   DEFAULT_AUTOMATIC_MONTHLY_LIMIT,
@@ -125,6 +129,28 @@ function providerSupported(canal: string) {
 function campaignForItem(content: PlanContent, pilar: string) {
   const name = normalize(pilar.split(" � ")[0] || "");
   return content.campanhas?.find((campaign) => normalize(campaign.nome) === name) ?? null;
+}
+
+function aiVideoProviderReady() {
+  return mediaProviderAvailable("google-vertex", "video_standard")
+    || mediaProviderAvailable("replicate", "video_standard");
+}
+
+/**
+ * Fotos reais do tenant para o fallback de vídeo (quando não há provedor de IA
+ * de vídeo configurado). Prioriza uploads/importadas mais recentes.
+ */
+async function selectTenantImageAssetIds(tenantId: string, limit = 4): Promise<string[]> {
+  const rows = await db.select({ id: mediaAssetsTable.id })
+    .from(mediaAssetsTable)
+    .where(and(
+      eq(mediaAssetsTable.tenantId, tenantId),
+      eq(mediaAssetsTable.type, "image"),
+      inArray(mediaAssetsTable.source, ["upload", "imported"]),
+    ))
+    .orderBy(desc(mediaAssetsTable.createdAt))
+    .limit(Math.max(limit * 4, 12));
+  return rows.slice(0, limit).map((row) => row.id);
 }
 
 function directionText(campaign: Campaign, item: { temaSugerido: string; canal: string; tipo: string; pilar: string }) {
@@ -319,6 +345,7 @@ async function startAutomatedVideo(input: {
   ].filter(Boolean).join("\n\n");
 
   const longVideo = input.tipo === "youtube_video";
+  const mediaAssetIds = await selectTenantImageAssetIds(input.tenantId, 4);
   const job = await createVendorAiMediaGenerationJob({
     tenantId: input.tenantId,
     userId: null,
@@ -332,7 +359,7 @@ async function startAutomatedVideo(input: {
       aspectRatio: longVideo ? "landscape" : "portrait",
       duration: longVideo ? 30 : 16,
       generationMode: "ai_only",
-      mediaInputs: [],
+      mediaInputs: mediaAssetIds.map((assetId) => ({ assetId, type: "image", role: "auto" })),
       effects: {
         preset: longVideo ? "cinematic" : "social",
         intensity: longVideo ? "soft" : "medium",
@@ -554,9 +581,65 @@ export async function reconcileAutomatedReelVideos() {
           },
         } as any,
       }).where(and(eq(contentGenerationsTable.id, row.generationId), eq(contentGenerationsTable.tenantId, row.tenantId)));
+      const [planProject] = await db.select({ id: mediaProjectsTable.id, context: mediaProjectsTable.context })
+        .from(mediaProjectsTable)
+        .where(and(
+          eq(mediaProjectsTable.tenantId, row.tenantId),
+          sql`${mediaProjectsTable.context}->>'calendarItemId' = ${row.id}`,
+        ))
+        .limit(1);
+      if (planProject) {
+        await db.update(mediaProjectsTable)
+          .set({
+            status: "ready",
+            updatedAt: new Date(),
+            context: {
+              ...(planProject.context ?? {}),
+              executorOutputUrl: videoUrl,
+              executorJobId: jobId,
+              materializationStatus: "ready",
+            },
+          })
+          .where(eq(mediaProjectsTable.id, planProject.id))
+          .catch(() => undefined);
+      }
       reconciled += 1;
       logger.info({ tenantId: row.tenantId, calendarItemId: row.id, generationId: row.generationId, jobId, type: row.tipo }, "V�deo autom�tico do Plano de M�dia recebeu o arquivo final");
     } else if (job.status === "error") {
+      if (!aiVideoProviderReady() && !automation["photoFallbackAt"]) {
+        const assetIds = await selectTenantImageAssetIds(row.tenantId, 4);
+        if (assetIds.length >= 2) {
+          try {
+            const fallback = await startVendorAiPhotoVideo({
+              tenantId: row.tenantId,
+              userId: null,
+              title: `Vídeo do Plano de Mídia · ${row.tipo}`.slice(0, 120),
+              assetIds,
+              secondsPerImage: 4,
+              format: "9:16",
+              fit: "cover",
+            });
+            await db.update(contentGenerationsTable).set({
+              result: {
+                ...result,
+                automation: {
+                  ...automation,
+                  status: "video_processing",
+                  jobId: fallback.jobId,
+                  projectId: fallback.projectId,
+                  photoFallbackAt: new Date().toISOString(),
+                  error: null,
+                  updatedAt: new Date().toISOString(),
+                },
+              } as any,
+            }).where(and(eq(contentGenerationsTable.id, row.generationId), eq(contentGenerationsTable.tenantId, row.tenantId)));
+            logger.info({ tenantId: row.tenantId, calendarItemId: row.id, jobId: fallback.jobId }, "Plano de Mídia: vídeo remontado com as fotos do tenant (sem provedor de IA de vídeo)");
+            continue;
+          } catch (fallbackError) {
+            logger.warn({ error: fallbackError, tenantId: row.tenantId, calendarItemId: row.id }, "Falha no fallback de vídeo por fotos");
+          }
+        }
+      }
       await db.update(contentGenerationsTable).set({
         result: {
           ...result,
