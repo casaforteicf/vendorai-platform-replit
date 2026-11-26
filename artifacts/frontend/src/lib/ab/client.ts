@@ -889,6 +889,44 @@ export async function gerarEscalaCardapio(
   });
 }
 
+// ─── Planejamento integrado do restaurante ─────────────────────────────────
+
+export type NecessidadePlanejamento = {
+  insumoId: string;
+  insumoNome: string;
+  unidade: string;
+  necessario: number;
+  disponivel: number;
+  comprar: number;
+};
+
+export type RespostaPlanejamento = {
+  dias: Array<{ data: string; servico: CardapioServico; ocupacao: number; menu: string }>;
+  necessidades: NecessidadePlanejamento[];
+  proteinaPorAdulto: number;
+  acompanhamentoPorAdulto: number;
+};
+
+export async function aplicarHospedesPeriodo(
+  auth: AbAuth,
+  entrada: { dataInicio: string; dataFim: string; servico: CardapioServico; ocupacao: number },
+): Promise<{ dias: number }> {
+  return requisitar(auth, urlAb(auth, "/planejamento/previsoes-periodo"), {
+    method: "POST",
+    body: JSON.stringify(entrada),
+  });
+}
+
+export async function listarNecessidadesPlanejamento(
+  auth: AbAuth,
+  entrada: { dataInicio: string; dataFim: string; proteinaPorAdulto?: number; acompanhamentoPorAdulto?: number },
+): Promise<RespostaPlanejamento> {
+  const params = new URLSearchParams({ dataInicio: entrada.dataInicio, dataFim: entrada.dataFim });
+  if (entrada.proteinaPorAdulto !== undefined) params.set("proteinaPorAdulto", String(entrada.proteinaPorAdulto));
+  if (entrada.acompanhamentoPorAdulto !== undefined) params.set("acompanhamentoPorAdulto", String(entrada.acompanhamentoPorAdulto));
+  return requisitar<RespostaPlanejamento>(auth, urlAb(auth, `/planejamento/necessidades?${params.toString()}`));
+}
+
 // ─── Ordens de compra do motor preditivo (AB-11) ────────────────────────────
 
 export type OrdemCompraStatus = "sugerida" | "aprovada" | "pendente_entrega" | "parcialmente_recebida" | "recebida" | "cancelada";
