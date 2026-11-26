@@ -5,6 +5,7 @@ import {
   AB_STATUS_ORDEM_COMPRA,
   abOrdemCompraItensTable,
   abOrdensCompraTable,
+  insumosTable,
   type AbStatusOrdemCompra,
 } from "@workspace/db";
 import { executarMotorPreditivo } from "../jobs/abEstoquePreditivo.js";
@@ -163,6 +164,62 @@ router.post("/tenants/:tenantId/ab/ordens-compra/gerar", async (req, res) => {
   } catch (erro) {
     console.error("[ab-ordens] gerar", erro);
     return res.status(500).json({ error: "Não foi possível gerar a ordem de compra" });
+  }
+});
+
+// ── POST /tenants/:tenantId/ab/ordens-compra — compra manual ─────────────────
+router.post("/tenants/:tenantId/ab/ordens-compra", async (req, res) => {
+  const tenantId = String(req.params.tenantId);
+  if (!abAllowed(req, tenantId, true)) return res.status(403).json({ error: "Forbidden" });
+  const input = z.object({
+    fornecedor: z.string().trim().max(120).nullable().optional(),
+    dataEntregaPrevista: dataISO.nullable().optional(),
+    observacao: z.string().trim().max(1000).nullable().optional(),
+    itens: z.array(z.object({
+      insumoId: z.string().uuid(),
+      quantidade: quantidadePositiva,
+      custoEstimado: custoNaoNegativo.nullable().optional(),
+    })).min(1).max(200),
+  }).strict().safeParse(req.body);
+  if (!input.success) return res.status(422).json({ error: "Ordem inválida", fields: camposInvalidos(input.error) });
+
+  try {
+    const ordem = await withTenantTx(tenantId, async (tx) => {
+      const ids = [...new Set(input.data.itens.map((item) => item.insumoId))];
+      const insumos = await tx.select().from(insumosTable).where(and(
+        eq(insumosTable.tenantId, tenantId),
+        inArray(insumosTable.id, ids),
+      ));
+      if (insumos.length !== ids.length) return { erro: "Insumo não encontrado neste hotel" };
+      const nomes = new Map(insumos.map((item: any) => [item.id, item]));
+      const hoje = new Date().toISOString().slice(0, 10);
+      const fim = new Date(`${hoje}T12:00:00Z`);
+      fim.setUTCDate(fim.getUTCDate() + 7);
+      const [criada] = await tx.insert(abOrdensCompraTable).values({
+        tenantId,
+        coberturaInicio: hoje,
+        coberturaFim: input.data.dataEntregaPrevista ?? fim.toISOString().slice(0, 10),
+        status: "sugerida",
+        fornecedor: input.data.fornecedor ?? null,
+        dataEntregaPrevista: input.data.dataEntregaPrevista ?? null,
+        observacao: input.data.observacao ?? null,
+      }).returning();
+      await tx.insert(abOrdemCompraItensTable).values(input.data.itens.map((item) => ({
+        tenantId,
+        ordemId: criada!.id,
+        insumoId: item.insumoId,
+        insumoNome: nomes.get(item.insumoId)!.nome,
+        quantidade: String(item.quantidade),
+        unidade: nomes.get(item.insumoId)!.unidade,
+        custoEstimado: item.custoEstimado ?? null,
+      })));
+      return carregarOrdem(tx, tenantId, criada!.id);
+    });
+    if (ordem && "erro" in ordem) return res.status(422).json({ error: ordem.erro });
+    return res.status(201).json(ordem);
+  } catch (erro) {
+    console.error("[ab-ordens] manual", erro);
+    return res.status(500).json({ error: "Não foi possível criar a ordem" });
   }
 });
 

@@ -347,6 +347,49 @@ export async function listarFichas(auth: AbAuth): Promise<FichaTecnica[]> {
   return resposta.fichas ?? [];
 }
 
+// ─── Equipe e escala ────────────────────────────────────────────────────────
+
+export type Equipe = {
+  id: string;
+  nome: string;
+  cargoId: string | null;
+  cargoNome: string | null;
+  diasSemana: number[];
+  horaInicio: string;
+  intervaloInicio: string | null;
+  intervaloFim: string | null;
+  horaFim: string;
+  ativo: boolean;
+};
+
+export type EquipeInput = {
+  nome: string;
+  cargoId?: string | null;
+  diasSemana: number[];
+  horaInicio: string;
+  intervaloInicio?: string | null;
+  intervaloFim?: string | null;
+  horaFim: string;
+  ativo?: boolean;
+};
+
+export async function listarEquipe(auth: AbAuth): Promise<Equipe[]> {
+  const resposta = await requisitar<{ equipe: Equipe[] }>(auth, urlAb(auth, "/equipe"));
+  return resposta.equipe ?? [];
+}
+
+export async function criarEquipe(auth: AbAuth, entrada: EquipeInput): Promise<Equipe> {
+  return requisitar<Equipe>(auth, urlAb(auth, "/equipe"), { method: "POST", body: JSON.stringify(entrada) });
+}
+
+export async function atualizarEquipe(auth: AbAuth, id: string, entrada: Partial<EquipeInput>): Promise<Equipe> {
+  return requisitar<Equipe>(auth, urlAb(auth, `/equipe/${encodeURIComponent(id)}`), { method: "PATCH", body: JSON.stringify(entrada) });
+}
+
+export async function excluirEquipe(auth: AbAuth, id: string): Promise<void> {
+  await requisitar<null>(auth, urlAb(auth, `/equipe/${encodeURIComponent(id)}`), { method: "DELETE" });
+}
+
 // ─── Catálogo de insumos e mapa produto → insumo (AB-05) ─────────────────────
 
 export type InsumoCatalogo = {
@@ -908,6 +951,21 @@ export async function listarOrdensCompra(
 
 export async function obterOrdemCompra(auth: AbAuth, id: string): Promise<OrdemCompra> {
   return requisitar<OrdemCompra>(auth, urlAb(auth, `/ordens-compra/${encodeURIComponent(id)}`));
+}
+
+export async function criarOrdemCompraManual(
+  auth: AbAuth,
+  entrada: {
+    fornecedor?: string | null;
+    dataEntregaPrevista?: string | null;
+    observacao?: string | null;
+    itens: Array<{ insumoId: string; quantidade: number; custoEstimado?: number | null }>;
+  },
+): Promise<OrdemCompra> {
+  return requisitar<OrdemCompra>(auth, urlAb(auth, "/ordens-compra"), {
+    method: "POST",
+    body: JSON.stringify(entrada),
+  });
 }
 
 export async function gerarOrdemCompra(

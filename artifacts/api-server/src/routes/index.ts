@@ -80,6 +80,7 @@ import hotelWeeklyPurchasesRouter from "./hotel_weekly_purchases";
 import hotelMealsRouter from "./hotel_meals";
 import hotelRecipesRouter from "./hotel_recipes";
 import abCargosRouter from "./ab_cargos";
+import abEquipeRouter from "./ab_equipe";
 import abSobrasRouter from "./ab_sobras";
 import abFichasRouter from "./ab_fichas";
 import abEstoquePreditivoRouter from "./ab_estoque_preditivo";
@@ -503,6 +504,7 @@ router.use(hotelMealsRouter);
 router.use(hotelRecipesRouter);
 // A&B (Alimentos & Bebidas) — aba dentro do módulo de Hotelaria.
 router.use(abCargosRouter);
+router.use(abEquipeRouter);
 router.use(abSobrasRouter);
 router.use(abFichasRouter);
 router.use(abEstoquePreditivoRouter);

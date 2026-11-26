@@ -155,6 +155,10 @@ export default function OrdensCompra() {
     }
   }
 
+  const chegadas = ordens
+    .filter((ordem) => ["aprovada", "pendente_entrega", "parcialmente_recebida"].includes(ordem.status))
+    .sort((a, b) => String(a.dataEntregaPrevista ?? "9999").localeCompare(String(b.dataEntregaPrevista ?? "9999")));
+
   const totalEstimado = (ordem: OrdemCompra) =>
     ordem.itens.reduce((soma, item) => {
       const custo = item.custoEstimado ? Number(item.custoEstimado) : 0;
@@ -203,6 +207,32 @@ export default function OrdensCompra() {
           {resumo.erros.length > 0 && <span className="text-red-700"> Falhas: {resumo.erros.map((e) => e.erro).join("; ")}</span>}
         </section>
       )}
+
+      <section className="rounded-lg border bg-muted/20 p-4">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h2 className="font-semibold">Previsão de chegadas</h2>
+          <span className="text-xs text-muted-foreground">{chegadas.length} pedido(s) em aberto</span>
+        </div>
+        {chegadas.length === 0 ? (
+          <p className="mt-2 text-sm text-muted-foreground">Nenhuma entrega pendente.</p>
+        ) : (
+          <div className="mt-2 grid gap-2 sm:grid-cols-2">
+            {chegadas.map((ordem) => {
+              const pendentes = ordem.itens.filter((item) => Number(item.quantidadeRecebida) < Number(item.quantidade));
+              const totalPendente = pendentes.reduce((soma, item) => soma + (Number(item.quantidade) - Number(item.quantidadeRecebida)), 0);
+              return (
+                <div key={ordem.id} className="rounded-md border bg-card p-3 text-sm">
+                  <p className="font-medium">{ordem.fornecedor ?? "Fornecedor não informado"}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {ordem.dataEntregaPrevista ? `Entrega prevista: ${ordem.dataEntregaPrevista}` : "Sem data prevista"} · {ordem.status}
+                  </p>
+                  <p className="text-xs">{pendentes.length} item(ns) · {totalPendente.toLocaleString("pt-BR")} unidade(s) pendente(s)</p>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </section>
 
       <section className="grid gap-4 lg:grid-cols-3">
         <div className="space-y-2 rounded-lg border p-4 lg:col-span-1">

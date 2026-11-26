@@ -117,6 +117,7 @@ const HotelTarifas = lazy(() => import("@/pages/hotelaria/HotelTarifas"));
 const HotelRecepcao = lazy(() => import("@/pages/hotelaria/HotelRecepcao"));
 const HotelPlanejamento = lazy(() => import("@/pages/hotelaria/HotelPlanejamento"));
 const AbCargos = lazy(() => import("@/pages/hotelaria/ab/AbCargos"));
+const AbEquipe = lazy(() => import("@/pages/hotelaria/ab/AbEquipe"));
 const AbBriffing = lazy(() => import("@/pages/hotelaria/ab/Briffing"));
 const AbCardapios = lazy(() => import("@/pages/hotelaria/ab/Cardapios"));
 const AbCardapiosModelos = lazy(() => import("@/pages/hotelaria/ab/CardapiosModelos"));
@@ -748,12 +749,14 @@ function AppRoutes() {
         <Route path="/hotelaria/restaurante/cmv">{() => <ProtectedRoute component={AbDashboardCmv} />}</Route>
         <Route path="/hotelaria/restaurante/mapeamento">{() => <ProtectedRoute component={AbMapeamentoInsumos} />}</Route>
         <Route path="/hotelaria/restaurante/cargos">{() => <ProtectedRoute component={AbCargos} />}</Route>
+        <Route path="/hotelaria/restaurante/equipe">{() => <ProtectedRoute component={AbEquipe} />}</Route>
         <Route path="/hotelaria/restaurante/planejamento">{() => <ProtectedRoute component={HotelPlanejamento} />}</Route>
         <Route path="/hotelaria/receitas">{() => <ProtectedRoute component={HotelReceitas} />}</Route>
         <Route path="/hotelaria/tarifas">{() => <ProtectedRoute component={HotelTarifas} />}</Route>
         <Route path="/hotelaria/recepcao">{() => <ProtectedRoute component={HotelRecepcao} />}</Route>
         <Route path="/hotelaria/planejamento">{() => <ProtectedRoute component={HotelPlanejamento} />}</Route>
         <Route path="/hotelaria/ab/cargos">{() => <ProtectedRoute component={AbCargos} />}</Route>
+        <Route path="/hotelaria/ab/equipe">{() => <ProtectedRoute component={AbEquipe} />}</Route>
         <Route path="/hotelaria/ab/briffing">{() => <ProtectedRoute component={AbBriffing} />}</Route>
         <Route path="/hotelaria/ab/cardapios">{() => <ProtectedRoute component={AbCardapios} />}</Route>
         <Route path="/hotelaria/ab/cardapios-modelos">{() => <ProtectedRoute component={AbCardapiosModelos} />}</Route>

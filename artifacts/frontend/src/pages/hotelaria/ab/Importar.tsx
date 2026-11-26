@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Link } from "wouter";
+import { Link, useSearch } from "wouter";
 import { Download, FileUp, Plus, Trash2, Upload } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import RestaurantModulesNav from "../RestaurantModulesNav";
@@ -46,7 +46,13 @@ export default function Importar() {
   const base = tenantId ? `/api/tenants/${encodeURIComponent(tenantId)}/restaurante/importacoes` : "";
   const headers = useMemo(() => ({ Authorization: `Bearer ${token ?? ""}` }), [token]);
 
-  const [tipo, setTipo] = useState<Tipo>("receitas");
+  const search = useSearch();
+  const tipoInicial = new URLSearchParams(search).get("tipo");
+  const [tipo, setTipo] = useState<Tipo>(
+    tipoInicial === "ingredientes" || tipoInicial === "cardapios" || tipoInicial === "briffing" || tipoInicial === "receitas"
+      ? tipoInicial
+      : "receitas",
+  );
   const [arquivo, setArquivo] = useState<File | null>(null);
   const [formato, setFormato] = useState("");
   const [criarFichasFaltantes, setCriarFichasFaltantes] = useState(true);

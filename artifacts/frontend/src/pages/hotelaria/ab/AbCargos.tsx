@@ -216,6 +216,9 @@ export default function AbCargos() {
           Base do RH operacional de alimentos e bebidas. Cada cargo pertence a um setor, e todo o
           restante do módulo (fichas técnicas, briffing, compras) se apoia nessa atribuição.
         </p>
+        <a href="/hotelaria/restaurante/equipe" className="mt-2 inline-flex rounded-md border px-3 py-1.5 text-sm hover:bg-muted">
+          Cadastrar equipe e escala
+        </a>
       </header>
 
       {aviso && (
