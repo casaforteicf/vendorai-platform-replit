@@ -1,6 +1,7 @@
 import { and, eq } from "drizzle-orm";
 import { db, socialPublicationsTable } from "@workspace/db";
 import { logger } from "../lib/logger.js";
+import { resolvePublicMediaUrl } from "../lib/media-publish-url.js";
 import { getInstagramConnectionByTenantId } from "./instagram-oauth.js";
 import { getMetaAdsConnectionByTenantId, listAccessibleInstagramIdentities, META_GRAPH_BASE } from "./meta-ads-oauth.js";
 
@@ -247,22 +248,23 @@ export async function publishFacebookOrganicPublication(tenantId: string, public
       ? metadata.mediaUrls.filter((value): value is string => typeof value === "string" && Boolean(value))
       : [];
     if (publication.mediaUrl && !mediaUrls.includes(publication.mediaUrl)) mediaUrls.unshift(publication.mediaUrl);
+    const publishMediaUrls = await Promise.all(mediaUrls.map((url) => resolvePublicMediaUrl(url)));
     const text = publication.text || "";
     const mediaKind = metadata.facebookMediaKind === "video" ? "video" : "image";
 
     let externalId: string;
     if (publication.contentType === "reel") {
-      if (!mediaUrls[0] || mediaKind !== "video") throw new FacebookPublishError("facebook_reel_requires_video");
-      externalId = await publishReel(capability.pageId, capability.pageAccessToken, mediaUrls[0], text);
+      if (!publishMediaUrls[0] || mediaKind !== "video") throw new FacebookPublishError("facebook_reel_requires_video");
+      externalId = await publishReel(capability.pageId, capability.pageAccessToken, publishMediaUrls[0], text);
     } else if (publication.contentType === "story") {
-      if (!mediaUrls[0]) throw new FacebookPublishError("facebook_story_requires_single_media");
+      if (!publishMediaUrls[0]) throw new FacebookPublishError("facebook_story_requires_single_media");
       externalId = mediaKind === "video"
-        ? await publishVideoStory(capability.pageId, capability.pageAccessToken, mediaUrls[0], text)
-        : await publishPhotoStory(capability.pageId, capability.pageAccessToken, mediaUrls[0]);
-    } else if (publication.contentType === "carousel" || mediaUrls.length > 1) {
-      externalId = await publishCarousel(capability.pageId, capability.pageAccessToken, mediaUrls, text);
-    } else if (mediaUrls[0]) {
-      externalId = await publishImage(capability.pageId, capability.pageAccessToken, mediaUrls[0], text);
+        ? await publishVideoStory(capability.pageId, capability.pageAccessToken, publishMediaUrls[0], text)
+        : await publishPhotoStory(capability.pageId, capability.pageAccessToken, publishMediaUrls[0]);
+    } else if (publication.contentType === "carousel" || publishMediaUrls.length > 1) {
+      externalId = await publishCarousel(capability.pageId, capability.pageAccessToken, publishMediaUrls, text);
+    } else if (publishMediaUrls[0]) {
+      externalId = await publishImage(capability.pageId, capability.pageAccessToken, publishMediaUrls[0], text);
     } else {
       externalId = await publishText(capability.pageId, capability.pageAccessToken, text);
     }

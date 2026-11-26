@@ -1,6 +1,7 @@
 import { and, eq } from "drizzle-orm";
 import { db, socialPublicationsTable } from "@workspace/db";
 import { logger } from "../lib/logger.js";
+import { resolvePublicMediaUrl } from "../lib/media-publish-url.js";
 import type { SocialProvider } from "./social-platforms.js";
 import { resolveValidSocialConnection } from "./social-token-runtime.js";
 
@@ -326,7 +327,12 @@ export async function publishSocialPublication(tenantId: string, publicationId: 
     .where(and(eq(socialPublicationsTable.id, publication.id), eq(socialPublicationsTable.tenantId, tenantId)));
 
   try {
-    const input = { text: publication.text, mediaUrl: publication.mediaUrl, contentType: publication.contentType, metadata: publication.metadata };
+    const input = {
+      text: publication.text,
+      mediaUrl: await resolvePublicMediaUrl(publication.mediaUrl),
+      contentType: publication.contentType,
+      metadata: publication.metadata,
+    };
     const result = provider === "youtube"
       ? await publishYouTube(connection.accessToken, input)
       : provider === "linkedin"

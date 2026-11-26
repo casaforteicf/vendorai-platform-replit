@@ -2,6 +2,7 @@ import { and, eq, isNull } from "drizzle-orm";
 import { db, instagramConnectionsTable, socialPublicationsTable } from "@workspace/db";
 import { logger } from "../lib/logger.js";
 import { resolveWebsiteConnection } from "./websiteConnector.js";
+import { resolvePublicMediaUrl } from "../lib/media-publish-url.js";
 
 const META_GRAPH_VERSION = "v26.0";
 
@@ -200,6 +201,7 @@ export async function publishInstagramOrganicPublication(tenantId: string, publi
       : [];
     if (publication.mediaUrl && !mediaUrls.includes(publication.mediaUrl)) mediaUrls.unshift(publication.mediaUrl);
     if (mediaUrls.length === 0) throw new InstagramPublishError("instagram_media_required");
+    const publishMediaUrls = await Promise.all(mediaUrls.map((url) => resolvePublicMediaUrl(url)));
 
     const input: InstagramPublicationInput = {
       text: publication.text || undefined,
@@ -210,9 +212,9 @@ export async function publishInstagramOrganicPublication(tenantId: string, publi
     };
     input.text = (await buildInstagramCaption(tenantId, input)) ?? undefined;
 
-    const containerId = publication.contentType === "carousel" || mediaUrls.length > 1
-      ? await createCarouselContainer(connection, input, mediaUrls)
-      : await createSingleContainer(connection, input, mediaUrls[0]);
+    const containerId = publication.contentType === "carousel" || publishMediaUrls.length > 1
+      ? await createCarouselContainer(connection, input, publishMediaUrls)
+      : await createSingleContainer(connection, input, publishMediaUrls[0]);
     const externalId = await publishContainer(connection, containerId);
 
     const [updated] = await db.update(socialPublicationsTable).set({
