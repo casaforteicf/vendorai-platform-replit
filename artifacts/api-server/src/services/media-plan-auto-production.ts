@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, inArray, isNotNull, isNull, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNotNull, isNull, lt, sql } from "drizzle-orm";
 import {
   agentConfigsTable,
   businessProfilesTable,
@@ -28,6 +28,11 @@ import {
   DEFAULT_AUTOMATIC_MONTHLY_LIMIT,
   planAllowsAutomaticProduction,
 } from "./media-plan-auto-production-policy.js";
+import {
+  findCampaignForItem,
+  resolveVideoDurationSeconds,
+  selectRoundRobinByTenant,
+} from "@workspace/vendor-brain/media-plan-execution";
 
 const PLAN_LIMITS: Record<string, number> = {
   starter: 20,
@@ -37,6 +42,12 @@ const PLAN_LIMITS: Record<string, number> = {
 const DEFAULT_TIMEZONE = process.env["MARKETING_SCHEDULE_TIMEZONE"] || "America/Sao_Paulo";
 const PRODUCTION_LEAD_HOURS = Math.max(1, Number(process.env["MARKETING_PRODUCTION_LEAD_HOURS"] || 24));
 const MAX_ITEMS_PER_TICK = 8;
+// Teto por tenant no mesmo ciclo: sem isso, o backlog antigo de um tenant
+// consome todas as vagas e os demais nunca produzem.
+const MAX_ITEMS_PER_TENANT_PER_TICK = Math.max(
+  1,
+  Number(process.env["MARKETING_MAX_ITEMS_PER_TENANT_TICK"] || 2),
+);
 const AUTO_PRODUCTION_FOR_ALL_PLANS =
   process.env["MARKETING_AUTO_PRODUCTION_ENABLED"] === "true";
 const AUTO_PRODUCTION_MONTHLY_LIMIT = Math.max(
@@ -127,8 +138,10 @@ function providerSupported(canal: string) {
 }
 
 function campaignForItem(content: PlanContent, pilar: string) {
-  const name = normalize(pilar.split(" � ")[0] || "");
-  return content.campanhas?.find((campaign) => normalize(campaign.nome) === name) ?? null;
+  // Contrato único (vendor-brain): casa pelo nome normalizado e NUNCA cai
+  // para outra campanha. Item sem campanha é pulado e registrado no log,
+  // em vez de ser produzido com o briefing errado.
+  return findCampaignForItem(content.campanhas ?? [], { pilar, id: "" });
 }
 
 function aiVideoProviderReady() {
@@ -159,15 +172,15 @@ function directionText(campaign: Campaign, item: { temaSugerido: string; canal: 
     item.temaSugerido,
     `Campanha: ${campaign.nome}`,
     `Objetivo: ${campaign.objetivo}`,
-    `Produto/servi�o: ${campaign.produtoServico}`,
-    `P�blico: ${campaign.publico}`,
+    `Produto/serviço: ${campaign.produtoServico}`,
+    `Público: ${campaign.publico}`,
     campaign.oferta ? `Oferta/CTA: ${campaign.oferta}` : "",
     campaign.mensagemCentral ? `Mensagem central: ${campaign.mensagemCentral}` : "",
     `Canal: ${item.canal}`,
     `Formato: ${item.tipo.replaceAll("_", " ")}`,
-    channel?.funcao ? `Fun��o desta m�dia: ${channel.funcao}` : "",
-    campaign.regiao ? `Regi�o: ${campaign.regiao}` : "",
-    campaign.regraComunicacaoGeografica ? `Regra geogr�fica: ${campaign.regraComunicacaoGeografica}` : "",
+    channel?.funcao ? `Função desta mídia: ${channel.funcao}` : "",
+    campaign.regiao ? `Região: ${campaign.regiao}` : "",
+    campaign.regraComunicacaoGeografica ? `Regra geográfica: ${campaign.regraComunicacaoGeografica}` : "",
     `Pilar: ${item.pilar}`,
   ].filter(Boolean).join("\n");
 }
@@ -223,8 +236,8 @@ async function generateDraft(input: {
     desiredCta: input.campaign.oferta,
     referencePatterns: [
       `Campanha validada: ${input.campaign.nome}`,
-      `Produto/servi�o validado: ${input.campaign.produtoServico}`,
-      `P�blico validado: ${input.campaign.publico}`,
+      `Produto/serviço validado: ${input.campaign.produtoServico}`,
+      `Público validado: ${input.campaign.publico}`,
       `Mensagem central validada: ${input.campaign.mensagemCentral}`,
     ].join("\n"),
   };
@@ -334,7 +347,7 @@ async function startAutomatedVideo(input: {
   const scenes = Array.isArray(variation.scenes) ? variation.scenes : [];
   const script = scenes.map((scene, index) => {
     const row = scene && typeof scene === "object" && !Array.isArray(scene) ? scene as Record<string, unknown> : {};
-    return `Cena ${index + 1}: ${String(row.visual ?? "")} | Fala: ${String(row.fala ?? "")} | Dura��o: ${String(row.duracao ?? "")}`;
+    return `Cena ${index + 1}: ${String(row.visual ?? "")} | Fala: ${String(row.fala ?? "")} | Duração: ${String(row.duracao ?? "")}`;
   }).join("\n");
   const prompt = [
     input.theme,
@@ -349,7 +362,7 @@ async function startAutomatedVideo(input: {
   const job = await createVendorAiMediaGenerationJob({
     tenantId: input.tenantId,
     userId: null,
-    title: `${input.campaign.nome} � ${input.theme}`.slice(0, 120),
+    title: `${input.campaign.nome} · ${input.theme}`.slice(0, 120),
     operation: "video_generate",
     context: {
       prompt: prompt.slice(0, 4000),
@@ -357,7 +370,7 @@ async function startAutomatedVideo(input: {
         ? "cinematic, premium, photorealistic, polished commercial production"
         : "dynamic social media reel, energetic camera language, punchy modern composition",
       aspectRatio: longVideo ? "landscape" : "portrait",
-      duration: longVideo ? 30 : 16,
+      duration: resolveVideoDurationSeconds(input.tipo),
       generationMode: "ai_only",
       mediaInputs: mediaAssetIds.map((assetId) => ({ assetId, type: "image", role: "auto" })),
       effects: {
@@ -406,7 +419,7 @@ export async function produceUpcomingMediaPlanOrganicContent(now = new Date()) {
   if (Date.now() < aiBillingCircuitOpenUntil) {
     logger.warn(
       { openUntil: new Date(aiBillingCircuitOpenUntil).toISOString() },
-      "Produ��o autom�tica do Plano de M�dia pausada pelo circuit breaker de cobran�a",
+      "Produção automática do Plano de Mídia pausada pelo circuit breaker de cobrança",
     );
     return 0;
   }
@@ -435,17 +448,25 @@ export async function produceUpcomingMediaPlanOrganicContent(now = new Date()) {
     .orderBy(asc(contentCalendarItemsTable.dataAgendada))
     .limit(MAX_ITEMS_PER_TICK * 4);
 
-  let produced = 0;
-  let attempted = 0;
-  for (const row of rows) {
-    if (attempted >= MAX_ITEMS_PER_TICK) break;
-    if (!row.mediaPlanId || !AUTO_TYPES.has(row.tipo) || !providerSupported(row.canal)) continue;
+  // Filtro barato -> lote justo entre tenants -> claim atômico por item.
+  const candidates = rows.flatMap((row) => {
+    if (!row.mediaPlanId || !AUTO_TYPES.has(row.tipo) || !providerSupported(row.canal)) return [];
     const content = row.planContent as PlanContent;
-    if (!planAllowsAutomaticProduction(content.publicacaoOrganica, AUTO_PRODUCTION_FOR_ALL_PLANS)) continue;
-    if (!shouldProduce(row.dataAgendada, content.publicacaoOrganica, now)) continue;
+    if (!planAllowsAutomaticProduction(content.publicacaoOrganica, AUTO_PRODUCTION_FOR_ALL_PLANS)) return [];
+    if (!shouldProduce(row.dataAgendada, content.publicacaoOrganica, now)) return [];
     const campaign = campaignForItem(content, row.pilar);
-    if (!campaign) continue;
+    if (!campaign) return [];
+    return [{ row, content, campaign }];
+  });
+  const batch = selectRoundRobinByTenant(
+    candidates,
+    (candidate) => candidate.row.tenantId,
+    MAX_ITEMS_PER_TENANT_PER_TICK,
+    MAX_ITEMS_PER_TICK,
+  );
 
+  let produced = 0;
+  for (const { row, content, campaign } of batch) {
     const claim = `auto-producing:${crypto.randomUUID()}`;
     const [claimed] = await db.update(contentCalendarItemsTable).set({
       contentGenerationId: claim,
@@ -458,7 +479,6 @@ export async function produceUpcomingMediaPlanOrganicContent(now = new Date()) {
       isNull(contentCalendarItemsTable.variationIdx),
     )).returning({ id: contentCalendarItemsTable.id });
     if (!claimed) continue;
-    attempted += 1;
 
     try {
       const theme = directionText(campaign, row);
@@ -470,7 +490,9 @@ export async function produceUpcomingMediaPlanOrganicContent(now = new Date()) {
         calendarItemId: row.id,
       });
       await db.update(contentCalendarItemsTable).set({
-        status: "gerado",
+        // Vídeo só vira "gerado" quando o arquivo final existir. Até lá o item
+        // fica em "processando" e a publicação não o considera.
+        status: VIDEO_AUTO_TYPES.has(row.tipo) ? "processando" : "gerado",
         contentGenerationId: generation.id,
         variationIdx: 0,
         updatedAt: new Date(),
@@ -491,10 +513,12 @@ export async function produceUpcomingMediaPlanOrganicContent(now = new Date()) {
         });
       }
       produced += 1;
-      logger.info({ tenantId: row.tenantId, calendarItemId: row.id, type: row.tipo, generationId: generation.id }, "Plano de M�dia produziu conte�do org�nico no backend");
+      logger.info({ tenantId: row.tenantId, calendarItemId: row.id, type: row.tipo, generationId: generation.id }, "Plano de Mídia produziu conteúdo orgânico no backend");
     } catch (error) {
       const status = gatewayStatus(error);
       await db.update(contentCalendarItemsTable).set({
+        // Falhou: devolve o item ao estado autorizado para permitir retry.
+        status: "aprovado",
         contentGenerationId: null,
         // -1 is a persistent automatic-failure marker. Manual generation can
         // still retry this item and will restore variationIdx=0 on success.
@@ -504,7 +528,7 @@ export async function produceUpcomingMediaPlanOrganicContent(now = new Date()) {
         eq(contentCalendarItemsTable.id, row.id),
         eq(contentCalendarItemsTable.contentGenerationId, claim),
       )).catch(() => undefined);
-      logger.warn({ error, status, tenantId: row.tenantId, calendarItemId: row.id, type: row.tipo }, "Produ��o autom�tica do Plano de M�dia falhou");
+      logger.warn({ error, status, tenantId: row.tenantId, calendarItemId: row.id, type: row.tipo }, "Produção automática do Plano de Mídia falhou");
 
       if (status === 402 || status === 429) {
         aiBillingCircuitOpenUntil = Date.now() + BILLING_CIRCUIT_MS;
@@ -515,7 +539,7 @@ export async function produceUpcomingMediaPlanOrganicContent(now = new Date()) {
             calendarItemId: row.id,
             openUntil: new Date(aiBillingCircuitOpenUntil).toISOString(),
           },
-          "Circuit breaker abriu: produ��o autom�tica de IA pausada ap�s erro de cobran�a/quota",
+          "Circuit breaker abriu: produção automática de IA pausada após erro de cobrança/quota",
         );
         break;
       }
@@ -529,6 +553,7 @@ export async function reconcileAutomatedReelVideos() {
     id: contentCalendarItemsTable.id,
     tenantId: contentCalendarItemsTable.tenantId,
     tipo: contentCalendarItemsTable.tipo,
+    status: contentCalendarItemsTable.status,
     generationId: contentCalendarItemsTable.contentGenerationId,
     result: contentGenerationsTable.result,
   }).from(contentCalendarItemsTable)
@@ -540,7 +565,7 @@ export async function reconcileAutomatedReelVideos() {
       // "aprovado" inclui o caso em que o usuário aprovou antes de existir o
       // arquivo final (comportamento antigo da tela de revisão). Esses itens
       // também precisam ser curados para não travar a publicação.
-      inArray(contentCalendarItemsTable.status, ["gerado", "aprovado"]),
+      inArray(contentCalendarItemsTable.status, ["gerado", "aprovado", "processando"]),
       inArray(contentCalendarItemsTable.tipo, [...VIDEO_AUTO_TYPES]),
       isNotNull(contentCalendarItemsTable.contentGenerationId),
       isNull(contentCalendarItemsTable.contentIdPublicado),
@@ -554,7 +579,24 @@ export async function reconcileAutomatedReelVideos() {
     const automation = result.automation && typeof result.automation === "object" && !Array.isArray(result.automation)
       ? result.automation as Record<string, unknown>
       : {};
-    const jobId = typeof automation.jobId === "string" ? automation.jobId : "";
+    let jobId = typeof automation.jobId === "string" ? automation.jobId : "";
+    if (!jobId && automation.status !== "video_ready") {
+      // Vídeo iniciado pela tela grava o job no projeto (media_projects), não
+      // na geração. Sem este fallback o item ficaria "processando" para sempre.
+      const [planProject] = await db
+        .select({ context: mediaProjectsTable.context })
+        .from(mediaProjectsTable)
+        .where(and(
+          eq(mediaProjectsTable.tenantId, row.tenantId),
+          sql`${mediaProjectsTable.context}->>'calendarItemId' = ${row.id}`,
+        ))
+        .limit(1);
+      const projectContext = planProject?.context;
+      if (projectContext && typeof projectContext === "object" && !Array.isArray(projectContext)) {
+        const candidate = (projectContext as Record<string, unknown>)["executorJobId"];
+        if (typeof candidate === "string" && candidate.trim()) jobId = candidate.trim();
+      }
+    }
     if (!jobId || automation.status === "video_ready") continue;
 
     const [job] = await db.select({ status: mediaJobsTable.status, output: mediaJobsTable.output, error: mediaJobsTable.error })
@@ -606,8 +648,17 @@ export async function reconcileAutomatedReelVideos() {
           .where(eq(mediaProjectsTable.id, planProject.id))
           .catch(() => undefined);
       }
+      if (row.status === "processando") {
+        await db.update(contentCalendarItemsTable)
+          .set({ status: "gerado", updatedAt: new Date() })
+          .where(and(
+            eq(contentCalendarItemsTable.id, row.id),
+            eq(contentCalendarItemsTable.tenantId, row.tenantId),
+            eq(contentCalendarItemsTable.status, "processando"),
+          ));
+      }
       reconciled += 1;
-      logger.info({ tenantId: row.tenantId, calendarItemId: row.id, generationId: row.generationId, jobId, type: row.tipo }, "V�deo autom�tico do Plano de M�dia recebeu o arquivo final");
+      logger.info({ tenantId: row.tenantId, calendarItemId: row.id, generationId: row.generationId, jobId, type: row.tipo }, "Vídeo automático do Plano de Mídia recebeu o arquivo final");
     } else if (job.status === "error") {
       if (!aiVideoProviderReady() && !automation["photoFallbackAt"]) {
         const assetIds = await selectTenantImageAssetIds(row.tenantId, 4);
@@ -657,7 +708,37 @@ export async function reconcileAutomatedReelVideos() {
           },
         } as any,
       }).where(and(eq(contentGenerationsTable.id, row.generationId), eq(contentGenerationsTable.tenantId, row.tenantId)));
+      if (row.status === "processando") {
+        await db.update(contentCalendarItemsTable)
+          .set({ status: "aprovado", updatedAt: new Date() })
+          .where(and(
+            eq(contentCalendarItemsTable.id, row.id),
+            eq(contentCalendarItemsTable.tenantId, row.tenantId),
+            eq(contentCalendarItemsTable.status, "processando"),
+          ));
+      }
     }
   }
   return reconciled;
+}
+
+/**
+ * Libera claims de produção que ficaram presos (aba fechada, processo
+ * reiniciado, job travado). Sem isso, um item com claim antigo nunca mais é
+ * produzido nem aparece como pendente.
+ */
+export async function releaseStaleProductionClaims(now = new Date(), olderThanMs = 30 * 60_000) {
+  const cutoff = new Date(now.getTime() - olderThanMs);
+  const released = await db.update(contentCalendarItemsTable)
+    .set({ contentGenerationId: null, updatedAt: now })
+    .where(and(
+      inArray(contentCalendarItemsTable.status, ["aprovado", "gerado", "processando"]),
+      sql`(${contentCalendarItemsTable.contentGenerationId} LIKE 'producing:%' OR ${contentCalendarItemsTable.contentGenerationId} LIKE 'auto-producing:%')`,
+      lt(contentCalendarItemsTable.updatedAt, cutoff),
+    ))
+    .returning({ id: contentCalendarItemsTable.id });
+  if (released.length > 0) {
+    logger.warn({ count: released.length }, "Claims de produção do Plano de Mídia liberados por inatividade");
+  }
+  return released.length;
 }

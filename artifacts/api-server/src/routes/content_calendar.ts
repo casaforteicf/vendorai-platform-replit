@@ -337,6 +337,79 @@ router.get("/tenants/:tenantId/content-calendar", async (req, res) => {
   res.json(items);
 });
 
+/**
+ * Claim atômico de produção para a tela (fila/bridge).
+ *
+ * O worker já reivindica itens com `auto-producing:<uuid>`; a tela não tinha
+ * nada equivalente e duas abas podiam gastar IA duas vezes no mesmo item.
+ * A regra aqui é conservadora: só reivindica item aprovado e ainda sem
+ * geração. Item que já tem geração retorna `claimed:false` sem erro, porque
+ * regeneração é uma decisão editorial do usuário e não deve ser bloqueada.
+ */
+router.post("/tenants/:tenantId/content-calendar/:id/iniciar-producao", async (req, res) => {
+  const tenantId = String(req.params.tenantId);
+  const itemId = String(req.params.id);
+  if (!canAccess(req, tenantId)) {
+    res.status(403).json({ error: "Access denied to this tenant" });
+    return;
+  }
+  if (!(await canReleaseMarketingBatch(req, tenantId))) {
+    res.status(403).json({ error: "Permissão de Marketing necessária para produzir este lote.", code: "MARKETING_BATCH_PERMISSION_REQUIRED" });
+    return;
+  }
+
+  const [item] = await db
+    .select({
+      id: contentCalendarItemsTable.id,
+      tenantId: contentCalendarItemsTable.tenantId,
+      status: contentCalendarItemsTable.status,
+      tipo: contentCalendarItemsTable.tipo,
+      contentGenerationId: contentCalendarItemsTable.contentGenerationId,
+    })
+    .from(contentCalendarItemsTable)
+    .where(and(eq(contentCalendarItemsTable.id, itemId), eq(contentCalendarItemsTable.tenantId, tenantId)))
+    .limit(1);
+
+  if (!item) {
+    res.status(404).json({ error: "Ação do calendário não encontrada." });
+    return;
+  }
+  if (item.status === "processando") {
+    res.status(409).json({ error: "Esta ação já está em produção.", code: "PRODUCTION_ALREADY_CLAIMED" });
+    return;
+  }
+  if (item.status !== "aprovado" && item.status !== "gerado") {
+    res.status(409).json({ error: "A ação precisa estar aprovada para entrar em produção.", code: "ITEM_NOT_AUTHORIZED" });
+    return;
+  }
+  if (item.contentGenerationId && !item.contentGenerationId.startsWith("producing:")) {
+    res.json({ claimed: false, claimId: null, reason: "already-produced" });
+    return;
+  }
+  if (item.contentGenerationId?.startsWith("producing:")) {
+    res.status(409).json({ error: "Esta ação já está em produção.", code: "PRODUCTION_ALREADY_CLAIMED" });
+    return;
+  }
+
+  const claim = `producing:${crypto.randomUUID()}`;
+  const [claimed] = await db
+    .update(contentCalendarItemsTable)
+    .set({ contentGenerationId: claim, updatedAt: new Date() })
+    .where(and(
+      eq(contentCalendarItemsTable.id, item.id),
+      eq(contentCalendarItemsTable.tenantId, tenantId),
+      isNull(contentCalendarItemsTable.contentGenerationId),
+      inArray(contentCalendarItemsTable.status, ["aprovado", "gerado"]),
+    ))
+    .returning({ id: contentCalendarItemsTable.id });
+
+  if (!claimed) {
+    res.status(409).json({ error: "Outra produção começou para esta ação.", code: "PRODUCTION_ALREADY_CLAIMED" });
+    return;
+  }
+  res.status(201).json({ claimed: true, claimId: claim });
+});
+
 const patchBodySchema = z.object({
   status: z.enum(CONTENT_CALENDAR_STATUS).optional(),
   contentGenerationId: z.string().nullable().optional(),
@@ -393,17 +466,18 @@ router.patch("/content-calendar/:id", async (req, res) => {
   if (
     parsed.data.status === "aprovado"
     && existing.status !== "aprovado"
-    && existing.contentGenerationId
     && isVideoCalendarType(existing.tipo)
   ) {
-    const [generation] = await db
-      .select({ result: contentGenerationsTable.result })
-      .from(contentGenerationsTable)
-      .where(and(
-        eq(contentGenerationsTable.id, existing.contentGenerationId),
-        eq(contentGenerationsTable.tenantId, existing.tenantId),
-      ))
-      .limit(1);
+    const [generation] = existing.contentGenerationId
+      ? await db
+          .select({ result: contentGenerationsTable.result })
+          .from(contentGenerationsTable)
+          .where(and(
+            eq(contentGenerationsTable.id, existing.contentGenerationId),
+            eq(contentGenerationsTable.tenantId, existing.tenantId),
+          ))
+          .limit(1)
+      : [];
     if (!generation || !generationHasFinalVideo(generation.result as { variations?: unknown; automation?: unknown } | null)) {
       res.status(422).json({
         error: "Este vídeo ainda não tem arquivo final. Gere ou monte o vídeo antes de aprovar — a publicação falharia sem a mídia.",

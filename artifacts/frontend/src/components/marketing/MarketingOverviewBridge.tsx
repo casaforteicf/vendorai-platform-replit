@@ -1,4 +1,5 @@
 import { createPortal } from "react-dom";
+import { deriveOperationalState } from "@workspace/vendor-brain/media-plan-execution";
 import { useEffect, useMemo, useState } from "react";
 import {
   AlertCircle,
@@ -60,14 +61,22 @@ type MediaPlan = {
   };
 };
 
-type CalendarStatus = "planejado" | "aprovado" | "recusado" | "gerado" | "publicado" | "pulado";
+type CalendarStatus = "planejado" | "aprovado" | "processando" | "recusado" | "gerado" | "publicado" | "pulado";
 type CalendarItem = {
   id: string;
   mediaPlanId?: string | null;
   pilar?: string | null;
   canal?: string | null;
   status: CalendarStatus;
+  contentGenerationId?: string | null;
 };
+
+function operationalCode(item: CalendarItem) {
+  return deriveOperationalState({
+    calendarStatus: item.status,
+    hasGeneration: Boolean(item.contentGenerationId),
+  }).code;
+}
 
 function readJson<T>(key: string): T | null {
   try {
@@ -148,9 +157,9 @@ function restoreOriginalChildren(panel: HTMLElement | null) {
 function campaignStatus(planApproved: boolean, items: CalendarItem[]) {
   if (!planApproved) return { label: "Em revisão", tone: "secondary" as const };
   if (items.length === 0) return { label: "Planejada", tone: "outline" as const };
-  const published = items.filter((item) => item.status === "publicado").length;
-  const production = items.filter((item) => item.status === "gerado").length;
-  const ready = items.filter((item) => item.status === "planejado" || item.status === "aprovado").length;
+  const published = items.filter((item) => operationalCode(item) === "published").length;
+  const production = items.filter((item) => ["producing", "in_review"].includes(operationalCode(item))).length;
+  const ready = items.filter((item) => operationalCode(item) === "authorized").length;
   if (published === items.length) return { label: "Concluída", tone: "secondary" as const };
   if (published > 0 || production > 0) return { label: "Em andamento", tone: "default" as const };
   if (ready > 0) return { label: "Pronta para preparar", tone: "outline" as const };
@@ -387,9 +396,9 @@ export function MarketingOverviewBridge() {
 
   const campaignRows = useMemo(() => campaigns.map((campaign) => {
     const campaignItems = items.filter((item) => normalize(campaignNameFromPilar(item.pilar ?? "")) === normalize(campaign.nome));
-    const published = campaignItems.filter((item) => item.status === "publicado").length;
-    const production = campaignItems.filter((item) => item.status === "gerado").length;
-    const ready = campaignItems.filter((item) => item.status === "planejado" || item.status === "aprovado").length;
+    const published = campaignItems.filter((item) => operationalCode(item) === "published").length;
+    const production = campaignItems.filter((item) => ["producing", "in_review"].includes(operationalCode(item))).length;
+    const ready = campaignItems.filter((item) => operationalCode(item) === "authorized").length;
     return {
       campaign,
       items: campaignItems,
@@ -402,8 +411,8 @@ export function MarketingOverviewBridge() {
 
   const summary = useMemo(() => {
     const channels = new Set(campaigns.flatMap((campaign) => campaign.canais.map((channel) => normalize(channel.canal))));
-    const production = items.filter((item) => item.status === "gerado").length;
-    const published = items.filter((item) => item.status === "publicado").length;
+    const production = items.filter((item) => ["producing", "in_review"].includes(operationalCode(item))).length;
+    const published = items.filter((item) => operationalCode(item) === "published").length;
     return { campaigns: campaigns.length, channels: channels.size, production, published };
   }, [campaigns, items]);
 

@@ -45,35 +45,70 @@ export function MarketingResultsSummary({ tenantId }: { tenantId: string }) {
   const [ganhos, setGanhos] = useState<{ count: number; value: number }>({ count: 0, value: 0 });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [unavailable, setUnavailable] = useState({ insights: false, publications: false, dashboard: false });
 
   async function load() {
     if (!tenantId) return;
     setLoading(true);
     setError("");
-    try {
-      const [insightResponse, publicationsResponse, dashboardResponse] = await Promise.all([
-        fetch(`/api/tenants/${tenantId}/content-performance/insights`, { headers: authHeaders(), cache: "no-store" }),
-        fetch(`/api/tenants/${tenantId}/social-publications`, { headers: authHeaders(), cache: "no-store" }),
-        fetch(`/api/tenants/${tenantId}/dashboard`, { headers: authHeaders(), cache: "no-store" }),
-      ]);
-      if (!insightResponse.ok) throw new Error("Não foi possível carregar o desempenho agora.");
-      setInsight(await insightResponse.json() as PerformanceInsight);
-      if (publicationsResponse.ok) {
-        const body = await publicationsResponse.json().catch(() => ({})) as { publications?: SocialPublication[] };
+    // Limpa antes de buscar: trocar de tenant nunca mostra número do anterior.
+    setInsight(null);
+    setPublications([]);
+    setGanhos({ count: 0, value: 0 });
+    setUnavailable({ insights: false, publications: false, dashboard: false });
+
+    // allSettled: uma fonte fora do ar não zera as outras.
+    const [insightsResult, publicationsResult, dashboardResult] = await Promise.allSettled([
+      fetch(`/api/tenants/${tenantId}/content-performance/insights`, { headers: authHeaders(), cache: "no-store" }),
+      fetch(`/api/tenants/${tenantId}/social-publications`, { headers: authHeaders(), cache: "no-store" }),
+      fetch(`/api/tenants/${tenantId}/dashboard`, { headers: authHeaders(), cache: "no-store" }),
+    ]);
+
+    const failed: string[] = [];
+    const nextUnavailable = { insights: false, publications: false, dashboard: false };
+
+    if (insightsResult.status === "fulfilled" && insightsResult.value.ok) {
+      try { setInsight(await insightsResult.value.json() as PerformanceInsight); }
+      catch { nextUnavailable.insights = true; failed.push("desempenho dos conteúdos"); }
+    } else {
+      nextUnavailable.insights = true;
+      failed.push("desempenho dos conteúdos");
+    }
+
+    if (publicationsResult.status === "fulfilled" && publicationsResult.value.ok) {
+      try {
+        const body = await publicationsResult.value.json() as { publications?: SocialPublication[] };
         setPublications(Array.isArray(body.publications) ? body.publications : []);
+      } catch {
+        nextUnavailable.publications = true;
+        failed.push("publicações");
       }
-      if (dashboardResponse.ok) {
-        const body = await dashboardResponse.json().catch(() => ({})) as DashboardSummary;
+    } else {
+      nextUnavailable.publications = true;
+      failed.push("publicações");
+    }
+
+    if (dashboardResult.status === "fulfilled" && dashboardResult.value.ok) {
+      try {
+        const body = await dashboardResult.value.json() as DashboardSummary;
         setGanhos({
           count: Number(body.ganhosMes?.count ?? 0),
           value: Number(body.ganhosMes?.somaValor ?? 0),
         });
+      } catch {
+        nextUnavailable.dashboard = true;
+        failed.push("negócios fechados");
       }
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Não foi possível carregar o desempenho agora.");
-    } finally {
-      setLoading(false);
+    } else {
+      nextUnavailable.dashboard = true;
+      failed.push("negócios fechados");
     }
+
+    setUnavailable(nextUnavailable);
+    setError(failed.length > 0
+      ? `Não foi possível carregar: ${failed.join(", ")}. Os demais indicadores continuam válidos.`
+      : "");
+    setLoading(false);
   }
 
   useEffect(() => {
@@ -118,15 +153,15 @@ export function MarketingResultsSummary({ tenantId }: { tenantId: string }) {
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
           <div className="rounded-lg border bg-background px-3 py-2">
             <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Publicados</p>
-            <p className="mt-0.5 text-lg font-semibold">{published.length}</p>
+            <p className="mt-0.5 text-lg font-semibold">{unavailable.publications ? "—" : published.length}</p>
           </div>
           <div className="rounded-lg border bg-background px-3 py-2">
             <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Na fila</p>
-            <p className="mt-0.5 text-lg font-semibold">{inFlight.length}</p>
+            <p className="mt-0.5 text-lg font-semibold">{unavailable.publications ? "—" : inFlight.length}</p>
           </div>
           <div className="rounded-lg border bg-background px-3 py-2">
             <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Posts analisados</p>
-            <p className="mt-0.5 text-lg font-semibold">{posts}</p>
+            <p className="mt-0.5 text-lg font-semibold">{unavailable.insights ? "—" : posts}</p>
           </div>
           <div className="rounded-lg border bg-background px-3 py-2">
             <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Última publicação</p>
@@ -135,7 +170,9 @@ export function MarketingResultsSummary({ tenantId }: { tenantId: string }) {
           <div className="rounded-lg border bg-background px-3 py-2">
             <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Fechados no mês (CRM)</p>
             <p className="mt-0.5 text-sm font-semibold">
-              {ganhos.count} · {ganhos.value.toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 })}
+              {unavailable.dashboard
+                ? "—"
+                : `${ganhos.count} · ${ganhos.value.toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 })}`}
             </p>
           </div>
         </div>

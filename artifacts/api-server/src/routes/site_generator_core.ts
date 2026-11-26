@@ -1134,11 +1134,24 @@ async function runGenerateSite(
 
 router.post("/tenants/:tenantId/site-generator/generate", async (req, res) => {
   const { tenantId } = req.params;
-  const config: SiteGeneratorConfig = req.body;
+  const config: SiteGeneratorConfig = { ...(req.body as SiteGeneratorConfig) };
 
   if (!config?.type) {
     res.status(400).json({ error: "type é obrigatório" });
     return;
+  }
+
+  // Cor-âncora oficial: se o chamador não enviar uma cor válida, usa a cor de
+  // marca do tenant (tenants.cor_primaria). Evita que todo site/LP nasça com
+  // uma cor fixa de produto diferente da identidade do cliente.
+  if (!config.color || !/^#[0-9a-fA-F]{6}$/.test(String(config.color).trim())) {
+    const [tenantBrand] = await db
+      .select({ corPrimaria: tenantsTable.corPrimaria })
+      .from(tenantsTable)
+      .where(eq(tenantsTable.id, tenantId))
+      .limit(1);
+    const fallback = String(tenantBrand?.corPrimaria ?? "").trim();
+    config.color = /^#[0-9a-fA-F]{6}$/.test(fallback) ? fallback : "#A78BFA";
   }
 
   const jobId = crypto.randomUUID();

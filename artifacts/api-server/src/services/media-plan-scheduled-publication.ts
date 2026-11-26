@@ -11,10 +11,12 @@ import { createFacebookOrganicPublication } from "./facebook-organic-publication
 import { createInstagramOrganicPublication } from "./instagram-organic-publication.js";
 import { createSocialPublication } from "./social-platforms.js";
 import { generationHasFinalVideo, isVideoCalendarType } from "./content-final-media.js";
+import { selectRoundRobinByTenant } from "@workspace/vendor-brain/media-plan-execution";
 
 const DEFAULT_TIMEZONE = process.env["MARKETING_SCHEDULE_TIMEZONE"] || "America/Sao_Paulo";
 const DEFAULT_PUBLISH_TIME = process.env["MARKETING_DEFAULT_PUBLISH_TIME"] || "10:00";
 const MAX_DUE_ITEMS_PER_TICK = 50;
+const MAX_DUE_ITEMS_PER_TENANT_TICK = 10;
 
 const AUTO_TYPES = ["feed", "stories", "reels", "carrossel", "linkedin_post", "tiktok", "youtube_short", "youtube_video"] as const;
 const AUTO_TYPE_SET = new Set<string>(AUTO_TYPES);
@@ -235,10 +237,19 @@ export async function enqueueDueMediaPlanPublications(now = new Date()) {
       sql`${mediaPlansTable.conteudo}->'publicacaoOrganica'->>'modo' = 'automatico'`,
     ))
     .orderBy(asc(contentCalendarItemsTable.dataAgendada), asc(contentCalendarItemsTable.horarioAgendado))
-    .limit(MAX_DUE_ITEMS_PER_TICK);
+    // Busca uma janela maior e distribui o lote entre tenants: um tenant com
+    // muitos itens vencidos não pode monopolizar a fila dos demais.
+    .limit(MAX_DUE_ITEMS_PER_TICK * 4);
+
+  const dueRows = selectRoundRobinByTenant(
+    rows,
+    (row) => row.tenantId,
+    MAX_DUE_ITEMS_PER_TENANT_TICK,
+    MAX_DUE_ITEMS_PER_TICK,
+  );
 
   let queued = 0;
-  for (const row of rows) {
+  for (const row of dueRows) {
     if (!row.contentGenerationId || !row.mediaPlanId) continue;
     const planContent = row.planContent;
     const settings = planContent.publicacaoOrganica ?? { modo: "manual" as const };

@@ -23,17 +23,34 @@ export async function resolveTenantCreativePlan(
   const [businessRows, tenantRows] = await Promise.all([
     db.select({
       logoUrl: businessProfilesTable.logoUrl,
+      nomeFantasia: businessProfilesTable.nomeFantasia,
+      discoveryData: businessProfilesTable.discoveryData,
     }).from(businessProfilesTable).where(eq(businessProfilesTable.tenantId, tenantId)).limit(1),
     db.select({
       logoUrl: tenantsTable.logoUrl,
+      corPrimaria: tenantsTable.corPrimaria,
     }).from(tenantsTable).where(eq(tenantsTable.id, tenantId)).limit(1),
   ]);
 
   const business = businessRows[0];
   const tenant = tenantRows[0];
+  const discovery = business?.discoveryData ?? {};
+  const discoveryTone = typeof discovery["tomVoz"] === "string"
+    ? discovery["tomVoz"]
+    : typeof discovery["tone"] === "string"
+      ? discovery["tone"]
+      : null;
+  const discoveryStyle = typeof discovery["estiloVisual"] === "string"
+    ? discovery["estiloVisual"]
+    : typeof discovery["visualStyle"] === "string"
+      ? discovery["visualStyle"]
+      : null;
   const baseBrand = resolveBrandProfileFromBusinessSource({
     tenantId,
     logoUrl: business?.logoUrl || tenant?.logoUrl || null,
+    brandColor: tenant?.corPrimaria || null,
+    tone: discoveryTone,
+    visualStyle: discoveryStyle,
   });
   const brand = await enrichBrandProfileWithContentAutopilot(baseBrand);
 

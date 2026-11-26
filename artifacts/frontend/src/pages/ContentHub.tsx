@@ -177,6 +177,7 @@ export default function ContentHub() {
   const [plannerPlan, setPlannerPlan] = useState<PlannerPlan | null>(null);
   const [plannerLoading, setPlannerLoading] = useState(false);
   const [plannerError, setPlannerError] = useState<string | null>(null);
+  const [journeyStats, setJourneyStats] = useState<{ total: number; produced: number; published: number; learned: boolean } | null>(null);
 
   const plannerCampaigns = plannerPlan?.conteudo.campanhas ?? [];
   const selectedPlannerCampaign = useMemo(() => {
@@ -276,6 +277,38 @@ export default function ContentHub() {
     return () => { cancelled = true; };
   }, [activeTab, mediaPlanSource, requestedMediaPlanId, tenantId]);
 
+  // Dados reais da execução para a jornada: calendário (lote), publicações e
+  // aprendizado. Cada fonte falha de forma independente; a jornada usa o que
+  // existir em vez de zerar tudo.
+  useEffect(() => {
+    if (!tenantId) { setJourneyStats(null); return; }
+    let cancelled = false;
+    const loadStats = async () => {
+      const [calendarResult, publicationsResult, insightsResult] = await Promise.allSettled([
+        fetch(`/api/tenants/${tenantId}/content-calendar`, { headers: authHeaders(), cache: "no-store" }).then((r) => (r.ok ? r.json() : [])),
+        fetch(`/api/tenants/${tenantId}/social-publications`, { headers: authHeaders(), cache: "no-store" }).then((r) => (r.ok ? r.json() : {})),
+        fetch(`/api/tenants/${tenantId}/content-performance/insights`, { headers: authHeaders(), cache: "no-store" }).then((r) => (r.ok ? r.json() : {})),
+      ]);
+      if (cancelled) return;
+      const calendar = calendarResult.status === "fulfilled" && Array.isArray(calendarResult.value) ? calendarResult.value as Array<{ status?: string }> : [];
+      const publications = publicationsResult.status === "fulfilled" && Array.isArray((publicationsResult.value as { publications?: unknown[] })?.publications)
+        ? ((publicationsResult.value as { publications: Array<{ status?: string }> }).publications)
+        : [];
+      const insights = insightsResult.status === "fulfilled" ? insightsResult.value as { baseadoEmPosts?: number } : null;
+      const produced = calendar.filter((item) => ["gerado", "processando", "aprovado", "publicado"].includes(String(item.status))).length;
+      const published = calendar.filter((item) => item.status === "publicado").length
+        + publications.filter((item) => item.status === "published").length;
+      setJourneyStats({
+        total: calendar.length,
+        produced,
+        published,
+        learned: Number(insights?.baseadoEmPosts ?? 0) > 0,
+      });
+    };
+    void loadStats();
+    return () => { cancelled = true; };
+  }, [tenantId]);
+
   useEffect(() => {
     if (!mediaPlanSource || !tenantId || !plannerPlan || !selectedPlannerCampaign) return;
 
@@ -333,13 +366,18 @@ export default function ContentHub() {
     return () => observer.disconnect();
   }, []);
 
-  // The overview derives its guidance from the tenant's current marketing plan.
+  // A jornada avança com dados reais: plano → aprovação → produção → publicação
+  // → aprendizado. Sem plano é etapa 1; plano em revisão é etapa 2.
   const overviewStatus = plannerPlan?.conteudo.statusPlanejamento;
   const currentJourneyStep = !plannerPlan
     ? 1
     : overviewStatus === "gerado" || overviewStatus === "em_revisao"
       ? 2
-      : 3;
+      : !journeyStats || journeyStats.produced === 0
+        ? 3
+        : journeyStats.published > 0
+          ? (journeyStats.learned ? 5 : 4)
+          : 4;
 
   const journeySteps = [
     { n: 1, title: "Planejar", text: "Definir objetivo, público, oferta, canais, período e orçamento.", tab: "planejamento" as const },
@@ -349,11 +387,18 @@ export default function ContentHub() {
     { n: 5, title: "Melhorar", text: "Analisar resultados, atribuição e aprendizados para o próximo ciclo.", tab: "resultados" as const },
   ];
 
+  const journeyTotal = journeyStats?.total ?? 0;
+  const journeyProduced = journeyStats?.produced ?? 0;
+  const journeyPublished = journeyStats?.published ?? 0;
   const overviewAction = currentJourneyStep === 1
     ? { title: "Crie o planejamento de marketing", description: "Defina o objetivo, o público, a oferta, os canais, o período e o orçamento para a IA preparar a estratégia.", label: "Começar planejamento", tab: "planejamento" as const }
     : currentJourneyStep === 2
       ? { title: "Revise e aprove o planejamento", description: "A execução só será liberada depois da sua aprovação. Confira a estratégia e solicite ajustes se necessário.", label: "Revisar e aprovar", tab: "planejamento" as const }
-      : { title: "Prepare as campanhas e os conteúdos", description: `O planejamento está aprovado. Organize a execução das ${plannerCampaigns.length || "suas"} campanhas e produza as peças necessárias.`, label: "Continuar execução", tab: "campanhas" as const };
+      : currentJourneyStep === 3
+        ? { title: "Prepare as campanhas e os conteúdos", description: `O planejamento está aprovado. Organize a execução das ${plannerCampaigns.length || "suas"} campanhas e produza as ${journeyTotal || "peças"} ações do lote atual.`, label: "Continuar execução", tab: "campanhas" as const }
+        : currentJourneyStep === 4
+          ? { title: "Revise, aprove e publique", description: `${journeyProduced} de ${journeyTotal || "—"} ações do lote já foram produzidas e ${journeyPublished} publicada(s). Revise as peças pendentes e publique as aprovadas.`, label: "Revisar e publicar", tab: "conteudos" as const }
+          : { title: "Use os resultados no próximo ciclo", description: `${journeyPublished} publicação(ões) já alimentam o aprendizado. Compare campanhas e ajuste o próximo planejamento.`, label: "Ver resultados", tab: "resultados" as const };
 
   return (
     <div ref={rootRef} className="min-w-0">
@@ -424,7 +469,7 @@ export default function ContentHub() {
                     </div>
                   </CardHeader>
                   <CardContent>
-                    <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-7">
+                    <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-5">
                       {journeySteps.map((step) => {
                         const completed = step.n < currentJourneyStep;
                         const current = step.n === currentJourneyStep;
@@ -471,7 +516,9 @@ export default function ContentHub() {
                   <Card>
                     <CardContent className="p-4">
                       <p className="text-xs text-muted-foreground">Conteúdos e aprovações</p>
-                      <p className="mt-1 font-semibold">{plannerApproved ? "Prontos para preparar" : "Aguardando planejamento"}</p>
+                      <p className="mt-1 font-semibold">
+                        {!plannerApproved ? "Aguardando planejamento" : journeyTotal > 0 ? `${journeyProduced}/${journeyTotal} produzidas` : "Prontos para preparar"}
+                      </p>
                       <Button variant="link" className="mt-1 h-auto p-0 text-xs" onClick={() => handleTabChange("conteudos")}>Ver fila de produção</Button>
                     </CardContent>
                   </Card>

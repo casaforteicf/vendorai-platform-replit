@@ -1,7 +1,7 @@
 import { and, eq, isNull, lt, or } from "drizzle-orm";
 import { contentPublishedPostsTable, db, socialPublicationsTable } from "@workspace/db";
 import { logger } from "../lib/logger.js";
-import { produceUpcomingMediaPlanOrganicContent, reconcileAutomatedReelVideos } from "./media-plan-auto-production.js";
+import { produceUpcomingMediaPlanOrganicContent, reconcileAutomatedReelVideos, releaseStaleProductionClaims } from "./media-plan-auto-production.js";
 import { enqueueDueMediaPlanPublications } from "./media-plan-scheduled-publication.js";
 import { publishAnySocialPublication } from "./social-publication-dispatcher.js";
 import {
@@ -164,6 +164,12 @@ export async function processPendingSocialPublications() {
   try {
     // A produção automática é opt-in por plano (publicação automática), com
     // override global por MARKETING_AUTO_PRODUCTION_ENABLED e teto mensal próprio.
+    // Claims presos (aba fechada, processo reiniciado) precisam ser liberados
+    // antes de decidir o que produzir neste ciclo.
+    await releaseStaleProductionClaims().catch((error) => {
+      logger.warn({ error }, "Worker social não conseguiu liberar claims de produção inativos");
+    });
+
     await produceUpcomingMediaPlanOrganicContent().catch((error) => {
       logger.warn({ error }, "Worker social não conseguiu produzir conteúdos próximos do Plano de Mídia");
     });
