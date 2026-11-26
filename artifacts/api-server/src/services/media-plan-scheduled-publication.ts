@@ -10,6 +10,7 @@ import { logger } from "../lib/logger.js";
 import { createFacebookOrganicPublication } from "./facebook-organic-publication.js";
 import { createInstagramOrganicPublication } from "./instagram-organic-publication.js";
 import { createSocialPublication } from "./social-platforms.js";
+import { generationHasFinalVideo, isVideoCalendarType } from "./content-final-media.js";
 
 const DEFAULT_TIMEZONE = process.env["MARKETING_SCHEDULE_TIMEZONE"] || "America/Sao_Paulo";
 const DEFAULT_PUBLISH_TIME = process.env["MARKETING_DEFAULT_PUBLISH_TIME"] || "10:00";
@@ -244,6 +245,11 @@ export async function enqueueDueMediaPlanPublications(now = new Date()) {
     const schedule = isDue(row.dataAgendada, row.horarioAgendado, settings, now);
     if (!schedule.due) continue;
     if (!providerFor(row)) continue;
+    // Reels sem arquivo final aguardam a montagem do vídeo; não entram na fila
+    // (evita tentativa/erro a cada 60s até a mídia existir).
+    if (isVideoCalendarType(row.tipo) && !generationHasFinalVideo(row.generationResult as { variations?: unknown; automation?: unknown } | null)) {
+      continue;
+    }
 
     const existing = await existingPublicationForCalendarItem(row.tenantId, row.id);
     if (existing) continue;

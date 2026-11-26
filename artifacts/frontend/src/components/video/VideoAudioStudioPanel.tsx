@@ -623,7 +623,16 @@ export default function VideoAudioStudioPanel() {
         {loading ? (
           <div className="flex items-center gap-2 p-5 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" /> Preparando vídeo e Biblioteca de Mídias…</div>
         ) : loadError ? (
-          <div className="p-5 text-sm text-destructive">{loadError}</div>
+          <div className="flex flex-col gap-3 p-5 text-sm">
+            <p className="font-medium text-destructive">{loadError}</p>
+            <p className="max-w-2xl text-muted-foreground">
+              O vídeo pedido não está disponível na Biblioteca deste tenant (pode ter sido gerado em outro tenant, removido ou ainda não foi finalizado). Escolha outro vídeo para finalizar ou volte para a revisão do Plano de Mídia.
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <Button size="sm" onClick={() => navigate("/midias")}>Abrir Biblioteca</Button>
+              <Button size="sm" variant="outline" onClick={() => navigate("/content-studio/video")}>Escolher outro vídeo</Button>
+            </div>
+          </div>
         ) : sourceAsset && sourcePreview ? (
           <div className="grid gap-5 p-5 xl:grid-cols-[330px_minmax(0,1fr)]">
             <div className="space-y-3">
