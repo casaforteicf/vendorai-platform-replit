@@ -1051,11 +1051,20 @@ router.post("/tenants/:tenantId/restaurante/importacoes/confirmar", async (req, 
             let fichaId: string;
             if (existente) {
               fichaId = existente.id;
-              await tx.update(abFichasTecnicasTable).set({ rendimentoPorcoes: String(receita.rendimentoPorcoes), updatedAt: new Date() }).where(eq(abFichasTecnicasTable.id, existente.id));
+              await tx.update(abFichasTecnicasTable).set({
+                rendimentoPorcoes: String(receita.rendimentoPorcoes),
+                modoPreparo: receita.modoPreparo?.trim() || null,
+                updatedAt: new Date(),
+              }).where(eq(abFichasTecnicasTable.id, existente.id));
               await tx.delete(abFichaInsumosTable).where(and(eq(abFichaInsumosTable.tenantId, tenantId), eq(abFichaInsumosTable.fichaId, existente.id)));
               resultado.atualizados += 1;
             } else {
-              const [criada] = await tx.insert(abFichasTecnicasTable).values({ tenantId, nome: receita.nome, rendimentoPorcoes: String(receita.rendimentoPorcoes) }).returning({ id: abFichasTecnicasTable.id });
+              const [criada] = await tx.insert(abFichasTecnicasTable).values({
+                tenantId,
+                nome: receita.nome,
+                rendimentoPorcoes: String(receita.rendimentoPorcoes),
+                modoPreparo: receita.modoPreparo?.trim() || null,
+              }).returning({ id: abFichasTecnicasTable.id });
               fichaId = criada!.id;
               resultado.criados += 1;
             }
