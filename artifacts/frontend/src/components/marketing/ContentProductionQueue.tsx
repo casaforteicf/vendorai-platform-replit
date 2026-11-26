@@ -996,6 +996,17 @@ export default function ContentProductionQueue({ tenantId }: { tenantId: string 
     }
   }
 
+  function approvalErrorMessage(error: unknown) {
+    const message = error instanceof Error ? error.message : "Tente novamente.";
+    if (message.toLowerCase().includes("permissão de marketing")) {
+      return `${message} Peça a um administrador do tenant para liberar a permissão de Marketing deste usuário.`;
+    }
+    if (message.toLowerCase().includes("vídeo")) {
+      return `${message} Gere ou monte o vídeo antes de aprovar.`;
+    }
+    return message;
+  }
+
   async function approveContent(item: CalendarItem) {
     if (!item.contentGenerationId) return;
     const campaign = campaignForItem(planRef.current, item);
@@ -1012,7 +1023,7 @@ export default function ContentProductionQueue({ tenantId }: { tenantId: string 
       toast({ title: "Conteúdo aprovado", description: "O status voltou para o Plano de Mídia e ficou registrado no histórico." });
       await load();
     } catch (error) {
-      toast({ title: "Não foi possível aprovar", description: error instanceof Error ? error.message : "Tente novamente.", variant: "destructive" });
+      toast({ title: "Não foi possível aprovar", description: approvalErrorMessage(error), variant: "destructive" });
     } finally {
       setActionBusy(null);
     }
@@ -1041,7 +1052,7 @@ export default function ContentProductionQueue({ tenantId }: { tenantId: string 
     } catch (error) {
       toast({
         title: "Aprovação em lote interrompida",
-        description: error instanceof Error ? error.message : "Tente novamente.",
+        description: approvalErrorMessage(error),
         variant: "destructive",
       });
       await load();
