@@ -4,6 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
+import { buildJourneySteps, deriveJourneyPhase } from "@/lib/marketingJourney";
 import { deriveOperationalState } from "@workspace/vendor-brain/media-plan-execution";
 import {
   AlertTriangle,
@@ -1193,6 +1194,14 @@ export default function ContentProductionQueue({ tenantId }: { tenantId: string 
     }
   }
 
+  function selectAllReviewItems() {
+    setSelectedContentIds(
+      visibleItems
+        .filter((item) => item.status === "gerado" && item.contentGenerationId)
+        .map((item) => item.id),
+    );
+  }
+
   async function runBatch() {
     if (!plan || batchEligible.length === 0) return;
     setBatchRunning(true);
@@ -1248,6 +1257,8 @@ export default function ContentProductionQueue({ tenantId }: { tenantId: string 
 
   const planApproved = plan.conteudo.statusPlanejamento === "aprovado";
   const automaticPublication = plan.conteudo.publicacaoOrganica?.modo === "automatico";
+  const journeyPhase = deriveJourneyPhase(productionSummary);
+  const journeySteps = buildJourneySteps(journeyPhase);
   const currentProject = currentItem ? projectByItem.get(currentItem.id) : undefined;
   const planMismatch = Boolean(requestedMediaPlanId && requestedMediaPlanId !== plan.id);
 
@@ -1339,6 +1350,37 @@ export default function ContentProductionQueue({ tenantId }: { tenantId: string 
               {automaticPublication ? "Revisar antes de publicar" : "Ativar publicação automática"}
             </Button>
           </div>
+
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
+            {journeySteps.map((step) => (
+              <div key={step.label} className="min-w-0">
+                <div className="flex items-center gap-1.5 text-[11px] font-semibold">
+                  <span className={`grid h-5 w-5 place-items-center rounded-full border text-[10px] ${
+                    step.state === "done"
+                      ? "border-emerald-600 bg-emerald-600 text-white"
+                      : step.state === "active"
+                        ? "border-2 border-primary"
+                        : "border-border"
+                  }`}>
+                    {step.state === "done" ? "✓" : ""}
+                  </span>
+                  <span className={step.state === "pending" ? "text-muted-foreground" : "text-foreground"}>{step.label}</span>
+                </div>
+                <p className="mt-1 pl-[26px] text-[10px] text-muted-foreground">{step.help}</p>
+              </div>
+            ))}
+          </div>
+
+          {productionSummary.review > 0 && (
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-[11px] text-amber-900">
+              <span>
+                <strong>{productionSummary.review} conteúdo(s) aguardando aprovação</strong> — selecione os itens e clique em “Aprovar selecionados”.
+              </span>
+              <Button type="button" size="sm" variant="outline" className="h-7 text-xs" onClick={selectAllReviewItems}>
+                Selecionar todos
+              </Button>
+            </div>
+          )}
 
           <div className="grid grid-cols-2 md:grid-cols-5 gap-2" data-vendorai-queue-metrics>
             {[

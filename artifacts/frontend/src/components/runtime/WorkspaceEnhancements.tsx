@@ -14,7 +14,6 @@ import { MediaIntelligenceIndexBridge } from "../media/MediaIntelligenceIndexBri
 import { ContentGeneratorQueueUxBridge } from "../marketing/ContentGeneratorQueueUxBridge";
 import { ContentContextSourcesBridge } from "../marketing/ContentContextSourcesBridge";
 import { ContentApprovalClarityBridge } from "../marketing/ContentApprovalClarityBridge";
-import { ContentProductionClarityBridge } from "../marketing/ContentProductionClarityBridge";
 import { MarketingOverviewBridge } from "../marketing/MarketingOverviewBridge";
 import { CampaignWorkspaceClarityBridge } from "../marketing/CampaignWorkspaceClarityBridge";
 import { PlanningReviewBridge } from "../marketing/PlanningReviewBridge";
@@ -89,7 +88,6 @@ export default function WorkspaceEnhancements() {
           <ContentGeneratorQueueUxBridge />
           <ContentContextSourcesBridge />
           <ContentApprovalClarityBridge />
-          <ContentProductionClarityBridge />
           <MarketingOverviewBridge />
           <CampaignWorkspaceClarityBridge />
           <PlanningReviewBridge />
