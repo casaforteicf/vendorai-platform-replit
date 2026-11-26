@@ -31,6 +31,7 @@ const MEDIA_PLAN_EXECUTION_KEY = "vendorai_media_plan_execution_v1";
 
 const DIRECT_GENERATOR_TYPES = new Set(["feed", "stories", "carrossel", "linkedin_post"]);
 const VIDEO_TYPES = new Set(["reels", "youtube_short", "youtube_video", "tiktok"]);
+const VIDEO_GENERATOR_TYPES = new Set(["reels", "youtube_short", "youtube_video", "tiktok"]);
 const FINAL_STATUSES = new Set(["recusado", "pulado", "publicado"]);
 
 const EDITABLE_CONTENT_TYPES = [
@@ -121,7 +122,7 @@ interface ContentGeneration {
   id: string;
   type: string;
   theme: string;
-  result?: { variations?: unknown[] } | null;
+  result?: { variations?: unknown[]; automation?: Record<string, unknown> | null } | null;
   createdAt: string;
 }
 
@@ -158,7 +159,7 @@ interface AutomaticReview {
   reviewedAt: string;
 }
 
-function authHeaders() {
+function authHeaders(): Record<string, string> {
   const token = localStorage.getItem("vendorai_token");
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
@@ -326,6 +327,21 @@ function statusClass(tone: ReturnType<typeof derivedStatus>["tone"]) {
   if (tone === "warning") return "border-amber-300 bg-amber-50 text-amber-700";
   if (tone === "ready") return "border-primary/30 bg-primary/5 text-primary";
   return "";
+}
+
+function generationHasFinalVideo(generation: ContentGeneration | undefined): boolean {
+  const variations = Array.isArray(generation?.result?.variations) ? generation.result!.variations! : [];
+  for (const raw of variations) {
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) continue;
+    const value = raw as Record<string, unknown>;
+    if (typeof value.videoUrl === "string" && value.videoUrl.trim()) return true;
+    if (Array.isArray(value.videoUrls) && value.videoUrls.some((url) => typeof url === "string" && url.trim())) return true;
+  }
+  const automation = generation?.result?.automation;
+  if (!automation || typeof automation !== "object") return false;
+  const videoUrl = typeof automation.videoUrl === "string" ? automation.videoUrl.trim() : "";
+  const videoAssetId = typeof automation.videoAssetId === "string" ? automation.videoAssetId.trim() : "";
+  return Boolean(videoUrl || videoAssetId);
 }
 
 function previewData(generation: ContentGeneration | undefined, variationIdx = 0) {
@@ -1031,10 +1047,22 @@ export default function ContentProductionQueue({ tenantId }: { tenantId: string 
 
   async function approveSelectedContent() {
     if (approvableSelectedItems.length === 0 || batchApproving) return;
+    const blockedByVideo = approvableSelectedItems.filter(
+      (item) => VIDEO_GENERATOR_TYPES.has(item.tipo) && !generationHasFinalVideo(generationById.get(item.contentGenerationId ?? "")),
+    );
+    const targets = approvableSelectedItems.filter((item) => !blockedByVideo.includes(item));
+    if (targets.length === 0) {
+      toast({
+        title: "Nenhum vídeo pronto para aprovar",
+        description: "Os itens selecionados são vídeos e ainda não têm arquivo final. A montagem acontece automaticamente; aguarde e tente de novo.",
+        variant: "destructive",
+      });
+      return;
+    }
     setBatchApproving(true);
     let approved = 0;
     try {
-      for (const item of approvableSelectedItems) {
+      for (const item of targets) {
         const campaign = campaignForItem(planRef.current, item);
         const updated = await patchCalendar(item.id, { status: "aprovado" });
         approved += 1;
@@ -1048,7 +1076,12 @@ export default function ContentProductionQueue({ tenantId }: { tenantId: string 
       }
       setSelectedContentIds([]);
       await load();
-      toast({ title: "Conteúdos aprovados", description: `${approved} conteúdo(s) aprovados em lote.` });
+      toast({
+        title: "Conteúdos aprovados",
+        description: blockedByVideo.length > 0
+          ? `${approved} conteúdo(s) aprovados. ${blockedByVideo.length} vídeo(s) continuam aguardando a montagem do arquivo final.`
+          : `${approved} conteúdo(s) aprovados em lote.`,
+      });
     } catch (error) {
       toast({
         title: "Aprovação em lote interrompida",
@@ -1391,6 +1424,7 @@ export default function ContentProductionQueue({ tenantId }: { tenantId: string 
           const reviewWarning = project?.context?.["lastReviewStatus"] === "warning";
           const isDirect = DIRECT_GENERATOR_TYPES.has(item.tipo);
           const generation = item.contentGenerationId ? generationById.get(item.contentGenerationId) : undefined;
+          const videoBlocked = VIDEO_GENERATOR_TYPES.has(item.tipo) && !generationHasFinalVideo(generation);
           const preview = previewData(generation, item.variationIdx ?? 0);
           const expanded = expandedItemId === item.id;
           const itemCampaign = campaignForItem(plan, item);
@@ -1436,7 +1470,15 @@ export default function ContentProductionQueue({ tenantId }: { tenantId: string 
                     </Button>
                   )}
                   {item.status === "gerado" && item.contentGenerationId && (
-                    <Button type="button" size="sm" variant="outline" className="h-7 text-xs" disabled={actionBusy === item.id} onClick={() => void approveContent(item)}>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="h-7 text-xs"
+                      disabled={actionBusy === item.id || videoBlocked}
+                      title={videoBlocked ? "Aguarde a montagem do vídeo antes de aprovar" : undefined}
+                      onClick={() => void approveContent(item)}
+                    >
                       {actionBusy === item.id ? <Loader2 className="h-3 w-3 mr-1 animate-spin" /> : <CheckCircle2 className="h-3 w-3 mr-1" />}Aprovar
                     </Button>
                   )}
