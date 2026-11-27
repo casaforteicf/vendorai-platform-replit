@@ -171,6 +171,7 @@ export default function MediaPlanReviewWorkspace() {
   const [supportingText, setSupportingText] = useState("");
   const [cta, setCta] = useState("");
   const [aiCopy, setAiCopy] = useState<{ headline: string; supporting: string; cta: string } | null>(null);
+  const [ctaDestination, setCtaDestination] = useState<{ label: string; destination: string; url: string | null } | null>(null);
   const [brandColor, setBrandColor] = useState("");
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [approving, setApproving] = useState(false);
@@ -201,6 +202,21 @@ export default function MediaPlanReviewWorkspace() {
       setExecution(null);
     }
   }, []);
+
+  // Destino real do CTA (WhatsApp/LP/site) resolvido pelo servidor.
+  useEffect(() => {
+    const tenantId = execution?.tenantId;
+    const itemId = execution?.calendarItem?.id;
+    if (!tenantId || !itemId) return;
+    let active = true;
+    fetch(`/api/tenants/${tenantId}/marketing/pieces/${itemId}`, { headers: authHeaders(), cache: "no-store" })
+      .then((response) => response.ok ? response.json() : null)
+      .then((body: { piece?: { cta?: { label: string; destination: string; url: string | null } | null } } | null) => {
+        if (active) setCtaDestination(body?.piece?.cta ?? null);
+      })
+      .catch(() => undefined);
+    return () => { active = false; };
+  }, [execution?.tenantId, execution?.calendarItem?.id]);
 
   // A IA já escreveu headline/legenda/CTA na geração. A revisão deve mostrar
   // ESSE texto (não repetir o tema do planejamento), com o design plan tendo
@@ -656,7 +672,16 @@ export default function MediaPlanReviewWorkspace() {
             <div className="mt-4 space-y-3">
               <label className="block"><span className="text-xs font-medium text-muted-foreground">Headline principal</span><textarea value={headline} onChange={(event) => setHeadline(event.target.value)} rows={2} className="mt-1.5 w-full rounded-xl border bg-background px-3 py-2.5 text-sm" /><span className="mt-1 block text-right text-[11px] text-muted-foreground">{headline.length}/80</span></label>
               <label className="block"><span className="text-xs font-medium text-muted-foreground">Texto de apoio</span><textarea value={supportingText} onChange={(event) => setSupportingText(event.target.value)} rows={3} className="mt-1.5 w-full rounded-xl border bg-background px-3 py-2.5 text-sm" /><span className="mt-1 block text-right text-[11px] text-muted-foreground">{supportingText.length}/140</span></label>
-              <label className="block"><span className="text-xs font-medium text-muted-foreground">CTA</span><input value={cta} onChange={(event) => setCta(event.target.value)} className="mt-1.5 w-full rounded-xl border bg-background px-3 py-2.5 text-sm" /></label>
+              <label className="block"><span className="text-xs font-medium text-muted-foreground">CTA</span><input value={cta} onChange={(event) => setCta(event.target.value)} className="mt-1.5 w-full rounded-xl border bg-background px-3 py-2.5 text-sm" />
+                {ctaDestination ? (
+                  <span className="mt-1 block text-[11px] text-muted-foreground">
+                    Destino: <strong className="text-foreground">{ctaDestination.label}</strong>
+                    {ctaDestination.url ? ` · ${(() => { try { return new URL(ctaDestination.url).host; } catch { return "URL configurada"; } })()}` : ""}
+                  </span>
+                ) : (
+                  <span className="mt-1 block text-[11px] text-muted-foreground">Destino não configurado: conecte WhatsApp ou publique uma landing page.</span>
+                )}
+              </label>
               <div className="grid grid-cols-2 gap-3"><label><span className="text-xs font-medium text-muted-foreground">Layout</span><div className="mt-1.5 flex h-11 items-center justify-between rounded-xl border bg-background px-3 text-sm">Reels (9:16)<ChevronDown className="h-4 w-4" /></div></label><label><span className="text-xs font-medium text-muted-foreground">Cor da marca</span><div className="mt-1.5 flex h-11 items-center gap-2 rounded-xl border bg-background px-3"><input type="color" value={brandColor || "#A78BFA"} onChange={(event) => setBrandColor(event.target.value)} className="h-7 w-7 rounded border-0 p-0" /><span className="text-sm">{brandColor || "#A78BFA"}</span></div></label></div>
               <Button className="w-full" onClick={saveQuickEdits}>Salvar ajustes</Button>
             </div>
