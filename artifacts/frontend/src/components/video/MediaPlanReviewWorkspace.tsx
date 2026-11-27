@@ -120,6 +120,16 @@ function defaultHeadline(execution: ExecutionContext | null) {
   return firstSentence(theme, 60);
 }
 
+function cleanSupportingText(value: string, max = 140) {
+  const text = value.trim();
+  if (!text) return "";
+  // O planejamento às vezes traz uma INSTRUÇÃO ("Educação: explicar...",
+  // "foco em...") no campo de mensagem. Isso não é copy de anúncio.
+  const normalized = text.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  if (/^(educacao|explicar|foco em|criterios de compra|aquisicao|consideracao)/.test(normalized)) return "";
+  return firstSentence(text, max);
+}
+
 function firstSentence(value: string, max = 110) {
   const text = value.trim();
   if (text.length <= max) return text;
@@ -168,7 +178,7 @@ export default function MediaPlanReviewWorkspace() {
       setHeadline(cleanHeadline(initialHeadline));
       setSupportingText(
         nextDesign?.brief?.supportingText
-        || firstSentence(nextExecution?.campaign?.mensagemCentral || "", 140),
+        || cleanSupportingText(nextExecution?.campaign?.mensagemCentral || ""),
       );
       setCta(nextDesign?.brief?.cta || nextExecution?.campaign?.oferta || "Reserve agora");
       setBrandColor(nextDesign?.brief?.brandColor || "");
@@ -554,7 +564,7 @@ export default function MediaPlanReviewWorkspace() {
                   return;
                 }
                 setHeadline(defaultHeadline(execution));
-                setSupportingText(firstSentence(execution.campaign?.mensagemCentral || "", 140));
+                setSupportingText(cleanSupportingText(execution.campaign?.mensagemCentral || ""));
                 setCta(execution.campaign?.oferta || "Reserve agora");
               }}><RefreshCw className="mr-1.5 h-4 w-4" />Redefinir</Button></div>
             <div className="mt-4 space-y-3">
