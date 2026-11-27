@@ -70,13 +70,21 @@ function wrap(text: string, maxChars: number, maxLines: number): string[] {
   return lines.length > 0 ? lines : [""];
 }
 
-function pillWidth(text: string, fontSize: number): number {
-  return Math.min(WIDTH - 160, Math.max(220, Math.round(text.length * fontSize * 0.58) + 72));
+function pillWidth(text: string, fontSize: number, width: number): number {
+  return Math.min(width - 160, Math.max(220, Math.round(text.length * fontSize * 0.58) + 72));
 }
 
-/** Renderiza a peça final: foto + gradiente + marca + headline + CTA. */
-export async function renderMarketingCreative(input: MarketingFrameInput): Promise<Buffer> {
-  const height = heightFor(input.format);
+export interface MarketingOverlayInput {
+  format: CreativeFormat;
+  brandName?: string | null;
+  headline: string;
+  cta: string;
+  brandColor?: string | null;
+  logo?: Buffer | null;
+}
+
+function overlaySvg(input: MarketingOverlayInput, height: number, hasLogo: boolean): Buffer {
+  const width = WIDTH;
   const primary = normalizeHex(input.brandColor);
   const onPrimary = luminance(primary) > 150 ? "#111827" : "#FFFFFF";
   const brand = String(input.brandName ?? "").trim();
@@ -93,12 +101,12 @@ export async function renderMarketingCreative(input: MarketingFrameInput): Promi
     .join("");
 
   const ctaTextSize = 40;
-  const ctaWidth = pillWidth(cta, ctaTextSize);
+  const ctaWidth = pillWidth(cta, ctaTextSize, width);
   const ctaY = height - 150;
-  const brandY = input.logo ? 150 : 96;
+  const brandY = hasLogo ? 150 : 96;
 
-  const overlay = Buffer.from(`
-    <svg width="${WIDTH}" height="${height}" xmlns="http://www.w3.org/2000/svg">
+  return Buffer.from(`
+    <svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg">
       <defs>
         <linearGradient id="fade" x1="0" y1="0" x2="0" y2="1">
           <stop offset="0.45" stop-color="#000000" stop-opacity="0" />
@@ -112,29 +120,49 @@ export async function renderMarketingCreative(input: MarketingFrameInput): Promi
       </defs>
       <rect width="100%" height="100%" fill="url(#fade)" />
       <rect width="100%" height="30%" fill="url(#top)" />
-      ${brand && !input.logo ? `<text x="72" y="${brandY}" fill="#FFFFFF" font-family="DejaVu Sans, Liberation Sans, sans-serif" font-size="30" font-weight="700" letter-spacing="3">${escapeXml(brand.toUpperCase().slice(0, 42))}</text>` : ""}
+      ${brand && !hasLogo ? `<text x="72" y="${brandY}" fill="#FFFFFF" font-family="DejaVu Sans, Liberation Sans, sans-serif" font-size="30" font-weight="700" letter-spacing="3">${escapeXml(brand.toUpperCase().slice(0, 42))}</text>` : ""}
       ${headlineSvg}
       <rect x="72" y="${ctaY}" width="${ctaWidth}" height="84" rx="42" fill="${primary}" />
       <text x="${72 + ctaWidth / 2}" y="${ctaY + 54}" text-anchor="middle" fill="${onPrimary}" font-family="DejaVu Sans, Liberation Sans, sans-serif" font-size="${ctaTextSize}" font-weight="700">${escapeXml(cta.slice(0, 34))}</text>
     </svg>
   `);
+}
 
-  const composites: sharp.OverlayOptions[] = [{ input: overlay, top: 0, left: 0 }];
-  if (input.logo) {
-    try {
-      const logo = await sharp(input.logo)
-        .resize({ height: 96, fit: "inside", withoutEnlargement: true })
-        .png()
-        .toBuffer();
-      composites.push({ input: logo, top: 48, left: 72 });
-    } catch {
-      // logo inválido não impede a peça
-    }
+async function logoPng(logo?: Buffer | null): Promise<Buffer | null> {
+  if (!logo) return null;
+  try {
+    return await sharp(logo).resize({ height: 96, fit: "inside", withoutEnlargement: true }).png().toBuffer();
+  } catch {
+    return null;
   }
+}
 
+/** Overlay transparente (PNG) com gradiente, marca, headline e CTA. */
+export async function renderMarketingOverlay(input: MarketingOverlayInput): Promise<Buffer> {
+  const height = heightFor(input.format);
+  const logo = await logoPng(input.logo);
+  const base = sharp(overlaySvg(input, height, Boolean(logo))).png();
+  if (!logo) return base.toBuffer();
+  return base
+    .composite([{ input: logo, top: 48, left: 72 }])
+    .png()
+    .toBuffer();
+}
+
+/** Renderiza a peça final: foto + overlay de marca (PNG) + logo. */
+export async function renderMarketingCreative(input: MarketingFrameInput): Promise<Buffer> {
+  const height = heightFor(input.format);
+  const overlay = await renderMarketingOverlay({
+    format: input.format,
+    brandName: input.brandName,
+    headline: input.headline,
+    cta: input.cta,
+    brandColor: input.brandColor,
+    logo: input.logo,
+  });
   return sharp(input.source)
     .resize(WIDTH, height, { fit: "cover", position: "attention" })
-    .composite(composites)
+    .composite([{ input: overlay, top: 0, left: 0 }])
     .jpeg({ quality: 92 })
     .toBuffer();
 }
