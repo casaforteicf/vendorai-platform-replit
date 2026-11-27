@@ -27,7 +27,10 @@ import {
 import { formatarDataBR, hojeISO } from "@/lib/ab/datas";
 import { useAuth } from "@/contexts/AuthContext";
 import {
+  criarCotacao,
+  criarOrdemCompraManual,
   listarFichas,
+  listarFornecedores,
   listarPrevisoesBriffing,
   mensagemDoErro,
   obterCardapio,
@@ -106,6 +109,8 @@ export default function Briffing() {
   const [proteinaPorAdulto, setProteinaPorAdulto] = useState("300");
   const [acompanhamentoPorAdulto, setAcompanhamentoPorAdulto] = useState("150");
   const [resultado, setResultado] = useState<ResultadoBriffing | null>(null);
+  const [selecionados, setSelecionados] = useState<Record<string, boolean>>({});
+  const [comprando, setComprando] = useState(false);
   const [ocupacaoCalculada, setOcupacaoCalculada] = useState<number | null>(null);
   const [equivalentesCalculados, setEquivalentesCalculados] = useState<number | null>(null);
   const [erro, setErro] = useState<string | null>(null);
@@ -268,7 +273,9 @@ export default function Briffing() {
 
     try {
       const equivalentesCalculados = hospedesEquivalentes(validada.valor - criancasTotal, criancas712Num, criancas06Num);
-      setResultado(calcularBriffing(equivalentesCalculados, cardapio));
+      const calculado = calcularBriffing(equivalentesCalculados, cardapio);
+      setResultado(calculado);
+      setSelecionados(Object.fromEntries(calculado.consolidado.map((item) => [`${item.insumoId}::${item.unidade}`, true])));
       setOcupacaoCalculada(validada.valor);
       setEquivalentesCalculados(equivalentesCalculados);
     } catch (falha) {
@@ -281,6 +288,7 @@ export default function Briffing() {
 
   function limpar() {
     setResultado(null);
+    setSelecionados({});
     setOcupacaoCalculada(null);
     setEquivalentesCalculados(null);
     setErro(null);
@@ -288,6 +296,50 @@ export default function Briffing() {
 
   function porcoesDoPrato(pratoId: string): number | null {
     return resultado?.porPrato.find((prato) => prato.pratoId === pratoId)?.porcoesTotais ?? null;
+  }
+
+  function itensSelecionados() {
+    return (resultado?.consolidado ?? []).filter((item) => {
+      const chave = `${item.insumoId}::${item.unidade}`;
+      return selecionados[chave] && /^[0-9a-f-]{36}$/i.test(item.insumoId);
+    });
+  }
+
+  async function comprarSelecionados(modo: "ordem" | "cotacao") {
+    const itens = itensSelecionados();
+    if (itens.length === 0) { setErro("Selecione ao menos um insumo cadastrado no catálogo."); return; }
+    setComprando(true);
+    setErro(null);
+    try {
+      if (modo === "ordem") {
+        const fornecedor = window.prompt("Fornecedor da compra (opcional):")?.trim() || null;
+        const entrega = window.prompt("Data prevista de entrega (AAAA-MM-DD, opcional):")?.trim() || null;
+        const ordem = await criarOrdemCompraManual(auth, {
+          fornecedor,
+          dataEntregaPrevista: entrega && /^\d{4}-\d{2}-\d{2}$/.test(entrega) ? entrega : null,
+          itens: itens.map((item) => ({ insumoId: item.insumoId, quantidade: item.quantidadeBase })),
+        });
+        setAviso(`Ordem criada com ${ordem.itens.length} item(ns). Aprove em Compras.`);
+      } else {
+        const ativos = (await listarFornecedores(auth)).filter((f) => f.ativo);
+        if (ativos.length === 0) throw new Error("Cadastre um fornecedor ativo para cotar.");
+        const ids = window.prompt(`Fornecedores (IDs separados por vírgula):\n${ativos.map((f) => `${f.nome}: ${f.id}`).join("\n")}`)?.split(",").map((id) => id.trim()).filter(Boolean) ?? [];
+        if (ids.length === 0) return;
+        await criarCotacao(auth, {
+          dataInicio: cardapio.data,
+          dataFim: cardapio.data,
+          observacao: `Briffing ${cardapio.data}`,
+          itens: itens.map((item) => ({ insumoId: item.insumoId, quantidade: item.quantidadeBase })),
+          fornecedorIds: ids,
+        });
+        setAviso("Cotação criada. Abra Cotações para registrar as propostas.");
+        window.location.href = "/hotelaria/restaurante/cotacoes";
+      }
+    } catch (falha) {
+      setErro(falha instanceof Error ? falha.message : "Não foi possível gerar a compra.");
+    } finally {
+      setComprando(false);
+    }
   }
 
   const dataFormatada = formatarDataBR(cardapio.data);
@@ -542,6 +594,14 @@ export default function Briffing() {
           </CardDescription>
         </CardHeader>
         <CardContent className="pt-0">
+          {resultado && resultado.consolidado.length > 0 && (
+            <div className="mb-3 flex flex-wrap items-center gap-2">
+              <span className="text-xs text-muted-foreground">{itensSelecionados().length} item(ns) selecionado(s)</span>
+              <Button type="button" size="sm" disabled={comprando} onClick={() => void comprarSelecionados("cotacao")}>Gerar cotação</Button>
+              <Button type="button" size="sm" variant="outline" disabled={comprando} onClick={() => void comprarSelecionados("ordem")}>Compra direta</Button>
+              <Button type="button" size="sm" variant="outline" onClick={() => setSelecionados(Object.fromEntries(resultado.consolidado.map((item) => [`${item.insumoId}::${item.unidade}`, true])))}>Selecionar todos</Button>
+            </div>
+          )}
           {!resultado && !erro && (
             <p className="py-6 text-center text-sm text-muted-foreground">
               Informe a ocupação e clique em <strong>Calcular Produção</strong> para ver o resumo.
@@ -561,6 +621,7 @@ export default function Briffing() {
               </TableCaption>
               <TableHeader>
                 <TableRow>
+                  <TableHead className="w-10">Sel.</TableHead>
                   <TableHead>Insumo</TableHead>
                   <TableHead>Unidade</TableHead>
                   <TableHead className="text-right">Quantidade base</TableHead>
@@ -568,8 +629,20 @@ export default function Briffing() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {resultado.consolidado.map((insumo) => (
-                  <TableRow key={`${insumo.insumoId}::${insumo.unidade}`}>
+                {resultado.consolidado.map((insumo) => {
+                  const chave = `${insumo.insumoId}::${insumo.unidade}`;
+                  const compravel = /^[0-9a-f-]{36}$/i.test(insumo.insumoId);
+                  return (
+                  <TableRow key={chave}>
+                    <TableCell>
+                      <input
+                        type="checkbox"
+                        disabled={!compravel}
+                        checked={!!selecionados[chave]}
+                        aria-label={`Selecionar ${insumo.insumoNome}`}
+                        onChange={(event) => setSelecionados((atual) => ({ ...atual, [chave]: event.target.checked }))}
+                      />
+                    </TableCell>
                     <TableCell className="font-medium">{insumo.insumoNome}</TableCell>
                     <TableCell>
                       <Badge variant="outline">{insumo.unidade}</Badge>
@@ -585,7 +658,8 @@ export default function Briffing() {
                       )}
                     </TableCell>
                   </TableRow>
-                ))}
+                  );
+                })}
               </TableBody>
             </Table>
           )}

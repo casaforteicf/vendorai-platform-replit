@@ -7,6 +7,7 @@ import {
   contentGenerationsTable,
   mediaPlansTable,
   mediaProjectsTable,
+  socialPublicationsTable,
   usersTable,
   CONTENT_CALENDAR_STATUS,
   CONTENT_CALENDAR_TIPOS,
@@ -15,6 +16,14 @@ import { generateContentCalendar, ContentCalendarError } from "../services/conte
 import { generationHasFinalVideo, isVideoCalendarType } from "../services/content-final-media.js";
 import { selectTenantImageAssetIds } from "../services/media-plan-auto-production.js";
 import { startVendorAiPhotoVideo } from "../services/vendorai-photo-video.js";
+import { emitMarketingFunnelEvent } from "../services/marketing-funnel-events.js";
+import {
+  deriveOperationalState,
+  derivePieceAction,
+  derivePieceMediaState,
+  transitionPiece,
+  type OperationalStateCode,
+} from "@workspace/vendor-brain/media-plan-execution";
 
 const router: IRouter = Router();
 const CALENDAR_BATCH_SIZE = 10;
@@ -284,6 +293,212 @@ router.post("/tenants/:tenantId/content-calendar/:mediaPlanId/autorizar-producao
   });
 });
 
+
+const VISUAL_REQUIRED_TYPES = new Set(["feed", "stories", "carrossel", "linkedin_post", "meta_ad", "search_ad", "display_ad", "performance_max"]);
+
+function generationHasVisual(result: unknown): boolean {
+  const payload = result && typeof result === "object" && !Array.isArray(result) ? result as Record<string, unknown> : {};
+  const variations = Array.isArray(payload["variations"]) ? payload["variations"] : [];
+  for (const variation of variations) {
+    if (!variation || typeof variation !== "object" || Array.isArray(variation)) continue;
+    const row = variation as Record<string, unknown>;
+    if (typeof row["imageUrl"] === "string" && row["imageUrl"].trim()) return true;
+    if (Array.isArray(row["imageUrls"]) && row["imageUrls"].some((url) => typeof url === "string" && url.trim())) return true;
+  }
+  return false;
+}
+
+type PieceRow = {
+  id: string;
+  tipo: string;
+  canal: string;
+  temaSugerido: string;
+  status: string;
+  contentGenerationId: string | null;
+  dataAgendada: string | null;
+  contentIdPublicado: string | null;
+  generationResult: unknown;
+};
+
+function derivePieceView(row: PieceRow, publicationStatus: string | null, materializationStatus: string | null) {
+  const claim = String(row.contentGenerationId ?? "").startsWith("producing:");
+  const hasGeneration = Boolean(row.contentGenerationId) && !claim;
+  const isVideo = isVideoCalendarType(row.tipo);
+  const hasFinalVideo = generationHasFinalVideo(row.generationResult as { variations?: unknown; automation?: unknown } | null);
+  const visualRequired = VISUAL_REQUIRED_TYPES.has(row.tipo);
+  const hasVisual = !visualRequired || generationHasVisual(row.generationResult);
+  const state = deriveOperationalState({
+    calendarStatus: row.status,
+    hasGeneration,
+    isVideo,
+    hasFinalVideo,
+    publicationStatus,
+    materializationStatus,
+    producing: claim,
+  });
+  const media = derivePieceMediaState({
+    calendarStatus: row.status,
+    hasGeneration,
+    isVideo,
+    hasFinalVideo,
+    hasVisual,
+    publicationStatus,
+    materializationStatus,
+    producing: claim,
+  });
+  const action = derivePieceAction(state.code, media);
+  return {
+    id: row.id,
+    tipo: row.tipo,
+    canal: row.canal,
+    temaSugerido: row.temaSugerido,
+    dataAgendada: row.dataAgendada,
+    status: state,
+    media,
+    action,
+  };
+}
+
+async function loadPieceContext(tenantId: string, pieceId?: string) {
+  const conditions = [eq(contentCalendarItemsTable.tenantId, tenantId)];
+  if (pieceId) conditions.push(eq(contentCalendarItemsTable.id, pieceId));
+  const rows = await db
+    .select({
+      id: contentCalendarItemsTable.id,
+      tipo: contentCalendarItemsTable.tipo,
+      canal: contentCalendarItemsTable.canal,
+      temaSugerido: contentCalendarItemsTable.temaSugerido,
+      status: contentCalendarItemsTable.status,
+      contentGenerationId: contentCalendarItemsTable.contentGenerationId,
+      dataAgendada: contentCalendarItemsTable.dataAgendada,
+      contentIdPublicado: contentCalendarItemsTable.contentIdPublicado,
+      generationResult: contentGenerationsTable.result,
+      materializationStatus: mediaProjectsTable.context,
+    })
+    .from(contentCalendarItemsTable)
+    .leftJoin(contentGenerationsTable, and(
+      eq(contentGenerationsTable.id, contentCalendarItemsTable.contentGenerationId),
+      eq(contentGenerationsTable.tenantId, contentCalendarItemsTable.tenantId),
+    ))
+    .leftJoin(mediaProjectsTable, and(
+      eq(mediaProjectsTable.tenantId, contentCalendarItemsTable.tenantId),
+      sql`${mediaProjectsTable.context}->>'calendarItemId' = ${contentCalendarItemsTable.id}`,
+    ))
+    .where(and(...conditions))
+    .orderBy(desc(contentCalendarItemsTable.updatedAt))
+    .limit(pieceId ? 1 : 200);
+
+  const publications = await db
+    .select({ calendarItemId: sql<string>`${socialPublicationsTable.metadata}->>'calendarItemId'`, status: socialPublicationsTable.status })
+    .from(socialPublicationsTable)
+    .where(eq(socialPublicationsTable.tenantId, tenantId))
+    .orderBy(desc(socialPublicationsTable.createdAt))
+    .limit(500);
+  const publicationByItem = new Map<string, string>();
+  for (const publication of publications) {
+    if (publication.calendarItemId && !publicationByItem.has(publication.calendarItemId)) {
+      publicationByItem.set(publication.calendarItemId, publication.status);
+    }
+  }
+
+  return rows.map((row) => {
+    const projectContext = row.materializationStatus && typeof row.materializationStatus === "object" && !Array.isArray(row.materializationStatus)
+      ? row.materializationStatus as Record<string, unknown>
+      : {};
+    const materialization = typeof projectContext["materializationStatus"] === "string" ? String(projectContext["materializationStatus"]) : null;
+    return derivePieceView(row as PieceRow, publicationByItem.get(row.id) ?? null, materialization);
+  });
+}
+
+router.get("/tenants/:tenantId/marketing/pieces", async (req, res) => {
+  const tenantId = String(req.params.tenantId);
+  if (!canAccess(req, tenantId)) {
+    res.status(403).json({ error: "Access denied to this tenant" });
+    return;
+  }
+  const pieces = await loadPieceContext(tenantId);
+  res.json({ pieces });
+});
+
+const pieceTransitionSchema = z.object({ action: z.enum(["approve", "reject", "release"]) });
+
+router.post("/tenants/:tenantId/marketing/pieces/:id/transition", async (req, res) => {
+  const tenantId = String(req.params.tenantId);
+  if (!canAccess(req, tenantId)) {
+    res.status(403).json({ error: "Access denied to this tenant" });
+    return;
+  }
+  const parsed = pieceTransitionSchema.safeParse(req.body ?? {});
+  if (!parsed.success) {
+    res.status(422).json({ error: "Ação inválida.", code: "INVALID_PIECE_ACTION" });
+    return;
+  }
+
+  const [piece] = await loadPieceContext(tenantId, String(req.params.id));
+  if (!piece) {
+    res.status(404).json({ error: "Peça não encontrada." });
+    return;
+  }
+
+  const targetByAction: Record<typeof parsed.data.action, OperationalStateCode> = {
+    approve: "approved",
+    reject: "rejected",
+    release: "authorized",
+  };
+  const target = targetByAction[parsed.data.action];
+
+  if (parsed.data.action !== "reject" && !(await canReleaseMarketingBatch(req, tenantId))) {
+    res.status(403).json({
+      error: "Permissão de Marketing necessária para liberar ou aprovar esta peça.",
+      code: "MARKETING_BATCH_PERMISSION_REQUIRED",
+    });
+    return;
+  }
+  if (parsed.data.action === "approve" && piece.media !== "ready") {
+    res.status(422).json({
+      error: "A mídia final ainda não está pronta. Gere ou monte o vídeo antes de aprovar.",
+      code: "MEDIA_NOT_READY",
+    });
+    return;
+  }
+
+  try {
+    transitionPiece(piece.status.code, target);
+  } catch (error) {
+    res.status(422).json({
+      error: error instanceof Error ? error.message : "Transição inválida.",
+      code: "INVALID_PIECE_TRANSITION",
+      from: piece.status.code,
+      to: target,
+    });
+    return;
+  }
+
+  const nextStatus = target === "approved" || target === "authorized" ? "aprovado" : target === "rejected" ? "recusado" : null;
+  if (!nextStatus) {
+    res.status(422).json({ error: "Transição sem status de calendário correspondente.", code: "INVALID_PIECE_TRANSITION" });
+    return;
+  }
+  await db
+    .update(contentCalendarItemsTable)
+    .set({ status: nextStatus, updatedAt: new Date() })
+    .where(and(eq(contentCalendarItemsTable.id, piece.id), eq(contentCalendarItemsTable.tenantId, tenantId)));
+
+  emitMarketingFunnelEvent(
+    parsed.data.action === "approve" ? "piece.approved" : parsed.data.action === "reject" ? "piece.rejected" : "piece.released",
+    {
+      tenantId,
+      pieceId: piece.id,
+      tipo: piece.tipo,
+      canal: piece.canal,
+      media: piece.media,
+    },
+  );
+
+  const [updated] = await loadPieceContext(tenantId, piece.id);
+  res.json({ piece: updated ?? piece });
+});
+
 router.get("/tenants/:tenantId/content-calendar", async (req, res) => {
   const tenantId = String(req.params.tenantId);
   if (!canAccess(req, tenantId)) {
@@ -407,6 +622,12 @@ router.post("/tenants/:tenantId/content-calendar/:id/iniciar-producao", async (r
     res.status(409).json({ error: "Outra produção começou para esta ação.", code: "PRODUCTION_ALREADY_CLAIMED" });
     return;
   }
+  emitMarketingFunnelEvent("piece.production_requested", {
+    tenantId,
+    pieceId: item.id,
+    tipo: item.tipo,
+    media: "pending",
+  });
   res.status(201).json({ claimed: true, claimId: claim });
 });
 

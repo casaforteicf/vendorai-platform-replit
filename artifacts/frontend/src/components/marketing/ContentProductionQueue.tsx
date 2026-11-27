@@ -4,7 +4,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
-import { deriveOperationalState } from "@workspace/vendor-brain/media-plan-execution";
+import { buildJourneySteps, deriveJourneyPhase } from "@/lib/marketingJourney";
+import { deriveOperationalState, derivePieceAction, derivePieceMediaState } from "@workspace/vendor-brain/media-plan-execution";
 import {
   AlertTriangle,
   CheckCircle2,
@@ -87,6 +88,7 @@ interface MediaPlan {
   id: string;
   conteudo: {
     periodoDias?: 30 | 60 | 90;
+    totalAcoesPlanejadas?: number;
     statusPlanejamento?: "gerado" | "em_revisao" | "aprovado";
     campanhas?: MediaPlanCampaign[];
     publicacaoOrganica?: {
@@ -333,6 +335,25 @@ function operationalCode(item: CalendarItem) {
   }).code;
 }
 
+/**
+ * Mídia e ação vêm da máquina de estados (vendor-brain): a fila não decide
+ * sozinha se pode aprovar; ela pergunta ao contrato e mostra o motivo.
+ */
+function pieceMediaFor(item: CalendarItem, generation?: ContentGeneration) {
+  const isVideo = ["reels", "tiktok", "youtube_short", "youtube_video"].includes(item.tipo);
+  return derivePieceMediaState({
+    calendarStatus: item.status,
+    hasGeneration: Boolean(item.contentGenerationId) && !String(item.contentGenerationId).startsWith("producing:"),
+    isVideo,
+    hasFinalVideo: generationHasFinalVideo(generation),
+    hasVisual: true,
+  });
+}
+
+function pieceActionFor(item: CalendarItem, generation?: ContentGeneration) {
+  return derivePieceAction(operationalCode(item), pieceMediaFor(item, generation));
+}
+
 function statusClass(tone: ReturnType<typeof derivedStatus>["tone"]) {
   if (tone === "success") return "border-emerald-300 bg-emerald-50 text-emerald-700";
   if (tone === "warning") return "border-amber-300 bg-amber-50 text-amber-700";
@@ -397,6 +418,7 @@ export default function ContentProductionQueue({ tenantId }: { tenantId: string 
   const [approvingPlan, setApprovingPlan] = useState(false);
   const [planApprovalError, setPlanApprovalError] = useState("");
   const [savingPublicationMode, setSavingPublicationMode] = useState(false);
+  const [generatingBatch, setGeneratingBatch] = useState(false);
 
   const planRef = useRef<MediaPlan | null>(null);
   const calendarRef = useRef<CalendarItem[]>([]);
@@ -1074,14 +1096,15 @@ export default function ContentProductionQueue({ tenantId }: { tenantId: string 
 
   async function approveSelectedContent() {
     if (approvableSelectedItems.length === 0 || batchApproving) return;
-    const blockedByVideo = approvableSelectedItems.filter(
-      (item) => VIDEO_GENERATOR_TYPES.has(item.tipo) && !generationHasFinalVideo(generationById.get(item.contentGenerationId ?? "")),
-    );
-    const targets = approvableSelectedItems.filter((item) => !blockedByVideo.includes(item));
+    const blockedByMedia = approvableSelectedItems.filter((item) => {
+      const action = pieceActionFor(item, generationById.get(item.contentGenerationId ?? ""));
+      return action.code !== "approve" || !action.enabled;
+    });
+    const targets = approvableSelectedItems.filter((item) => !blockedByMedia.includes(item));
     if (targets.length === 0) {
       toast({
-        title: "Nenhum vídeo pronto para aprovar",
-        description: "Os itens selecionados são vídeos e ainda não têm arquivo final. A montagem acontece automaticamente; aguarde e tente de novo.",
+        title: "Nenhuma peça pronta para aprovar",
+        description: "As peças selecionadas ainda não têm mídia final. Gere ou monte a mídia e tente de novo.",
         variant: "destructive",
       });
       return;
@@ -1105,8 +1128,8 @@ export default function ContentProductionQueue({ tenantId }: { tenantId: string 
       await load();
       toast({
         title: "Conteúdos aprovados",
-        description: blockedByVideo.length > 0
-          ? `${approved} conteúdo(s) aprovados. ${blockedByVideo.length} vídeo(s) continuam aguardando a montagem do arquivo final.`
+        description: blockedByMedia.length > 0
+          ? `${approved} conteúdo(s) aprovados. ${blockedByMedia.length} peça(s) continuam aguardando a mídia final.`
           : `${approved} conteúdo(s) aprovados em lote.`,
       });
     } catch (error) {
@@ -1193,6 +1216,43 @@ export default function ContentProductionQueue({ tenantId }: { tenantId: string 
     }
   }
 
+  async function generateNextBatch() {
+    if (!plan || generatingBatch) return;
+    setGeneratingBatch(true);
+    try {
+      const response = await fetch(`/api/tenants/${tenantId}/content-calendar/gerar`, {
+        method: "POST",
+        headers: { ...authHeaders(), "Content-Type": "application/json" },
+        body: JSON.stringify({
+          mediaPlanId: plan.id,
+          semanas: Math.max(1, Math.ceil(Number(plan.conteudo.periodoDias ?? 30) / 7)),
+          substituirPlanejado: false,
+        }),
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(typeof body?.error === "string" ? body.error : "Não foi possível gerar o próximo lote.");
+      const count = Array.isArray(body) ? body.length : 10;
+      toast({ title: "Próximo lote criado", description: `${count} novas ações aguardam aprovação na aba Campanhas.` });
+      await load();
+    } catch (error) {
+      toast({
+        title: "Não foi possível gerar o próximo lote",
+        description: error instanceof Error ? error.message : "Tente novamente.",
+        variant: "destructive",
+      });
+    } finally {
+      setGeneratingBatch(false);
+    }
+  }
+
+  function selectAllReviewItems() {
+    setSelectedContentIds(
+      visibleItems
+        .filter((item) => item.status === "gerado" && item.contentGenerationId)
+        .map((item) => item.id),
+    );
+  }
+
   async function runBatch() {
     if (!plan || batchEligible.length === 0) return;
     setBatchRunning(true);
@@ -1247,7 +1307,14 @@ export default function ContentProductionQueue({ tenantId }: { tenantId: string 
   }
 
   const planApproved = plan.conteudo.statusPlanejamento === "aprovado";
+  const plannedTotal = Number(plan.conteudo.totalAcoesPlanejadas ?? 0);
+  const canGenerateNextBatch = planApproved
+    && plannedTotal > 0
+    && calendar.length < plannedTotal
+    && !calendar.some((item) => item.status === "planejado");
   const automaticPublication = plan.conteudo.publicacaoOrganica?.modo === "automatico";
+  const journeyPhase = deriveJourneyPhase(productionSummary);
+  const journeySteps = buildJourneySteps(journeyPhase);
   const currentProject = currentItem ? projectByItem.get(currentItem.id) : undefined;
   const planMismatch = Boolean(requestedMediaPlanId && requestedMediaPlanId !== plan.id);
 
@@ -1302,6 +1369,12 @@ export default function ContentProductionQueue({ tenantId }: { tenantId: string 
               </p>
             </div>
             <div className="flex items-center gap-2 flex-wrap">
+              {canGenerateNextBatch && (
+                <Button type="button" size="sm" variant="outline" onClick={() => void generateNextBatch()} disabled={generatingBatch}>
+                  {generatingBatch ? <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> : <Layers3 className="h-3.5 w-3.5 mr-1" />}
+                  {generatingBatch ? "Gerando lote…" : "Gerar próximo lote"}
+                </Button>
+              )}
               <Button type="button" variant="outline" size="sm" onClick={() => navigate("/content?tab=gerador&mode=avulso")}>
                 <Plus className="h-3.5 w-3.5 mr-1" />Criação avulsa
               </Button>
@@ -1339,6 +1412,47 @@ export default function ContentProductionQueue({ tenantId }: { tenantId: string 
               {automaticPublication ? "Revisar antes de publicar" : "Ativar publicação automática"}
             </Button>
           </div>
+
+          {plannedTotal > 0 && (
+            <p className="text-[11px] text-muted-foreground">
+              Lote atual: <span className="font-medium">{calendar.length}</span> de{" "}
+              <span className="font-medium">{plannedTotal}</span> ações planejadas
+              {calendar.length < plannedTotal
+                ? " — aprove e produza este lote; depois gere o próximo."
+                : " — planejamento totalmente materializado."}
+            </p>
+          )}
+
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
+            {journeySteps.map((step) => (
+              <div key={step.label} className="min-w-0">
+                <div className="flex items-center gap-1.5 text-[11px] font-semibold">
+                  <span className={`grid h-5 w-5 place-items-center rounded-full border text-[10px] ${
+                    step.state === "done"
+                      ? "border-emerald-600 bg-emerald-600 text-white"
+                      : step.state === "active"
+                        ? "border-2 border-primary"
+                        : "border-border"
+                  }`}>
+                    {step.state === "done" ? "✓" : ""}
+                  </span>
+                  <span className={step.state === "pending" ? "text-muted-foreground" : "text-foreground"}>{step.label}</span>
+                </div>
+                <p className="mt-1 pl-[26px] text-[10px] text-muted-foreground">{step.help}</p>
+              </div>
+            ))}
+          </div>
+
+          {productionSummary.review > 0 && (
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-[11px] text-amber-900">
+              <span>
+                <strong>{productionSummary.review} conteúdo(s) aguardando aprovação</strong> — selecione os itens e clique em “Aprovar selecionados”.
+              </span>
+              <Button type="button" size="sm" variant="outline" className="h-7 text-xs" onClick={selectAllReviewItems}>
+                Selecionar todos
+              </Button>
+            </div>
+          )}
 
           <div className="grid grid-cols-2 md:grid-cols-5 gap-2" data-vendorai-queue-metrics>
             {[
@@ -1451,7 +1565,8 @@ export default function ContentProductionQueue({ tenantId }: { tenantId: string 
           const reviewWarning = project?.context?.["lastReviewStatus"] === "warning";
           const isDirect = DIRECT_GENERATOR_TYPES.has(item.tipo);
           const generation = item.contentGenerationId ? generationById.get(item.contentGenerationId) : undefined;
-          const videoBlocked = VIDEO_GENERATOR_TYPES.has(item.tipo) && !generationHasFinalVideo(generation);
+          const approveAction = pieceActionFor(item, generation);
+          const approveBlocked = approveAction.code !== "approve" || !approveAction.enabled;
           const preview = previewData(generation, item.variationIdx ?? 0);
           const expanded = expandedItemId === item.id;
           const itemCampaign = campaignForItem(plan, item);
@@ -1496,14 +1611,25 @@ export default function ContentProductionQueue({ tenantId }: { tenantId: string 
                       <Eye className="h-3 w-3 mr-1" />{expanded ? "Fechar" : "Revisar"}
                     </Button>
                   )}
+                  {item.status === "gerado" && item.contentGenerationId && VIDEO_GENERATOR_TYPES.has(item.tipo) && (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      className="h-7 text-xs"
+                      onClick={() => navigate(`/marketing/revisao/${item.id}`)}
+                    >
+                      <Eye className="h-3 w-3 mr-1" />Revisar material
+                    </Button>
+                  )}
                   {item.status === "gerado" && item.contentGenerationId && (
                     <Button
                       type="button"
                       size="sm"
                       variant="outline"
                       className="h-7 text-xs"
-                      disabled={actionBusy === item.id || videoBlocked}
-                      title={videoBlocked ? "Aguarde a montagem do vídeo antes de aprovar" : undefined}
+                      disabled={actionBusy === item.id || approveBlocked}
+                      title={approveBlocked ? approveAction.reason ?? "Ação indisponível para o estado atual" : undefined}
                       onClick={() => void approveContent(item)}
                     >
                       {actionBusy === item.id ? <Loader2 className="h-3 w-3 mr-1 animate-spin" /> : <CheckCircle2 className="h-3 w-3 mr-1" />}Aprovar

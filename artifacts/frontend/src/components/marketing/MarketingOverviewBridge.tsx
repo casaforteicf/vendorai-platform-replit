@@ -257,8 +257,6 @@ function ensureUnifiedMarketingStyle() {
       body[data-vendorai-marketing-shell="true"] [data-vendorai-campaign-clarity="production-details"] button[data-vendorai-campaign-production-toggle] { padding:12px; }
       body[data-vendorai-marketing-shell="true"] [data-vendorai-campaign-production-metrics] { grid-template-columns:repeat(3,minmax(0,1fr)) !important; }
       body[data-vendorai-marketing-shell="true"] [data-vendorai-campaign-production-metrics] > div { padding:10px 8px; text-align:center; }
-      body[data-vendorai-marketing-shell="true"] [data-vendorai-review-workspace] { margin-top:8px; }
-      body[data-vendorai-marketing-shell="true"] [data-vendorai-review-drawer] { top:8px !important; right:8px !important; bottom:8px !important; left:8px !important; width:auto !important; max-width:none !important; border-radius:16px !important; }
     }
   `;
   document.head.appendChild(style);

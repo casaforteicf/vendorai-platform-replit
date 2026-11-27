@@ -132,7 +132,9 @@ export function MessagingMediaPlanBridge({ pathname }: { pathname: string }) {
     return <ContentAutopilotMediaPlanBanner pathname={pathname} />;
   }
 
-  if (route === "/content" && (params.get("tab") || "gerador") === "gerador" && fromMediaPlan) {
+  // Publicação manual precisa estar onde o usuário revisa/aprova as peças.
+  // Antes só aparecia em tab=gerador&source=media-plan, escondida da fila.
+  if (route === "/content" && params.get("mode") !== "avulso" && ["gerador", "conteudos"].includes(params.get("tab") || "gerador")) {
     return <OrganicCalendarPublisher pathname={pathname} />;
   }
 

@@ -1,6 +1,8 @@
 import { getOpenAIForTenant } from "./agent-engine.js";
 import { callOpenAI as gatewayCallOpenAI } from "./ai-gateway.js";
 import { captureGeneratedMedia } from "../services/media-library.js";
+import { buildImageDirection, buildScenePrompt, type ImageDirectionInput } from "@workspace/vendor-brain/image-direction";
+import { ObjectStorageService } from "./objectStorage.js";
 import { toFile } from "openai";
 import { callReplicateFlux11Pro } from "./arch-render-pipeline.js";
 import type {
@@ -182,9 +184,21 @@ async function saveB64Image(
 }
 
 async function fetchImageBuffer(imageUrl: string): Promise<Buffer> {
-  const url = imageUrl.startsWith("/")
-    ? `http://localhost:${process.env["PORT"] ?? 8080}${imageUrl}`
-    : imageUrl;
+  // Mídia do tenant vive em pasta privada (R2). Fetch HTTP sem sessão recebe
+  // 401 e o gerador caía para texto→imagem — era a causa dos criativos
+  // "desconexos". Assinamos o objeto e baixamos por URL temporária.
+  let target = imageUrl;
+  if (target.startsWith("/api/storage/objects/")) target = target.slice("/api/storage".length);
+  if (target.startsWith("/objects/")) {
+    try {
+      target = await new ObjectStorageService().getObjectEntitySignedUrl(target, 120);
+    } catch {
+      // mantém o alvo original; o fetch abaixo decide
+    }
+  }
+  const url = target.startsWith("/")
+    ? `http://localhost:${process.env["PORT"] ?? 8080}${target}`
+    : target;
   const res = await fetch(url);
   if (!res.ok) throw new Error(`Falha ao buscar imagem de referência: ${res.status}`);
   return Buffer.from(await res.arrayBuffer());
@@ -196,6 +210,8 @@ export async function generateImagesWithReference(
   referenceImageUrl: string,
   editPrompt: string,
   imageCount: number = 1,
+  direction?: ImageDirectionInput,
+  aspectRatio?: string,
 ): Promise<string[]> {
   if (imageCount < 1) imageCount = 1;
   if (imageCount > 10) imageCount = 10;
@@ -214,19 +230,25 @@ export async function generateImagesWithReference(
   }
 
   if (!referenceBuffer) {
+    // Sem referência: gera a partir do briefing visual (não de um texto
+    // "Improve this image", que produzia imagens genéricas).
+    const fallbackDirection = direction ? buildImageDirection({ ...direction, theme: direction.subject ?? direction.theme }) : null;
     return generateImagesForContent(
       {},
       tenantId,
-      editPrompt,
+      fallbackDirection?.subject ?? editPrompt,
       undefined,
       "feed",
       imageCount,
       undefined,
       undefined,
-      "A imagem de referência original não estava acessível. Gere um criativo profissional fiel à descrição, sem inventar dados.",
+      "A referência não estava acessível; gere um criativo fiel ao briefing, sem inventar dados.",
+      aspectRatio,
+      direction,
     );
   }
 
+  const editSize: "1024x1024" | "1024x1536" = aspectRatio === "9:16" || aspectRatio === "4:5" ? "1024x1536" : "1024x1024";
   const imagePromises = Array.from({ length: imageCount }, async (_, i) => {
     const variantPrompt = imageCount > 1
       ? `${editPrompt} Variation ${i + 1}: slightly different angle or perspective than other variations.`
@@ -241,7 +263,7 @@ export async function generateImagesWithReference(
           image: imageFile,
           prompt: variantPrompt,
           n: 1,
-          size: "1024x1024",
+          size: editSize,
         });
         const item = Array.isArray((response as any)?.data) ? (response as any).data[0] : undefined;
         if (!item) continue;
@@ -276,42 +298,6 @@ export async function generateImagesWithReference(
   return await Promise.all(imagePromises);
 }
 
-/**
- * IMAGE_CONCEPTS defines fundamentally different visual directions for each image slot.
- * Slot 0 → hero product shot; Slot 1 → lifestyle / sensation; Slot 2+ → supporting angles.
- * Each concept produces a prompt that stands alone — no shared base prompt.
- */
-const IMAGE_CONCEPTS: Array<{
-  label: string;
-  buildPrompt: (brand: string, subject: string, style: string, format: string, obs: string) => string;
-}> = [
-  {
-    label: "hero-product",
-    buildPrompt: (brand, subject, style, format, obs) =>
-      `Professional hero product photograph for Instagram ${format} post. Brand: "${brand}". Subject: ${subject}. ${obs}Clean studio setup, perfect lighting, neutral or elegantly textured background, product centered and sharp, premium commercial photography. Style: ${style}. No text. No watermarks. No people. Focus 100% on the product itself.`,
-  },
-  {
-    label: "lifestyle-sensation",
-    buildPrompt: (brand, subject, style, format, obs) =>
-      `Aspirational lifestyle Instagram ${format} image for the brand "${brand}". Concept: show the FEELING and SENSATION that ${subject} creates in the customer's life — not the product itself, but the emotion, transformation, and lifestyle it enables. ${obs}Authentic scene with natural light, warm atmosphere, real environment where this product fits. People interacting naturally if relevant. Evokes desire, aspiration, and positive emotion. Style: ${style}. No text. No watermarks.`,
-  },
-  {
-    label: "detail-texture",
-    buildPrompt: (brand, subject, style, format, obs) =>
-      `Close-up macro detail photograph for Instagram ${format} for brand "${brand}". Subject: ${subject}. ${obs}Extreme close-up highlighting textures, materials, craftsmanship and quality. Shallow depth of field (f/2.0), soft bokeh background, dramatic lighting to reveal surface details. Conveys premium quality and attention to detail. Style: ${style}. No text. No watermarks.`,
-  },
-  {
-    label: "context-in-use",
-    buildPrompt: (brand, subject, style, format, obs) =>
-      `Contextual in-use Instagram ${format} photograph for brand "${brand}". Subject: ${subject}. ${obs}Product shown in its natural environment being used in a real-world scenario. Authentic and relatable setting with natural light. Tells a story about the product's purpose and benefit. Style: ${style}. No text. No watermarks.`,
-  },
-  {
-    label: "flat-lay",
-    buildPrompt: (brand, subject, style, format, obs) =>
-      `Elegant overhead flat-lay composition for Instagram ${format} for brand "${brand}". Subject: ${subject}. ${obs}Top-down shot, product arranged with complementary props and textures that reinforce the brand identity. Symmetrical or artfully asymmetrical layout. Premium styling on elegant surface. Style: ${style}. No text. No watermarks.`,
-  },
-];
-
 function getImageSize(model: string, aspectRatio?: string): "1024x1024" | "1024x1536" | "1024x1792" {
   if (aspectRatio === "9:16" || aspectRatio === "4:5") {
     if (model === "gpt-image-1" || model === "chatgpt-image-latest") return "1024x1536";
@@ -331,42 +317,63 @@ export async function generateImagesForContent(
   referenceImageUrl?: string,
   observations?: string,
   aspectRatio?: string,
+  directionInput?: ImageDirectionInput,
 ): Promise<string[]> {
   if (imageCount < 1) imageCount = 1;
   if (imageCount > 10) imageCount = 10;
 
-  const brand = profile.nomeFantasia || "a empresa";
-  const subject = productName ? `${productName} — ${theme}` : theme;
-  const observationsNote = observations ? `Client-specific request: ${observations}. ` : "";
+  // Direção visual única: tipo de negócio + briefing da campanha. Substitui os
+  // conceitos fixos de "foto de produto" que não servem para hotel/serviço.
+  const direction = buildImageDirection({
+    tenantName: directionInput?.tenantName ?? null,
+    brandName: profile.nomeFantasia ?? directionInput?.brandName ?? null,
+    productName: productName ?? directionInput?.productName ?? null,
+    theme: directionInput?.theme ?? theme,
+    vertical: profile.vertical ?? directionInput?.vertical ?? null,
+    audience: directionInput?.audience ?? null,
+    region: directionInput?.region ?? null,
+    offer: directionInput?.offer ?? null,
+    message: directionInput?.message ?? null,
+    campaignName: directionInput?.campaignName ?? null,
+  });
 
+  const observationsNote = observations ? `Client request: ${observations}. ` : "";
   const formatLabel = (() => {
     if (aspectRatio === "9:16") return format === "stories" ? "Stories (vertical, 9:16 portrait)" : "Reels (vertical, 9:16 portrait)";
     if (aspectRatio === "4:5") return "Feed portrait (4:5 ratio, vertical)";
     return "Feed square (1:1 ratio)";
   })();
-
-  // Flux aspect_ratio values
   const fluxAspectRatio = aspectRatio === "9:16" ? "9:16" : aspectRatio === "4:5" ? "4:5" : "1:1";
+  const brandNotes = [style, buildBrandStyleBlock(profile), buildSegmentStyleBlock(profile.vertical)]
+    .filter(Boolean)
+    .join("; ");
 
-  // When a reference image is available, use OpenAI image editing (unchanged)
+  // Com referência real (foto do próprio negócio), compõe uma nova imagem
+  // preservando local/produto — não "melhora" uma imagem que não existe.
   if (referenceImageUrl) {
-    const editPrompt = `Improve this product/marketing image for Instagram ${formatLabel} post for the brand "${brand}". Subject: ${subject}. Keep the same product and subject matter. ${observationsNote}Improve: lighting, sharpness, color, composition. Professional Instagram marketing quality. No text. No watermarks.`;
-    return generateImagesWithReference(tenantId, referenceImageUrl, editPrompt, imageCount);
+    const editPrompt = [
+      `Create a new marketing image for "${direction.brand}" from the reference photo.`,
+      `Subject: ${direction.subject}.`,
+      "Keep the real venue/product shown in the reference; do not replace it with generic stock imagery.",
+      `Style: ${direction.style}.`,
+      brandNotes ? `Brand notes: ${brandNotes}.` : "",
+      observationsNote,
+      `Avoid: ${direction.avoid}.`,
+    ].filter(Boolean).join(" ");
+    return generateImagesWithReference(tenantId, referenceImageUrl, editPrompt, imageCount, directionInput, aspectRatio);
   }
 
-  // Build style blocks for Flux prompt (Passo 2 — segment + brand)
-  const segmentBlock = buildSegmentStyleBlock(profile.vertical);
-  const brandBlock = buildBrandStyleBlock(profile);
-  const styleContext = style ?? `${segmentBlock} ${brandBlock}`;
-
   const imagePromises = Array.from({ length: imageCount }, async (_, i) => {
-    const concept = IMAGE_CONCEPTS[i % IMAGE_CONCEPTS.length];
-    const fullPrompt = concept.buildPrompt(brand, subject, styleContext, formatLabel, observationsNote);
+    const fullPrompt = [
+      buildScenePrompt(direction, i, formatLabel),
+      observationsNote,
+      brandNotes ? `Brand notes: ${brandNotes}.` : "",
+    ].filter(Boolean).join(" ");
 
     // Primary: Flux 1.1 Pro via Replicate
     try {
       const outputUrl = await callReplicateFlux11Pro({ prompt: fullPrompt, aspectRatio: fluxAspectRatio });
-      return await saveImageFromUrl(tenantId, outputUrl, "content_image_generation", { prompt: fullPrompt, theme, productName, format, aspectRatio: fluxAspectRatio, provider: "replicate" });
+      return await saveImageFromUrl(tenantId, outputUrl, "content_image_generation", { prompt: fullPrompt, theme, productName, format, aspectRatio: fluxAspectRatio, provider: "replicate", imageDirection: direction.kind, visualSubject: direction.subject });
     } catch {
       // Fallback: OpenAI image generation
     }
@@ -385,8 +392,9 @@ export async function generateImagesForContent(
         } as Parameters<typeof openai.images.generate>[0]);
         const item = "data" in response && Array.isArray(response.data) ? response.data[0] : undefined;
         if (!item) continue;
-        if ("url" in item && item.url) return await saveImageFromUrl(tenantId, item.url as string, "content_image_generation", { prompt: fullPrompt, theme, productName, format, aspectRatio, model });
-        if ("b64_json" in item && item.b64_json) return await saveB64Image(tenantId, item.b64_json, "content_image_generation", { prompt: fullPrompt, theme, productName, format, aspectRatio, model });
+        const metadata = { prompt: fullPrompt, theme, productName, format, aspectRatio, model, imageDirection: direction.kind, visualSubject: direction.subject };
+        if ("url" in item && item.url) return await saveImageFromUrl(tenantId, item.url as string, "content_image_generation", metadata);
+        if ("b64_json" in item && item.b64_json) return await saveB64Image(tenantId, item.b64_json, "content_image_generation", metadata);
       } catch (err) { lastError = err; }
     }
     throw lastError ?? new Error(`Nenhum modelo retornou resultado para imagem ${i + 1}`);

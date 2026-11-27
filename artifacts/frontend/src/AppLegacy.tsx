@@ -18,6 +18,7 @@ const DemoBanner         = lazy(() => import("@/components/DemoBanner").then((m)
 
 // ── Lazy page imports (code splitting — each page loads only when navigated to) ──
 const VideoHome          = lazy(() => import("@/pages/video/VideoHome"));
+const MarketingReviewPage = lazy(() => import("@/pages/marketing/ReviewPage"));
 const VideoProjectDirectPage = lazy(() => import("@/pages/video/VideoProjectDirectPage"));
 const Login              = lazy(() => import("@/pages/Login"));
 const Register           = lazy(() => import("@/pages/Register"));
@@ -805,6 +806,7 @@ function AppRoutes() {
         <Route path="/marketing/instagram">{() => <ProtectedRoute component={MarketingInstagram} />}</Route>
         <Route path="/content-studio"><RedirectPage to="/content" /></Route>
         <Route path="/content-studio/video">{() => <ProtectedRoute component={VideoHome} />}</Route>
+        <Route path="/marketing/revisao/:id">{() => <ProtectedRoute component={MarketingReviewPage} />}</Route>
         <Route path="/content-studio/video/projeto">{() => <ProtectedRoute component={VideoProjectDirectPage} />}</Route>
         <Route path="/content-studio/video/avatar">{() => <ProtectedRoute component={VideoAvatarPage} />}</Route>
         <Route path="/content-studio/video/avatar/captura">{() => <FullscreenProtectedRoute component={VideoAvatarCaptureRoute} />}</Route>

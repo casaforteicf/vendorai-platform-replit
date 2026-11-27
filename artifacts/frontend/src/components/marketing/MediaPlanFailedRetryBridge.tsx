@@ -207,10 +207,15 @@ export function MediaPlanFailedRetryBridge() {
     if (!response.ok) throw new Error("Falha ao atualizar o histórico da produção.");
   }, [tid]);
 
-  const generate = useCallback(async (item: CalendarItem, campaign: MediaPlanCampaign, visual: boolean) => {
+  const generate = useCallback(async (item: CalendarItem, campaign: MediaPlanCampaign, visual: boolean, planId: string) => {
     const response = await fetch(`/api/tenants/${tid}/content/generate`, {
       method: "POST",
-      headers: headers(true),
+      headers: {
+        ...headers(true),
+        "x-vendorai-calendar-item-id": item.id,
+        "x-vendorai-media-plan-id": planId,
+        "x-vendorai-campaign-id": campaign.id,
+      },
       body: JSON.stringify({
         type: generatorType(item),
         theme: promptFor(campaign, item).slice(0, 8000),
@@ -242,12 +247,26 @@ export function MediaPlanFailedRetryBridge() {
     if (!project) throw new Error("Histórico da falha não encontrado.");
     const campaign = campaignFor(plan, item);
     if (!campaign) throw new Error("Campanha não encontrada.");
+    let claimed = false;
+    if (!item.contentGenerationId) {
+      const claimResponse = await fetch(`/api/tenants/${tid}/content-calendar/${item.id}/iniciar-producao`, {
+        method: "POST",
+        headers: headers(true),
+      });
+      if (claimResponse.status === 409) {
+        throw new Error("Esta peça já está em produção em outra sessão.");
+      }
+      const claimBody = await claimResponse.json().catch(() => ({})) as { claimed?: boolean; error?: string };
+      if (!claimResponse.ok) throw new Error(claimBody.error ?? "Não foi possível reservar a produção desta peça.");
+      claimed = Boolean(claimBody.claimed);
+    }
+
     await patchProject(project, { materializationStatus: "processing", executorDetail: "Nova tentativa iniciada" });
 
     try {
       if (DIRECT_TYPES.has(item.tipo) || MESSAGE_TYPES.has(item.tipo)) {
         const visual = DIRECT_TYPES.has(item.tipo) && item.tipo !== "linkedin_post";
-        const { generation } = await generate(item, campaign, visual);
+        const { generation } = await generate(item, campaign, visual, plan.id);
         await patchCalendar(item, generation.id);
         await patchProject(project, {
           materializationStatus: "draft_ready",
@@ -262,7 +281,7 @@ export function MediaPlanFailedRetryBridge() {
 
       if (AD_TYPES.has(item.tipo)) {
         const visual = item.tipo !== "search_ad";
-        const { generation, variation } = await generate(item, campaign, visual);
+        const { generation, variation } = await generate(item, campaign, visual, plan.id);
         const caption = String(variation?.caption ?? variation?.text ?? item.temaSugerido);
         const hook = String(variation?.hook ?? caption.split(/[.!?\n]/)[0] ?? item.temaSugerido).trim();
         const images = extractImages(variation);
@@ -290,7 +309,7 @@ export function MediaPlanFailedRetryBridge() {
       }
 
       if (VIDEO_TYPES.has(item.tipo)) {
-        const { generation } = await generate(item, campaign, false);
+        const { generation } = await generate(item, campaign, false, plan.id);
         const response = await fetch(`/api/tenants/${tid}/media-engine/jobs`, {
           method: "POST",
           headers: headers(true),
@@ -304,7 +323,7 @@ export function MediaPlanFailedRetryBridge() {
       }
 
       if (SITE_TYPES.has(item.tipo)) {
-        const { generation } = await generate(item, campaign, false);
+        const { generation } = await generate(item, campaign, false, plan.id);
         const response = await fetch(`/api/tenants/${tid}/site-generator/generate`, {
           method: "POST",
           headers: headers(true),
@@ -319,6 +338,13 @@ export function MediaPlanFailedRetryBridge() {
 
       throw new Error(`Formato ${item.tipo} não é elegível para retry automático.`);
     } catch (error) {
+      if (claimed) {
+        await fetch(`/api/content-calendar/${item.id}`, {
+          method: "PATCH",
+          headers: headers(true),
+          body: JSON.stringify({ contentGenerationId: null }),
+        }).catch(() => undefined);
+      }
       await patchProject(project, { materializationStatus: "failed", executorKind: item.tipo, executorDetail: error instanceof Error ? error.message : "Falha na nova tentativa" }).catch(() => undefined);
       throw error;
     }

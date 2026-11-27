@@ -31,7 +31,8 @@
     "./business-observer": "./src/business-observer.ts",
     "./business-agent": "./src/business-agent.ts",
     "./engines/*": "./src/engines/*.ts",
-    "./policies": "./src/policies/index.ts"
+    "./policies": "./src/policies/index.ts",
+    "./image-direction": "./src/image-direction.ts"
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json --noEmit"

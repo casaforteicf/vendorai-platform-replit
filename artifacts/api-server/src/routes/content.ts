@@ -1,11 +1,12 @@
 import { Router, type IRouter } from "express";
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, inArray } from "drizzle-orm";
 import { z } from "zod/v4";
 import {
   db,
   contentGenerationsTable,
   contentStudioUploadsTable,
   contentLibraryTable,
+  mediaAssetsTable,
   agentConfigsTable,
   businessProfilesTable,
   produtosCatalogoTable,
@@ -77,12 +78,14 @@ type ValidatedPlannerContext = {
   calendarItemId: string;
   canal: string;
   tipo: string;
+  temaSugerido: string;
   campaign: {
     id: string;
     nome: string;
     objetivo: string;
     produtoServico: string;
     publico: string;
+    regiao?: string | null;
     oferta: string;
     mensagemCentral: string;
   };
@@ -124,6 +127,7 @@ async function resolveValidatedPlannerContext(input: {
         pilar: contentCalendarItemsTable.pilar,
         canal: contentCalendarItemsTable.canal,
         tipo: contentCalendarItemsTable.tipo,
+        temaSugerido: contentCalendarItemsTable.temaSugerido,
       })
       .from(contentCalendarItemsTable)
       .where(and(eq(contentCalendarItemsTable.id, input.calendarItemId), eq(contentCalendarItemsTable.tenantId, input.tenantId)))
@@ -153,6 +157,7 @@ async function resolveValidatedPlannerContext(input: {
     calendarItemId: input.calendarItemId,
     canal: String(calendarItem.canal ?? ""),
     tipo: String(calendarItem.tipo ?? ""),
+    temaSugerido: String(calendarItem.temaSugerido ?? ""),
     campaign,
   };
 }
@@ -243,10 +248,16 @@ router.post("/tenants/:tenantId/content/generate", async (req, res) => {
     return;
   }
 
-  const [profile] = await db
-    .select()
-    .from(businessProfilesTable)
-    .where(eq(businessProfilesTable.tenantId, tenantId));
+  const [[profile], [tenantIdentity]] = await Promise.all([
+    db.select().from(businessProfilesTable).where(eq(businessProfilesTable.tenantId, tenantId)),
+    db.select({ name: tenantsTable.name, nomeEmpresa: tenantsTable.nomeEmpresa })
+      .from(tenantsTable)
+      .where(eq(tenantsTable.id, tenantId))
+      .limit(1),
+  ]);
+  // Nome de marca oficial: Perfil da Empresa -> nome do tenant. Sem isso o
+  // prompt saía como "a empresa" e a IA não sabia de qual negócio se tratava.
+  const brandName = profile?.nomeFantasia?.trim() || tenantIdentity?.nomeEmpresa?.trim() || tenantIdentity?.name?.trim() || "";
 
   let productName: string | undefined;
   let productExtra: string | undefined;
@@ -370,12 +381,14 @@ router.post("/tenants/:tenantId/content/generate", async (req, res) => {
   const existingBrandColors = Array.isArray((profile?.discoveryData as Record<string, unknown> | null)?.["coresBrand"])
     ? ((profile?.discoveryData as Record<string, unknown>)["coresBrand"] as string[])
     : [];
-  const generationProfile = brandColor && existingBrandColors.length === 0
-    ? {
-        ...(profile ?? {}),
-        discoveryData: { ...((profile?.discoveryData as Record<string, unknown> | null) ?? {}), coresBrand: [brandColor] },
-      }
-    : profile;
+  const generationProfile = {
+    ...(profile ?? {}),
+    ...(brandName ? { nomeFantasia: brandName } : {}),
+    discoveryData: {
+      ...((profile?.discoveryData as Record<string, unknown> | null) ?? {}),
+      ...(brandColor && existingBrandColors.length === 0 ? { coresBrand: [brandColor] } : {}),
+    },
+  };
 
   let result: { result: { variations: unknown[] }; tokensUsed: number };
   try {
@@ -422,6 +435,17 @@ router.post("/tenants/:tenantId/content/generate", async (req, res) => {
           contentType: plannerContext.tipo,
           allowedSources: ["business_profile", "validated_media_plan_campaign", "tenant_brand"],
           blockedBroadSources: ["content_context_library", "own_performance_examples", "reference_creators"],
+          visualBrief: {
+            campaignName: plannerContext.campaign.nome,
+            productName: plannerContext.campaign.produtoServico,
+            audience: plannerContext.campaign.publico,
+            region: plannerContext.campaign.regiao ?? null,
+            offer: plannerContext.campaign.oferta,
+            message: plannerContext.campaign.mensagemCentral,
+            channel: plannerContext.canal,
+            contentType: plannerContext.tipo,
+            contentTheme: plannerContext.temaSugerido,
+          },
           validatedAt: new Date().toISOString(),
         },
         // Rastreabilidade da origem da produção. O worker de vídeo faz merge
@@ -1388,6 +1412,43 @@ router.post("/tenants/:tenantId/content/describe-image", async (req, res) => {
   }
 });
 
+/**
+ * Fallback sem IA: usa fotos reais da Biblioteca do tenant quando o provedor
+ * de imagem está indisponível (ex.: créditos OpenAI esgotados, sem Replicate).
+ * Melhor uma foto real do negócio do que um criativo genérico/desconexo.
+ */
+async function tenantPhotoFallbackUrls(
+  tenantId: string,
+  count: number,
+  preferred?: string,
+): Promise<string[]> {
+  const rows = await db
+    .select({ storageUrl: mediaAssetsTable.storageUrl })
+    .from(mediaAssetsTable)
+    .where(and(
+      eq(mediaAssetsTable.tenantId, tenantId),
+      eq(mediaAssetsTable.type, "image"),
+      inArray(mediaAssetsTable.source, ["upload", "imported"]),
+    ))
+    .orderBy(desc(mediaAssetsTable.createdAt))
+    .limit(Math.max(count * 3, 12));
+  const urls = rows.map((row) => row.storageUrl);
+  if (preferred) {
+    const normalized = preferred.startsWith("/api/storage") ? preferred.slice("/api/storage".length) : preferred;
+    if (normalized.startsWith("/objects/")) {
+      // A foto escolhida como referência é a hero: move para a frente mesmo
+      // que já esteja na lista (antes ela ficava na posição original e outra
+      // foto virava a principal).
+      const existingIndex = urls.indexOf(normalized);
+      if (existingIndex >= 0) urls.splice(existingIndex, 1);
+      urls.unshift(normalized);
+    }
+  }
+  return urls
+    .slice(0, Math.max(1, count))
+    .map((url) => (url.startsWith("/api/storage") ? url : `/api/storage${url}`));
+}
+
 // POST /tenants/:tenantId/content/:contentId/variations/:idx/regenerate-image — regenera com estilo
 router.post("/tenants/:tenantId/content/:contentId/variations/:idx/regenerate-image", async (req, res) => {
   const tenantId = String(req.params["tenantId"]);
@@ -1426,27 +1487,55 @@ router.post("/tenants/:tenantId/content/:contentId/variations/:idx/regenerate-im
     .where(eq(businessProfilesTable.tenantId, tenantId));
 
   const format = gen.type === "stories" ? "stories" : "feed";
-  const observations = body.data.observations || body.data.style;
+  const observations = (body.data.observations || body.data.style || "").slice(0, 600);
+  const [tenantIdentity] = await db
+    .select({ name: tenantsTable.name, nomeEmpresa: tenantsTable.nomeEmpresa })
+    .from(tenantsTable)
+    .where(eq(tenantsTable.id, tenantId))
+    .limit(1);
+  const brandName = profile?.nomeFantasia?.trim()
+    || tenantIdentity?.nomeEmpresa?.trim()
+    || tenantIdentity?.name?.trim()
+    || "";
+  const audit = (gen.result as { contextAudit?: Record<string, unknown> } | null)?.contextAudit ?? {};
+  const brief = (audit["visualBrief"] ?? {}) as {
+    campaignName?: string; productName?: string; audience?: string; region?: string;
+    offer?: string; message?: string; contentTheme?: string;
+  };
+  const directionInput = {
+    tenantName: tenantIdentity?.nomeEmpresa?.trim() || tenantIdentity?.name?.trim() || null,
+    brandName,
+    productName: gen.productName ?? brief.productName ?? null,
+    theme: brief.contentTheme || gen.theme,
+    vertical: profile?.vertical ?? null,
+    audience: brief.audience ?? null,
+    region: brief.region ?? null,
+    offer: brief.offer ?? null,
+    message: brief.message ?? null,
+    campaignName: brief.campaignName ?? null,
+  };
   try {
-    let imageUrls: string[];
-    if (body.data.referenceImageUrl) {
-      const brand = (profile as any)?.nomeFantasia || "a empresa";
-      const obsNote = observations ? ` Client request: ${observations}.` : "";
-      const formatLabel = format === "stories" ? "Stories (vertical 9:16)" : "Feed (square 1:1)";
-      const editPrompt = `Improve this product/marketing image for Instagram ${formatLabel} for "${brand}". Subject: ${gen.theme}${gen.productName ? ` — ${gen.productName}` : ""}.${obsNote} Keep the same product. Improve: lighting, sharpness, color, composition. Professional marketing quality. No text. No watermarks.`;
-      imageUrls = await generateImagesWithReference(tenantId, body.data.referenceImageUrl, editPrompt, body.data.imageCount);
-    } else {
+    let imageUrls: string[] = [];
+    let fallbackWarning = "";
+    try {
       imageUrls = await generateImagesForContent(
-        profile ?? {},
+        { ...(profile ?? {}), ...(brandName ? { nomeFantasia: brandName } : {}) },
         tenantId,
-        gen.theme,
-        gen.productName ?? undefined,
+        directionInput.theme,
+        directionInput.productName ?? undefined,
         format,
         body.data.imageCount,
         undefined,
-        undefined,
+        body.data.referenceImageUrl,
         observations,
+        format === "stories" ? "9:16" : "1:1",
+        directionInput,
       );
+    } catch (generationError) {
+      imageUrls = await tenantPhotoFallbackUrls(tenantId, body.data.imageCount, body.data.referenceImageUrl);
+      if (imageUrls.length === 0) throw generationError;
+      fallbackWarning = "A geração de imagem por IA está indisponível no momento; usamos fotos reais da Biblioteca do negócio.";
+      req.log.warn({ err: generationError, tenantId, contentId }, "regenerate-image: fallback para fotos reais");
     }
 
     const variations = [...gen.result.variations] as (typeof gen.result.variations[number] & { imageUrl?: string; imageUrls?: string[]; imageSource?: "ai" | "upload" })[];
@@ -1456,7 +1545,7 @@ router.post("/tenants/:tenantId/content/:contentId/variations/:idx/regenerate-im
       ...variations[idx],
       imageUrl: imageUrls[0],
       imageUrls: imageUrls.length > 1 ? imageUrls : undefined,
-      imageSource: "ai",
+      imageSource: fallbackWarning ? "upload" : "ai",
     } as typeof variations[number];
 
     await db
@@ -1464,7 +1553,11 @@ router.post("/tenants/:tenantId/content/:contentId/variations/:idx/regenerate-im
       .set({ result: { variations } })
       .where(eq(contentGenerationsTable.id, contentId));
 
-    res.json({ success: true, imageUrls });
+    res.json({
+      success: true,
+      imageUrls,
+      ...(fallbackWarning ? { fallback: true, warning: fallbackWarning } : {}),
+    });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : "Falha ao regenerar imagem";
     res.status(502).json({ error: msg });
