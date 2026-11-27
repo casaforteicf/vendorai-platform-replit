@@ -23,6 +23,13 @@ o base deste PR é `feat/mkt-funnel-events`.
 - Frontend build: **EXIT 0** (bundle budget ok).
 - “Diagnóstico do Marketing” presente no chunk `ContentHub`.
 
-## Próximos passos
-- Tempo médio por etapa (usa timestamps do calendário/projeto).
-- Top motivos de falha agregados por `reasonCode`.
+## Evolução (mesma branch)
+- **Tempo médio até publicar** (criação → publicação) calculado no painel.
+- **Top motivos de falha** agregados (motivo do automation ou “mídia final não gerada”).
+- `GET /marketing/pieces` passou a devolver `createdAt`, `publishedAt` e `failureReason`.
+- **Atribuição campanha → negócio**: novo `GET /marketing/attribution`
+  (deals × leads.originCampaignId) e tabela “Negócios fechados por campanha de origem”.
+  Limite: a origem é a campanha de aquisição do lead, não a campanha do Plano de Mídia.
+
+## Ainda pendente
+- Vínculo entre campanha do Plano de Mídia e negócio (hoje a ponte é a origem do lead).
