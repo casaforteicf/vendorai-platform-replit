@@ -16,10 +16,12 @@ import {
   updateMediaJob,
 } from "../services/media-jobs.js";
 import {
+  captureGeneratedMedia,
   createProcessingMediaProject,
   registerGeneratedMediaOutput,
   setMediaProjectStatus,
 } from "../services/media-library.js";
+import { getOpenAIForTenant } from "../lib/agent-engine.js";
 
 const execFileAsync = promisify(execFile);
 const router: IRouter = Router();
@@ -75,6 +77,76 @@ async function getVideoDuration(filePath: string): Promise<number> {
 }
 
 // ── Edição automática ─────────────────────────────────────────────────────────
+
+const TTS_VOICES = new Set(["alloy", "ash", "ballad", "coral", "echo", "fable", "nova", "onyx", "sage", "shimmer", "verse", "cedar"]);
+
+/**
+ * Locução por IA com OpenAI TTS (não depende do worker de voz/ElevenLabs).
+ * Salva o MP3 como ativo de áudio na Biblioteca, pronto para a mixagem.
+ */
+router.post("/tenants/:tenantId/content-studio/video/voiceover", async (req, res) => {
+  if (!authCheck(req, res)) return;
+  const tenantId = routeTenantId(req);
+  const body = req.body as { text?: unknown; voice?: unknown; title?: unknown; speed?: unknown };
+  const text = String(body.text ?? "").trim();
+  if (!text || text.length > 3000) {
+    res.status(422).json({ error: "Informe um texto de locução entre 1 e 3000 caracteres." });
+    return;
+  }
+  const requestedVoice = String(body.voice ?? "nova").trim().toLowerCase();
+  const voice = TTS_VOICES.has(requestedVoice) ? requestedVoice : "nova";
+  const speed = Math.min(1.25, Math.max(0.75, Number(body.speed ?? 0.96) || 0.96));
+  const title = String(body.title ?? "Locução IA").trim().slice(0, 120) || "Locução IA";
+
+  try {
+    const openai = await getOpenAIForTenant(tenantId);
+    const speech = await openai.audio.speech.create({
+      model: "gpt-4o-mini-tts",
+      voice: voice as never,
+      input: text,
+      response_format: "mp3",
+      speed,
+      instructions: "Fale em português brasileiro com naturalidade, voz adulta e calorosa. Use ritmo conversacional, pausas discretas, articulação clara e entonação humana. Evite soar como locutor, robô ou leitura automática.",
+    });
+    const buffer = Buffer.from(await speech.arrayBuffer());
+    if (!buffer.length) throw new Error("A OpenAI retornou áudio vazio.");
+
+    const captured = await captureGeneratedMedia({
+      tenantId,
+      userId: req.user?.sub ?? null,
+      title,
+      operation: "voiceover_ai",
+      buffer,
+      mimeType: "audio/mpeg",
+      type: "audio",
+      originalFilename: `locucao-${Date.now()}.mp3`,
+      kind: "audio",
+      metadata: {
+        audioKind: "voiceover",
+        role: "voiceover",
+        source: "openai_tts",
+        voice,
+        speed,
+        textChars: text.length,
+      },
+    });
+
+    res.json({
+      success: true,
+      assetId: captured.assetId,
+      audioUrl: `/api/storage${captured.storageUrl}`,
+      storageUrl: captured.storageUrl,
+      voice,
+    });
+  } catch (error) {
+    req.log.error({ err: error, tenantId }, "content-studio: voiceover falhou");
+    const message = error instanceof Error ? error.message : "Não foi possível gerar a locução com IA.";
+    const friendly = /credits|quota|429/i.test(message)
+      ? "A conta OpenAI está sem créditos ou com limite temporário. Adicione saldo e tente novamente."
+      : message;
+    res.status(502).json({ error: friendly });
+  }
+});
 
 router.post(
   "/tenants/:tenantId/content-studio/video/edit",
