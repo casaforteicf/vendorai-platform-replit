@@ -12,7 +12,7 @@ import {
   webBehaviorEventsTable,
 } from "@workspace/db";
 import { findLeadByDedup, storePhone, storeDocument } from "../lib/dedup.js";
-import { resolveAdCampaignFromUtm } from "../lib/adAttribution.js";
+import { resolveAdCampaignFromUtm, resolveMediaPlanCampaignId } from "../lib/adAttribution.js";
 import { recordAdCampaignEvent } from "../services/adCampaignIntelligence.js";
 import { syncBehaviorIntentForLead } from "../jobs/behaviorIntentSync.js";
 import { signToken } from "../lib/jwt.js";
@@ -72,6 +72,7 @@ const intakeSchema = z.object({
   objetivo6meses: z.string().optional(),
   urgencia: z.string().optional(),
   orcamento: z.string().optional(),
+  campaignId: optionalTrackingString,
   ...trackingFields,
 });
 
@@ -266,6 +267,7 @@ intakeRouter.post("/public/:tenantSlug/intake", async (req, res) => {
 
   const d = mergeTracking(parsed.data, req.get("referer"));
   const adCampaignId = await resolveAdCampaignFromUtm(tenant.id, d.utmCampaign, req.log);
+  const originCampaignId = await resolveMediaPlanCampaignId(tenant.id, adCampaignId, d.campaignId, req.log);
   const attribution = attributionRecord(d);
   const discoveryData: Record<string, unknown> = {
     segmento: d.segmento,
@@ -298,7 +300,7 @@ intakeRouter.post("/public/:tenantSlug/intake", async (req, res) => {
   if (match.found) {
     leadId = match.lead.id;
     const [current] = await db
-      .select({ discoveryData: leadsTable.discoveryData, adCampaignId: leadsTable.adCampaignId })
+      .select({ discoveryData: leadsTable.discoveryData, adCampaignId: leadsTable.adCampaignId, originCampaignId: leadsTable.originCampaignId })
       .from(leadsTable)
       .where(and(eq(leadsTable.id, leadId), eq(leadsTable.tenantId, tenant.id)))
       .limit(1);
@@ -322,6 +324,11 @@ intakeRouter.post("/public/:tenantSlug/intake", async (req, res) => {
       updateData.adCampaignId = adCampaignId;
       attributedNow = true;
     }
+    if (originCampaignId && !current?.originCampaignId) {
+      updateData.originCampaignId = originCampaignId;
+      updateData.originSource = "media-plan";
+      updateData.originCapturedAt = new Date();
+    }
     await db.update(leadsTable).set(updateData).where(and(eq(leadsTable.id, leadId), eq(leadsTable.tenantId, tenant.id)));
   } else {
     const [lead] = await db.insert(leadsTable).values({
@@ -341,6 +348,9 @@ intakeRouter.post("/public/:tenantSlug/intake", async (req, res) => {
       status: "novo",
       source: slug === "vendorai" ? "website_warmup" : "website",
       adCampaignId,
+      originCampaignId,
+      originSource: originCampaignId ? "media-plan" : null,
+      originCapturedAt: originCampaignId ? new Date() : null,
       metadata: leadRegistrationMetadata(null, {
         entryChannel: "site",
         entrySource: slug === "vendorai" ? "website_warmup" : "website",

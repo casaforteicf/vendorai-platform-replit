@@ -16,8 +16,8 @@
  * do WhatsApp passar a carregar algum parâmetro de referência.
  */
 import type { Logger } from "pino";
-import { eq, and } from "drizzle-orm";
-import { db, adCampaignsTable } from "@workspace/db";
+import { eq, and, desc } from "drizzle-orm";
+import { db, adCampaignsTable, mediaPlansTable } from "@workspace/db";
 
 /**
  * Resolve um valor de utm_campaign (vindo da querystring de um link) pra
@@ -40,6 +40,53 @@ export async function resolveAdCampaignFromUtm(
   } catch (err) {
     // Atribuição é best-effort — nunca deve derrubar a criação do lead.
     log.warn({ err, tenantId, utmCampaign }, "resolveAdCampaignFromUtm: falha ao resolver, seguindo sem atribuição");
+    return null;
+  }
+}
+
+
+/**
+ * Resolve a campanha do PLANO DE MÍDIA para atribuição comercial.
+ *
+ * Prioridade:
+ * 1. `campaignId` explícito (ex.: hidden field da LP) — só vale se existir nas
+ *    campanhas do plano mais recente do tenant (evita atribuição inventada).
+ * 2. campanha de anúncio vinculada (`ad_campaigns.segmentacao.marketingContext`)
+ *    quando o lead chegou por UTM de um anúncio criado a partir do plano.
+ *
+ * Best-effort: falha de leitura nunca derruba a captura do lead.
+ */
+export async function resolveMediaPlanCampaignId(
+  tenantId: string,
+  adCampaignId: string | null | undefined,
+  explicitCampaignId: string | null | undefined,
+  log: Logger,
+): Promise<string | null> {
+  try {
+    const [plan] = await db
+      .select({ conteudo: mediaPlansTable.conteudo })
+      .from(mediaPlansTable)
+      .where(eq(mediaPlansTable.tenantId, tenantId))
+      .orderBy(desc(mediaPlansTable.createdAt))
+      .limit(1);
+    const campaigns = Array.isArray((plan?.conteudo as { campanhas?: unknown[] } | null)?.campanhas)
+      ? ((plan?.conteudo as { campanhas: Array<{ id: string }> }).campanhas ?? [])
+      : [];
+    const known = new Set(campaigns.map((campaign) => campaign.id));
+
+    const explicit = explicitCampaignId?.trim();
+    if (explicit && known.has(explicit)) return explicit;
+
+    if (!adCampaignId) return null;
+    const [ad] = await db
+      .select({ segmentacao: adCampaignsTable.segmentacao })
+      .from(adCampaignsTable)
+      .where(and(eq(adCampaignsTable.id, adCampaignId), eq(adCampaignsTable.tenantId, tenantId)))
+      .limit(1);
+    const campaignId = (ad?.segmentacao as { marketingContext?: { campaignId?: string } } | null)?.marketingContext?.campaignId;
+    return campaignId && known.has(campaignId) ? campaignId : (campaignId ?? null);
+  } catch (err) {
+    log.warn({ err, tenantId, adCampaignId }, "resolveMediaPlanCampaignId: falha ao resolver, seguindo sem atribuição de campanha");
     return null;
   }
 }

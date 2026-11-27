@@ -125,8 +125,8 @@ A correção é de plataforma, não de tenant: não existe flag, script ou ajust
 
 ## 5. O que NÃO foi feito (pendências reais)
 
-1. **L5 — atribuição comercial por campanha.** `origin_campaign_id` existe no lead, mas a captura de LP/WhatsApp ainda não grava a campanha do plano; painel por campanha não foi implementado. Depende da decisão C do diagnóstico.
-2. **L6 — consolidação dos 27 bridges e da navegação.** O comportamento crítico (quota, permissão, auto-start) saiu do build, mas os bridges continuam montados; a migração para os componentes donos é incremental e não foi iniciada.
+1. ~~L5 — atribuição comercial por campanha~~ **Implementado em 2026-11-27** (ver seção 9): captura grava a campanha do plano no lead e o painel de Resultados mostra leads/ganhos/receita/custo/ROAS por campanha.
+2. **L6 — consolidação dos bridges.** Avançou em 2026-11-27: o `ContentHub` não reescreve mais títulos/cópias no DOM, a navegação foi simplificada (abas sem numeração duplicada, ferramenta de rastreamento redundante removida) e a jornada/estado são nativos. Os 27 bridges ainda montados precisam de migração incremental e continuam como pendência estrutural.
 3. **Projeto por imagem gerada.** `captureGeneratedMedia` continua criando um projeto por mídia; vincular ao projeto da peça exige mudança na biblioteca e ficou fora deste lote.
 4. ~~Migration 576 não aplicada~~ **Aplicada em produção em 2026-11-26** (aditiva, verificada).
 5. **Homologação, PR e publicação.** Nada foi enviado para `main`, nenhum deploy, nenhuma publicação de conteúdo.
@@ -164,3 +164,33 @@ O primeiro deploy falhou com `failed to export layer / lease does not exist`. Ca
 - Docker/containerd reiniciados para limpar o estado de snapshots; containers voltaram com `unless-stopped` e health 200.
 
 O deploy bem-sucedido usou BuildKit/buildx após a limpeza. O caminho de auto-deploy segue o mesmo fluxo (homolog → healthcheck → prod → healthcheck → rollback).
+
+
+## 9. L5 e usabilidade (2026-11-27)
+
+### Atribuição comercial por campanha (L5)
+
+- `lib/adAttribution.ts`: `resolveMediaPlanCampaignId()` — resolve a campanha do plano por (1) campo explícito `campaignId`, validado contra o plano mais recente do tenant, ou (2) anúncio vinculado (`ad_campaigns.segmentacao.marketingContext.campaignId`).
+- `routes/intake.ts`: a captura pública passa a gravar `origin_campaign_id`, `origin_source='media-plan'` e `origin_captured_at` no lead (na criação e no reaproveitamento de lead existente), sem sobrescrever atribuição já existente.
+- `GET /api/tenants/:tenantId/marketing/attribution`: agrega leads, negócios ganhos, receita, custo (snapshots de anúncio), CPL e ROAS por campanha — leitura do CRM, sem tabela nova.
+- `MarketingAttributionPanel` na aba Resultados: tabela por campanha com estado vazio explicativo e “Atualizar”.
+- Nada é publicado e nenhum dado de lead existente é reescrito.
+
+### Usabilidade e limpeza (L6 parcial)
+
+- `ContentHub` deixou de reescrever/ocultar textos via `MutationObserver` (`applyMarketingRedundancyFilter`, `COPY_REPLACEMENTS` removidos) e deixou de fazer polling de URL a cada 200 ms (`useSearch` do wouter).
+- Abas sem numeração concorrente com a jornada; “Conteúdos & Publicação”; ferramenta “Rastreamento” duplicada removida.
+- Fila de produção: mostra “Lote atual: X de Y ações planejadas” e botão nativo **Gerar próximo lote** quando o lote atual está decidido e ainda há ações no plano.
+- Painel de atribuição adicionado a Resultados.
+
+### Validação
+
+| Check | Resultado |
+|---|---|
+| `vitest` intake + isolamento + mídia final + política | **21/21 OK** |
+| `vitest` contrato vendor-brain | **26/26 OK** |
+| `node build.mjs` | **EXIT 0** |
+| `vite build` + bundle budget | **EXIT 0** |
+| Encoding | **OK** |
+
+**Pendente estrutural:** migração dos 27 bridges para os componentes donos (L6), projeto único por peça, e teste de publicação real com canal conectado (exige autorização do tenant).
