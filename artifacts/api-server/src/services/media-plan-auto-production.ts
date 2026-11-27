@@ -22,6 +22,7 @@ import {
 } from "../lib/content-generation.js";
 import { logger } from "../lib/logger.js";
 import { createVendorAiMediaGenerationJob } from "./vendorai-media-engine.js";
+import { generateMarketingCopy } from "./marketingCopyGenerator.js";
 import { mediaProviderAvailable } from "./media-provider-router.js";
 import { startVendorAiPhotoVideo } from "./vendorai-photo-video.js";
 import {
@@ -385,6 +386,43 @@ async function generateDraft(input: {
   return saved;
 }
 
+async function attachAutoCopy(input: {
+  tenantId: string;
+  generation: { id: string; result: unknown };
+  campaign: Campaign;
+  theme: string;
+  tipo: string;
+}) {
+  try {
+    const copy = await generateMarketingCopy({
+      tenantId: input.tenantId,
+      campaign: {
+        nome: input.campaign.nome,
+        objetivo: input.campaign.objetivo,
+        produtoServico: input.campaign.produtoServico,
+        publico: input.campaign.publico,
+        regiao: input.campaign.regiao ?? null,
+        oferta: input.campaign.oferta,
+        mensagemCentral: input.campaign.mensagemCentral,
+        kpiPrincipal: input.campaign.kpiPrincipal ?? null,
+      },
+      item: { temaSugerido: input.theme, tipo: input.tipo },
+    });
+    if (!copy) return input.generation;
+    const result = (input.generation.result ?? {}) as Record<string, unknown>;
+    const [updated] = await db.update(contentGenerationsTable).set({
+      result: {
+        ...result,
+        design: { ...copy, copySource: "ai_auto", updatedAt: new Date().toISOString() },
+      } as never,
+    }).where(eq(contentGenerationsTable.id, input.generation.id)).returning();
+    return updated ?? input.generation;
+  } catch {
+    // segue sem design; a revisão permite gerar manualmente
+    return input.generation;
+  }
+}
+
 async function startAutomatedVideo(input: {
   tenantId: string;
   generationId: string;
@@ -533,12 +571,19 @@ export async function produceUpcomingMediaPlanOrganicContent(now = new Date()) {
 
     try {
       const theme = directionText(campaign, row);
-      const generation = await generateDraft({
+      const draft = await generateDraft({
         tenantId: row.tenantId,
         tipo: row.tipo,
         theme,
         campaign,
         calendarItemId: row.id,
+      });
+      const generation = await attachAutoCopy({
+        tenantId: row.tenantId,
+        generation: draft,
+        campaign,
+        theme,
+        tipo: row.tipo,
       });
       await db.update(contentCalendarItemsTable).set({
         // Vídeo só vira "gerado" quando o arquivo final existir. Até lá o item
