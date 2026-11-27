@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, sql } from "drizzle-orm";
 import { z } from "zod/v4";
 import { hotelEscalaConfigTable, hotelEscalaVersoesTable } from "@workspace/db";
 import { camposInvalidos, withTenantTx } from "../lib/ab/escopo.js";
@@ -112,6 +112,7 @@ router.get("/tenants/:tenantId/hotelaria/escalas/historico", async (req, res) =>
         version: hotelEscalaVersoesTable.version,
         savedBy: hotelEscalaVersoesTable.savedBy,
         createdAt: hotelEscalaVersoesTable.createdAt,
+        inicio: sql<string | null>`${hotelEscalaVersoesTable.state}->>'start'`.as("inicio"),
       })
       .from(hotelEscalaVersoesTable)
       .where(eq(hotelEscalaVersoesTable.tenantId, tenantId))
