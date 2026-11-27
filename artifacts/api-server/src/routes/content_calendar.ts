@@ -20,6 +20,7 @@ import { generationHasFinalVideo, isVideoCalendarType } from "../services/conten
 import { selectTenantImageAssetIds } from "../services/media-plan-auto-production.js";
 import { startVendorAiPhotoVideo } from "../services/vendorai-photo-video.js";
 import { emitMarketingFunnelEvent } from "../services/marketing-funnel-events.js";
+import { resolvePieceCta } from "../services/marketing-piece-cta.js";
 import { ObjectStorageService } from "../lib/objectStorage.js";
 import { captureGeneratedMedia } from "../services/media-library.js";
 import { renderMarketingOverlay } from "../services/marketingCreativeFrame.js";
@@ -320,6 +321,7 @@ type PieceRow = {
   id: string;
   tipo: string;
   canal: string;
+  pilar: string | null;
   temaSugerido: string;
   status: string;
   contentGenerationId: string | null;
@@ -392,6 +394,7 @@ async function loadPieceContext(tenantId: string, pieceId?: string) {
       id: contentCalendarItemsTable.id,
       tipo: contentCalendarItemsTable.tipo,
       canal: contentCalendarItemsTable.canal,
+      pilar: contentCalendarItemsTable.pilar,
       temaSugerido: contentCalendarItemsTable.temaSugerido,
       status: contentCalendarItemsTable.status,
       contentGenerationId: contentCalendarItemsTable.contentGenerationId,
@@ -435,14 +438,34 @@ async function loadPieceContext(tenantId: string, pieceId?: string) {
     }
   }
 
-  return rows.map((row) => {
+  const [plan] = await db
+    .select({ conteudo: mediaPlansTable.conteudo })
+    .from(mediaPlansTable)
+    .where(eq(mediaPlansTable.tenantId, tenantId))
+    .orderBy(desc(mediaPlansTable.createdAt))
+    .limit(1);
+  const campaigns = Array.isArray((plan?.conteudo as { campanhas?: unknown[] } | null)?.campanhas)
+    ? ((plan?.conteudo as { campanhas: Array<Record<string, unknown>> }).campanhas ?? [])
+    : [];
+
+  return Promise.all(rows.map(async (row) => {
     const projectContext = row.materializationStatus && typeof row.materializationStatus === "object" && !Array.isArray(row.materializationStatus)
       ? row.materializationStatus as Record<string, unknown>
       : {};
     const materialization = typeof projectContext["materializationStatus"] === "string" ? String(projectContext["materializationStatus"]) : null;
     const publication = publicationByItem.get(row.id);
-    return derivePieceView(row as PieceRow, publication?.status ?? null, materialization, publication?.publishedAt ?? null);
-  });
+    const view = derivePieceView(row as PieceRow, publication?.status ?? null, materialization, publication?.publishedAt ?? null);
+    const pillar = String(row.pilar ?? "").split(" · ")[0]?.trim().toLowerCase();
+    const campaign = (campaigns.find((entry) => String(entry["nome"] ?? "").trim().toLowerCase() === pillar) ?? campaigns[0] ?? null) as
+      | Parameters<typeof resolvePieceCta>[1]["campaign"]
+      | null;
+    const cta = await resolvePieceCta(tenantId, {
+      campaign: campaign ?? null,
+      item: { id: row.id, canal: row.canal, tipo: row.tipo, temaSugerido: row.temaSugerido },
+      medium: "organic",
+    }).catch(() => null);
+    return { ...view, cta };
+  }));
 }
 
 router.get("/tenants/:tenantId/marketing/pieces", async (req, res) => {
@@ -453,6 +476,20 @@ router.get("/tenants/:tenantId/marketing/pieces", async (req, res) => {
   }
   const pieces = await loadPieceContext(tenantId);
   res.json({ pieces });
+});
+
+router.get("/tenants/:tenantId/marketing/pieces/:id", async (req, res) => {
+  const tenantId = String(req.params.tenantId);
+  if (!canAccess(req, tenantId)) {
+    res.status(403).json({ error: "Access denied to this tenant" });
+    return;
+  }
+  const [piece] = await loadPieceContext(tenantId, String(req.params.id));
+  if (!piece) {
+    res.status(404).json({ error: "Peça não encontrada." });
+    return;
+  }
+  res.json({ piece });
 });
 
 const pieceTransitionSchema = z.object({ action: z.enum(["approve", "reject", "release"]) });
