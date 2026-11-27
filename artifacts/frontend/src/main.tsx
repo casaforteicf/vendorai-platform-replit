@@ -7,6 +7,7 @@ import { FrontendRecoveryGuard } from "./components/FrontendRecoveryGuard";
 import "./lib/partnerAttributionBridge";
 import { I18nProvider } from "./i18n";
 import "./index.css";
+import "./dark-theme.css";
 import "./ui-standard.css";
 import "./sidebar-utilities.css";
 import "./compact-page-titles.css";

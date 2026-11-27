@@ -345,3 +345,129 @@ export function selectRoundRobinByTenant<T>(
   }
   return selected;
 }
+
+// ─── Máquina de estados da peça (Fase 2) ─────────────────────────────────────
+// Estende o estado operacional único com: prontidão de mídia, ação/CTA por
+// estado e matriz de transições permitidas. Fonte única para API e UI.
+
+export type PieceMediaState = "pending" | "processing" | "ready" | "failed";
+
+export type PieceActionCode =
+  | "release"
+  | "produce"
+  | "wait"
+  | "review"
+  | "approve"
+  | "publish"
+  | "retry"
+  | "view_results"
+  | "none";
+
+export interface PieceAction {
+  code: PieceActionCode;
+  label: string;
+  enabled: boolean;
+  reason?: string;
+}
+
+export interface PieceMediaInput extends OperationalStateInput {
+  /** true quando a geração tem imagem (peças estáticas) ou vídeo final. */
+  hasVisual?: boolean;
+}
+
+export function derivePieceMediaState(input: PieceMediaInput): PieceMediaState {
+  const publication = String(input.publicationStatus ?? "").toLowerCase();
+  if (publication === "published" || publication === "scheduled" || publication === "queued" || publication === "publishing") {
+    return "ready";
+  }
+  if (String(input.calendarStatus ?? "").toLowerCase() === "publicado") return "ready";
+  if (input.materializationStatus === "failed") return "failed";
+  if (input.materializationStatus === "processing") return "processing";
+
+  const status = String(input.calendarStatus ?? "").toLowerCase();
+  if (input.isVideo && input.hasGeneration && !input.hasFinalVideo) {
+    return status === "gerado" || status === "processando" ? "processing" : "pending";
+  }
+  if (input.hasGeneration) {
+    if (!input.isVideo) return input.hasVisual === false ? "pending" : "ready";
+    return input.hasFinalVideo ? "ready" : "processing";
+  }
+  return "pending";
+}
+
+const ACTION_LABELS: Record<PieceActionCode, string> = {
+  release: "Liberar para produção",
+  produce: "Produzir",
+  wait: "Aguardando",
+  review: "Revisar",
+  approve: "Aprovar",
+  publish: "Publicar",
+  retry: "Tentar novamente",
+  view_results: "Ver resultados",
+  none: "Sem ação",
+};
+
+export function derivePieceAction(state: OperationalStateCode, media: PieceMediaState): PieceAction {
+  const action = (code: PieceActionCode, enabled = true, reason?: string): PieceAction => ({
+    code,
+    label: ACTION_LABELS[code],
+    enabled,
+    ...(reason ? { reason } : {}),
+  });
+
+  switch (state) {
+    case "planned":
+      return action("release");
+    case "authorized":
+      return action("produce");
+    case "producing":
+      return action("wait", false, media === "failed" ? "Produção falhou; tente novamente." : "Produção em andamento.");
+    case "in_review":
+      return media === "ready"
+        ? action("approve")
+        : media === "failed"
+          ? action("retry", true, "A mídia falhou; gere novamente antes de aprovar.")
+          : action("wait", false, "Aguardando a mídia final.");
+    case "approved":
+      return media === "ready" ? action("publish") : action("wait", false, "Mídia final ausente.");
+    case "scheduled":
+      return action("wait", false, "Publicação agendada.");
+    case "published":
+      return action("view_results");
+    case "failed":
+      return action("retry");
+    case "rejected":
+    case "skipped":
+      return action("none", false);
+    default:
+      return action("none", false);
+  }
+}
+
+export const PIECE_TRANSITIONS: Record<OperationalStateCode, OperationalStateCode[]> = {
+  planned: ["authorized", "rejected"],
+  authorized: ["producing", "rejected"],
+  producing: ["in_review", "failed", "authorized"],
+  in_review: ["approved", "producing", "rejected", "failed"],
+  approved: ["scheduled", "producing", "failed"],
+  scheduled: ["published", "approved", "failed"],
+  published: [],
+  rejected: ["planned"],
+  skipped: ["planned"],
+  failed: ["producing", "in_review", "authorized"],
+};
+
+export function canTransitionPiece(from: OperationalStateCode, to: OperationalStateCode): boolean {
+  return (PIECE_TRANSITIONS[from] ?? []).includes(to);
+}
+
+/**
+ * Aplica uma transição validada. Retorna o novo código ou lança erro com o
+ * código estável `INVALID_PIECE_TRANSITION`, para a API responder 422.
+ */
+export function transitionPiece(from: OperationalStateCode, to: OperationalStateCode): OperationalStateCode {
+  if (!canTransitionPiece(from, to)) {
+    throw new Error(`INVALID_PIECE_TRANSITION:${from}->${to}`);
+  }
+  return to;
+}
