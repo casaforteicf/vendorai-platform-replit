@@ -14,6 +14,9 @@ type Piece = {
   status: PieceStatus;
   media: "pending" | "processing" | "ready" | "failed";
   action: PieceAction;
+  createdAt?: string | null;
+  publishedAt?: string | null;
+  failureReason?: string | null;
 };
 
 const FUNNEL: Array<{ code: string; label: string }> = [
@@ -33,6 +36,7 @@ function authHeaders(): Record<string, string> {
 
 export function MarketingDiagnosticsPanel({ tenantId }: { tenantId: string }) {
   const [pieces, setPieces] = useState<Piece[]>([]);
+  const [attribution, setAttribution] = useState<Array<{ campaignId: string; deals: number; total: number }>>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -41,10 +45,17 @@ export function MarketingDiagnosticsPanel({ tenantId }: { tenantId: string }) {
     setLoading(true);
     setError("");
     try {
-      const response = await fetch(`/api/tenants/${tenantId}/marketing/pieces`, { headers: authHeaders(), cache: "no-store" });
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      const body = await response.json() as { pieces?: Piece[] };
+      const [piecesResponse, attributionResponse] = await Promise.all([
+        fetch(`/api/tenants/${tenantId}/marketing/pieces`, { headers: authHeaders(), cache: "no-store" }),
+        fetch(`/api/tenants/${tenantId}/marketing/attribution`, { headers: authHeaders(), cache: "no-store" }),
+      ]);
+      if (!piecesResponse.ok) throw new Error(`HTTP ${piecesResponse.status}`);
+      const body = await piecesResponse.json() as { pieces?: Piece[] };
       setPieces(Array.isArray(body.pieces) ? body.pieces : []);
+      const attributionBody = attributionResponse.ok
+        ? await attributionResponse.json() as { campaigns?: Array<{ campaignId: string; deals: number; total: number }> }
+        : {};
+      setAttribution(Array.isArray(attributionBody.campaigns) ? attributionBody.campaigns : []);
     } catch {
       setError("Não foi possível carregar o diagnóstico. Atualize para tentar de novo.");
       setPieces([]);
@@ -62,6 +73,24 @@ export function MarketingDiagnosticsPanel({ tenantId }: { tenantId: string }) {
   for (const piece of pieces) counts.set(piece.status.code, (counts.get(piece.status.code) ?? 0) + 1);
   const totalFunnel = FUNNEL.reduce((sum, stage) => sum + (counts.get(stage.code) ?? 0), 0);
   const failures = pieces.filter((piece) => piece.status.code === "failed" || piece.media === "failed");
+  const publishedWithCycle = pieces.filter((piece) => piece.status.code === "published" && piece.createdAt && piece.publishedAt);
+  const averageCycleDays = publishedWithCycle.length > 0
+    ? publishedWithCycle.reduce((sum, piece) => {
+        const start = new Date(piece.createdAt!).getTime();
+        const end = new Date(piece.publishedAt!).getTime();
+        return sum + Math.max(0, (end - start) / 86_400_000);
+      }, 0) / publishedWithCycle.length
+    : null;
+
+  const reasonCounts = new Map<string, number>();
+  for (const piece of failures) {
+    const reason = (piece.failureReason ?? "").trim();
+    const label = reason
+      ? reason.length > 90 ? `${reason.slice(0, 87)}…` : reason
+      : piece.media === "failed" ? "Mídia final não gerada" : "Falha de produção";
+    reasonCounts.set(label, (reasonCounts.get(label) ?? 0) + 1);
+  }
+  const topReasons = [...reasonCounts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 3);
   const blocked = pieces.filter((piece) => piece.action.code === "wait" && piece.media !== "ready");
 
   if (!tenantId) return null;
@@ -111,8 +140,44 @@ export function MarketingDiagnosticsPanel({ tenantId }: { tenantId: string }) {
               <span className="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-muted-foreground">
                 {blocked.length} aguardando mídia
               </span>
+              {averageCycleDays !== null ? (
+                <span className="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-muted-foreground">
+                  Tempo médio até publicar: <strong className="text-foreground">{averageCycleDays.toFixed(1)} dia(s)</strong>
+                </span>
+              ) : null}
               <span className="text-muted-foreground">Clique em “Atualizar” após uma produção para ver o funil mudar.</span>
             </div>
+
+            {attribution.length > 0 ? (
+              <div className="rounded-lg border bg-background px-3 py-2">
+                <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Negócios fechados por campanha de origem</p>
+                <div className="mt-1 divide-y text-[11px]">
+                  {attribution.map((row) => (
+                    <div key={row.campaignId} className="flex items-center justify-between gap-2 py-0.5">
+                      <span className="min-w-0 truncate text-muted-foreground">{row.campaignId}</span>
+                      <span className="shrink-0 tabular-nums">
+                        {row.deals} negócio(s) · {row.total.toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 })}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+                <p className="mt-1 text-[10px] text-muted-foreground">Origem vem do lead (campanha de aquisição), não do Plano de Mídia.</p>
+              </div>
+            ) : null}
+
+            {topReasons.length > 0 ? (
+              <div className="rounded-lg border bg-background px-3 py-2">
+                <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Top motivos de falha</p>
+                <ul className="mt-1 space-y-0.5 text-[11px]">
+                  {topReasons.map(([reason, count]) => (
+                    <li key={reason} className="flex items-start justify-between gap-2">
+                      <span className="min-w-0 truncate text-muted-foreground">{reason}</span>
+                      <span className="shrink-0 font-semibold tabular-nums">{count}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
 
             {failures.length > 0 ? (
               <div className="space-y-1 rounded-lg border border-red-200 bg-red-50/40 p-2">

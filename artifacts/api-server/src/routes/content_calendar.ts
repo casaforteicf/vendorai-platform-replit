@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { and, asc, desc, eq, gte, inArray, isNull, lte, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, isNotNull, isNull, lte, sql } from "drizzle-orm";
 import { z } from "zod/v4";
 import {
   db,
@@ -9,6 +9,8 @@ import {
   mediaProjectsTable,
   socialPublicationsTable,
   usersTable,
+  dealsTable,
+  leadsTable,
   CONTENT_CALENDAR_STATUS,
   CONTENT_CALENDAR_TIPOS,
 } from "@workspace/db";
@@ -318,9 +320,16 @@ type PieceRow = {
   dataAgendada: string | null;
   contentIdPublicado: string | null;
   generationResult: unknown;
+  createdAt: string | null;
+  updatedAt: string | null;
 };
 
-function derivePieceView(row: PieceRow, publicationStatus: string | null, materializationStatus: string | null) {
+function derivePieceView(
+  row: PieceRow,
+  publicationStatus: string | null,
+  materializationStatus: string | null,
+  publishedAt: string | null = null,
+) {
   const claim = String(row.contentGenerationId ?? "").startsWith("producing:");
   const hasGeneration = Boolean(row.contentGenerationId) && !claim;
   const isVideo = isVideoCalendarType(row.tipo);
@@ -347,6 +356,12 @@ function derivePieceView(row: PieceRow, publicationStatus: string | null, materi
     producing: claim,
   });
   const action = derivePieceAction(state.code, media);
+  const automation = row.generationResult && typeof row.generationResult === "object" && !Array.isArray(row.generationResult)
+    ? (row.generationResult as Record<string, unknown>)["automation"]
+    : null;
+  const failureReason = automation && typeof automation === "object" && !Array.isArray(automation)
+    ? (automation as Record<string, unknown>)["error"]
+    : null;
   return {
     id: row.id,
     tipo: row.tipo,
@@ -356,6 +371,10 @@ function derivePieceView(row: PieceRow, publicationStatus: string | null, materi
     status: state,
     media,
     action,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+    publishedAt,
+    failureReason: typeof failureReason === "string" && failureReason.trim() ? failureReason : null,
   };
 }
 
@@ -373,6 +392,8 @@ async function loadPieceContext(tenantId: string, pieceId?: string) {
       dataAgendada: contentCalendarItemsTable.dataAgendada,
       contentIdPublicado: contentCalendarItemsTable.contentIdPublicado,
       generationResult: contentGenerationsTable.result,
+      createdAt: contentCalendarItemsTable.createdAt,
+      updatedAt: contentCalendarItemsTable.updatedAt,
       materializationStatus: mediaProjectsTable.context,
     })
     .from(contentCalendarItemsTable)
@@ -389,15 +410,22 @@ async function loadPieceContext(tenantId: string, pieceId?: string) {
     .limit(pieceId ? 1 : 200);
 
   const publications = await db
-    .select({ calendarItemId: sql<string>`${socialPublicationsTable.metadata}->>'calendarItemId'`, status: socialPublicationsTable.status })
+    .select({
+      calendarItemId: sql<string>`${socialPublicationsTable.metadata}->>'calendarItemId'`,
+      status: socialPublicationsTable.status,
+      publishedAt: socialPublicationsTable.publishedAt,
+    })
     .from(socialPublicationsTable)
     .where(eq(socialPublicationsTable.tenantId, tenantId))
     .orderBy(desc(socialPublicationsTable.createdAt))
     .limit(500);
-  const publicationByItem = new Map<string, string>();
+  const publicationByItem = new Map<string, { status: string; publishedAt: string | null }>();
   for (const publication of publications) {
     if (publication.calendarItemId && !publicationByItem.has(publication.calendarItemId)) {
-      publicationByItem.set(publication.calendarItemId, publication.status);
+      publicationByItem.set(publication.calendarItemId, {
+        status: publication.status,
+        publishedAt: publication.publishedAt ? new Date(publication.publishedAt).toISOString() : null,
+      });
     }
   }
 
@@ -406,9 +434,41 @@ async function loadPieceContext(tenantId: string, pieceId?: string) {
       ? row.materializationStatus as Record<string, unknown>
       : {};
     const materialization = typeof projectContext["materializationStatus"] === "string" ? String(projectContext["materializationStatus"]) : null;
-    return derivePieceView(row as PieceRow, publicationByItem.get(row.id) ?? null, materialization);
+    const publication = publicationByItem.get(row.id);
+    return derivePieceView(row as PieceRow, publication?.status ?? null, materialization, publication?.publishedAt ?? null);
   });
 }
+
+router.get("/tenants/:tenantId/marketing/attribution", async (req, res) => {
+  const tenantId = String(req.params.tenantId);
+  if (!canAccess(req, tenantId)) {
+    res.status(403).json({ error: "Access denied to this tenant" });
+    return;
+  }
+  const rows = await db
+    .select({
+      campaignId: leadsTable.originCampaignId,
+      deals: sql<number>`count(*)::int`,
+      total: sql<string>`coalesce(sum(${dealsTable.valor}), 0)::text`,
+    })
+    .from(dealsTable)
+    .innerJoin(leadsTable, eq(leadsTable.id, dealsTable.leadId))
+    .where(and(
+      eq(dealsTable.tenantId, tenantId),
+      isNotNull(leadsTable.originCampaignId),
+      isNotNull(dealsTable.valor),
+    ))
+    .groupBy(leadsTable.originCampaignId)
+    .orderBy(desc(sql`coalesce(sum(${dealsTable.valor}), 0)`))
+    .limit(10);
+  res.json({
+    campaigns: rows.map((row) => ({
+      campaignId: row.campaignId,
+      deals: Number(row.deals ?? 0),
+      total: Number(row.total ?? 0),
+    })),
+  });
+});
 
 router.get("/tenants/:tenantId/marketing/pieces", async (req, res) => {
   const tenantId = String(req.params.tenantId);
