@@ -5,6 +5,7 @@ const SECTORS = [
   { href: "/hotelaria/hospedagem", name: "Hospedagem", aliases: ["/hotelaria/recepcao"] },
   { href: "/hotelaria/diarias", name: "Diárias", aliases: ["/hotelaria/tarifas"] },
   { href: "/hotelaria/restaurante", name: "Restaurante" },
+  { href: "/hotelaria/escalas", name: "Escalas" },
   { href: "/hotelaria/manutencao", name: "Manutenção" },
 ] as const;
 

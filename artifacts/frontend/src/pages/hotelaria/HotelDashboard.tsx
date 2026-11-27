@@ -90,6 +90,13 @@ export default function HotelDashboard() {
       stats: [`${activeFichas} ficha(s) ativa(s)`, `${cardapios.length} cardápio(s) hoje`, "A&B completo"],
     },
     {
+      href: "/hotelaria/escalas",
+      icon: CalendarDays,
+      title: "Escalas",
+      description: "Equipe, folgas, ocupação, metas por turno, extras e cobertura.",
+      stats: ["5x2, 12x36 e parcial", "Metas por Pax", "Histórico versionado"],
+    },
+    {
       href: "/hotelaria/manutencao",
       icon: Wrench,
       title: "Manutenção",

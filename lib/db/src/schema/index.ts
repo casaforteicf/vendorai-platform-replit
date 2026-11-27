@@ -293,3 +293,5 @@ export * from "./calendar_oauth_states";
 export * from "./operations_base";
 
 export * from "./operations_ab";
+
+export * from "./hotel_escalas";
