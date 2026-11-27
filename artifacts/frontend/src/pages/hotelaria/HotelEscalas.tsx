@@ -8,6 +8,7 @@ import {
   contar,
   cobertura,
   custoExtras,
+  diaSemana,
   estadoInicial,
   fmtHoras,
   gerarEscala,
@@ -44,6 +45,8 @@ export default function HotelEscalas() {
   const [estado, setEstado] = useState<EscalaState>(() => estadoInicial(inicioDoMes()));
   const [aba, setAba] = useState<Aba>("Escala");
   const [diaCobertura, setDiaCobertura] = useState(0);
+  const [semana, setSemana] = useState(0);
+  const [detalhe, setDetalhe] = useState<number | null>(null);
   const [carregando, setCarregando] = useState(false);
   const [salvando, setSalvando] = useState(false);
   const [mensagem, setMensagem] = useState<string | null>(null);
@@ -78,6 +81,13 @@ export default function HotelEscalas() {
   }, [base, headers, tenantId, token]);
 
   useEffect(() => { void carregar(); }, [carregar]);
+
+  useEffect(() => {
+    if (detalhe === null) return;
+    const fechar = (evento: KeyboardEvent) => { if (evento.key === "Escape") setDetalhe(null); };
+    window.addEventListener("keydown", fechar);
+    return () => window.removeEventListener("keydown", fechar);
+  }, [detalhe]);
 
   function mudarPeriodo(valor: string) {
     if (!/^\d{4}-\d{2}$/.test(valor)) return;
@@ -181,6 +191,10 @@ export default function HotelEscalas() {
     }
   }
 
+  const semanaAtual = semana * 7;
+  const diasVisiveis = estado.days.slice(semanaAtual, semanaAtual + 7);
+  const staffDetalhe = detalhe === null ? null : estado.staff[detalhe] ?? null;
+
   const contagem = contar(estado);
   const totalExtras = contagem.reduce((a, b) => a + b.totalExtras, 0);
   const custo = custoExtras(estado);
@@ -244,33 +258,100 @@ export default function HotelEscalas() {
 
         {aba === "Escala" && (
           <section className={card}>
-            <h2 className="text-lg font-semibold text-[#ffd12a]">Escala nominal</h2>
-            <p className="mb-3 text-xs text-[#b9ae91]">Clique em T/F para editar. 12x36 fica protegido. Salve para versionar.</p>
-            <div className="overflow-auto">
-              <table className="w-full border-collapse text-xs">
-                <thead><tr className="bg-[#2a2104] text-[#f5e6a8]"><th className="border p-2 text-left">Colaborador</th><th className="border p-2">Setor / turno</th><th className="border p-2">Regime</th><th className="border p-2">Horário</th>{estado.days.map((_, d) => <th key={d} className="border p-1">{rotuloDia(estado, d)}</th>)}</tr></thead>
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <h2 className="text-lg font-semibold text-[#ffd12a]">Escala nominal</h2>
+                <p className="text-sm text-[#b9ae91]">Clique em T/F para editar e no nome para abrir o cadastro completo. 12x36 fica protegido.</p>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-xs uppercase tracking-wide text-[#b9ae91]">Semana</span>
+                {Array.from({ length: 5 }, (_, s) => (
+                  <button
+                    key={s}
+                    type="button"
+                    onClick={() => setSemana(s)}
+                    className={`rounded-md border px-3 py-1.5 text-sm ${semana === s ? ouro : "border-[#d8c88d]/60 text-[#f7f1df] hover:bg-[#211d10]"}`}
+                  >
+                    {s + 1}
+                    <span className="ml-1 text-xs opacity-80">{rotuloDia(estado, s * 7)}–{rotuloDia(estado, s * 7 + 6)}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="mt-3 max-h-[70vh] overflow-auto rounded-lg border border-[#d8c88d]/40">
+              <table className="min-w-[1080px] w-full border-collapse text-sm">
+                <thead>
+                  <tr className="bg-[#2a2104] text-[#f5e6a8]">
+                    <th className="sticky left-0 top-0 z-30 min-w-[230px] border-b border-r border-[#d8c88d]/30 bg-[#2a2104] p-3 text-left">Colaborador</th>
+                    <th className="sticky top-0 z-20 min-w-[120px] border-b border-r border-[#d8c88d]/30 bg-[#2a2104] p-3">Setor / turno</th>
+                    <th className="sticky top-0 z-20 min-w-[130px] border-b border-r border-[#d8c88d]/30 bg-[#2a2104] p-3">Regime</th>
+                    <th className="sticky top-0 z-20 min-w-[150px] border-b border-r border-[#d8c88d]/30 bg-[#2a2104] p-3">Horário</th>
+                    {diasVisiveis.map((_, d) => {
+                      const dia = semanaAtual + d;
+                      return (
+                        <th key={dia} className="sticky top-0 z-20 min-w-[64px] border-b border-r border-[#d8c88d]/20 bg-[#2a2104] p-2 text-center">
+                          <div>{rotuloDia(estado, dia)}</div>
+                          <div className="text-[10px] font-normal uppercase text-[#b9ae91]">{diaSemana(estado, dia)}</div>
+                        </th>
+                      );
+                    })}
+                  </tr>
+                </thead>
                 <tbody>
                   {estado.staff.map((s, i) => (
-                    <tr key={`${s.name}-${i}`}>
-                      <td className="border p-2">{s.name || "Sem nome"}<br /><span className="text-[10px] text-[#b9ae91]">{s.role}</span></td>
-                      <td className="border p-2">{s.sector} {s.shift}</td>
-                      <td className="border p-2">{s.regime}</td>
-                      <td className="border p-2">{s.start}–{s.end}<br />{s.breakStart}–{s.breakEnd}</td>
-                      {s.schedule.map((v, d) => <td key={d} className="border p-0 text-center"><button type="button" className={`h-7 w-7 ${v === "T" ? "bg-[#d9eee6] text-[#17604a]" : "bg-[#f8d365] text-[#4b3400]"}`} onClick={() => atualizar((c) => { if (c.staff[i]!.regime !== "12x36") c.staff[i]!.schedule[d] = v === "T" ? "F" : "T"; })}>{v}</button></td>)}
+                    <tr key={`${s.name}-${i}`} className="hover:bg-[#1a1608]">
+                      <td className="sticky left-0 z-10 border-b border-r border-[#d8c88d]/15 bg-[#111] p-3">
+                        <button type="button" onClick={() => setDetalhe(i)} className="text-left font-medium text-[#ffd12a] hover:underline">
+                          {s.name || "Sem nome"}
+                        </button>
+                        <div className="text-xs text-[#b9ae91]">{s.role}</div>
+                      </td>
+                      <td className="border-b border-r border-[#d8c88d]/15 p-3 text-center">{s.sector} {s.shift}</td>
+                      <td className="border-b border-r border-[#d8c88d]/15 p-3 text-center text-xs">{s.regime}</td>
+                      <td className="border-b border-r border-[#d8c88d]/15 p-3 text-center text-xs">
+                        {s.start}–{s.end}
+                        <br />
+                        <span className="text-[#b9ae91]">{s.breakStart && s.breakEnd ? `${s.breakStart}–${s.breakEnd}` : "sem intervalo"}</span>
+                      </td>
+                      {diasVisiveis.map((_, d) => {
+                        const dia = semanaAtual + d;
+                        const v = s.schedule[dia];
+                        return (
+                          <td key={dia} className="border-b border-r border-[#d8c88d]/15 p-1.5 text-center">
+                            <button
+                              type="button"
+                              title={`${s.name} · ${rotuloDia(estado, dia)}`}
+                              className={`h-10 w-10 rounded-md text-sm font-semibold transition ${v === "T" ? "bg-[#d9eee6] text-[#17604a] hover:bg-emerald-200" : "bg-[#f8d365] text-[#4b3400] hover:bg-amber-300"}`}
+                              onClick={() => atualizar((c) => { if (c.staff[i]!.regime !== "12x36") c.staff[i]!.schedule[dia] = v === "T" ? "F" : "T"; })}
+                            >
+                              {v}
+                            </button>
+                          </td>
+                        );
+                      })}
                     </tr>
                   ))}
                 </tbody>
-              </table>
-            </div>
-            <div className="mt-3 overflow-auto">
-              <table className="w-full text-xs">
-                <tbody>
-                  {[["Pax noite", estado.days.map((d) => d.pax)], ["Pax manhã", estado.days.map((d) => d.morning)], ["Efetivos", contagem.map((c) => c.total)], ["Extras", contagem.map((c) => c.totalExtras)], ["Tarifa", estado.days.map((_, d) => valorTarifa(estado, d))]].map(([label, valores]) => (
-                    <tr key={String(label)}><th className="border p-2 text-left text-[#d8c88d]">{label}</th>{(valores as number[]).map((v, d) => <td key={d} className="border p-1 text-center">{v}</td>)}</tr>
+                <tfoot>
+                  {[
+                    ["Pax noite", diasVisiveis.map((d) => d.pax)],
+                    ["Pax manhã", diasVisiveis.map((d) => d.morning)],
+                    ["Efetivos", contagem.slice(semanaAtual, semanaAtual + 7).map((c) => c.total)],
+                    ["Extras", contagem.slice(semanaAtual, semanaAtual + 7).map((c) => c.totalExtras)],
+                    ["Tarifa", diasVisiveis.map((_, d) => valorTarifa(estado, semanaAtual + d))],
+                  ].map(([label, valores]) => (
+                    <tr key={String(label)}>
+                      <th colSpan={4} className="sticky left-0 z-10 border-t border-r border-[#d8c88d]/20 bg-[#151515] p-2 text-left text-xs text-[#d8c88d]">{label}</th>
+                      {(valores as number[]).map((v, d) => (
+                        <td key={d} className="border-t border-r border-[#d8c88d]/15 bg-[#151515] p-2 text-center text-sm">{v}</td>
+                      ))}
+                    </tr>
                   ))}
-                </tbody>
+                </tfoot>
               </table>
             </div>
+            <p className="mt-2 text-xs text-[#b9ae91]">T = trabalha · F = folga. Em telas menores a tabela rola na horizontal e a coluna de nomes fica fixa.</p>
           </section>
         )}
 
@@ -339,6 +420,49 @@ export default function HotelEscalas() {
             {historico.length > 0 && <div className="mt-4"><h3 className="font-semibold text-[#ffd12a]">Histórico</h3><div className="mt-2 space-y-1 text-xs">{historico.map((v) => <div key={v.id} className="flex justify-between border-b border-[#d8c88d]/20 py-1"><span>v{v.version}{v.inicio ? ` · ${rotuloPeriodo(v.inicio)}` : ""} · {new Date(v.createdAt).toLocaleString("pt-BR")}</span><button type="button" className="text-[#ffd12a]" onClick={() => void restaurar(v.id)}>Restaurar</button></div>)}</div></div>}
           </section>
         )}
+
+        {detalhe !== null && staffDetalhe ? (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4" role="dialog" aria-modal="true" aria-label="Detalhes do colaborador" onClick={() => setDetalhe(null)}>
+            <div className="max-h-[90vh] w-full max-w-3xl overflow-auto rounded-xl border border-[#d8c88d] bg-[#111] p-5 shadow-2xl" onClick={(evento) => evento.stopPropagation()}>
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <h2 className="text-xl font-semibold text-[#ffd12a]">{staffDetalhe.name || "Sem nome"}</h2>
+                  <p className="text-sm text-[#b9ae91]">{staffDetalhe.role} · {staffDetalhe.sector} {staffDetalhe.shift} · {staffDetalhe.regime}</p>
+                </div>
+                <button type="button" className="rounded-md border border-[#d8c88d] px-3 py-1.5 text-sm" onClick={() => setDetalhe(null)}>Fechar</button>
+              </div>
+
+              <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                <label className="text-sm">Nome<input className="mt-1 w-full rounded border border-[#d8c88d]/50 bg-[#181818] p-2" value={staffDetalhe.name} onChange={(e) => atualizar((c) => { c.staff[detalhe]!.name = e.target.value; })} /></label>
+                <label className="text-sm">Cargo<input className="mt-1 w-full rounded border border-[#d8c88d]/50 bg-[#181818] p-2" value={staffDetalhe.role} onChange={(e) => atualizar((c) => { c.staff[detalhe]!.role = e.target.value; })} /></label>
+                <label className="text-sm">Setor<select className="mt-1 w-full rounded border border-[#d8c88d]/50 bg-[#181818] p-2" value={staffDetalhe.sector} onChange={(e) => atualizar((c) => { c.staff[detalhe]!.sector = e.target.value; })}>{["Cozinha", "Salão", "Confeitaria", "Quiosque"].map((v) => <option key={v}>{v}</option>)}</select></label>
+                <label className="text-sm">Turno<select className="mt-1 w-full rounded border border-[#d8c88d]/50 bg-[#181818] p-2" value={staffDetalhe.shift} onChange={(e) => atualizar((c) => { c.staff[detalhe]!.shift = e.target.value; })}>{["M", "N", "P", "E"].map((v) => <option key={v}>{v}</option>)}</select></label>
+                <label className="text-sm">Regime<select className="mt-1 w-full rounded border border-[#d8c88d]/50 bg-[#181818] p-2" value={staffDetalhe.regime} onChange={(e) => atualizar((c) => { c.staff[detalhe]!.regime = e.target.value; })}>{["5x2 integral", "5x2 parcial", "12x36"].map((v) => <option key={v}>{v}</option>)}</select></label>
+                <div className="self-end text-sm text-[#b9ae91]">Jornada: <span className="font-semibold text-[#ffd12a]">{fmtHoras(minutosTrabalho(staffDetalhe))}</span></div>
+                {(["start", "breakStart", "breakEnd", "end"] as const).map((key) => (
+                  <label key={key} className="text-sm">{key === "start" ? "Entrada" : key === "breakStart" ? "Início do intervalo" : key === "breakEnd" ? "Fim do intervalo" : "Saída"}<input type="time" className="mt-1 w-full rounded border border-[#d8c88d]/50 bg-[#181818] p-2" value={staffDetalhe[key]} onChange={(e) => atualizar((c) => { c.staff[detalhe]![key] = e.target.value; })} /></label>
+                ))}
+              </div>
+
+              <div className="mt-5 rounded-lg border border-[#d8c88d]/30 p-3">
+                <p className="text-sm font-semibold text-[#ffd12a]">Semana {semana + 1} · {rotuloDia(estado, semanaAtual)}–{rotuloDia(estado, semanaAtual + 6)}</p>
+                <div className="mt-2 grid grid-cols-7 gap-1">
+                  {diasVisiveis.map((_, d) => {
+                    const dia = semanaAtual + d;
+                    const v = staffDetalhe.schedule[dia];
+                    return (
+                      <button key={dia} type="button" className={`rounded-md border p-2 text-sm font-semibold ${v === "T" ? "border-emerald-300/40 bg-[#d9eee6] text-[#17604a]" : "border-amber-300/40 bg-[#f8d365] text-[#4b3400]"}`} onClick={() => atualizar((c) => { if (c.staff[detalhe]!.regime !== "12x36") c.staff[detalhe]!.schedule[dia] = v === "T" ? "F" : "T"; })}>
+                        <div className="text-[10px] font-normal">{rotuloDia(estado, dia)}</div>
+                        {v}
+                      </button>
+                    );
+                  })}
+                </div>
+                <p className="mt-2 text-xs text-[#b9ae91]">{staffDetalhe.schedule.slice(0, 30).filter((v) => v === "T").length} dias trabalhados · {30 - staffDetalhe.schedule.slice(0, 30).filter((v) => v === "T").length} folgas no mês</p>
+              </div>
+            </div>
+          </div>
+        ) : null}
 
         <footer className="rounded-xl border border-[#d8c88d]/40 p-3 text-xs text-[#b9ae91]">
           Simulação gerencial. Confirme domingos, feriados, intervalos e contratos com o RH antes de publicar a escala.
