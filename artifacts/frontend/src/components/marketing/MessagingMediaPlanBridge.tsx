@@ -134,7 +134,7 @@ export function MessagingMediaPlanBridge({ pathname }: { pathname: string }) {
 
   // Publicação manual precisa estar onde o usuário revisa/aprova as peças.
   // Antes só aparecia em tab=gerador&source=media-plan, escondida da fila.
-  if (route === "/content" && ["gerador", "conteudos"].includes(params.get("tab") || "gerador")) {
+  if (route === "/content" && params.get("mode") !== "avulso" && ["gerador", "conteudos"].includes(params.get("tab") || "gerador")) {
     return <OrganicCalendarPublisher pathname={pathname} />;
   }
 
