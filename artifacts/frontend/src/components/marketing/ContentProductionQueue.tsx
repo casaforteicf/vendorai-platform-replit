@@ -1611,6 +1611,17 @@ export default function ContentProductionQueue({ tenantId }: { tenantId: string 
                       <Eye className="h-3 w-3 mr-1" />{expanded ? "Fechar" : "Revisar"}
                     </Button>
                   )}
+                  {item.status === "gerado" && item.contentGenerationId && VIDEO_GENERATOR_TYPES.has(item.tipo) && (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      className="h-7 text-xs"
+                      onClick={() => navigate(`/marketing/revisao/${item.id}`)}
+                    >
+                      <Eye className="h-3 w-3 mr-1" />Revisar material
+                    </Button>
+                  )}
                   {item.status === "gerado" && item.contentGenerationId && (
                     <Button
                       type="button"
