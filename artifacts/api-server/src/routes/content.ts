@@ -1,11 +1,12 @@
 import { Router, type IRouter } from "express";
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, inArray } from "drizzle-orm";
 import { z } from "zod/v4";
 import {
   db,
   contentGenerationsTable,
   contentStudioUploadsTable,
   contentLibraryTable,
+  mediaAssetsTable,
   agentConfigsTable,
   businessProfilesTable,
   produtosCatalogoTable,
@@ -1411,6 +1412,36 @@ router.post("/tenants/:tenantId/content/describe-image", async (req, res) => {
   }
 });
 
+/**
+ * Fallback sem IA: usa fotos reais da Biblioteca do tenant quando o provedor
+ * de imagem está indisponível (ex.: créditos OpenAI esgotados, sem Replicate).
+ * Melhor uma foto real do negócio do que um criativo genérico/desconexo.
+ */
+async function tenantPhotoFallbackUrls(
+  tenantId: string,
+  count: number,
+  preferred?: string,
+): Promise<string[]> {
+  const rows = await db
+    .select({ storageUrl: mediaAssetsTable.storageUrl })
+    .from(mediaAssetsTable)
+    .where(and(
+      eq(mediaAssetsTable.tenantId, tenantId),
+      eq(mediaAssetsTable.type, "image"),
+      inArray(mediaAssetsTable.source, ["upload", "imported"]),
+    ))
+    .orderBy(desc(mediaAssetsTable.createdAt))
+    .limit(Math.max(count * 3, 12));
+  const urls = rows.map((row) => row.storageUrl);
+  if (preferred) {
+    const normalized = preferred.startsWith("/api/storage") ? preferred.slice("/api/storage".length) : preferred;
+    if (normalized.startsWith("/objects/") && !urls.includes(normalized)) urls.unshift(normalized);
+  }
+  return urls
+    .slice(0, Math.max(1, count))
+    .map((url) => (url.startsWith("/api/storage") ? url : `/api/storage${url}`));
+}
+
 // POST /tenants/:tenantId/content/:contentId/variations/:idx/regenerate-image — regenera com estilo
 router.post("/tenants/:tenantId/content/:contentId/variations/:idx/regenerate-image", async (req, res) => {
   const tenantId = String(req.params["tenantId"]);
@@ -1477,19 +1508,28 @@ router.post("/tenants/:tenantId/content/:contentId/variations/:idx/regenerate-im
     campaignName: brief.campaignName ?? null,
   };
   try {
-    const imageUrls = await generateImagesForContent(
-      { ...(profile ?? {}), ...(brandName ? { nomeFantasia: brandName } : {}) },
-      tenantId,
-      directionInput.theme,
-      directionInput.productName ?? undefined,
-      format,
-      body.data.imageCount,
-      undefined,
-      body.data.referenceImageUrl,
-      observations,
-      format === "stories" ? "9:16" : "1:1",
-      directionInput,
-    );
+    let imageUrls: string[] = [];
+    let fallbackWarning = "";
+    try {
+      imageUrls = await generateImagesForContent(
+        { ...(profile ?? {}), ...(brandName ? { nomeFantasia: brandName } : {}) },
+        tenantId,
+        directionInput.theme,
+        directionInput.productName ?? undefined,
+        format,
+        body.data.imageCount,
+        undefined,
+        body.data.referenceImageUrl,
+        observations,
+        format === "stories" ? "9:16" : "1:1",
+        directionInput,
+      );
+    } catch (generationError) {
+      imageUrls = await tenantPhotoFallbackUrls(tenantId, body.data.imageCount, body.data.referenceImageUrl);
+      if (imageUrls.length === 0) throw generationError;
+      fallbackWarning = "A geração de imagem por IA está indisponível no momento; usamos fotos reais da Biblioteca do negócio.";
+      req.log.warn({ err: generationError, tenantId, contentId }, "regenerate-image: fallback para fotos reais");
+    }
 
     const variations = [...gen.result.variations] as (typeof gen.result.variations[number] & { imageUrl?: string; imageUrls?: string[]; imageSource?: "ai" | "upload" })[];
     if (!variations[idx]) { res.status(400).json({ error: "Variação inválida" }); return; }
@@ -1498,7 +1538,7 @@ router.post("/tenants/:tenantId/content/:contentId/variations/:idx/regenerate-im
       ...variations[idx],
       imageUrl: imageUrls[0],
       imageUrls: imageUrls.length > 1 ? imageUrls : undefined,
-      imageSource: "ai",
+      imageSource: fallbackWarning ? "upload" : "ai",
     } as typeof variations[number];
 
     await db
@@ -1506,7 +1546,11 @@ router.post("/tenants/:tenantId/content/:contentId/variations/:idx/regenerate-im
       .set({ result: { variations } })
       .where(eq(contentGenerationsTable.id, contentId));
 
-    res.json({ success: true, imageUrls });
+    res.json({
+      success: true,
+      imageUrls,
+      ...(fallbackWarning ? { fallback: true, warning: fallbackWarning } : {}),
+    });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : "Falha ao regenerar imagem";
     res.status(502).json({ error: msg });

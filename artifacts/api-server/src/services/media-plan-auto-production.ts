@@ -293,30 +293,49 @@ async function generateDraft(input: {
   if (input.tipo === "feed" || input.tipo === "carrossel" || input.tipo === "stories") {
     const imageCount = input.tipo === "carrossel" ? 4 : 1;
     const imageType = input.tipo === "stories" ? "stories" : "feed";
-    const imageUrls = await generateImagesForContent(
-      generationProfile,
-      input.tenantId,
-      input.theme.split("\n")[0] || input.theme,
-      input.campaign.produtoServico || undefined,
-      imageType,
-      imageCount,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      {
-        tenantName: tenantIdentity?.nomeEmpresa?.trim() || tenantIdentity?.name?.trim() || null,
-        brandName,
-        productName: input.campaign.produtoServico || null,
-        theme: input.theme.split("\n")[0] || input.theme,
-        vertical: profile?.vertical ?? null,
-        audience: input.campaign.publico,
-        region: input.campaign.regiao ?? null,
-        offer: input.campaign.oferta,
-        message: input.campaign.mensagemCentral,
-        campaignName: input.campaign.nome,
-      },
-    );
+    let imageUrls: string[] = [];
+    try {
+      imageUrls = await generateImagesForContent(
+        generationProfile,
+        input.tenantId,
+        input.theme.split("\n")[0] || input.theme,
+        input.campaign.produtoServico || undefined,
+        imageType,
+        imageCount,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        {
+          tenantName: tenantIdentity?.nomeEmpresa?.trim() || tenantIdentity?.name?.trim() || null,
+          brandName,
+          productName: input.campaign.produtoServico || null,
+          theme: input.theme.split("\n")[0] || input.theme,
+          vertical: profile?.vertical ?? null,
+          audience: input.campaign.publico,
+          region: input.campaign.regiao ?? null,
+          offer: input.campaign.oferta,
+          message: input.campaign.mensagemCentral,
+          campaignName: input.campaign.nome,
+        },
+      );
+    } catch (imageError) {
+      // Sem provedor/créditos de imagem: usa fotos reais da Biblioteca em vez
+      // de falhar a produção inteira ou inventar uma imagem genérica.
+      const fallbackRows = await db
+        .select({ storageUrl: mediaAssetsTable.storageUrl })
+        .from(mediaAssetsTable)
+        .where(and(
+          eq(mediaAssetsTable.tenantId, input.tenantId),
+          eq(mediaAssetsTable.type, "image"),
+          inArray(mediaAssetsTable.source, ["upload", "imported"]),
+        ))
+        .orderBy(desc(mediaAssetsTable.createdAt))
+        .limit(imageCount);
+      imageUrls = fallbackRows.map((row) => row.storageUrl.startsWith("/api/storage") ? row.storageUrl : `/api/storage${row.storageUrl}`);
+      if (imageUrls.length === 0) throw imageError;
+      logger.warn({ error: imageError, tenantId: input.tenantId, calendarItemId: input.calendarItemId }, "Plano de Mídia: IA de imagem indisponível; usando fotos reais da Biblioteca");
+    }
     if (imageUrls.length === 0) throw new Error("content_generation_missing_image");
     variations[0] = {
       ...variations[0],
