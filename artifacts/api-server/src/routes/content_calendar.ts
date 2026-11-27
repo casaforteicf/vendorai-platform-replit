@@ -16,6 +16,7 @@ import { generateContentCalendar, ContentCalendarError } from "../services/conte
 import { generationHasFinalVideo, isVideoCalendarType } from "../services/content-final-media.js";
 import { selectTenantImageAssetIds } from "../services/media-plan-auto-production.js";
 import { startVendorAiPhotoVideo } from "../services/vendorai-photo-video.js";
+import { emitMarketingFunnelEvent } from "../services/marketing-funnel-events.js";
 import {
   deriveOperationalState,
   derivePieceAction,
@@ -483,6 +484,17 @@ router.post("/tenants/:tenantId/marketing/pieces/:id/transition", async (req, re
     .set({ status: nextStatus, updatedAt: new Date() })
     .where(and(eq(contentCalendarItemsTable.id, piece.id), eq(contentCalendarItemsTable.tenantId, tenantId)));
 
+  emitMarketingFunnelEvent(
+    parsed.data.action === "approve" ? "piece.approved" : parsed.data.action === "reject" ? "piece.rejected" : "piece.released",
+    {
+      tenantId,
+      pieceId: piece.id,
+      tipo: piece.tipo,
+      canal: piece.canal,
+      media: piece.media,
+    },
+  );
+
   const [updated] = await loadPieceContext(tenantId, piece.id);
   res.json({ piece: updated ?? piece });
 });
@@ -610,6 +622,12 @@ router.post("/tenants/:tenantId/content-calendar/:id/iniciar-producao", async (r
     res.status(409).json({ error: "Outra produção começou para esta ação.", code: "PRODUCTION_ALREADY_CLAIMED" });
     return;
   }
+  emitMarketingFunnelEvent("piece.production_requested", {
+    tenantId,
+    pieceId: item.id,
+    tipo: item.tipo,
+    media: "pending",
+  });
   res.status(201).json({ claimed: true, claimId: claim });
 });
 
