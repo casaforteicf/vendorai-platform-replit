@@ -116,3 +116,76 @@
     background-color: hsl(var(--muted)) !important;
   }
 }
+
+@media screen {
+  /* Superfície geral: mesma atmosfera navy da Central de Ambientes. */
+  html.dark body {
+    background-color: #050b14 !important;
+    background-image:
+      radial-gradient(ellipse at top, rgba(34, 211, 238, 0.09), transparent 55%),
+      radial-gradient(ellipse at bottom right, rgba(37, 99, 235, 0.05), transparent 50%);
+    background-attachment: fixed;
+  }
+
+  /* Cartões e blocos delimitados ganham a superfície do tema inicial. */
+  html.dark .rounded-lg.border,
+  html.dark .rounded-xl.border,
+  html.dark .rounded-2xl.border,
+  html.dark .rounded-3xl.border {
+    background-color: #0b1726;
+    border-color: rgba(148, 163, 184, 0.16) !important;
+  }
+
+  html.dark .rounded-lg.border.shadow-sm,
+  html.dark .rounded-xl.border.shadow-sm,
+  html.dark .rounded-2xl.border.shadow-sm,
+  html.dark .rounded-lg.border.shadow,
+  html.dark .rounded-xl.border.shadow {
+    box-shadow: 0 14px 34px -24px rgba(0, 0, 0, 0.95);
+  }
+
+  /* Campos de formulário com contraste real. */
+  html.dark input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+  html.dark select,
+  html.dark textarea {
+    background-color: #0e1b2c !important;
+    border-color: rgba(148, 163, 184, 0.2) !important;
+    color: #e2e8f0 !important;
+  }
+
+  html.dark input::placeholder,
+  html.dark textarea::placeholder {
+    color: #64748b !important;
+  }
+
+  /* Botões e links de contorno deixam de sumir no fundo. */
+  html.dark button.border,
+  html.dark a.border {
+    background-color: #0e1b2c;
+    border-color: rgba(148, 163, 184, 0.2) !important;
+  }
+
+  html.dark button.border:hover,
+  html.dark a.border:hover {
+    background-color: #13253a;
+    border-color: rgba(34, 211, 238, 0.35) !important;
+  }
+
+  /* Ação principal com o azul/ciano da identidade escura. */
+  html.dark .bg-primary {
+    background-image: linear-gradient(135deg, #0ea5e9, #2563eb) !important;
+    color: #f8fafc !important;
+  }
+
+  /* Cabeçalho da aplicação e sidebar no mesmo tom da home. */
+  html.dark aside,
+  html.dark [data-sidebar],
+  html.dark header {
+    border-color: rgba(148, 163, 184, 0.12) !important;
+  }
+
+  html.dark aside,
+  html.dark [data-sidebar] {
+    background-color: #070f1a !important;
+  }
+}
