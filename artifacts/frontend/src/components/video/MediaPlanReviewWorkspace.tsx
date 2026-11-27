@@ -113,6 +113,13 @@ function cleanHeadline(value: string) {
     .trim();
 }
 
+function defaultHeadline(execution: ExecutionContext | null) {
+  const product = execution?.campaign?.produtoServico?.trim();
+  if (product) return product.charAt(0).toUpperCase() + product.slice(1);
+  const theme = cleanHeadline(execution?.calendarItem?.temaSugerido || "Material do Plano de Mídia");
+  return firstSentence(theme, 60);
+}
+
 function firstSentence(value: string, max = 110) {
   const text = value.trim();
   if (text.length <= max) return text;
@@ -141,7 +148,7 @@ export default function MediaPlanReviewWorkspace() {
   const [supportingText, setSupportingText] = useState("");
   const [cta, setCta] = useState("");
   const [aiCopy, setAiCopy] = useState<{ headline: string; supporting: string; cta: string } | null>(null);
-  const [brandColor, setBrandColor] = useState("#2563EB");
+  const [brandColor, setBrandColor] = useState("");
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [approving, setApproving] = useState(false);
   const [buildingVideo, setBuildingVideo] = useState(false);
@@ -157,11 +164,14 @@ export default function MediaPlanReviewWorkspace() {
       const nextDesign = designRaw ? JSON.parse(designRaw) as StoredDesign : null;
       setExecution(nextExecution);
       setStoredDesign(nextDesign);
-      const initialHeadline = nextDesign?.brief?.headline || nextExecution?.calendarItem?.temaSugerido || "Material do Plano de Mídia";
+      const initialHeadline = nextDesign?.brief?.headline || defaultHeadline(nextExecution);
       setHeadline(cleanHeadline(initialHeadline));
-      setSupportingText(nextDesign?.brief?.supportingText || nextExecution?.campaign?.mensagemCentral || "");
-      setCta(nextDesign?.brief?.cta || nextExecution?.campaign?.oferta || "Fale com nossa equipe");
-      setBrandColor(nextDesign?.brief?.brandColor || "#2563EB");
+      setSupportingText(
+        nextDesign?.brief?.supportingText
+        || firstSentence(nextExecution?.campaign?.mensagemCentral || "", 140),
+      );
+      setCta(nextDesign?.brief?.cta || nextExecution?.campaign?.oferta || "Reserve agora");
+      setBrandColor(nextDesign?.brief?.brandColor || "");
     } catch {
       setExecution(null);
     }
@@ -199,6 +209,20 @@ export default function MediaPlanReviewWorkspace() {
       .catch(() => undefined);
     return () => { active = false; };
   }, [execution?.tenantId, execution?.calendarItem?.contentGenerationId, storedDesign?.brief?.headline, execution?.campaign?.mensagemCentral, execution?.campaign?.oferta]);
+
+  useEffect(() => {
+    if (!execution?.tenantId) return;
+    let cancelled = false;
+    fetch(`/api/tenants/${execution.tenantId}`, { headers: authHeaders(), cache: "no-store" })
+      .then((response) => (response.ok ? response.json() : null))
+      .then((tenant: { corPrimaria?: string | null } | null) => {
+        if (cancelled) return;
+        // Cor oficial do tenant; só preenche se a revisão não trouxe uma cor salva.
+        setBrandColor((current) => current || tenant?.corPrimaria?.trim() || "#A78BFA");
+      })
+      .catch(() => { if (!cancelled) setBrandColor((current) => current || "#A78BFA"); });
+    return () => { cancelled = true; };
+  }, [execution?.tenantId]);
 
   useEffect(() => {
     if (!execution?.tenantId) return;
@@ -289,7 +313,7 @@ export default function MediaPlanReviewWorkspace() {
     }));
   }, [storedDesign, score, headline, cta, execution?.campaign?.produtoServico]);
 
-  const saveQuickEdits = () => {
+  const saveQuickEdits = async () => {
     if (!execution) return;
     const updated: ExecutionContext = {
       ...execution,
@@ -300,9 +324,34 @@ export default function MediaPlanReviewWorkspace() {
       },
       calendarItem: execution.calendarItem ? { ...execution.calendarItem, temaSugerido: headline } : execution.calendarItem,
     };
+    const design = { headline, supportingText, cta, brandColor };
     sessionStorage.setItem(MEDIA_PLAN_EXECUTION_KEY, JSON.stringify(updated));
+    sessionStorage.setItem(DESIGN_PLAN_KEY, JSON.stringify({ brief: design }));
     setExecution(updated);
-    toast({ title: "Ajustes salvos", description: "Texto, CTA e direção foram atualizados sem consumir créditos de IA." });
+
+    // Persiste na geração para a camada de marca usar exatamente estes textos.
+    const generationId = calendar.find((item) => item.id === execution.calendarItem?.id)?.contentGenerationId;
+    if (generationId) {
+      try {
+        const response = await fetch(`/api/tenants/${execution.tenantId}/content/${generationId}/design`, {
+          method: "PATCH",
+          headers: authHeaders(true),
+          body: JSON.stringify(design),
+        });
+        if (!response.ok) {
+          const body = await response.json().catch(() => ({})) as { error?: string };
+          throw new Error(body.error ?? "Falha ao salvar o design na peça.");
+        }
+      } catch (error) {
+        toast({
+          title: "Ajustes salvos só na prévia",
+          description: error instanceof Error ? error.message : "Não foi possível persistir na peça.",
+          variant: "destructive",
+        });
+        return;
+      }
+    }
+    toast({ title: "Ajustes salvos", description: "Headline, apoio, CTA e cor foram aplicados à peça sem consumir créditos de IA." });
   };
 
   const buildPhotoVideo = async () => {
@@ -497,22 +546,22 @@ export default function MediaPlanReviewWorkspace() {
           </section>
 
           <section ref={quickEditRef} className="rounded-3xl border bg-card p-5 shadow-sm scroll-mt-24">
-            <div className="flex items-center justify-between"><h3 className="text-lg font-semibold">Ajustes rápidos</h3><Button size="sm" variant="ghost" onClick={() => {
+<div className="flex items-center justify-between"><h3 className="text-lg font-semibold">Ajustes rápidos</h3><Button size="sm" variant="ghost" onClick={() => {
                 if (aiCopy) {
                   setHeadline(aiCopy.headline);
                   setSupportingText(aiCopy.supporting);
                   setCta(aiCopy.cta);
                   return;
                 }
-                setHeadline(cleanHeadline(execution.calendarItem?.temaSugerido || ""));
-                setSupportingText(execution.campaign?.mensagemCentral || "");
-                setCta(execution.campaign?.oferta || "");
+                setHeadline(defaultHeadline(execution));
+                setSupportingText(firstSentence(execution.campaign?.mensagemCentral || "", 140));
+                setCta(execution.campaign?.oferta || "Reserve agora");
               }}><RefreshCw className="mr-1.5 h-4 w-4" />Redefinir</Button></div>
             <div className="mt-4 space-y-3">
               <label className="block"><span className="text-xs font-medium text-muted-foreground">Headline principal</span><textarea value={headline} onChange={(event) => setHeadline(event.target.value)} rows={2} className="mt-1.5 w-full rounded-xl border bg-background px-3 py-2.5 text-sm" /><span className="mt-1 block text-right text-[11px] text-muted-foreground">{headline.length}/80</span></label>
               <label className="block"><span className="text-xs font-medium text-muted-foreground">Texto de apoio</span><textarea value={supportingText} onChange={(event) => setSupportingText(event.target.value)} rows={3} className="mt-1.5 w-full rounded-xl border bg-background px-3 py-2.5 text-sm" /><span className="mt-1 block text-right text-[11px] text-muted-foreground">{supportingText.length}/140</span></label>
               <label className="block"><span className="text-xs font-medium text-muted-foreground">CTA</span><input value={cta} onChange={(event) => setCta(event.target.value)} className="mt-1.5 w-full rounded-xl border bg-background px-3 py-2.5 text-sm" /></label>
-              <div className="grid grid-cols-2 gap-3"><label><span className="text-xs font-medium text-muted-foreground">Layout</span><div className="mt-1.5 flex h-11 items-center justify-between rounded-xl border bg-background px-3 text-sm">Reels (9:16)<ChevronDown className="h-4 w-4" /></div></label><label><span className="text-xs font-medium text-muted-foreground">Cor da marca</span><div className="mt-1.5 flex h-11 items-center gap-2 rounded-xl border bg-background px-3"><input type="color" value={brandColor} onChange={(event) => setBrandColor(event.target.value)} className="h-7 w-7 rounded border-0 p-0" /><span className="text-sm">{brandColor}</span></div></label></div>
+              <div className="grid grid-cols-2 gap-3"><label><span className="text-xs font-medium text-muted-foreground">Layout</span><div className="mt-1.5 flex h-11 items-center justify-between rounded-xl border bg-background px-3 text-sm">Reels (9:16)<ChevronDown className="h-4 w-4" /></div></label><label><span className="text-xs font-medium text-muted-foreground">Cor da marca</span><div className="mt-1.5 flex h-11 items-center gap-2 rounded-xl border bg-background px-3"><input type="color" value={brandColor || "#A78BFA"} onChange={(event) => setBrandColor(event.target.value)} className="h-7 w-7 rounded border-0 p-0" /><span className="text-sm">{brandColor || "#A78BFA"}</span></div></label></div>
               <Button className="w-full" onClick={saveQuickEdits}>Salvar ajustes</Button>
             </div>
           </section>

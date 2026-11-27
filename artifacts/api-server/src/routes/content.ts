@@ -1399,6 +1399,45 @@ async function readStorageImage(url: string): Promise<Buffer> {
 }
 
 /**
+ * Persiste os ajustes de design feitos na revisão (headline, apoio, CTA e cor).
+ * Fonte única para a camada de marca e para a prévia; não consome IA.
+ */
+router.patch("/tenants/:tenantId/content/:contentId/design", async (req, res) => {
+  const tenantId = String(req.params["tenantId"]);
+  const contentId = String(req.params["contentId"]);
+  if (req.user?.platformRole !== "super_admin" && req.user?.tenantId !== tenantId) {
+    res.status(403).json({ error: "Acesso negado" });
+    return;
+  }
+  const parsed = z.object({
+    headline: z.string().trim().max(140).optional(),
+    supportingText: z.string().trim().max(300).optional(),
+    cta: z.string().trim().max(60).optional(),
+    brandColor: z.string().trim().regex(/^#[0-9a-fA-F]{6}$/).optional(),
+  }).safeParse(req.body ?? {});
+  if (!parsed.success) {
+    res.status(422).json({ error: parsed.error.message });
+    return;
+  }
+  const [generation] = await db
+    .select({ id: contentGenerationsTable.id, result: contentGenerationsTable.result })
+    .from(contentGenerationsTable)
+    .where(and(eq(contentGenerationsTable.id, contentId), eq(contentGenerationsTable.tenantId, tenantId)))
+    .limit(1);
+  if (!generation) { res.status(404).json({ error: "Conteúdo não encontrado" }); return; }
+
+  const result = generation.result as Record<string, unknown>;
+  const currentDesign = result["design"] && typeof result["design"] === "object" && !Array.isArray(result["design"])
+    ? result["design"] as Record<string, unknown>
+    : {};
+  const design = { ...currentDesign, ...parsed.data, updatedAt: new Date().toISOString() };
+  await db.update(contentGenerationsTable)
+    .set({ result: { ...result, design } as never })
+    .where(and(eq(contentGenerationsTable.id, contentId), eq(contentGenerationsTable.tenantId, tenantId)));
+  res.json({ success: true, design });
+});
+
+/**
  * Aplica a camada de design determinística: logo, headline e CTA por código,
  * sobre a foto gerada. A IA não escreve texto — evita texto torto/embolado.
  */
@@ -1441,15 +1480,19 @@ router.post("/tenants/:tenantId/content/:contentId/variations/:idx/apply-brand-f
     .limit(1);
 
   const brief = result.contextAudit?.visualBrief ?? {};
+  const savedDesign = ((result as { design?: Record<string, unknown> }).design ?? {}) as {
+    headline?: string; cta?: string; brandColor?: string;
+  };
   const headline = parsed.data.headline
-    || brief["message"]
+    || savedDesign.headline
     || brief["productName"]
+    || brief["message"]
     || generation.productName
     || String(generation.theme ?? "").split("\n")[0]
     || "Novidade para você";
-  const cta = parsed.data.cta || brief["offer"] || "Saiba mais";
+  const cta = parsed.data.cta || savedDesign.cta || brief["offer"] || "Saiba mais";
   const brandName = tenant?.nomeEmpresa?.trim() || tenant?.name?.trim() || "";
-  const brandColor = tenant?.corPrimaria || "#A78BFA";
+  const brandColor = savedDesign.brandColor || tenant?.corPrimaria || "#A78BFA";
 
   const originalUrls = (Array.isArray(variation["originalImageUrls"]) && (variation["originalImageUrls"] as string[]).length > 0
     ? variation["originalImageUrls"] as string[]
