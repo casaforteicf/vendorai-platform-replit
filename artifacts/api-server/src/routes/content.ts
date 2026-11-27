@@ -77,12 +77,14 @@ type ValidatedPlannerContext = {
   calendarItemId: string;
   canal: string;
   tipo: string;
+  temaSugerido: string;
   campaign: {
     id: string;
     nome: string;
     objetivo: string;
     produtoServico: string;
     publico: string;
+    regiao?: string | null;
     oferta: string;
     mensagemCentral: string;
   };
@@ -124,6 +126,7 @@ async function resolveValidatedPlannerContext(input: {
         pilar: contentCalendarItemsTable.pilar,
         canal: contentCalendarItemsTable.canal,
         tipo: contentCalendarItemsTable.tipo,
+        temaSugerido: contentCalendarItemsTable.temaSugerido,
       })
       .from(contentCalendarItemsTable)
       .where(and(eq(contentCalendarItemsTable.id, input.calendarItemId), eq(contentCalendarItemsTable.tenantId, input.tenantId)))
@@ -153,6 +156,7 @@ async function resolveValidatedPlannerContext(input: {
     calendarItemId: input.calendarItemId,
     canal: String(calendarItem.canal ?? ""),
     tipo: String(calendarItem.tipo ?? ""),
+    temaSugerido: String(calendarItem.temaSugerido ?? ""),
     campaign,
   };
 }
@@ -243,10 +247,16 @@ router.post("/tenants/:tenantId/content/generate", async (req, res) => {
     return;
   }
 
-  const [profile] = await db
-    .select()
-    .from(businessProfilesTable)
-    .where(eq(businessProfilesTable.tenantId, tenantId));
+  const [[profile], [tenantIdentity]] = await Promise.all([
+    db.select().from(businessProfilesTable).where(eq(businessProfilesTable.tenantId, tenantId)),
+    db.select({ name: tenantsTable.name, nomeEmpresa: tenantsTable.nomeEmpresa })
+      .from(tenantsTable)
+      .where(eq(tenantsTable.id, tenantId))
+      .limit(1),
+  ]);
+  // Nome de marca oficial: Perfil da Empresa -> nome do tenant. Sem isso o
+  // prompt saía como "a empresa" e a IA não sabia de qual negócio se tratava.
+  const brandName = profile?.nomeFantasia?.trim() || tenantIdentity?.nomeEmpresa?.trim() || tenantIdentity?.name?.trim() || "";
 
   let productName: string | undefined;
   let productExtra: string | undefined;
@@ -370,12 +380,14 @@ router.post("/tenants/:tenantId/content/generate", async (req, res) => {
   const existingBrandColors = Array.isArray((profile?.discoveryData as Record<string, unknown> | null)?.["coresBrand"])
     ? ((profile?.discoveryData as Record<string, unknown>)["coresBrand"] as string[])
     : [];
-  const generationProfile = brandColor && existingBrandColors.length === 0
-    ? {
-        ...(profile ?? {}),
-        discoveryData: { ...((profile?.discoveryData as Record<string, unknown> | null) ?? {}), coresBrand: [brandColor] },
-      }
-    : profile;
+  const generationProfile = {
+    ...(profile ?? {}),
+    ...(brandName ? { nomeFantasia: brandName } : {}),
+    discoveryData: {
+      ...((profile?.discoveryData as Record<string, unknown> | null) ?? {}),
+      ...(brandColor && existingBrandColors.length === 0 ? { coresBrand: [brandColor] } : {}),
+    },
+  };
 
   let result: { result: { variations: unknown[] }; tokensUsed: number };
   try {
@@ -422,6 +434,17 @@ router.post("/tenants/:tenantId/content/generate", async (req, res) => {
           contentType: plannerContext.tipo,
           allowedSources: ["business_profile", "validated_media_plan_campaign", "tenant_brand"],
           blockedBroadSources: ["content_context_library", "own_performance_examples", "reference_creators"],
+          visualBrief: {
+            campaignName: plannerContext.campaign.nome,
+            productName: plannerContext.campaign.produtoServico,
+            audience: plannerContext.campaign.publico,
+            region: plannerContext.campaign.regiao ?? null,
+            offer: plannerContext.campaign.oferta,
+            message: plannerContext.campaign.mensagemCentral,
+            channel: plannerContext.canal,
+            contentType: plannerContext.tipo,
+            contentTheme: plannerContext.temaSugerido,
+          },
           validatedAt: new Date().toISOString(),
         },
         // Rastreabilidade da origem da produção. O worker de vídeo faz merge
@@ -1426,28 +1449,47 @@ router.post("/tenants/:tenantId/content/:contentId/variations/:idx/regenerate-im
     .where(eq(businessProfilesTable.tenantId, tenantId));
 
   const format = gen.type === "stories" ? "stories" : "feed";
-  const observations = body.data.observations || body.data.style;
+  const observations = (body.data.observations || body.data.style || "").slice(0, 600);
+  const [tenantIdentity] = await db
+    .select({ name: tenantsTable.name, nomeEmpresa: tenantsTable.nomeEmpresa })
+    .from(tenantsTable)
+    .where(eq(tenantsTable.id, tenantId))
+    .limit(1);
+  const brandName = profile?.nomeFantasia?.trim()
+    || tenantIdentity?.nomeEmpresa?.trim()
+    || tenantIdentity?.name?.trim()
+    || "";
+  const audit = (gen.result as { contextAudit?: Record<string, unknown> } | null)?.contextAudit ?? {};
+  const brief = (audit["visualBrief"] ?? {}) as {
+    campaignName?: string; productName?: string; audience?: string; region?: string;
+    offer?: string; message?: string; contentTheme?: string;
+  };
+  const directionInput = {
+    tenantName: tenantIdentity?.nomeEmpresa?.trim() || tenantIdentity?.name?.trim() || null,
+    brandName,
+    productName: gen.productName ?? brief.productName ?? null,
+    theme: brief.contentTheme || gen.theme,
+    vertical: profile?.vertical ?? null,
+    audience: brief.audience ?? null,
+    region: brief.region ?? null,
+    offer: brief.offer ?? null,
+    message: brief.message ?? null,
+    campaignName: brief.campaignName ?? null,
+  };
   try {
-    let imageUrls: string[];
-    if (body.data.referenceImageUrl) {
-      const brand = (profile as any)?.nomeFantasia || "a empresa";
-      const obsNote = observations ? ` Client request: ${observations}.` : "";
-      const formatLabel = format === "stories" ? "Stories (vertical 9:16)" : "Feed (square 1:1)";
-      const editPrompt = `Improve this product/marketing image for Instagram ${formatLabel} for "${brand}". Subject: ${gen.theme}${gen.productName ? ` — ${gen.productName}` : ""}.${obsNote} Keep the same product. Improve: lighting, sharpness, color, composition. Professional marketing quality. No text. No watermarks.`;
-      imageUrls = await generateImagesWithReference(tenantId, body.data.referenceImageUrl, editPrompt, body.data.imageCount);
-    } else {
-      imageUrls = await generateImagesForContent(
-        profile ?? {},
-        tenantId,
-        gen.theme,
-        gen.productName ?? undefined,
-        format,
-        body.data.imageCount,
-        undefined,
-        undefined,
-        observations,
-      );
-    }
+    const imageUrls = await generateImagesForContent(
+      { ...(profile ?? {}), ...(brandName ? { nomeFantasia: brandName } : {}) },
+      tenantId,
+      directionInput.theme,
+      directionInput.productName ?? undefined,
+      format,
+      body.data.imageCount,
+      undefined,
+      body.data.referenceImageUrl,
+      observations,
+      undefined,
+      directionInput,
+    );
 
     const variations = [...gen.result.variations] as (typeof gen.result.variations[number] & { imageUrl?: string; imageUrls?: string[]; imageSource?: "ai" | "upload" })[];
     if (!variations[idx]) { res.status(400).json({ error: "Variação inválida" }); return; }
