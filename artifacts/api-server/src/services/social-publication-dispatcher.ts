@@ -15,6 +15,7 @@ import {
   assertMediaPublishReady,
   CreativeQualityGateBlockedError,
 } from "./media-publish-quality-gate.js";
+import { emitMarketingFunnelEvent } from "./marketing-funnel-events.js";
 
 function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value)
@@ -206,11 +207,30 @@ export async function publishAnySocialPublication(tenantId: string, publicationI
     });
   }
 
-  const published = publication.provider === "instagram"
-    ? await publishInstagramOrganicPublication(tenantId, publicationId)
-    : publication.provider === "facebook"
-      ? await publishFacebookOrganicPublication(tenantId, publicationId)
-      : await publishSocialPublication(tenantId, publicationId);
+  let published;
+  try {
+    published = publication.provider === "instagram"
+      ? await publishInstagramOrganicPublication(tenantId, publicationId)
+      : publication.provider === "facebook"
+        ? await publishFacebookOrganicPublication(tenantId, publicationId)
+        : await publishSocialPublication(tenantId, publicationId);
+  } catch (error) {
+    emitMarketingFunnelEvent("publication.failed", {
+      tenantId,
+      publicationId: publication.id,
+      provider: publication.provider,
+      tipo: publication.contentType ?? undefined,
+      reasonCode: error instanceof Error ? error.message.slice(0, 160) : "publish_failed",
+    });
+    throw error;
+  }
+
+  emitMarketingFunnelEvent("publication.published", {
+    tenantId,
+    publicationId: published.id,
+    provider: published.provider,
+    tipo: published.contentType ?? undefined,
+  });
 
   await markCalendarPublished(tenantId, published);
   await registerVideoStudioInstagramPerformance(tenantId, published).catch((error) => {

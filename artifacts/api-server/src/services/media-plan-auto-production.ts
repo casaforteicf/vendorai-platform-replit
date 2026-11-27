@@ -34,6 +34,7 @@ import {
   resolveVideoDurationSeconds,
   selectRoundRobinByTenant,
 } from "@workspace/vendor-brain/media-plan-execution";
+import { emitMarketingFunnelEvent } from "./marketing-funnel-events.js";
 
 const PLAN_LIMITS: Record<string, number> = {
   starter: 20,
@@ -708,6 +709,12 @@ export async function reconcileAutomatedReelVideos() {
           ));
       }
       reconciled += 1;
+      emitMarketingFunnelEvent("piece.production_completed", {
+        tenantId: row.tenantId,
+        pieceId: row.id,
+        tipo: row.tipo,
+        media: "ready",
+      });
       logger.info({ tenantId: row.tenantId, calendarItemId: row.id, generationId: row.generationId, jobId, type: row.tipo }, "Vídeo automático do Plano de Mídia recebeu o arquivo final");
     } else if (job.status === "error") {
       if (!aiVideoProviderReady() && !automation["photoFallbackAt"]) {
@@ -767,6 +774,13 @@ export async function reconcileAutomatedReelVideos() {
             eq(contentCalendarItemsTable.status, "processando"),
           ));
       }
+      emitMarketingFunnelEvent("piece.production_failed", {
+        tenantId: row.tenantId,
+        pieceId: row.id,
+        tipo: row.tipo,
+        media: "failed",
+        reasonCode: "video_failed",
+      });
     }
   }
   return reconciled;
