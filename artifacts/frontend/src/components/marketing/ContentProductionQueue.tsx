@@ -419,6 +419,7 @@ export default function ContentProductionQueue({ tenantId }: { tenantId: string 
   const [planApprovalError, setPlanApprovalError] = useState("");
   const [savingPublicationMode, setSavingPublicationMode] = useState(false);
   const [generatingBatch, setGeneratingBatch] = useState(false);
+  const [frameBusy, setFrameBusy] = useState<string | null>(null);
 
   const planRef = useRef<MediaPlan | null>(null);
   const calendarRef = useRef<CalendarItem[]>([]);
@@ -1253,6 +1254,32 @@ export default function ContentProductionQueue({ tenantId }: { tenantId: string 
     );
   }
 
+  async function applyBrandToItem(item: CalendarItem) {
+    if (!item.contentGenerationId || frameBusy) return;
+    setFrameBusy(item.id);
+    try {
+      const response = await fetch(
+        `/api/tenants/${tenantId}/content/${item.contentGenerationId}/variations/${item.variationIdx ?? 0}/apply-brand-frame`,
+        { method: "POST", headers: authHeaders() },
+      );
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(body?.error ?? "Não foi possível aplicar a marca na peça.");
+      toast({
+        title: "Marca aplicada",
+        description: `Logo, “${body.headline ?? "headline"}” e CTA “${body.cta ?? "Saiba mais"}” foram compostos na imagem.`,
+      });
+      await load();
+    } catch (error) {
+      toast({
+        title: "Não foi possível aplicar a marca",
+        description: error instanceof Error ? error.message : "Tente novamente.",
+        variant: "destructive",
+      });
+    } finally {
+      setFrameBusy(null);
+    }
+  }
+
   async function runBatch() {
     if (!plan || batchEligible.length === 0) return;
     setBatchRunning(true);
@@ -1620,6 +1647,19 @@ export default function ContentProductionQueue({ tenantId }: { tenantId: string 
                       onClick={() => navigate(`/marketing/revisao/${item.id}`)}
                     >
                       <Eye className="h-3 w-3 mr-1" />Revisar material
+                    </Button>
+                  )}
+                  {item.contentGenerationId && isDirect && ["feed", "stories", "carrossel", "linkedin_post"].includes(item.tipo) && (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      className="h-7 text-xs"
+                      disabled={frameBusy === item.id}
+                      onClick={() => void applyBrandToItem(item)}
+                    >
+                      {frameBusy === item.id ? <Loader2 className="h-3 w-3 mr-1 animate-spin" /> : <Sparkles className="h-3 w-3 mr-1" />}
+                      {frameBusy === item.id ? "Aplicando…" : "Aplicar marca"}
                     </Button>
                   )}
                   {item.status === "gerado" && item.contentGenerationId && (
