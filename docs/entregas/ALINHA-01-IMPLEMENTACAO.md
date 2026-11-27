@@ -8,7 +8,7 @@
 | Branch | `feat/alinha-01-runtime` → PR #3769 → `main` (`02a41138`); deploy de `main` em `7d89136` |
 | Autorização | Solicitante: “pode fazer e isso deve ser para todos os tenants” (2026-11-26) |
 | Escopo autorizado | Executar os lotes L0–L4 do diagnóstico; correções genéricas, sem dado de tenant no código |
-| Estado | **Implementado, validado tecnicamente e publicado em produção (2026-11-26).** Nenhum conteúdo foi publicado. |
+| Estado | **Implementado, validado tecnicamente e publicado em produção (backend 2026-11-27, imagem `main-273b7238d`).** Nenhum conteúdo foi publicado. |
 | Diagnóstico de referência | [ALINHA-01-MARKETING-DIAGNOSTICO.md](ALINHA-01-MARKETING-DIAGNOSTICO.md) |
 
 ## 1. Objetivo
@@ -194,3 +194,12 @@ O deploy bem-sucedido usou BuildKit/buildx após a limpeza. O caminho de auto-de
 | Encoding | **OK** |
 
 **Pendente estrutural:** migração dos 27 bridges para os componentes donos (L6), projeto único por peça, e teste de publicação real com canal conectado (exige autorização do tenant).
+
+
+## 10. Segundo deploy (2026-11-27)
+
+- PR #3776 mergeado em `273b7238d`; backend em produção `vendorai-api:main-273b7238d` (`OK 20261127-102601`), health 200.
+- Rota `GET /api/tenants/:t/marketing/attribution` publicada (401 sem autenticação = existe e protegida).
+- O deploy usou **BuildKit** (script ajustado) e passou sem o incidente de snapshot; o `disk-guard` agora respeita o `deploy.lock`.
+- Publicação manual: o painel `OrganicCalendarPublisher` deixou de ficar escondido em `tab=gerador&source=media-plan` e passa a aparecer também em **Conteúdos & Publicação**, onde as peças são revisadas/aprovadas.
+- Frontend: release atualizado pelo auto-deploy após o merge (verificar `last-frontend-status`).
