@@ -14,6 +14,7 @@ import {
   SlidersHorizontal,
   Sparkles,
   Type,
+  Upload,
   Volume2,
   WandSparkles,
 } from "lucide-react";
@@ -225,6 +226,11 @@ export default function VideoAudioStudioPanel() {
   const [voiceGenerating, setVoiceGenerating] = useState(false);
   const [voiceError, setVoiceError] = useState("");
   const [generatedVoice, setGeneratedVoice] = useState<GeneratedVoice | null>(null);
+  const [ttsVoice, setTtsVoice] = useState("nova");
+  const [ttsGenerating, setTtsGenerating] = useState(false);
+  const [ttsError, setTtsError] = useState("");
+  const [uploadingAudio, setUploadingAudio] = useState(false);
+  const [uploadError, setUploadError] = useState("");
 
   const [rendering, setRendering] = useState(false);
   const [progressText, setProgressText] = useState("");
@@ -363,6 +369,86 @@ export default function VideoAudioStudioPanel() {
       setVoiceError(error instanceof Error ? error.message : "Falha ao gerar locução");
     } finally {
       setVoiceGenerating(false);
+    }
+  };
+
+  const generateVoiceOpenAi = async () => {
+    if (!tenantId || !script.trim() || ttsGenerating) return;
+    setTtsGenerating(true);
+    setTtsError("");
+    try {
+      const response = await fetch(`/api/tenants/${tenantId}/content-studio/video/voiceover`, {
+        method: "POST",
+        headers: authHeaders(true),
+        body: JSON.stringify({
+          text: script.trim(),
+          voice: ttsVoice,
+          title: sourceAsset ? `Locução — ${assetName(sourceAsset)}` : "Locução de vídeo",
+        }),
+      });
+      const data = await response.json().catch(() => ({})) as { assetId?: string; audioUrl?: string; error?: string };
+      if (!response.ok || !data.assetId || !data.audioUrl) {
+        throw new Error(data.error ?? "Não foi possível gerar a locução com IA.");
+      }
+      setGeneratedVoice({ assetId: data.assetId, url: data.audioUrl });
+      setSelectedVoiceAssetId(data.assetId);
+      await loadAudioAssets().catch(() => undefined);
+      toast({ title: "Locução pronta", description: "A voz foi salva na Biblioteca e já está selecionada para este vídeo." });
+    } catch (error) {
+      setTtsError(error instanceof Error ? error.message : "Falha ao gerar locução");
+    } finally {
+      setTtsGenerating(false);
+    }
+  };
+
+  const uploadAudioFile = async (file: File | null, kind: "music" | "extra" | "voice") => {
+    if (!file || !tenantId || uploadingAudio) return;
+    setUploadingAudio(true);
+    setUploadError("");
+    try {
+      const contentType = file.type || "audio/mpeg";
+      const prepared = await fetch(`/api/tenants/${tenantId}/media/assets/request-upload`, {
+        method: "POST",
+        headers: authHeaders(true),
+        body: JSON.stringify({ name: file.name, contentType, type: "audio", size: file.size }),
+      });
+      const preparedData = await prepared.json().catch(() => ({})) as { uploadURL?: string; objectPath?: string; error?: string };
+      if (!prepared.ok || !preparedData.uploadURL || !preparedData.objectPath) {
+        throw new Error(preparedData.error ?? "Não foi possível preparar o upload do áudio.");
+      }
+      const put = await fetch(preparedData.uploadURL, {
+        method: "PUT",
+        headers: { "Content-Type": contentType },
+        body: file,
+      });
+      if (!put.ok) throw new Error("Falha ao enviar o arquivo de áudio.");
+      const registered = await fetch(`/api/tenants/${tenantId}/media/assets`, {
+        method: "POST",
+        headers: authHeaders(true),
+        body: JSON.stringify({
+          type: "audio",
+          role: kind === "music" ? "music" : kind === "voice" ? "voice" : "source",
+          source: "upload",
+          storageUrl: preparedData.objectPath,
+          originalFilename: file.name,
+          mimeType: contentType,
+          fileSize: file.size,
+          metadata: { audioKind: kind === "music" ? "music" : kind === "voice" ? "voiceover" : "other" },
+        }),
+      });
+      const registeredData = await registered.json().catch(() => ({})) as { asset?: { id?: string }; error?: string };
+      if (!registered.ok || !registeredData.asset?.id) {
+        throw new Error(registeredData.error ?? "Não foi possível registrar o áudio na Biblioteca.");
+      }
+      await loadAudioAssets();
+      if (kind === "music") setSelectedMusicAssetId(registeredData.asset.id);
+      if (kind === "extra") setSelectedExtraAssetId(registeredData.asset.id);
+      if (kind === "voice") setSelectedVoiceAssetId(registeredData.asset.id);
+      toast({ title: "Áudio adicionado", description: "O arquivo foi salvo na Biblioteca e já está selecionado." });
+    } catch (error) {
+      setUploadError(error instanceof Error ? error.message : "Falha ao enviar áudio");
+    } finally {
+      setUploadingAudio(false);
     }
   };
 
@@ -695,12 +781,31 @@ export default function VideoAudioStudioPanel() {
                     {generatedVoice && !voiceAssets.some((asset) => asset.id === generatedVoice.assetId) && <option value={generatedVoice.assetId}>Locução IA recém-gerada</option>}
                   </select>
 
+                  {!voiceWorkerReady ? (
+                    <div className="mt-3 rounded-lg bg-muted/35 p-3">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-xs font-semibold">Locução IA (OpenAI)</span>
+                        <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] text-emerald-700 dark:text-emerald-300">Disponível</span>
+                      </div>
+                      <p className="mt-1 text-[11px] text-muted-foreground">Gere a locução a partir do roteiro, sem precisar de voz autorizada.</p>
+                      <select value={ttsVoice} onChange={(event) => setTtsVoice(event.target.value)} className="mt-2 w-full rounded-lg border bg-background px-2 py-2 text-xs">
+                        {[["nova", "Nova (feminina, natural)"], ["alloy", "Alloy (neutra)"], ["coral", "Coral (calorosa)"], ["sage", "Sage (serena)"], ["onyx", "Onyx (masculina, grave)"], ["shimmer", "Shimmer (suave)"]].map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                      </select>
+                      <button
+                        onClick={() => void generateVoiceOpenAi()}
+                        disabled={!script.trim() || ttsGenerating}
+                        className="mt-2 inline-flex w-full items-center justify-center gap-2 rounded-lg bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground disabled:opacity-45"
+                      >
+                        {ttsGenerating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
+                        {ttsGenerating ? "Gerando locução…" : "Gerar locução com IA"}
+                      </button>
+                      {ttsError && <p className="mt-2 text-xs text-destructive">{ttsError}</p>}
+                    </div>
+                  ) : (
                   <div className="mt-3 rounded-lg bg-muted/35 p-3">
                     <div className="flex items-center justify-between gap-2">
                       <span className="text-xs font-semibold">Gerar locução IA</span>
-                      <span className={cn("rounded-full px-2 py-0.5 text-[10px]", voiceWorkerReady ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300" : "bg-amber-500/10 text-amber-700 dark:text-amber-300")}>
-                        {voiceWorkerReady ? "Voz IA disponível" : "Worker de voz indisponível"}
-                      </span>
+                      <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] text-emerald-700 dark:text-emerald-300">Voz IA disponível</span>
                     </div>
                     <div className="mt-2 grid gap-2 sm:grid-cols-2">
                       <select value={identityId} onChange={(event) => setIdentityId(event.target.value)} className="rounded-lg border bg-background px-2 py-2 text-xs">
@@ -720,9 +825,9 @@ export default function VideoAudioStudioPanel() {
                       {voiceGenerating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
                       {voiceGenerating ? "Gerando locução…" : "Gerar locução a partir do roteiro"}
                     </button>
-                    {!voiceWorkerReady && <p className="mt-2 text-[11px] text-muted-foreground">Enquanto a Voz IA não estiver pronta, selecione uma locução já salva na Biblioteca. A finalização continua funcionando normalmente.</p>}
                     {voiceError && <p className="mt-2 text-xs text-destructive">{voiceError}</p>}
                   </div>
+                  )}
                 </div>
               </div>
 
@@ -742,6 +847,18 @@ export default function VideoAudioStudioPanel() {
                         {extraAssets.map((asset) => <option key={asset.id} value={asset.id}>{assetName(asset)}</option>)}
                       </select>
                     </label>
+                    <div className="grid grid-cols-2 gap-2">
+                      <label className={cn("flex cursor-pointer items-center justify-center gap-1.5 rounded-lg border px-2 py-2 text-[11px] font-medium hover:bg-muted", uploadingAudio && "pointer-events-none opacity-50")}>
+                        <Upload className="h-3.5 w-3.5" /> Enviar música
+                        <input type="file" accept="audio/*" className="hidden" onChange={(event) => { void uploadAudioFile(event.target.files?.[0] ?? null, "music"); event.currentTarget.value = ""; }} />
+                      </label>
+                      <label className={cn("flex cursor-pointer items-center justify-center gap-1.5 rounded-lg border px-2 py-2 text-[11px] font-medium hover:bg-muted", uploadingAudio && "pointer-events-none opacity-50")}>
+                        <Upload className="h-3.5 w-3.5" /> Enviar efeito/jingle
+                        <input type="file" accept="audio/*" className="hidden" onChange={(event) => { void uploadAudioFile(event.target.files?.[0] ?? null, "extra"); event.currentTarget.value = ""; }} />
+                      </label>
+                    </div>
+                    {audioAssets.length === 0 && <p className="text-[11px] text-muted-foreground">Nenhum áudio na Biblioteca ainda. Envie um MP3/WAV para usar como trilha ou gere uma locução com IA.</p>}
+                    {uploadError && <p className="text-[11px] text-destructive">{uploadError}</p>}
                     <div className="rounded-lg bg-muted/35 p-2.5 text-[11px] text-muted-foreground">
                       <AudioLines className="mr-1 inline h-3.5 w-3.5" /> A Biblioteca é a fonte oficial: músicas, locuções, jingles e efeitos podem ser reutilizados sem duplicar o arquivo.
                     </div>
