@@ -1,0 +1,118 @@
+/*
+ * Tema escuro global do Vendor.ai.
+ * A Central de Ambientes é a referência visual; as telas internas herdam
+ * os tokens escuros e os componentes claros são remapeados para superfícies
+ * escuras sem alterar a lógica de cada página.
+ */
+@media screen {
+  html.dark {
+    color-scheme: dark;
+    background: hsl(var(--background));
+  }
+
+  html.dark body {
+    background: hsl(var(--background));
+    color: hsl(var(--foreground));
+  }
+
+  /* Superfícies claras viram cartões escuros. */
+  html.dark .bg-white,
+  html.dark [class*="bg-white/"] {
+    background-color: hsl(var(--card)) !important;
+  }
+
+  html.dark .bg-gray-50,
+  html.dark .bg-gray-100,
+  html.dark .bg-slate-50,
+  html.dark .bg-slate-100,
+  html.dark .bg-zinc-50,
+  html.dark .bg-zinc-100,
+  html.dark .bg-stone-50,
+  html.dark .bg-stone-100,
+  html.dark .bg-neutral-50,
+  html.dark .bg-neutral-100 {
+    background-color: hsl(var(--muted)) !important;
+  }
+
+  html.dark .bg-gray-200,
+  html.dark .bg-slate-200,
+  html.dark .bg-zinc-200,
+  html.dark .bg-stone-200 {
+    background-color: hsl(var(--secondary)) !important;
+  }
+
+  /* Texto escuro vira texto de primeiro plano; texto cinza vira muted. */
+  html.dark .text-gray-900,
+  html.dark .text-gray-800,
+  html.dark .text-slate-900,
+  html.dark .text-slate-800,
+  html.dark .text-zinc-900,
+  html.dark .text-stone-900 {
+    color: hsl(var(--foreground)) !important;
+  }
+
+  html.dark .text-gray-700,
+  html.dark .text-gray-600,
+  html.dark .text-gray-500,
+  html.dark .text-slate-700,
+  html.dark .text-slate-600,
+  html.dark .text-slate-500 {
+    color: hsl(var(--muted-foreground)) !important;
+  }
+
+  html.dark .border-gray-100,
+  html.dark .border-gray-200,
+  html.dark .border-gray-300,
+  html.dark .border-slate-100,
+  html.dark .border-slate-200,
+  html.dark .border-slate-300,
+  html.dark .border-zinc-200,
+  html.dark .border-stone-200 {
+    border-color: hsl(var(--border)) !important;
+  }
+
+  html.dark input,
+  html.dark select,
+  html.dark textarea {
+    color-scheme: dark;
+  }
+
+  html.dark .bg-blue-50,
+  html.dark .bg-sky-50,
+  html.dark .bg-emerald-50,
+  html.dark .bg-amber-50,
+  html.dark .bg-red-50,
+  html.dark .bg-orange-50,
+  html.dark .bg-indigo-50 {
+    background-color: hsl(var(--muted)) !important;
+  }
+
+  html.dark .shadow-sm,
+  html.dark .shadow-md,
+  html.dark .shadow-lg,
+  html.dark .shadow-xl {
+    --tw-shadow-color: rgb(0 0 0 / 0.35);
+  }
+
+  /* Áreas que devem continuar claras (impressão, previews). */
+  html.dark .print-surface,
+  html.dark .print-surface * {
+    color: #0f172a !important;
+    background-color: #ffffff !important;
+    border-color: #e2e8f0 !important;
+  }
+}
+
+@media screen {
+  html.dark [class*="bg-[#F7F9FC]"],
+  html.dark [class*="bg-[#f7f9fc]"],
+  html.dark [class*="bg-[#f8fafc]"],
+  html.dark [class*="bg-[#f7f8fb]"],
+  html.dark [class*="bg-[#f7f8fa]"],
+  html.dark [class*="bg-[#f6f7f8]"],
+  html.dark [class*="bg-[#F0FCFA]"],
+  html.dark [class*="bg-[#E8F2FF]"],
+  html.dark [class*="bg-[#FFF9E9]"] {
+    background-color: hsl(var(--muted)) !important;
+  }
+}
