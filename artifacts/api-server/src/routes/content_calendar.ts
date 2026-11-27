@@ -19,6 +19,7 @@ import { generationHasFinalVideo, isVideoCalendarType } from "../services/conten
 import { selectTenantImageAssetIds } from "../services/media-plan-auto-production.js";
 import { startVendorAiPhotoVideo } from "../services/vendorai-photo-video.js";
 import { emitMarketingFunnelEvent } from "../services/marketing-funnel-events.js";
+import { callOpenAI } from "../lib/ai-gateway.js";
 import {
   deriveOperationalState,
   derivePieceAction,
@@ -526,6 +527,92 @@ router.post("/tenants/:tenantId/marketing/pieces/:id/transition", async (req, re
 
   const [updated] = await loadPieceContext(tenantId, piece.id);
   res.json({ piece: updated ?? piece });
+});
+
+
+const AI_COPY_SYSTEM_PROMPT = `Você é redator sênior de marketing de uma agência.
+Escreva copy pronta para publicação, específica para a campanha, o canal e o tema recebidos.
+Regras: português do Brasil, sem inventar preços/prazos/dados, sem emoji, sem hashtag,
+sem repetir o enunciado do briefing. Responda SOMENTE JSON válido no formato:
+{"headline": "...", "supportingText": "...", "cta": "..."}
+- headline: no máximo 70 caracteres, concreta e orientada a benefício.
+- supportingText: 1 a 2 frases (até 140 caracteres), sem repetir a headline.
+- cta: 3 a 6 palavras, verbo de ação.`;
+
+router.post("/tenants/:tenantId/content-calendar/:id/ai-copy", async (req, res) => {
+  const tenantId = String(req.params.tenantId);
+  if (!canAccess(req, tenantId)) {
+    res.status(403).json({ error: "Access denied to this tenant" });
+    return;
+  }
+  const [item] = await db
+    .select({
+      id: contentCalendarItemsTable.id,
+      tipo: contentCalendarItemsTable.tipo,
+      canal: contentCalendarItemsTable.canal,
+      temaSugerido: contentCalendarItemsTable.temaSugerido,
+      pilar: contentCalendarItemsTable.pilar,
+      dataAgendada: contentCalendarItemsTable.dataAgendada,
+    })
+    .from(contentCalendarItemsTable)
+    .where(and(eq(contentCalendarItemsTable.id, String(req.params.id)), eq(contentCalendarItemsTable.tenantId, tenantId)))
+    .limit(1);
+  if (!item) {
+    res.status(404).json({ error: "Peça não encontrada." });
+    return;
+  }
+  const [plan] = await db
+    .select({ conteudo: mediaPlansTable.conteudo })
+    .from(mediaPlansTable)
+    .where(eq(mediaPlansTable.tenantId, tenantId))
+    .orderBy(desc(mediaPlansTable.createdAt))
+    .limit(1);
+  const campaigns = Array.isArray((plan?.conteudo as { campanhas?: unknown[] } | null)?.campanhas)
+    ? ((plan?.conteudo as { campanhas: Array<Record<string, unknown>> }).campanhas ?? [])
+    : [];
+  const campaign = campaigns.find((entry) => {
+    const name = String(entry["nome"] ?? "").trim().toLowerCase();
+    return name && name === String(item.pilar ?? "").split(" · ")[0]?.trim().toLowerCase();
+  }) ?? campaigns[0];
+
+  const context = [
+    `Tema da peça: ${item.temaSugerido}`,
+    `Canal: ${item.canal}`,
+    `Formato: ${item.tipo}`,
+    item.dataAgendada ? `Data prevista: ${item.dataAgendada}` : "",
+    campaign ? `Campanha: ${String(campaign["nome"] ?? "")}` : "",
+    campaign ? `Objetivo: ${String(campaign["objetivo"] ?? "")}` : "",
+    campaign ? `Produto/serviço: ${String(campaign["produtoServico"] ?? "")}` : "",
+    campaign ? `Público: ${String(campaign["publico"] ?? "")}` : "",
+    campaign ? `Oferta: ${String(campaign["oferta"] ?? "")}` : "",
+    campaign ? `Mensagem central: ${String(campaign["mensagemCentral"] ?? "")}` : "",
+  ].filter(Boolean).join("\n");
+
+  try {
+    const result = await callOpenAI(tenantId, "content_generator", [
+      { role: "system", content: AI_COPY_SYSTEM_PROMPT },
+      { role: "user", content: context },
+    ], {
+      model: "gpt-4o-mini",
+      temperature: 0.8,
+      maxTokens: 400,
+      responseFormat: { type: "json_object" },
+    });
+    const raw = result.content.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "");
+    const parsed = JSON.parse(raw) as { headline?: unknown; supportingText?: unknown; cta?: unknown };
+    const headline = typeof parsed.headline === "string" ? parsed.headline.trim().slice(0, 80) : "";
+    const supportingText = typeof parsed.supportingText === "string" ? parsed.supportingText.trim().slice(0, 140) : "";
+    const cta = typeof parsed.cta === "string" ? parsed.cta.trim().slice(0, 60) : "";
+    if (!headline || !supportingText || !cta) {
+      res.status(502).json({ error: "A IA não retornou a copy completa. Tente novamente." });
+      return;
+    }
+    res.json({ headline, supportingText, cta });
+  } catch (error) {
+    res.status(503).json({
+      error: error instanceof Error ? error.message : "Não foi possível gerar o texto com IA.",
+    });
+  }
 });
 
 router.get("/tenants/:tenantId/content-calendar", async (req, res) => {
