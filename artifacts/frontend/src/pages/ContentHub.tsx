@@ -13,6 +13,7 @@ import LeadCaptureFreeToolBuilder from "@/components/marketing/LeadCaptureFreeTo
 import SearchConsoleInsightsPanel from "@/components/marketing/SearchConsoleInsightsPanel";
 import { MarketingResultsSummary } from "@/components/marketing/MarketingResultsSummary";
 import { MarketingReadinessChecklist } from "@/components/marketing/MarketingReadinessChecklist";
+import { MarketingDiagnosticsPanel } from "@/components/marketing/MarketingDiagnosticsPanel";
 import { MarketingAttributionPanel } from "@/components/marketing/MarketingAttributionPanel";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -635,6 +636,7 @@ export default function ContentHub() {
 
           <TabsContent value="resultados" className="mt-5">
             <div className="mb-4">
+              <MarketingDiagnosticsPanel tenantId={tenantId} />
               <MarketingResultsSummary tenantId={tenantId} />
             </div>
             <div className="mb-4">
