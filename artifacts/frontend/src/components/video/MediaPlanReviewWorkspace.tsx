@@ -175,6 +175,7 @@ export default function MediaPlanReviewWorkspace() {
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [approving, setApproving] = useState(false);
   const [buildingVideo, setBuildingVideo] = useState(false);
+  const [applyingVideoText, setApplyingVideoText] = useState(false);
   const [generatingCopy, setGeneratingCopy] = useState(false);
   const [generatedMedia, setGeneratedMedia] = useState<ReferenceMedia | null>(null);
   const [productionState, setProductionState] = useState<"idle" | "processing" | "ready" | "failed">("idle");
@@ -417,6 +418,32 @@ export default function MediaPlanReviewWorkspace() {
     toast({ title: "Ajustes salvos", description: "Headline, apoio, CTA e cor foram aplicados à peça sem consumir créditos de IA." });
   };
 
+  const applyVideoBrand = async () => {
+    if (!execution?.calendarItem?.id || applyingVideoText) return;
+    setApplyingVideoText(true);
+    try {
+      const response = await fetch(`/api/tenants/${execution.tenantId}/content-calendar/${execution.calendarItem.id}/apply-video-brand`, {
+        method: "POST",
+        headers: authHeaders(true),
+      });
+      const body = await response.json().catch(() => ({})) as { error?: string; videoUrl?: string; previewUrl?: string };
+      if (!response.ok || !body.videoUrl) throw new Error(body.error || "Não foi possível gravar o texto no vídeo.");
+      const url = body.previewUrl || mediaUrl(body.videoUrl);
+      setGeneratedMedia({ assetId: "video-brand", type: "video", storageUrl: url, originalFilename: "Vídeo com marca" });
+      setProductionState("ready");
+      setProductionDetail("Headline, CTA e marca gravados no vídeo");
+      toast({ title: "Texto aplicado no vídeo", description: "A headline, o CTA e a marca agora fazem parte do MP4." });
+    } catch (error) {
+      toast({
+        title: "Não foi possível aplicar o texto no vídeo",
+        description: error instanceof Error ? error.message : "Tente novamente.",
+        variant: "destructive",
+      });
+    } finally {
+      setApplyingVideoText(false);
+    }
+  };
+
   const buildPhotoVideo = async () => {
     if (!execution?.calendarItem?.id || buildingVideo) return;
     setBuildingVideo(true);
@@ -590,6 +617,12 @@ export default function MediaPlanReviewWorkspace() {
             <div className="mt-2 grid grid-cols-3 gap-2">
               <Button variant="outline" className="h-11" onClick={() => quickEditRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })}><Pencil className="mr-1.5 h-4 w-4" />Editar texto</Button>
               <Button variant="outline" className="h-11" onClick={openAdvanced}><ImageIcon className="mr-1.5 h-4 w-4" />Trocar mídia</Button>
+              {mainMedia?.type === "video" && previewUrl && (
+                <Button variant="outline" className="h-11" onClick={() => void applyVideoBrand()} disabled={applyingVideoText}>
+                  {applyingVideoText ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <Palette className="mr-1.5 h-4 w-4" />}
+                  {applyingVideoText ? "Gravando texto…" : "Aplicar texto no vídeo"}
+                </Button>
+              )}
               <Button variant="outline" className="h-11" onClick={openAdvanced}><Sparkles className="mr-1.5 h-4 w-4" />Nova versão</Button>
             </div>
             <p className="mt-3 text-xs text-muted-foreground">Aprovar, editar texto ou trocar mídia não consome créditos. Gerar uma nova versão pode consumir créditos de IA e exige confirmação no editor.</p>
