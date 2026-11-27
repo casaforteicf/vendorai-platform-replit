@@ -27,9 +27,10 @@ o base deste PR é `feat/mkt-funnel-events`.
 - **Tempo médio até publicar** (criação → publicação) calculado no painel.
 - **Top motivos de falha** agregados (motivo do automation ou “mídia final não gerada”).
 - `GET /marketing/pieces` passou a devolver `createdAt`, `publishedAt` e `failureReason`.
-- **Atribuição campanha → negócio**: novo `GET /marketing/attribution`
-  (deals × leads.originCampaignId) e tabela “Negócios fechados por campanha de origem”.
-  Limite: a origem é a campanha de aquisição do lead, não a campanha do Plano de Mídia.
+- **Atribuição campanha → negócio**: já existe na main (`MarketingAttributionPanel` +
+  `GET /marketing/attribution` em `media_plan.ts`, com leads/ganhos/ROAS por campanha do plano).
+  Este PR **não duplica** a rota nem o painel; apenas consome o que já existe.
 
-## Ainda pendente
-- Vínculo entre campanha do Plano de Mídia e negócio (hoje a ponte é a origem do lead).
+## Observação de merge
+O PR original (#3792) foi mergeado na branch-base `feat/mkt-funnel-events`, que já havia sido
+mergeada — o conteúdo não chegou à main. Este PR reaplica o painel sobre a main atual.

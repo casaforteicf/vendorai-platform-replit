@@ -36,7 +36,6 @@ function authHeaders(): Record<string, string> {
 
 export function MarketingDiagnosticsPanel({ tenantId }: { tenantId: string }) {
   const [pieces, setPieces] = useState<Piece[]>([]);
-  const [attribution, setAttribution] = useState<Array<{ campaignId: string; deals: number; total: number }>>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -45,17 +44,10 @@ export function MarketingDiagnosticsPanel({ tenantId }: { tenantId: string }) {
     setLoading(true);
     setError("");
     try {
-      const [piecesResponse, attributionResponse] = await Promise.all([
-        fetch(`/api/tenants/${tenantId}/marketing/pieces`, { headers: authHeaders(), cache: "no-store" }),
-        fetch(`/api/tenants/${tenantId}/marketing/attribution`, { headers: authHeaders(), cache: "no-store" }),
-      ]);
+      const piecesResponse = await fetch(`/api/tenants/${tenantId}/marketing/pieces`, { headers: authHeaders(), cache: "no-store" });
       if (!piecesResponse.ok) throw new Error(`HTTP ${piecesResponse.status}`);
       const body = await piecesResponse.json() as { pieces?: Piece[] };
       setPieces(Array.isArray(body.pieces) ? body.pieces : []);
-      const attributionBody = attributionResponse.ok
-        ? await attributionResponse.json() as { campaigns?: Array<{ campaignId: string; deals: number; total: number }> }
-        : {};
-      setAttribution(Array.isArray(attributionBody.campaigns) ? attributionBody.campaigns : []);
     } catch {
       setError("Não foi possível carregar o diagnóstico. Atualize para tentar de novo.");
       setPieces([]);
@@ -147,23 +139,6 @@ export function MarketingDiagnosticsPanel({ tenantId }: { tenantId: string }) {
               ) : null}
               <span className="text-muted-foreground">Clique em “Atualizar” após uma produção para ver o funil mudar.</span>
             </div>
-
-            {attribution.length > 0 ? (
-              <div className="rounded-lg border bg-background px-3 py-2">
-                <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Negócios fechados por campanha de origem</p>
-                <div className="mt-1 divide-y text-[11px]">
-                  {attribution.map((row) => (
-                    <div key={row.campaignId} className="flex items-center justify-between gap-2 py-0.5">
-                      <span className="min-w-0 truncate text-muted-foreground">{row.campaignId}</span>
-                      <span className="shrink-0 tabular-nums">
-                        {row.deals} negócio(s) · {row.total.toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 })}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-                <p className="mt-1 text-[10px] text-muted-foreground">Origem vem do lead (campanha de aquisição), não do Plano de Mídia.</p>
-              </div>
-            ) : null}
 
             {topReasons.length > 0 ? (
               <div className="rounded-lg border bg-background px-3 py-2">

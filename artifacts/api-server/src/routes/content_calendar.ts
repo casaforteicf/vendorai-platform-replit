@@ -439,37 +439,6 @@ async function loadPieceContext(tenantId: string, pieceId?: string) {
   });
 }
 
-router.get("/tenants/:tenantId/marketing/attribution", async (req, res) => {
-  const tenantId = String(req.params.tenantId);
-  if (!canAccess(req, tenantId)) {
-    res.status(403).json({ error: "Access denied to this tenant" });
-    return;
-  }
-  const rows = await db
-    .select({
-      campaignId: leadsTable.originCampaignId,
-      deals: sql<number>`count(*)::int`,
-      total: sql<string>`coalesce(sum(${dealsTable.valor}), 0)::text`,
-    })
-    .from(dealsTable)
-    .innerJoin(leadsTable, eq(leadsTable.id, dealsTable.leadId))
-    .where(and(
-      eq(dealsTable.tenantId, tenantId),
-      isNotNull(leadsTable.originCampaignId),
-      isNotNull(dealsTable.valor),
-    ))
-    .groupBy(leadsTable.originCampaignId)
-    .orderBy(desc(sql`coalesce(sum(${dealsTable.valor}), 0)`))
-    .limit(10);
-  res.json({
-    campaigns: rows.map((row) => ({
-      campaignId: row.campaignId,
-      deals: Number(row.deals ?? 0),
-      total: Number(row.total ?? 0),
-    })),
-  });
-});
-
 router.get("/tenants/:tenantId/marketing/pieces", async (req, res) => {
   const tenantId = String(req.params.tenantId);
   if (!canAccess(req, tenantId)) {
