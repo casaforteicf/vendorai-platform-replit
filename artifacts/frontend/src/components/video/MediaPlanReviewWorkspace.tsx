@@ -289,10 +289,29 @@ export default function MediaPlanReviewWorkspace() {
       if (!response.ok || !payload.headline) {
         throw new Error(payload.error ?? "Não foi possível gerar o texto com IA.");
       }
-      setHeadline(payload.headline);
-      setSupportingText(payload.supportingText ?? "");
-      setCta(payload.cta ?? "Fale com nossa equipe");
-      toast({ title: "Texto gerado pela IA", description: "Revise e clique em Salvar ajustes para aplicar na peça." });
+      const nextHeadline = payload.headline;
+      const nextSupporting = payload.supportingText ?? "";
+      const nextCta = payload.cta ?? "Fale com nossa equipe";
+      setHeadline(nextHeadline);
+      setSupportingText(nextSupporting);
+      setCta(nextCta);
+
+      // Já aplica na peça: o vídeo/texto consolidado usa exatamente esta copy.
+      const generationId = calendar.find((item) => item.id === itemId)?.contentGenerationId;
+      const design = { headline: nextHeadline, supportingText: nextSupporting, cta: nextCta, brandColor };
+      sessionStorage.setItem(DESIGN_PLAN_KEY, JSON.stringify({ brief: design }));
+      if (generationId) {
+        const patch = await fetch(`/api/tenants/${tenantId}/content/${generationId}/design`, {
+          method: "PATCH",
+          headers: authHeaders(true),
+          body: JSON.stringify(design),
+        }).catch(() => null);
+        if (patch && !patch.ok) {
+          toast({ title: "Texto gerado, mas não foi aplicado", description: "Use Salvar ajustes para persistir.", variant: "destructive" });
+          return;
+        }
+      }
+      toast({ title: "Texto gerado e aplicado", description: "Headline, apoio e CTA atualizados na peça." });
     } catch (error) {
       toast({
         title: "Falha ao gerar texto",

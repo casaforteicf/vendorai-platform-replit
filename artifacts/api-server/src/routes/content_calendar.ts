@@ -30,6 +30,7 @@ import {
   deriveOperationalState,
   derivePieceAction,
   derivePieceMediaState,
+  findCampaignForItem,
   transitionPiece,
   type OperationalStateCode,
 } from "@workspace/vendor-brain/media-plan-execution";
@@ -612,10 +613,12 @@ router.post("/tenants/:tenantId/content-calendar/:id/ai-copy", async (req, res) 
   const campaigns = Array.isArray((plan?.conteudo as { campanhas?: unknown[] } | null)?.campanhas)
     ? ((plan?.conteudo as { campanhas: Array<Record<string, unknown>> }).campanhas ?? [])
     : [];
-  const campaign = campaigns.find((entry) => {
-    const name = String(entry["nome"] ?? "").trim().toLowerCase();
-    return name && name === String(item.pilar ?? "").split(" · ")[0]?.trim().toLowerCase();
-  }) ?? campaigns[0];
+  // Contexto da campanha exata do item; sem fallback para campaigns[0] (evita
+  // escrever copy com o produto/oferta de outra campanha).
+  const campaign = findCampaignForItem(
+    campaigns.map((entry) => ({ ...entry, id: String(entry["id"] ?? ""), nome: String(entry["nome"] ?? "") })),
+    { pilar: item.pilar, id: item.id },
+  ) as Record<string, unknown> | null;
 
   const context = [
     `Tema da peça: ${item.temaSugerido}`,
@@ -626,8 +629,10 @@ router.post("/tenants/:tenantId/content-calendar/:id/ai-copy", async (req, res) 
     campaign ? `Objetivo: ${String(campaign["objetivo"] ?? "")}` : "",
     campaign ? `Produto/serviço: ${String(campaign["produtoServico"] ?? "")}` : "",
     campaign ? `Público: ${String(campaign["publico"] ?? "")}` : "",
+    campaign ? `Região: ${String(campaign["regiao"] ?? "")}` : "",
     campaign ? `Oferta: ${String(campaign["oferta"] ?? "")}` : "",
     campaign ? `Mensagem central: ${String(campaign["mensagemCentral"] ?? "")}` : "",
+    campaign ? `KPI principal: ${String(campaign["kpiPrincipal"] ?? "")}` : "",
   ].filter(Boolean).join("\n");
 
   try {
