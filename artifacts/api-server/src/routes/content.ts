@@ -1435,7 +1435,14 @@ async function tenantPhotoFallbackUrls(
   const urls = rows.map((row) => row.storageUrl);
   if (preferred) {
     const normalized = preferred.startsWith("/api/storage") ? preferred.slice("/api/storage".length) : preferred;
-    if (normalized.startsWith("/objects/") && !urls.includes(normalized)) urls.unshift(normalized);
+    if (normalized.startsWith("/objects/")) {
+      // A foto escolhida como referência é a hero: move para a frente mesmo
+      // que já esteja na lista (antes ela ficava na posição original e outra
+      // foto virava a principal).
+      const existingIndex = urls.indexOf(normalized);
+      if (existingIndex >= 0) urls.splice(existingIndex, 1);
+      urls.unshift(normalized);
+    }
   }
   return urls
     .slice(0, Math.max(1, count))
