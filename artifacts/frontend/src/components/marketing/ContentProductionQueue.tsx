@@ -88,6 +88,7 @@ interface MediaPlan {
   id: string;
   conteudo: {
     periodoDias?: 30 | 60 | 90;
+    totalAcoesPlanejadas?: number;
     statusPlanejamento?: "gerado" | "em_revisao" | "aprovado";
     campanhas?: MediaPlanCampaign[];
     publicacaoOrganica?: {
@@ -398,6 +399,7 @@ export default function ContentProductionQueue({ tenantId }: { tenantId: string 
   const [approvingPlan, setApprovingPlan] = useState(false);
   const [planApprovalError, setPlanApprovalError] = useState("");
   const [savingPublicationMode, setSavingPublicationMode] = useState(false);
+  const [generatingBatch, setGeneratingBatch] = useState(false);
 
   const planRef = useRef<MediaPlan | null>(null);
   const calendarRef = useRef<CalendarItem[]>([]);
@@ -1194,6 +1196,35 @@ export default function ContentProductionQueue({ tenantId }: { tenantId: string 
     }
   }
 
+  async function generateNextBatch() {
+    if (!plan || generatingBatch) return;
+    setGeneratingBatch(true);
+    try {
+      const response = await fetch(`/api/tenants/${tenantId}/content-calendar/gerar`, {
+        method: "POST",
+        headers: { ...authHeaders(), "Content-Type": "application/json" },
+        body: JSON.stringify({
+          mediaPlanId: plan.id,
+          semanas: Math.max(1, Math.ceil(Number(plan.conteudo.periodoDias ?? 30) / 7)),
+          substituirPlanejado: false,
+        }),
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(typeof body?.error === "string" ? body.error : "Não foi possível gerar o próximo lote.");
+      const count = Array.isArray(body) ? body.length : 10;
+      toast({ title: "Próximo lote criado", description: `${count} novas ações aguardam aprovação na aba Campanhas.` });
+      await load();
+    } catch (error) {
+      toast({
+        title: "Não foi possível gerar o próximo lote",
+        description: error instanceof Error ? error.message : "Tente novamente.",
+        variant: "destructive",
+      });
+    } finally {
+      setGeneratingBatch(false);
+    }
+  }
+
   function selectAllReviewItems() {
     setSelectedContentIds(
       visibleItems
@@ -1256,6 +1287,11 @@ export default function ContentProductionQueue({ tenantId }: { tenantId: string 
   }
 
   const planApproved = plan.conteudo.statusPlanejamento === "aprovado";
+  const plannedTotal = Number(plan.conteudo.totalAcoesPlanejadas ?? 0);
+  const canGenerateNextBatch = planApproved
+    && plannedTotal > 0
+    && calendar.length < plannedTotal
+    && !calendar.some((item) => item.status === "planejado");
   const automaticPublication = plan.conteudo.publicacaoOrganica?.modo === "automatico";
   const journeyPhase = deriveJourneyPhase(productionSummary);
   const journeySteps = buildJourneySteps(journeyPhase);
@@ -1313,6 +1349,12 @@ export default function ContentProductionQueue({ tenantId }: { tenantId: string 
               </p>
             </div>
             <div className="flex items-center gap-2 flex-wrap">
+              {canGenerateNextBatch && (
+                <Button type="button" size="sm" variant="outline" onClick={() => void generateNextBatch()} disabled={generatingBatch}>
+                  {generatingBatch ? <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> : <Layers3 className="h-3.5 w-3.5 mr-1" />}
+                  {generatingBatch ? "Gerando lote…" : "Gerar próximo lote"}
+                </Button>
+              )}
               <Button type="button" variant="outline" size="sm" onClick={() => navigate("/content?tab=gerador&mode=avulso")}>
                 <Plus className="h-3.5 w-3.5 mr-1" />Criação avulsa
               </Button>
@@ -1350,6 +1392,16 @@ export default function ContentProductionQueue({ tenantId }: { tenantId: string 
               {automaticPublication ? "Revisar antes de publicar" : "Ativar publicação automática"}
             </Button>
           </div>
+
+          {plannedTotal > 0 && (
+            <p className="text-[11px] text-muted-foreground">
+              Lote atual: <span className="font-medium">{calendar.length}</span> de{" "}
+              <span className="font-medium">{plannedTotal}</span> ações planejadas
+              {calendar.length < plannedTotal
+                ? " — aprove e produza este lote; depois gere o próximo."
+                : " — planejamento totalmente materializado."}
+            </p>
+          )}
 
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
             {journeySteps.map((step) => (

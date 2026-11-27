@@ -1,7 +1,7 @@
 import { Router, type IRouter } from "express";
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, isNotNull, or, sql } from "drizzle-orm";
 import { z } from "zod/v4";
-import { db, contentCalendarItemsTable, mediaPlansTable, type MediaPlanConteudo, type MediaPlanPeriod } from "@workspace/db";
+import { db, adCampaignsTable, adPerformanceSnapshotsTable, contentCalendarItemsTable, dealsTable, leadsTable, mediaPlansTable, type MediaPlanConteudo, type MediaPlanPeriod } from "@workspace/db";
 import { generateMediaPlan, MediaPlanError } from "../services/media-plan.js";
 import { alignMediaFunctionsInContent, enrichMediaPlanForPeriod } from "../services/media-plan-period.js";
 import { MEDIA_FUNCTION_VERSION } from "../services/media-channel-functions.js";
@@ -283,6 +283,96 @@ router.post("/tenants/:tenantId/media-plan/gerar", async (req, res) => {
     req.log.error({ err, tenantId }, "media-plan: falha ao gerar plano");
     res.status(500).json({ error: "Falha ao gerar o plano de mídia. Tente novamente." });
   }
+});
+
+/**
+ * Atribuição comercial por campanha do Plano de Mídia.
+ *
+ * Fontes: leads com anúncio vinculado (ad_campaigns.segmentacao.marketingContext
+ * .campaignId) ou com origin_campaign_id gravado na captura; negócios ganhos
+ * via deals.lead_id. Nenhuma tabela nova: a atribuição é uma leitura do CRM.
+ */
+router.get("/tenants/:tenantId/marketing/attribution", async (req, res) => {
+  const tenantId = String(req.params.tenantId);
+  if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
+
+  const [plan] = await db
+    .select({ id: mediaPlansTable.id, conteudo: mediaPlansTable.conteudo })
+    .from(mediaPlansTable)
+    .where(eq(mediaPlansTable.tenantId, tenantId))
+    .orderBy(desc(mediaPlansTable.createdAt))
+    .limit(1);
+
+  const campaigns = Array.isArray((plan?.conteudo as { campanhas?: unknown[] } | null)?.campanhas)
+    ? ((plan?.conteudo as { campanhas: Array<{ id: string; nome: string }> }).campanhas ?? [])
+    : [];
+
+  const rows = await db
+    .select({
+      campaignId: sql<string>`coalesce(${adCampaignsTable.segmentacao}->'marketingContext'->>'campaignId', ${leadsTable.originCampaignId})`,
+      leads: sql<number>`count(distinct ${leadsTable.id})`,
+      won: sql<number>`count(distinct ${dealsTable.id}) filter (where ${dealsTable.etapa} = 'ganho')`,
+      revenue: sql<string>`coalesce(sum(${dealsTable.valor}) filter (where ${dealsTable.etapa} = 'ganho'), 0)`,
+    })
+    .from(leadsTable)
+    .leftJoin(adCampaignsTable, and(
+      eq(adCampaignsTable.id, leadsTable.adCampaignId),
+      eq(adCampaignsTable.tenantId, leadsTable.tenantId),
+    ))
+    .leftJoin(dealsTable, and(
+      eq(dealsTable.leadId, leadsTable.id),
+      eq(dealsTable.tenantId, leadsTable.tenantId),
+    ))
+    .where(and(
+      eq(leadsTable.tenantId, tenantId),
+      or(isNotNull(leadsTable.adCampaignId), isNotNull(leadsTable.originCampaignId)),
+    ))
+    .groupBy(sql`1`);
+
+  const costs = await db
+    .select({
+      campaignId: sql<string>`${adCampaignsTable.segmentacao}->'marketingContext'->>'campaignId'`,
+      cost: sql<string>`coalesce(sum(${adPerformanceSnapshotsTable.custo}), 0)`,
+    })
+    .from(adCampaignsTable)
+    .leftJoin(adPerformanceSnapshotsTable, eq(adPerformanceSnapshotsTable.campaignId, adCampaignsTable.id))
+    .where(and(
+      eq(adCampaignsTable.tenantId, tenantId),
+      isNotNull(sql`${adCampaignsTable.segmentacao}->'marketingContext'->>'campaignId'`),
+    ))
+    .groupBy(sql`1`);
+
+  const costByCampaign = new Map(costs.map((row) => [row.campaignId, Number(row.cost ?? 0)]));
+  const names = new Map(campaigns.map((campaign) => [campaign.id, campaign.nome]));
+
+  const attributed = rows
+    .filter((row) => Boolean(row.campaignId))
+    .map((row) => {
+      const leads = Number(row.leads ?? 0);
+      const won = Number(row.won ?? 0);
+      const revenue = Number(row.revenue ?? 0);
+      const cost = costByCampaign.get(row.campaignId) ?? 0;
+      return {
+        campaignId: row.campaignId,
+        campaignName: names.get(row.campaignId) ?? row.campaignId,
+        leads,
+        won,
+        revenue,
+        cost,
+        cpl: cost > 0 && leads > 0 ? Number((cost / leads).toFixed(2)) : null,
+        roas: cost > 0 ? Number((revenue / cost).toFixed(2)) : null,
+      };
+    })
+    .sort((a, b) => b.revenue - a.revenue || b.leads - a.leads);
+
+  return res.json({
+    mediaPlanId: plan?.id ?? null,
+    campaigns: attributed,
+    hasLinkedCampaigns: campaigns.length > 0,
+    note: attributed.length === 0
+      ? "Nenhum lead ainda está vinculado a uma campanha do plano. A atribuição aparece quando um lead chega por anúncio/LP com campanha identificada."
+      : null,
+  });
 });
 
 router.get("/tenants/:tenantId/media-plan", async (req, res) => {

@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import { useLocation } from "wouter";
+import { useEffect, useMemo, useState } from "react";
+import { useLocation, useSearch } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import Content from "@/pages/Content";
@@ -12,6 +12,7 @@ import ContentProductionQueue from "@/components/marketing/ContentProductionQueu
 import LeadCaptureFreeToolBuilder from "@/components/marketing/LeadCaptureFreeToolBuilder";
 import SearchConsoleInsightsPanel from "@/components/marketing/SearchConsoleInsightsPanel";
 import { MarketingResultsSummary } from "@/components/marketing/MarketingResultsSummary";
+import { MarketingAttributionPanel } from "@/components/marketing/MarketingAttributionPanel";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -39,20 +40,6 @@ import {
   Target,
   Video,
 } from "lucide-react";
-
-const REDUNDANT_CHILD_TITLES = new Set([
-  "Criar conteúdo",
-  "Campanhas",
-  "Campanhas e Variedades Praça.ai",
-]);
-
-const COPY_REPLACEMENTS: Array<[string, string]> = [
-  ["Objetivo da peça", "Ângulo da peça"],
-  ["O que você quer publicar?", "Instruções adicionais para a IA"],
-  ["Criar estratégia com IA", "Preparar conteúdo com IA"],
-  ["Produto interno VendorAI", "Funcionalidade VendorAI"],
-  ["Patrocinar este conteúdo", "Criar campanha"],
-];
 
 const ACTIVE_BRIEFING_KEY = "vendorai_active_marketing_briefing_v1";
 const MEDIA_PLAN_EXECUTION_KEY = "vendorai_media_plan_execution_v1";
@@ -112,58 +99,12 @@ function normalizeMainTab(tab: string): MainMarketingTab {
   return "visao-geral";
 }
 
-function applyMarketingRedundancyFilter(root: HTMLElement) {
-  root.querySelectorAll<HTMLElement>("h1").forEach((heading) => {
-    const label = heading.textContent?.replace(/\s+/g, " ").trim() ?? "";
-    if (REDUNDANT_CHILD_TITLES.has(label) && !heading.hidden) heading.hidden = true;
-  });
-
-  root.querySelectorAll<HTMLButtonElement>("button").forEach((button) => {
-    const label = button.textContent?.replace(/\s+/g, " ").trim() ?? "";
-    if (label === "Visitantes") button.style.display = "none";
-  });
-
-  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
-  const textNodes: Text[] = [];
-  while (walker.nextNode()) textNodes.push(walker.currentNode as Text);
-
-  textNodes.forEach((node) => {
-    let next = node.nodeValue ?? "";
-    COPY_REPLACEMENTS.forEach(([from, to]) => {
-      if (next.includes(from)) next = next.replace(from, to);
-    });
-    if (next !== node.nodeValue) node.nodeValue = next;
-  });
-}
-
-function useBrowserLocationSnapshot(routerLocation: string) {
-  const [value, setValue] = useState(() => `${window.location.pathname}${window.location.search}`);
-
-  useEffect(() => {
-    const sync = () => {
-      const next = `${window.location.pathname}${window.location.search}`;
-      setValue((current) => current === next ? current : next);
-    };
-    sync();
-    window.addEventListener("popstate", sync);
-    const timer = window.setInterval(sync, 200);
-    return () => {
-      window.removeEventListener("popstate", sync);
-      window.clearInterval(timer);
-    };
-  }, [routerLocation]);
-
-  return value;
-}
-
 export default function ContentHub() {
-  const rootRef = useRef<HTMLDivElement>(null);
   const { user } = useAuth();
   const tenantId = user?.tenantId ?? "";
-  const [location, setLocation] = useLocation();
-  const browserLocation = useBrowserLocationSnapshot(location);
-  const queryString = browserLocation.includes("?") ? browserLocation.split("?")[1] ?? "" : "";
-  const params = new URLSearchParams(queryString);
+  const [, setLocation] = useLocation();
+  const search = useSearch();
+  const params = new URLSearchParams(search);
   const mediaPlanSource = params.get("source") === "media-plan" || params.get("from") === "media-plan";
   const manualCreation = params.get("mode") === "avulso";
   const requestedTab = params.get("tab") ?? "visao-geral";
@@ -356,16 +297,6 @@ export default function ContentHub() {
     }));
   }, [mediaPlanSource, plannerPlan, selectedPlannerCampaign, tenantId]);
 
-  useEffect(() => {
-    const root = rootRef.current;
-    if (!root) return;
-    const apply = () => applyMarketingRedundancyFilter(root);
-    apply();
-    const observer = new MutationObserver(() => apply());
-    observer.observe(root, { childList: true, characterData: true, subtree: true });
-    return () => observer.disconnect();
-  }, []);
-
   // A jornada avança com dados reais: plano → aprovação → produção → publicação
   // → aprendizado. Sem plano é etapa 1; plano em revisão é etapa 2.
   const overviewStatus = plannerPlan?.conteudo.statusPlanejamento;
@@ -401,7 +332,7 @@ export default function ContentHub() {
           : { title: "Use os resultados no próximo ciclo", description: `${journeyPublished} publicação(ões) já alimentam o aprendizado. Compare campanhas e ajuste o próximo planejamento.`, label: "Ver resultados", tab: "resultados" as const };
 
   return (
-    <div ref={rootRef} className="min-w-0">
+    <div className="min-w-0">
       <div className="px-4 pt-4 md:px-6 md:pt-6">
         <div className="mb-4">
           <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
@@ -412,11 +343,11 @@ export default function ContentHub() {
 
         <Tabs value={activeTab} onValueChange={handleTabChange}>
           <TabsList className="h-auto flex flex-wrap gap-1">
-            <TabsTrigger value="visao-geral" className="gap-2"><LayoutDashboard className="h-4 w-4"/>Visão Geral</TabsTrigger>
-            <TabsTrigger value="planejamento" className="gap-2"><CalendarDays className="h-4 w-4"/>1. Planejamento</TabsTrigger>
-            <TabsTrigger value="campanhas" className="gap-2"><Megaphone className="h-4 w-4"/>2. Campanhas</TabsTrigger>
-            <TabsTrigger value="conteudos" className="gap-2"><Images className="h-4 w-4"/>3. Conteúdos & Criativos</TabsTrigger>
-            <TabsTrigger value="resultados" className="gap-2"><BarChart3 className="h-4 w-4"/>4. Resultados</TabsTrigger>
+            <TabsTrigger value="visao-geral" className="gap-2"><LayoutDashboard className="h-4 w-4"/>Visão geral</TabsTrigger>
+            <TabsTrigger value="planejamento" className="gap-2"><CalendarDays className="h-4 w-4"/>Planejamento</TabsTrigger>
+            <TabsTrigger value="campanhas" className="gap-2"><Megaphone className="h-4 w-4"/>Campanhas</TabsTrigger>
+            <TabsTrigger value="conteudos" className="gap-2"><Images className="h-4 w-4"/>Conteúdos & Publicação</TabsTrigger>
+            <TabsTrigger value="resultados" className="gap-2"><BarChart3 className="h-4 w-4"/>Resultados</TabsTrigger>
             <TabsTrigger value="rastreamento" className="gap-2"><Radio className="h-4 w-4"/>Rastreamento</TabsTrigger>
           </TabsList>
 
@@ -427,7 +358,6 @@ export default function ContentHub() {
               <Button size="sm" variant="outline" onClick={() => setLocation("/content-studio/video")}><Film className="h-3.5 w-3.5 mr-1.5"/>Vídeos com IA</Button>
               <Button size="sm" variant="outline" onClick={() => setLocation("/content?tab=campanhas&view=lp")}><Globe2 className="h-3.5 w-3.5 mr-1.5"/>Sites & LPs</Button>
               <Button size="sm" variant="outline" onClick={() => setLocation("/ads")}><Megaphone className="h-3.5 w-3.5 mr-1.5"/>Anúncios</Button>
-              <Button size="sm" variant="outline" onClick={() => setLocation("/content?tab=rastreamento")}><Radio className="h-3.5 w-3.5 mr-1.5"/>Rastreamento</Button>
             </div>
           )}
 
@@ -700,6 +630,9 @@ export default function ContentHub() {
           <TabsContent value="resultados" className="mt-5">
             <div className="mb-4">
               <MarketingResultsSummary tenantId={tenantId} />
+            </div>
+            <div className="mb-4">
+              <MarketingAttributionPanel tenantId={tenantId} />
             </div>
             <Card className="border-primary/20 bg-primary/[0.02]">
               <CardContent className="py-5">
