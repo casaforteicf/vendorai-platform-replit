@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { contar, estadoInicial, fmtHoras, gerarMetas, minutosTrabalho, normalizarEstado, rotuloDia, trocarPeriodo, validar } from "./escala-ab";
+import { contar, diasNoMes, estadoInicial, fmtHoras, gerarMetas, minutosTrabalho, normalizarEstado, rotuloDia, trocarPeriodo, validar } from "./escala-ab";
 
 describe("AJEscala — cálculo", () => {
   it("cria 35 dias e datas sequenciais", () => {
@@ -33,6 +33,27 @@ describe("AJEscala — cálculo", () => {
     expect(estado.days[0]!.targets.some((v) => v > 0)).toBe(true);
     const normalizado = normalizarEstado({ ...estado, staff: [{ name: "A", schedule: estado.days.map(() => "T") }] }, "2026-12-01");
     expect(validar(normalizado).some((item) => item.alertas !== "OK")).toBe(true);
+  });
+
+  it("calcula os dias do mês do período", () => {
+    expect(diasNoMes("2026-11-01")).toBe(30);
+    expect(diasNoMes("2026-12-01")).toBe(31);
+    expect(diasNoMes("2026-02-01")).toBe(28);
+    expect(diasNoMes("2028-02-01")).toBe(29);
+  });
+
+  it("valida só semanas completas no mês", () => {
+    const base = estadoInicial("2026-11-01");
+    const schedule = Array.from({ length: 30 }, (_, d) => {
+      const dia = new Date(2026, 10, d + 1, 12).getDay();
+      return dia === 0 || dia === 6 ? "F" : "T";
+    });
+    const estado = {
+      ...base,
+      days: base.days.slice(0, 30),
+      staff: [{ name: "A", role: "Auxiliar", sector: "Salão", shift: "M", regime: "5x2 integral", start: "08:00", breakStart: "12:00", breakEnd: "13:00", end: "17:24", sunday: 1, schedule }],
+    };
+    expect(validar(estado)).toEqual([{ nome: "A", alertas: "OK" }]);
   });
 
   it("troca o período mantendo equipe/horários e zerando ocupação", () => {

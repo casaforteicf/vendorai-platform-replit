@@ -54,6 +54,20 @@ export const chaveData = (state: EscalaState, d: number) => {
 };
 export const domingo = (state: EscalaState, d: number) => dataDe(state.start, d).getDay() === 0;
 
+/** Quantidade de dias do mês do período (28–31). */
+export function diasNoMes(start: string): number {
+  const d = new Date(`${start}T12:00:00`);
+  return new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
+}
+
+/** Semana do mês (0-based) que contém hoje; 0 quando o período não é o mês atual. */
+export function semanaDoMes(start: string): number {
+  const d = new Date(`${start}T12:00:00`);
+  const hoje = new Date();
+  if (hoje.getFullYear() !== d.getFullYear() || hoje.getMonth() !== d.getMonth()) return 0;
+  return Math.floor((hoje.getDate() - 1) / 7);
+}
+
 export function estadoInicial(start: string): EscalaState {
   return {
     start,
@@ -218,7 +232,8 @@ export function validar(state: EscalaState): Array<{ nome: string; alertas: stri
   for (const s of state.staff) {
     const alertas: string[] = [];
     if (s.regime !== "12x36") {
-      for (let w = 0; w < 5; w += 1) {
+      const semanasCompletas = Math.floor(s.schedule.length / 7);
+      for (let w = 0; w < semanasCompletas; w += 1) {
         const dias = s.schedule.slice(w * 7, w * 7 + 7).filter((v) => v === "T").length;
         if (dias !== 5) alertas.push(`ciclo ${w + 1} com ${dias} dias`);
       }
