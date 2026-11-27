@@ -24,6 +24,7 @@ import {
   type EscalaState,
 } from "@/lib/escala-ab";
 import { lerPlanilhaEscala } from "@/lib/escala-xlsx";
+import { htmlEscala, htmlFolgas, imprimirHtml } from "@/lib/escala-print";
 
 const ABAS = ["Escala", "Ocupação e metas", "Colaboradores", "Extras", "Cobertura", "Validação"] as const;
 type Aba = (typeof ABAS)[number];
@@ -47,6 +48,7 @@ export default function HotelEscalas() {
   const [diaCobertura, setDiaCobertura] = useState(0);
   const [semana, setSemana] = useState(0);
   const [detalhe, setDetalhe] = useState<number | null>(null);
+  const [filtroSetor, setFiltroSetor] = useState("Todos");
   const [carregando, setCarregando] = useState(false);
   const [salvando, setSalvando] = useState(false);
   const [mensagem, setMensagem] = useState<string | null>(null);
@@ -194,6 +196,7 @@ export default function HotelEscalas() {
   const semanaAtual = semana * 7;
   const diasVisiveis = estado.days.slice(semanaAtual, semanaAtual + 7);
   const staffDetalhe = detalhe === null ? null : estado.staff[detalhe] ?? null;
+  const staffVisivel = estado.staff.map((s, i) => ({ s, i })).filter(({ s }) => filtroSetor === "Todos" || s.sector === filtroSetor);
 
   const contagem = contar(estado);
   const totalExtras = contagem.reduce((a, b) => a + b.totalExtras, 0);
@@ -279,6 +282,23 @@ export default function HotelEscalas() {
               </div>
             </div>
 
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <label className="flex items-center gap-2 text-sm">
+                Setor
+                <select
+                  className="rounded-md border border-[#d8c88d]/60 bg-[#181818] px-2 py-1.5 text-sm text-[#f7f1df]"
+                  value={filtroSetor}
+                  onChange={(event) => setFiltroSetor(event.target.value)}
+                >
+                  {["Todos", "Cozinha", "Salão", "Confeitaria", "Quiosque"].map((setor) => (
+                    <option key={setor} value={setor}>{setor}</option>
+                  ))}
+                </select>
+              </label>
+              <button type="button" className="rounded-md border border-[#e9b900] px-3 py-1.5 text-sm text-[#ffd12a] hover:bg-[#211d10]" onClick={() => imprimirHtml(htmlEscala(estado, filtroSetor))}>Imprimir escala</button>
+              <button type="button" className="rounded-md border border-[#e9b900] px-3 py-1.5 text-sm text-[#ffd12a] hover:bg-[#211d10]" onClick={() => imprimirHtml(htmlFolgas(estado, filtroSetor))}>Imprimir folgas</button>
+              <span className="text-xs text-[#b9ae91]">O filtro vale para a lista; o resumo abaixo é geral.</span>
+            </div>
             <div className="mt-3 max-h-[70vh] overflow-auto rounded-lg border border-[#d8c88d]/40">
               <table className="min-w-[1080px] w-full border-collapse text-sm">
                 <thead>
@@ -299,7 +319,7 @@ export default function HotelEscalas() {
                   </tr>
                 </thead>
                 <tbody>
-                  {estado.staff.map((s, i) => (
+                  {staffVisivel.map(({ s, i }) => (
                     <tr key={`${s.name}-${i}`} className="hover:bg-[#1a1608]">
                       <td className="sticky left-0 z-10 border-b border-r border-[#d8c88d]/15 bg-[#111] p-3">
                         <button type="button" onClick={() => setDetalhe(i)} className="text-left font-medium text-[#ffd12a] hover:underline">
@@ -332,6 +352,9 @@ export default function HotelEscalas() {
                       })}
                     </tr>
                   ))}
+                  {staffVisivel.length === 0 && (
+                    <tr><td colSpan={11} className="p-6 text-center text-[#b9ae91]">Nenhum colaborador neste setor.</td></tr>
+                  )}
                 </tbody>
                 <tfoot>
                   {[
