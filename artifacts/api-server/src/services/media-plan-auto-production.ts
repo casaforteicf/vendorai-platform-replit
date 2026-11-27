@@ -10,6 +10,7 @@ import {
   mediaPlansTable,
   mediaProjectsTable,
   subscriptionsTable,
+  tenantsTable,
 } from "@workspace/db";
 import {
   generateFeedContent,
@@ -229,8 +230,22 @@ async function generateDraft(input: {
     throw new Error(`content_generation_limit:${allowance.used}/${allowance.limit}`);
   }
 
-  const [profile] = await db.select().from(businessProfilesTable)
-    .where(eq(businessProfilesTable.tenantId, input.tenantId)).limit(1);
+  const [[profile], [tenantIdentity]] = await Promise.all([
+    db.select().from(businessProfilesTable)
+      .where(eq(businessProfilesTable.tenantId, input.tenantId)).limit(1),
+    db.select({ name: tenantsTable.name, nomeEmpresa: tenantsTable.nomeEmpresa })
+      .from(tenantsTable)
+      .where(eq(tenantsTable.id, input.tenantId))
+      .limit(1),
+  ]);
+  const brandName = profile?.nomeFantasia?.trim()
+    || tenantIdentity?.nomeEmpresa?.trim()
+    || tenantIdentity?.name?.trim()
+    || "";
+  const generationProfile = {
+    ...(profile ?? {}),
+    ...(brandName ? { nomeFantasia: brandName } : {}),
+  };
   const strategy = {
     postObjective: input.campaign.objetivo,
     desiredCta: input.campaign.oferta,
@@ -251,24 +266,24 @@ async function generateDraft(input: {
     storedType = "stories";
     contentFormat = "stories";
     aspectRatio = "9:16";
-    generated = await generateStoriesContent(profile ?? {}, input.tenantId, input.theme, input.campaign.produtoServico || undefined, 1, 1, undefined, undefined, aspectRatio, strategy);
+    generated = await generateStoriesContent(generationProfile, input.tenantId, input.theme, input.campaign.produtoServico || undefined, 1, 1, undefined, undefined, aspectRatio, strategy);
   } else if (input.tipo === "linkedin_post") {
     storedType = "linkedin";
-    generated = await generateLinkedInContent(profile ?? {}, input.tenantId, input.theme, input.campaign.produtoServico || undefined, 1, undefined, strategy);
+    generated = await generateLinkedInContent(generationProfile, input.tenantId, input.theme, input.campaign.produtoServico || undefined, 1, undefined, strategy);
   } else if (input.tipo === "youtube_video") {
     storedType = "youtube";
     aspectRatio = "16:9";
-    generated = await generateYouTubeScript(profile ?? {}, input.tenantId, input.theme, input.campaign.produtoServico || undefined, 1, undefined, strategy);
+    generated = await generateYouTubeScript(generationProfile, input.tenantId, input.theme, input.campaign.produtoServico || undefined, 1, undefined, strategy);
   } else if (VIDEO_AUTO_TYPES.has(input.tipo)) {
     storedType = input.tipo === "youtube_short" ? "youtube" : "reels";
     contentFormat = "reels";
     aspectRatio = "9:16";
-    generated = await generateReelsScript(profile ?? {}, input.tenantId, input.theme, input.campaign.produtoServico || undefined, 1, undefined, strategy);
+    generated = await generateReelsScript(generationProfile, input.tenantId, input.theme, input.campaign.produtoServico || undefined, 1, undefined, strategy);
   } else {
     storedType = "feed";
     contentFormat = "feed_square";
     aspectRatio = "1:1";
-    generated = await generateFeedContent(profile ?? {}, input.tenantId, input.theme, input.campaign.produtoServico || undefined, 1, input.tipo === "carrossel" ? 4 : 1, undefined, undefined, aspectRatio, strategy);
+    generated = await generateFeedContent(generationProfile, input.tenantId, input.theme, input.campaign.produtoServico || undefined, 1, input.tipo === "carrossel" ? 4 : 1, undefined, undefined, aspectRatio, strategy);
   }
 
   const result = generated.result as GenerationResultRecord;
@@ -279,12 +294,28 @@ async function generateDraft(input: {
     const imageCount = input.tipo === "carrossel" ? 4 : 1;
     const imageType = input.tipo === "stories" ? "stories" : "feed";
     const imageUrls = await generateImagesForContent(
-      profile ?? {},
+      generationProfile,
       input.tenantId,
-      input.theme,
+      input.theme.split("\n")[0] || input.theme,
       input.campaign.produtoServico || undefined,
       imageType,
       imageCount,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      {
+        tenantName: tenantIdentity?.nomeEmpresa?.trim() || tenantIdentity?.name?.trim() || null,
+        brandName,
+        productName: input.campaign.produtoServico || null,
+        theme: input.theme.split("\n")[0] || input.theme,
+        vertical: profile?.vertical ?? null,
+        audience: input.campaign.publico,
+        region: input.campaign.regiao ?? null,
+        offer: input.campaign.oferta,
+        message: input.campaign.mensagemCentral,
+        campaignName: input.campaign.nome,
+      },
     );
     if (imageUrls.length === 0) throw new Error("content_generation_missing_image");
     variations[0] = {

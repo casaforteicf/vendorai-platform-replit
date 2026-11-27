@@ -494,6 +494,9 @@ export function MediaPlanAutoProductionBridge() {
     const selectedImages = selectMedia(assets, campaign, item, ["image"], item.tipo === "carrossel" ? 6 : 3);
     const finalMaterials = selectedImages.filter((asset) => asset.metadata?.aiRole === "final_material");
     const referenceImages = selectedImages.filter((asset) => asset.metadata?.aiRole !== "final_material");
+    // Referência visual deve ser foto real do negócio; usar uma imagem já
+    // gerada como referência criaria recursão e mais distorção.
+    const ownPhoto = referenceImages.find((asset) => ["upload", "imported"].includes(String(asset.source ?? "")));
     const response = await fetch(`/api/tenants/${tenantId}/content/generate`, {
       method: "POST",
       headers: {
@@ -526,8 +529,8 @@ export function MediaPlanAutoProductionBridge() {
         headers: authHeaders(true),
         body: JSON.stringify({
           imageCount: Math.max(1, options.imageCount ?? (item.tipo === "carrossel" ? 4 : 1)),
-          ...(referenceImages[0] ? { referenceImageUrl: mediaUrl(referenceImages[0].storageUrl) } : {}),
-          observations: `Plano de Mídia: ${campaign.mensagemCentral}. Preserve a identidade e o assunto real do negócio; gere um criativo profissional pronto para revisão, sem texto inventado nem marca d'água.`,
+          ...(ownPhoto ? { referenceImageUrl: mediaUrl(ownPhoto.storageUrl) } : {}),
+          observations: `Preserve o local e o produto reais do negócio (${campaign.produtoServico}). Sem texto, sem logotipo sobreposto e sem marca d'água.`,
         }),
       });
       const visual = await visualResponse.json().catch(() => ({})) as { imageUrls?: string[]; error?: string };
