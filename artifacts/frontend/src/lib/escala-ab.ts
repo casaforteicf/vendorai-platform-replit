@@ -1,6 +1,22 @@
 export const GRUPOS = ["Cozinha M", "Cozinha N", "Salão M", "Salão N", "Salão P", "Confeitaria M", "Confeitaria N", "Quiosque"] as const;
 export const JANELAS = ["07:30–16:54", "13:26–22:50", "06:00–17:24", "13:56–23:20", "19:00–23:00", "04:00–15:24", "11:56–21:20", "07:00–19:30"];
 
+/** Jornada padrão (8h24 + 1h de intervalo) por setor/turno, usada na importação. */
+export const HORARIOS: Record<string, { start: string; breakStart: string; breakEnd: string; end: string }> = {
+  "Cozinha M": { start: "07:30", breakStart: "11:30", breakEnd: "12:30", end: "16:54" },
+  "Cozinha N": { start: "13:26", breakStart: "17:26", breakEnd: "18:26", end: "22:50" },
+  "Salão M": { start: "06:00", breakStart: "10:00", breakEnd: "11:00", end: "15:24" },
+  "Salão N": { start: "13:56", breakStart: "17:56", breakEnd: "18:56", end: "23:20" },
+  "Salão P": { start: "19:00", breakStart: "", breakEnd: "", end: "23:00" },
+  "Confeitaria M": { start: "04:00", breakStart: "08:00", breakEnd: "09:00", end: "13:24" },
+  "Confeitaria N": { start: "11:56", breakStart: "15:56", breakEnd: "16:56", end: "21:20" },
+  Quiosque: { start: "07:00", breakStart: "11:00", breakEnd: "12:00", end: "16:24" },
+};
+
+export function horarioDoGrupo(sector: string, shift: string) {
+  return HORARIOS[sector === "Quiosque" ? "Quiosque" : `${sector} ${shift}`] ?? HORARIOS["Salão M"]!;
+}
+
 export type EscalaStaff = {
   name: string;
   role: string;
@@ -161,16 +177,20 @@ export function contar(state: EscalaState) {
   });
 }
 
-export function metaDia(state: EscalaState, d: number) {
-  const day = state.days[d];
+export function metasDoDia(morning: number, pax: number): number[] {
   const matrix = [[3, 3, 3, 2, 1, 2, 1, 1], [3, 4, 4, 3, 1, 2, 2, 1], [4, 4, 5, 3, 1, 3, 2, 1], [5, 5, 6, 4, 2, 3, 3, 1]];
   const level = (p: number) => p <= 50 ? 0 : p <= 100 ? 1 : p <= 150 ? 2 : 3;
-  day.targets = GRUPOS.map((g, j) => {
-    const pax = g.endsWith(" M") ? day.morning : day.pax;
-    let value = matrix[level(pax)]![j]!;
-    if (pax > 200 && [0, 1, 2, 3, 5, 6].includes(j)) value += Math.ceil((pax - 200) / 50);
+  return GRUPOS.map((g, j) => {
+    const p = g.endsWith(" M") ? morning : pax;
+    let value = matrix[level(p)]![j]!;
+    if (p > 200 && [0, 1, 2, 3, 5, 6].includes(j)) value += Math.ceil((p - 200) / 50);
     return value;
   });
+}
+
+export function metaDia(state: EscalaState, d: number) {
+  const day = state.days[d];
+  day.targets = metasDoDia(day.morning, day.pax);
 }
 
 export function gerarMetas(state: EscalaState) {
