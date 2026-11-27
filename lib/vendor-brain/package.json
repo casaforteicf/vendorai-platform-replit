@@ -32,7 +32,8 @@
     "./business-agent": "./src/business-agent.ts",
     "./engines/*": "./src/engines/*.ts",
     "./policies": "./src/policies/index.ts",
-    "./image-direction": "./src/image-direction.ts"
+    "./image-direction": "./src/image-direction.ts",
+    "./channel-playbook": "./src/channel-playbook.ts"
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json --noEmit"

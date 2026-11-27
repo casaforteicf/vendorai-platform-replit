@@ -21,6 +21,7 @@ import { selectTenantImageAssetIds } from "../services/media-plan-auto-productio
 import { startVendorAiPhotoVideo } from "../services/vendorai-photo-video.js";
 import { emitMarketingFunnelEvent } from "../services/marketing-funnel-events.js";
 import { resolvePieceCta } from "../services/marketing-piece-cta.js";
+import { validatePieceForChannel } from "@workspace/vendor-brain/channel-playbook";
 import { ObjectStorageService } from "../lib/objectStorage.js";
 import { captureGeneratedMedia } from "../services/media-library.js";
 import { renderMarketingOverlay } from "../services/marketingCreativeFrame.js";
@@ -318,6 +319,16 @@ function generationHasVisual(result: unknown): boolean {
   return false;
 }
 
+
+function generationMediaCount(result: unknown): number {
+  const payload = result && typeof result === "object" && !Array.isArray(result) ? result as Record<string, unknown> : {};
+  const variations = Array.isArray(payload["variations"]) ? payload["variations"] : [];
+  const variation = variations[0] && typeof variations[0] === "object" ? variations[0] as Record<string, unknown> : {};
+  const images = Array.isArray(variation["imageUrls"]) ? variation["imageUrls"].filter(Boolean).length : variation["imageUrl"] ? 1 : 0;
+  const video = variation["videoUrl"] ? 1 : 0;
+  return Math.max(1, images + video);
+}
+
 type PieceRow = {
   id: string;
   tipo: string;
@@ -465,9 +476,73 @@ async function loadPieceContext(tenantId: string, pieceId?: string) {
       item: { id: row.id, canal: row.canal, tipo: row.tipo, temaSugerido: row.temaSugerido },
       medium: "organic",
     }).catch(() => null);
-    return { ...view, cta };
+    const channelIssues = validatePieceForChannel({
+      canal: row.canal,
+      tipo: row.tipo,
+      mediaCount: generationMediaCount(row.generationResult),
+      hasVideo: isVideoCalendarType(row.tipo)
+        ? generationHasFinalVideo(row.generationResult as { variations?: unknown; automation?: unknown } | null)
+        : undefined,
+      destination: (cta?.destination as "landing_page" | "whatsapp" | "formulario_lead" | "site" | null) ?? null,
+    });
+    return { ...view, cta, channelIssues };
   }));
 }
+
+
+router.get("/tenants/:tenantId/marketing/attribution-pieces", async (req, res) => {
+  const tenantId = String(req.params.tenantId);
+  if (!canAccess(req, tenantId)) {
+    res.status(403).json({ error: "Access denied to this tenant" });
+    return;
+  }
+  const rows = await db
+    .select({
+      pieceId: sql<string>`${leadsTable.discoveryData}->'attribution'->>'utmContent'`,
+      leads: sql<number>`count(distinct ${leadsTable.id})`,
+      won: sql<number>`count(distinct ${dealsTable.id}) filter (where ${dealsTable.etapa} = 'ganho')`,
+      revenue: sql<string>`coalesce(sum(${dealsTable.valor}) filter (where ${dealsTable.etapa} = 'ganho'), 0)`,
+    })
+    .from(leadsTable)
+    .leftJoin(dealsTable, and(
+      eq(dealsTable.leadId, leadsTable.id),
+      eq(dealsTable.tenantId, leadsTable.tenantId),
+    ))
+    .where(and(
+      eq(leadsTable.tenantId, tenantId),
+      sql`${leadsTable.discoveryData}->'attribution'->>'utmContent' is not null`,
+    ))
+    .groupBy(sql`1`)
+    .orderBy(desc(sql`coalesce(sum(${dealsTable.valor}) filter (where ${dealsTable.etapa} = 'ganho'), 0)`))
+    .limit(10);
+
+  const pieceIds = rows.map((row) => row.pieceId).filter((id): id is string => Boolean(id));
+  const pieces = pieceIds.length === 0 ? [] : await db
+    .select({
+      id: contentCalendarItemsTable.id,
+      temaSugerido: contentCalendarItemsTable.temaSugerido,
+      canal: contentCalendarItemsTable.canal,
+      tipo: contentCalendarItemsTable.tipo,
+      pilar: contentCalendarItemsTable.pilar,
+    })
+    .from(contentCalendarItemsTable)
+    .where(and(eq(contentCalendarItemsTable.tenantId, tenantId), inArray(contentCalendarItemsTable.id, pieceIds)));
+  const byId = new Map(pieces.map((piece) => [piece.id, piece]));
+
+  res.json({
+    pieces: rows
+      .filter((row) => Boolean(row.pieceId))
+      .map((row) => ({
+        pieceId: row.pieceId,
+        temaSugerido: byId.get(row.pieceId)?.temaSugerido ?? null,
+        canal: byId.get(row.pieceId)?.canal ?? null,
+        tipo: byId.get(row.pieceId)?.tipo ?? null,
+        leads: Number(row.leads ?? 0),
+        won: Number(row.won ?? 0),
+        revenue: Number(row.revenue ?? 0),
+      })),
+  });
+});
 
 router.get("/tenants/:tenantId/marketing/pieces", async (req, res) => {
   const tenantId = String(req.params.tenantId);
