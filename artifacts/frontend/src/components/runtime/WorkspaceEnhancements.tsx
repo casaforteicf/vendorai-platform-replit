@@ -15,7 +15,6 @@ import { ContentContextSourcesBridge } from "../marketing/ContentContextSourcesB
 import { MarketingOverviewBridge } from "../marketing/MarketingOverviewBridge";
 import { CampaignWorkspaceClarityBridge } from "../marketing/CampaignWorkspaceClarityBridge";
 import { PlanningReviewBridge } from "../marketing/PlanningReviewBridge";
-import { ContentPlanVisualCompletionBridge } from "../marketing/ContentPlanVisualCompletionBridge";
 import { MediaPlanProductionCompatibilityBridge } from "../marketing/MediaPlanProductionCompatibilityBridge";
 import { MediaPlanProjectKindCompatibilityBridge } from "../marketing/MediaPlanProjectKindCompatibilityBridge";
 import { MediaPlanAutoProductionBridge } from "../marketing/QuotaSafeMediaPlanAutoProductionBridge";
@@ -87,7 +86,6 @@ export default function WorkspaceEnhancements() {
           <MarketingOverviewBridge />
           <CampaignWorkspaceClarityBridge />
           <PlanningReviewBridge />
-          <ContentPlanVisualCompletionBridge />
           <MediaPlanProductionCompatibilityBridge />
           <MediaPlanProjectKindCompatibilityBridge />
           <MediaPlanAutoProductionBridge />

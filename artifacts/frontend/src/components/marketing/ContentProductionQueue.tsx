@@ -14,6 +14,7 @@ import {
   Eye,
   Film,
   Image as ImageIcon,
+  ImagePlus,
   Layers3,
   Library,
   Loader2,
@@ -34,6 +35,7 @@ const MEDIA_PLAN_EXECUTION_KEY = "vendorai_media_plan_execution_v1";
 const DIRECT_GENERATOR_TYPES = new Set(["feed", "stories", "carrossel", "linkedin_post"]);
 const VIDEO_TYPES = new Set(["reels", "youtube_short", "youtube_video", "tiktok"]);
 const VIDEO_GENERATOR_TYPES = new Set(["reels", "youtube_short", "youtube_video", "tiktok"]);
+const VISUAL_COMPLETION_TYPES = new Set(["feed", "stories", "carrossel", "linkedin_post"]);
 const FINAL_STATUSES = new Set(["recusado", "pulado", "publicado"]);
 
 const EDITABLE_CONTENT_TYPES = [
@@ -341,6 +343,22 @@ function statusClass(tone: ReturnType<typeof derivedStatus>["tone"]) {
   return "";
 }
 
+function variationHasVisual(variation: unknown): boolean {
+  if (!variation || typeof variation !== "object" || Array.isArray(variation)) return false;
+  const value = variation as Record<string, unknown>;
+  if (typeof value.imageUrl === "string" && value.imageUrl.trim()) return true;
+  return Array.isArray(value.imageUrls) && value.imageUrls.some((url) => typeof url === "string" && url.trim());
+}
+
+function generationHasVisual(generation: ContentGeneration | undefined, variationIdx = 0): boolean {
+  const variations = Array.isArray(generation?.result?.variations) ? generation!.result!.variations! : [];
+  return variationHasVisual(variations[variationIdx] ?? variations[0]);
+}
+
+function desiredImageCount(tipo: string): number {
+  return tipo === "carrossel" ? 4 : 1;
+}
+
 function generationHasFinalVideo(generation: ContentGeneration | undefined): boolean {
   const variations = Array.isArray(generation?.result?.variations) ? generation.result!.variations! : [];
   for (const raw of variations) {
@@ -398,6 +416,9 @@ export default function ContentProductionQueue({ tenantId }: { tenantId: string 
   const [approvingPlan, setApprovingPlan] = useState(false);
   const [planApprovalError, setPlanApprovalError] = useState("");
   const [savingPublicationMode, setSavingPublicationMode] = useState(false);
+  const [repairingVisuals, setRepairingVisuals] = useState(false);
+  const [visualProgress, setVisualProgress] = useState({ done: 0, total: 0, failed: 0 });
+  const [visualError, setVisualError] = useState("");
 
   const planRef = useRef<MediaPlan | null>(null);
   const calendarRef = useRef<CalendarItem[]>([]);
@@ -620,6 +641,14 @@ export default function ContentProductionQueue({ tenantId }: { tenantId: string 
     (history?.items ?? []).forEach((item) => map.set(item.id, item));
     return map;
   }, [history]);
+
+  const visualIncomplete = useMemo(() => {
+    return visibleItems.filter((item) => {
+      if (item.status !== "gerado" || !item.contentGenerationId) return false;
+      if (!VISUAL_COMPLETION_TYPES.has(item.tipo)) return false;
+      return !generationHasVisual(generationById.get(item.contentGenerationId));
+    });
+  }, [visibleItems, generationById]);
 
   const projectByItem = useMemo(() => {
     const map = new Map<string, MediaProject>();
@@ -1194,6 +1223,56 @@ export default function ContentProductionQueue({ tenantId }: { tenantId: string 
     }
   }
 
+  async function regenerateVisual(contentId: string, imageCount: number) {
+    let lastError = "A geração visual não retornou imagem.";
+    for (let attempt = 1; attempt <= 3; attempt += 1) {
+      const response = await fetch(`/api/tenants/${tenantId}/content/${contentId}/variations/0/regenerate-image`, {
+        method: "POST",
+        headers: { ...authHeaders(), "Content-Type": "application/json" },
+        body: JSON.stringify({
+          imageCount,
+          observations: "Criativo visual do Plano de Mídia. Preserve produto, marca e contexto do briefing; produza imagem profissional pronta para publicação, sem texto inventado nem marca d'água.",
+        }),
+      });
+      const payload = await response.json().catch(() => ({})) as { imageUrls?: string[]; error?: string };
+      if (response.ok && Array.isArray(payload.imageUrls) && payload.imageUrls.length > 0) return;
+      lastError = payload.error || `A geração visual falhou (HTTP ${response.status}).`;
+      if (![429, 502, 503, 504].includes(response.status) || attempt === 3) break;
+      await new Promise((resolve) => window.setTimeout(resolve, 700 * 2 ** (attempt - 1)));
+    }
+    throw new Error(lastError);
+  }
+
+  async function repairMissingImages() {
+    if (visualIncomplete.length === 0 || repairingVisuals) return;
+    const totalImages = visualIncomplete.reduce((sum, item) => sum + desiredImageCount(item.tipo), 0);
+    const confirmed = window.confirm(
+      `Gerar imagens para ${visualIncomplete.length} peça(s) sem criativo? A IA vai gerar aproximadamente ${totalImages} imagem(ns), reaproveitando os textos já prontos.`,
+    );
+    if (!confirmed) return;
+
+    setVisualError("");
+    setRepairingVisuals(true);
+    setVisualProgress({ done: 0, total: visualIncomplete.length, failed: 0 });
+    let failed = 0;
+    let firstError = "";
+    for (let index = 0; index < visualIncomplete.length; index += 1) {
+      const item = visualIncomplete[index]!;
+      try {
+        await regenerateVisual(item.contentGenerationId!, desiredImageCount(item.tipo));
+      } catch (error) {
+        failed += 1;
+        if (!firstError) firstError = error instanceof Error ? error.message : "Falha ao gerar imagem.";
+      }
+      setVisualProgress({ done: index + 1, total: visualIncomplete.length, failed });
+    }
+    setRepairingVisuals(false);
+    await load();
+    if (failed > 0) {
+      setVisualError(`${failed} de ${visualIncomplete.length} peça(s) permaneceram sem imagem. ${firstError}`);
+    }
+  }
+
   function selectAllReviewItems() {
     setSelectedContentIds(
       visibleItems
@@ -1316,6 +1395,12 @@ export default function ContentProductionQueue({ tenantId }: { tenantId: string 
               <Button type="button" variant="outline" size="sm" onClick={() => navigate("/content?tab=gerador&mode=avulso")}>
                 <Plus className="h-3.5 w-3.5 mr-1" />Criação avulsa
               </Button>
+              {visualIncomplete.length > 0 && (
+                <Button type="button" variant="outline" size="sm" onClick={() => void repairMissingImages()} disabled={repairingVisuals} title="Gera apenas as imagens que faltam, preservando os textos já criados">
+                  {repairingVisuals ? <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> : <ImagePlus className="h-3.5 w-3.5 mr-1" />}
+                  {repairingVisuals ? `Gerando ${visualProgress.done}/${visualProgress.total}` : `Gerar imagens faltantes (${visualIncomplete.length})`}
+                </Button>
+              )}
               <Button type="button" variant="outline" size="sm" onClick={() => void load()}>
                 <RefreshCw className="h-3.5 w-3.5 mr-1" />Atualizar
               </Button>
@@ -1327,6 +1412,8 @@ export default function ContentProductionQueue({ tenantId }: { tenantId: string 
               )}
             </div>
           </div>
+
+          {visualError ? <p className="text-xs font-medium text-destructive">{visualError}</p> : null}
 
           <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border bg-background px-3 py-2 text-[11px]">
             <span className="inline-flex flex-wrap items-center gap-1.5">
