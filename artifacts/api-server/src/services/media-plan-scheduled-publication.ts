@@ -10,6 +10,7 @@ import { logger } from "../lib/logger.js";
 import { createFacebookOrganicPublication } from "./facebook-organic-publication.js";
 import { createInstagramOrganicPublication } from "./instagram-organic-publication.js";
 import { createSocialPublication } from "./social-platforms.js";
+import { resolvePieceCta } from "./marketing-piece-cta.js";
 import { generationHasFinalVideo, isVideoCalendarType } from "./content-final-media.js";
 import { selectRoundRobinByTenant } from "@workspace/vendor-brain/media-plan-execution";
 
@@ -141,6 +142,18 @@ async function createScheduledPublication(input: {
   const isReel = item.tipo === "reels";
   const isStory = item.tipo === "stories";
   const isVideoOnlyProvider = provider === "tiktok" || provider === "youtube";
+  const cta = await resolvePieceCta(tenantId, {
+    item: { id: item.id, canal: item.canal, tipo: item.tipo, temaSugerido: item.temaSugerido },
+    medium: "organic",
+  }).catch(() => null);
+  const supportsClickableLink = provider === "facebook" || provider === "linkedin" || provider === "youtube";
+  const textWithCta = cta?.url
+    ? supportsClickableLink
+      ? `${text}\n\n${cta.url}`
+      : provider === "instagram" || provider === "tiktok"
+        ? `${text}\n\nLink na bio: ${cta.url}`
+        : text
+    : text;
   const primaryVideo = preview.videoUrls[0];
   const primaryMedia = primaryVideo || preview.mediaUrls[0];
 
@@ -154,7 +167,7 @@ async function createScheduledPublication(input: {
   let publication;
   if (provider === "instagram") {
     publication = await createInstagramOrganicPublication(tenantId, {
-      text,
+      text: textWithCta,
       mediaUrl: isReel ? primaryVideo : preview.mediaUrls[0],
       mediaUrls: item.tipo === "carrossel" ? preview.mediaUrls : undefined,
       contentType: isReel ? "reel" : isStory ? "story" : item.tipo === "carrossel" ? "carousel" : "image",
@@ -162,7 +175,7 @@ async function createScheduledPublication(input: {
   } else if (provider === "facebook") {
     const facebookMedia = isReel ? primaryVideo : isStory ? primaryMedia : preview.mediaUrls[0];
     publication = await createFacebookOrganicPublication(tenantId, {
-      text,
+      text: textWithCta,
       mediaUrl: facebookMedia,
       mediaUrls: item.tipo === "carrossel" ? preview.mediaUrls : undefined,
       contentType: isReel ? "reel" : isStory ? "story" : item.tipo === "carrossel" ? "carousel" : preview.mediaUrls.length ? "image" : "post",
@@ -170,13 +183,13 @@ async function createScheduledPublication(input: {
     });
   } else if (provider === "linkedin") {
     publication = await createSocialPublication(tenantId, "linkedin", {
-      text,
+      text: textWithCta,
       mediaUrl: preview.mediaUrls[0],
       contentType: preview.mediaUrls.length ? "image" : "post",
     });
   } else {
     publication = await createSocialPublication(tenantId, provider, {
-      text,
+      text: textWithCta,
       mediaUrl: primaryVideo,
       contentType: item.tipo === "youtube_video" ? "video" : "short",
     });
