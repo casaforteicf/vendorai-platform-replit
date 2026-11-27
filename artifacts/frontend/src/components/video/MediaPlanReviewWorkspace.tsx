@@ -389,12 +389,14 @@ export default function MediaPlanReviewWorkspace() {
             <div className="mx-auto max-w-[430px]">
               <div className="relative aspect-[9/16] overflow-hidden rounded-[28px] border bg-slate-950 shadow-xl">
                 {previewUrl ? (
-                  mainMedia?.type === "video" ? <video src={previewUrl} muted playsInline className="absolute inset-0 h-full w-full object-cover" /> : <img src={previewUrl} alt="Prévia do material" className="absolute inset-0 h-full w-full object-cover" />
+                  mainMedia?.type === "video"
+                    ? <video src={previewUrl} controls autoPlay loop muted playsInline className="absolute inset-0 h-full w-full object-cover" />
+                    : <img src={previewUrl} alt="Prévia do material" className="absolute inset-0 h-full w-full object-cover" />
                 ) : <div className="absolute inset-0" style={{ background: `linear-gradient(145deg, ${brandColor}, #151515 78%)` }} />}
-                <div className="absolute inset-0 bg-gradient-to-b from-black/15 via-transparent to-black/55" />
-                <div className="absolute left-6 top-6 rounded-xl bg-blue-500 px-3 py-2 text-sm font-bold text-white">V</div>
-                <div className="absolute right-5 top-5 rounded-full bg-black/45 px-3 py-1 text-[11px] font-semibold text-white">REELS</div>
-                <div className="absolute inset-x-6 bottom-8 text-white">
+                <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-black/15 via-transparent to-black/55" />
+                <div className="pointer-events-none absolute left-6 top-6 rounded-xl bg-blue-500 px-3 py-2 text-sm font-bold text-white">V</div>
+                <div className="pointer-events-none absolute right-5 top-5 rounded-full bg-black/45 px-3 py-1 text-[11px] font-semibold text-white">REELS</div>
+                <div className="pointer-events-none absolute inset-x-6 bottom-8 text-white">
                   <h3 className="max-w-[90%] text-3xl font-extrabold leading-[.98] sm:text-4xl">{firstSentence(headline, 70)}</h3>
                   {supportingText ? <p className="mt-4 max-w-[88%] text-sm leading-snug text-white/90">{firstSentence(supportingText, 105)}</p> : null}
                   {cta ? <span className="mt-5 inline-flex rounded-full bg-blue-500 px-4 py-2 text-xs font-semibold">{firstSentence(cta, 32)} →</span> : null}
@@ -415,6 +417,16 @@ export default function MediaPlanReviewWorkspace() {
                 <button type="button" onClick={openAdvanced} className="flex h-20 min-w-32 shrink-0 flex-col items-center justify-center rounded-xl border border-dashed text-xs text-muted-foreground"><Plus className="mb-1 h-5 w-5" />Usar mídia própria</button>
               </div>
               {productionDetail ? <p className={`mt-2 text-xs ${productionState === "failed" ? "text-red-700" : "text-muted-foreground"}`}>{productionDetail}</p> : null}
+              {productionState === "failed" ? (
+                <div className="mt-2 flex flex-wrap gap-2">
+                  <Button size="sm" variant="outline" className="h-8 text-xs" onClick={() => navigate("/midias")}>
+                    <Library className="mr-1.5 h-3.5 w-3.5" />Abrir Biblioteca
+                  </Button>
+                  <Button size="sm" variant="ghost" className="h-8 text-xs" onClick={() => navigate("/content?tab=planejamento")}>
+                    Revisar plano
+                  </Button>
+                </div>
+              ) : null}
             </div>
 
             {isVideoItem && !hasFinalVideo ? (
@@ -463,7 +475,9 @@ export default function MediaPlanReviewWorkspace() {
 
           <section className="rounded-3xl border bg-card p-5 shadow-sm">
             <div className="flex items-center justify-between"><h3 className="text-lg font-semibold">Cenas do vídeo</h3><button type="button" onClick={openAdvanced} className="text-sm font-medium text-primary">Ver todas →</button></div>
-            <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">{scenes.map((scene, index) => <button type="button" key={`${scene.title}-${index}`} onClick={openAdvanced} className="text-left"><div className="relative aspect-[4/5] overflow-hidden rounded-xl border bg-slate-950">{previewUrl ? <img src={previewUrl} alt="" className="h-full w-full object-cover opacity-80" /> : <div className="h-full w-full" style={{ background: `linear-gradient(145deg, ${brandColor}, #111)` }} />}<div className="absolute inset-0 bg-black/25" /><span className="absolute bottom-2 right-2 rounded-full bg-white px-2 py-1 text-[10px] font-bold text-slate-900">{scene.score}</span><span className="absolute inset-x-2 bottom-9 line-clamp-3 text-[10px] font-semibold uppercase leading-tight text-white">{scene.title}</span></div><p className="mt-1 text-xs font-medium">Cena {index + 1}</p><p className="text-[10px] text-muted-foreground">{scene.start} – {scene.end}</p></button>)}</div>
+            <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">{scenes.map((scene, index) => <button type="button" key={`${scene.title}-${index}`} onClick={openAdvanced} className="text-left"><div className="relative aspect-[4/5] overflow-hidden rounded-xl border bg-slate-950">{previewUrl ? (mainMedia?.type === "video"
+                    ? <video src={previewUrl} muted playsInline preload="metadata" className="h-full w-full object-cover opacity-80" />
+                    : <img src={previewUrl} alt="" className="h-full w-full object-cover opacity-80" />) : <div className="h-full w-full" style={{ background: `linear-gradient(145deg, ${brandColor}, #111)` }} />}<div className="absolute inset-0 bg-black/25" /><span className="absolute bottom-2 right-2 rounded-full bg-white px-2 py-1 text-[10px] font-bold text-slate-900">{scene.score}</span><span className="absolute inset-x-2 bottom-9 line-clamp-3 text-[10px] font-semibold uppercase leading-tight text-white">{scene.title}</span></div><p className="mt-1 text-xs font-medium">Cena {index + 1}</p><p className="text-[10px] text-muted-foreground">{scene.start} – {scene.end}</p></button>)}</div>
           </section>
 
           <section className="rounded-3xl border bg-card shadow-sm">

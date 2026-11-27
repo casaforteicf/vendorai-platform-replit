@@ -1390,7 +1390,7 @@ export default function ContentProductionQueue({ tenantId }: { tenantId: string 
                 <Badge className={planApproved ? "bg-emerald-600" : ""}>{planApproved ? "Plano aprovado" : "Novo lote em revisão"}</Badge>
                 <span className="text-xs text-muted-foreground">{plan.conteudo.periodoDias ?? 30} dias</span>
               </div>
-              <p className="mt-2 text-sm font-semibold">Conteúdos da campanha</p>
+              <p className="mt-2 text-sm font-semibold">Conteúdos do plano</p>
               <p className="text-xs text-muted-foreground mt-0.5 max-w-3xl">
                 O Vendi usa somente o briefing da campanha vinculada a cada ação. Revise, aprove ou gere novamente sem preencher tudo outra vez.
               </p>

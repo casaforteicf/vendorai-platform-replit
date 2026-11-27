@@ -12,6 +12,7 @@ import ContentProductionQueue from "@/components/marketing/ContentProductionQueu
 import LeadCaptureFreeToolBuilder from "@/components/marketing/LeadCaptureFreeToolBuilder";
 import SearchConsoleInsightsPanel from "@/components/marketing/SearchConsoleInsightsPanel";
 import { MarketingResultsSummary } from "@/components/marketing/MarketingResultsSummary";
+import { MarketingReadinessChecklist } from "@/components/marketing/MarketingReadinessChecklist";
 import { MarketingAttributionPanel } from "@/components/marketing/MarketingAttributionPanel";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -623,7 +624,12 @@ export default function ContentHub() {
                 <Content />
               </>
             ) : (
-              <ContentProductionQueue tenantId={tenantId} />
+              <>
+                <div className="px-4 pt-4 md:px-6">
+                  <MarketingReadinessChecklist tenantId={tenantId} />
+                </div>
+                <ContentProductionQueue tenantId={tenantId} />
+              </>
             )}
           </TabsContent>
 
