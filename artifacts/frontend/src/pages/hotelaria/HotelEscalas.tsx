@@ -22,6 +22,7 @@ import {
   valorTarifa,
   type EscalaState,
 } from "@/lib/escala-ab";
+import { lerPlanilhaEscala } from "@/lib/escala-xlsx";
 
 const ABAS = ["Escala", "Ocupação e metas", "Colaboradores", "Extras", "Cobertura", "Validação"] as const;
 type Aba = (typeof ABAS)[number];
@@ -31,6 +32,10 @@ const card = "rounded-xl border border-[#d8c88d]/50 bg-[#111] p-4";
 function inicioDoMes(): string {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01`;
+}
+
+function rotuloPeriodo(inicio: string): string {
+  return new Date(`${inicio}T12:00:00`).toLocaleDateString("pt-BR", { month: "long", year: "numeric" });
 }
 
 export default function HotelEscalas() {
@@ -44,7 +49,7 @@ export default function HotelEscalas() {
   const [mensagem, setMensagem] = useState<string | null>(null);
   const [erro, setErro] = useState<string | null>(null);
   const [versao, setVersao] = useState<number | null>(null);
-  const [historico, setHistorico] = useState<Array<{ id: string; version: number; createdAt: string }>>([]);
+  const [historico, setHistorico] = useState<Array<{ id: string; version: number; createdAt: string; inicio?: string | null }>>([]);
   const inputImport = useRef<HTMLInputElement>(null);
   const base = tenantId ? `/api/tenants/${encodeURIComponent(tenantId)}/hotelaria/escalas` : "";
 
@@ -78,7 +83,7 @@ export default function HotelEscalas() {
     if (!/^\d{4}-\d{2}$/.test(valor)) return;
     const novoInicio = `${valor}-01`;
     if (novoInicio === estado.start) return;
-    const rotulo = new Date(`${novoInicio}T12:00:00`).toLocaleDateString("pt-BR", { month: "long", year: "numeric" });
+    const rotulo = rotuloPeriodo(novoInicio);
     if (!window.confirm(`Mudar o período para ${rotulo}? A ocupação e as metas serão zeradas; equipe, horários, folgas, tarifas e pares são mantidos. Salve para gravar como nova versão.`)) return;
     setEstado((atual) => trocarPeriodo(atual, novoInicio));
     setMensagem(`Período alterado para ${rotulo}. Revise folgas e metas e salve para gravar.`);
@@ -156,6 +161,26 @@ export default function HotelEscalas() {
     }
   }
 
+  async function importarPlanilha(arquivo: File) {
+    setErro(null);
+    setMensagem("Lendo planilha...");
+    try {
+      const { estado: novo, resumo } = await lerPlanilhaEscala(await arquivo.arrayBuffer(), estado.start, estado);
+      if (resumo.colaboradores === 0) throw new Error(`nenhum colaborador encontrado para ${rotuloPeriodo(estado.start)}${resumo.abasIgnoradas.length > 0 ? ` — abas ignoradas: ${resumo.abasIgnoradas.join(", ")}` : ""}`);
+      const ignoradas = resumo.abasIgnoradas.length > 0 ? ` Abas ignoradas: ${resumo.abasIgnoradas.join(", ")}.` : "";
+      const setores = Object.entries(resumo.setores).map(([setor, n]) => `${setor} ${n}`).join(", ");
+      if (!window.confirm(`Importar ${resumo.colaboradores} colaborador(es) para ${rotuloPeriodo(estado.start)} (${setores})? A escala atual será substituída até você salvar.${ignoradas}`)) {
+        setMensagem(null);
+        return;
+      }
+      setEstado(novo);
+      setMensagem(`Planilha importada: ${resumo.colaboradores} colaborador(es), ${resumo.diasComOcupacao} dias de ocupação. Revise e salve.${ignoradas}`);
+    } catch (falha) {
+      setMensagem(null);
+      setErro(`Planilha inválida: ${falha instanceof Error ? falha.message : String(falha)}`);
+    }
+  }
+
   const contagem = contar(estado);
   const totalExtras = contagem.reduce((a, b) => a + b.totalExtras, 0);
   const custo = custoExtras(estado);
@@ -186,8 +211,8 @@ export default function HotelEscalas() {
             <button type="button" className="rounded-md border border-[#d8c88d] px-3 py-2 text-sm" onClick={() => void salvar()} disabled={salvando}>{salvando ? "Salvando..." : `Salvar${versao ? ` v${versao}` : ""}`}</button>
             <button type="button" className="rounded-md border border-[#d8c88d] px-3 py-2 text-sm" onClick={exportarCsv}>CSV</button>
             <button type="button" className="rounded-md border border-[#d8c88d] px-3 py-2 text-sm" onClick={exportarJson}>Backup</button>
-            <button type="button" className="rounded-md border border-[#d8c88d] px-3 py-2 text-sm" onClick={() => inputImport.current?.click()}>Importar</button>
-            <input ref={inputImport} type="file" accept=".json,application/json" className="hidden" onChange={(event) => { const file = event.target.files?.[0]; if (file) void importar(file); }} />
+            <button type="button" title="Importar backup JSON ou planilha XLSX" className="rounded-md border border-[#d8c88d] px-3 py-2 text-sm" onClick={() => inputImport.current?.click()}>Importar</button>
+            <input ref={inputImport} type="file" accept=".json,.xlsx,.xls,application/json,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" className="hidden" onChange={(event) => { const file = event.target.files?.[0]; if (!file) return; if (/\.xlsx?$/i.test(file.name)) void importarPlanilha(file); else void importar(file); event.target.value = ""; }} />
             <button type="button" className="rounded-md border border-[#d8c88d] px-3 py-2 text-sm" onClick={() => void carregarHistorico()}>Histórico</button>
           </div>
         </header>
@@ -311,7 +336,7 @@ export default function HotelEscalas() {
               <textarea className="mt-1 h-24 w-full rounded border border-[#d8c88d]/50 bg-[#181818] p-2 text-sm" value={estado.criticalPairs.map((p) => p.join(", ")).join("\n")} onChange={(e) => atualizar((c) => { c.criticalPairs = e.target.value.split(/\n/).map((linha) => linha.split(",").map((v) => v.trim()).filter(Boolean)).filter((p) => p.length > 0); })} />
             </label>
             <div className="mt-3 overflow-auto"><table className="w-full text-xs"><thead><tr className="bg-[#2a2104]"><th className="border p-2">Colaborador / regra</th><th className="border p-2">Alertas</th></tr></thead><tbody>{validar(estado).map((row, i) => <tr key={i}><td className="border p-2">{row.nome}</td><td className={`border p-2 ${row.alertas === "OK" ? "text-emerald-300" : "text-amber-200"}`}>{row.alertas}</td></tr>)}</tbody></table></div>
-            {historico.length > 0 && <div className="mt-4"><h3 className="font-semibold text-[#ffd12a]">Histórico</h3><div className="mt-2 space-y-1 text-xs">{historico.map((v) => <div key={v.id} className="flex justify-between border-b border-[#d8c88d]/20 py-1"><span>v{v.version} · {new Date(v.createdAt).toLocaleString("pt-BR")}</span><button type="button" className="text-[#ffd12a]" onClick={() => void restaurar(v.id)}>Restaurar</button></div>)}</div></div>}
+            {historico.length > 0 && <div className="mt-4"><h3 className="font-semibold text-[#ffd12a]">Histórico</h3><div className="mt-2 space-y-1 text-xs">{historico.map((v) => <div key={v.id} className="flex justify-between border-b border-[#d8c88d]/20 py-1"><span>v{v.version}{v.inicio ? ` · ${rotuloPeriodo(v.inicio)}` : ""} · {new Date(v.createdAt).toLocaleString("pt-BR")}</span><button type="button" className="text-[#ffd12a]" onClick={() => void restaurar(v.id)}>Restaurar</button></div>)}</div></div>}
           </section>
         )}
 
