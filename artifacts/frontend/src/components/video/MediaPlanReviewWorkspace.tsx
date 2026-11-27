@@ -147,7 +147,8 @@ export default function MediaPlanReviewWorkspace() {
   const [headline, setHeadline] = useState("");
   const [supportingText, setSupportingText] = useState("");
   const [cta, setCta] = useState("");
-  const [brandColor, setBrandColor] = useState("#2563EB");
+  const [aiCopy, setAiCopy] = useState<{ headline: string; supporting: string; cta: string } | null>(null);
+  const [brandColor, setBrandColor] = useState("");
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [approving, setApproving] = useState(false);
   const [buildingVideo, setBuildingVideo] = useState(false);
@@ -175,6 +176,39 @@ export default function MediaPlanReviewWorkspace() {
       setExecution(null);
     }
   }, []);
+
+  // A IA já escreveu headline/legenda/CTA na geração. A revisão deve mostrar
+  // ESSE texto (não repetir o tema do planejamento), com o design plan tendo
+  // prioridade quando existir.
+  useEffect(() => {
+    const tenantId = execution?.tenantId;
+    const generationId = execution?.calendarItem?.contentGenerationId;
+    if (!tenantId || !generationId) return;
+    let active = true;
+    fetch(`/api/tenants/${tenantId}/content`, { headers: authHeaders(), cache: "no-store" })
+      .then((response) => response.ok ? response.json() : { items: [] })
+      .then((body: { items?: ContentGeneration[] }) => {
+        if (!active) return;
+        const generation = (body.items ?? []).find((item) => item.id === generationId);
+        const variation = generation?.result?.variations?.[0] ?? {};
+        const caption = String(variation.caption ?? variation.text ?? "").trim();
+        const hook = String(variation.hook ?? "").trim();
+        if (!caption && !hook) return;
+        const next = {
+          headline: cleanHeadline(hook || caption.split(/[.!?\n]/)[0] || ""),
+          supporting: caption || execution?.campaign?.mensagemCentral || "",
+          cta: String(variation.cta ?? "").trim() || execution?.campaign?.oferta || "Fale com nossa equipe",
+        };
+        setAiCopy(next);
+        if (!storedDesign?.brief?.headline) {
+          setHeadline(next.headline);
+          setSupportingText(next.supporting);
+          setCta(next.cta);
+        }
+      })
+      .catch(() => undefined);
+    return () => { active = false; };
+  }, [execution?.tenantId, execution?.calendarItem?.contentGenerationId, storedDesign?.brief?.headline, execution?.campaign?.mensagemCentral, execution?.campaign?.oferta]);
 
   useEffect(() => {
     if (!execution?.tenantId) return;
@@ -512,7 +546,17 @@ export default function MediaPlanReviewWorkspace() {
           </section>
 
           <section ref={quickEditRef} className="rounded-3xl border bg-card p-5 shadow-sm scroll-mt-24">
-            <div className="flex items-center justify-between"><h3 className="text-lg font-semibold">Ajustes rápidos</h3><Button size="sm" variant="ghost" onClick={() => { setHeadline(defaultHeadline(execution)); setSupportingText(firstSentence(execution.campaign?.mensagemCentral || "", 140)); setCta(execution.campaign?.oferta || "Reserve agora"); }}><RefreshCw className="mr-1.5 h-4 w-4" />Redefinir</Button></div>
+<div className="flex items-center justify-between"><h3 className="text-lg font-semibold">Ajustes rápidos</h3><Button size="sm" variant="ghost" onClick={() => {
+                if (aiCopy) {
+                  setHeadline(aiCopy.headline);
+                  setSupportingText(aiCopy.supporting);
+                  setCta(aiCopy.cta);
+                  return;
+                }
+                setHeadline(defaultHeadline(execution));
+                setSupportingText(firstSentence(execution.campaign?.mensagemCentral || "", 140));
+                setCta(execution.campaign?.oferta || "Reserve agora");
+              }}><RefreshCw className="mr-1.5 h-4 w-4" />Redefinir</Button></div>
             <div className="mt-4 space-y-3">
               <label className="block"><span className="text-xs font-medium text-muted-foreground">Headline principal</span><textarea value={headline} onChange={(event) => setHeadline(event.target.value)} rows={2} className="mt-1.5 w-full rounded-xl border bg-background px-3 py-2.5 text-sm" /><span className="mt-1 block text-right text-[11px] text-muted-foreground">{headline.length}/80</span></label>
               <label className="block"><span className="text-xs font-medium text-muted-foreground">Texto de apoio</span><textarea value={supportingText} onChange={(event) => setSupportingText(event.target.value)} rows={3} className="mt-1.5 w-full rounded-xl border bg-background px-3 py-2.5 text-sm" /><span className="mt-1 block text-right text-[11px] text-muted-foreground">{supportingText.length}/140</span></label>
