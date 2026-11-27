@@ -16,6 +16,15 @@ type DashboardSummary = {
   ganhosMes?: { count?: number; somaValor?: string | number | null } | null;
 };
 
+type CalendarRow = {
+  id: string;
+  pilar?: string | null;
+  status?: string | null;
+  dataAgendada?: string | null;
+  contentIdPublicado?: string | null;
+  contentGenerationId?: string | null;
+};
+
 type PerformanceInsight = {
   baseadoEmPosts?: number;
   atualizadoEm?: string | null;
@@ -42,6 +51,7 @@ function formatDate(value?: string | null) {
 export function MarketingResultsSummary({ tenantId }: { tenantId: string }) {
   const [insight, setInsight] = useState<PerformanceInsight | null>(null);
   const [publications, setPublications] = useState<SocialPublication[]>([]);
+  const [calendarRows, setCalendarRows] = useState<CalendarRow[]>([]);
   const [ganhos, setGanhos] = useState<{ count: number; value: number }>({ count: 0, value: 0 });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -54,14 +64,16 @@ export function MarketingResultsSummary({ tenantId }: { tenantId: string }) {
     // Limpa antes de buscar: trocar de tenant nunca mostra número do anterior.
     setInsight(null);
     setPublications([]);
+    setCalendarRows([]);
     setGanhos({ count: 0, value: 0 });
     setUnavailable({ insights: false, publications: false, dashboard: false });
 
     // allSettled: uma fonte fora do ar não zera as outras.
-    const [insightsResult, publicationsResult, dashboardResult] = await Promise.allSettled([
+    const [insightsResult, publicationsResult, dashboardResult, calendarResult] = await Promise.allSettled([
       fetch(`/api/tenants/${tenantId}/content-performance/insights`, { headers: authHeaders(), cache: "no-store" }),
       fetch(`/api/tenants/${tenantId}/social-publications`, { headers: authHeaders(), cache: "no-store" }),
       fetch(`/api/tenants/${tenantId}/dashboard`, { headers: authHeaders(), cache: "no-store" }),
+      fetch(`/api/tenants/${tenantId}/content-calendar`, { headers: authHeaders(), cache: "no-store" }),
     ]);
 
     const failed: string[] = [];
@@ -104,6 +116,15 @@ export function MarketingResultsSummary({ tenantId }: { tenantId: string }) {
       failed.push("negócios fechados");
     }
 
+    if (calendarResult.status === "fulfilled" && calendarResult.value.ok) {
+      try {
+        const rows = await calendarResult.value.json() as CalendarRow[];
+        setCalendarRows(Array.isArray(rows) ? rows : []);
+      } catch {
+        setCalendarRows([]);
+      }
+    }
+
     setUnavailable(nextUnavailable);
     setError(failed.length > 0
       ? `Não foi possível carregar: ${failed.join(", ")}. Os demais indicadores continuam válidos.`
@@ -126,6 +147,22 @@ export function MarketingResultsSummary({ tenantId }: { tenantId: string }) {
     .filter(Boolean)
     .sort()
     .at(-1);
+  const campaignRows = (() => {
+    const byCampaign = new Map<string, { name: string; published: number; pending: number; last: string }>();
+    for (const row of calendarRows) {
+      const name = String(row.pilar ?? "").split(" · ")[0]?.trim() || "Sem campanha";
+      const entry = byCampaign.get(name) ?? { name, published: 0, pending: 0, last: "" };
+      if (row.status === "publicado" || row.contentIdPublicado) entry.published += 1;
+      else if (row.status === "aprovado" && row.contentGenerationId) entry.pending += 1;
+      if (row.dataAgendada && row.dataAgendada > entry.last) entry.last = row.dataAgendada;
+      byCampaign.set(name, entry);
+    }
+    return [...byCampaign.values()]
+      .filter((entry) => entry.published > 0 || entry.pending > 0)
+      .sort((a, b) => b.published - a.published || a.name.localeCompare(b.name))
+      .slice(0, 6);
+  })();
+
   const works = (learnings?.temasQueFuncionam ?? []).filter(Boolean).slice(0, 4);
   const misses = (learnings?.temasQueNaoFuncionam ?? []).filter(Boolean).slice(0, 4);
 
@@ -207,6 +244,21 @@ export function MarketingResultsSummary({ tenantId }: { tenantId: string }) {
             ) : null}
           </div>
         )}
+        {campaignRows.length > 0 ? (
+          <div className="mt-4">
+            <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Publicações por campanha</p>
+            <div className="mt-1 divide-y rounded-lg border bg-background text-xs">
+              {campaignRows.map((row) => (
+                <div key={row.name} className="grid grid-cols-[1fr_auto_auto_auto] items-center gap-2 px-3 py-1.5">
+                  <span className="truncate font-medium">{row.name}</span>
+                  <span className="text-emerald-700">{row.published} publicados</span>
+                  <span className="text-muted-foreground">{row.pending} na fila</span>
+                  <span className="text-muted-foreground">{row.last ? formatDate(row.last) : "—"}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : null}
       </CardContent>
     </Card>
   );
