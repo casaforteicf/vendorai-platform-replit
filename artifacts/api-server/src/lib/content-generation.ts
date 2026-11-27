@@ -211,6 +211,7 @@ export async function generateImagesWithReference(
   editPrompt: string,
   imageCount: number = 1,
   direction?: ImageDirectionInput,
+  aspectRatio?: string,
 ): Promise<string[]> {
   if (imageCount < 1) imageCount = 1;
   if (imageCount > 10) imageCount = 10;
@@ -242,11 +243,12 @@ export async function generateImagesWithReference(
       undefined,
       undefined,
       "A referência não estava acessível; gere um criativo fiel ao briefing, sem inventar dados.",
-      undefined,
+      aspectRatio,
       direction,
     );
   }
 
+  const editSize: "1024x1024" | "1024x1536" = aspectRatio === "9:16" || aspectRatio === "4:5" ? "1024x1536" : "1024x1024";
   const imagePromises = Array.from({ length: imageCount }, async (_, i) => {
     const variantPrompt = imageCount > 1
       ? `${editPrompt} Variation ${i + 1}: slightly different angle or perspective than other variations.`
@@ -261,7 +263,7 @@ export async function generateImagesWithReference(
           image: imageFile,
           prompt: variantPrompt,
           n: 1,
-          size: "1024x1024",
+          size: editSize,
         });
         const item = Array.isArray((response as any)?.data) ? (response as any).data[0] : undefined;
         if (!item) continue;
@@ -358,7 +360,7 @@ export async function generateImagesForContent(
       observationsNote,
       `Avoid: ${direction.avoid}.`,
     ].filter(Boolean).join(" ");
-    return generateImagesWithReference(tenantId, referenceImageUrl, editPrompt, imageCount, directionInput);
+    return generateImagesWithReference(tenantId, referenceImageUrl, editPrompt, imageCount, directionInput, aspectRatio);
   }
 
   const imagePromises = Array.from({ length: imageCount }, async (_, i) => {

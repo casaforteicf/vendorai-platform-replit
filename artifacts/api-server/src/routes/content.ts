@@ -1487,7 +1487,7 @@ router.post("/tenants/:tenantId/content/:contentId/variations/:idx/regenerate-im
       undefined,
       body.data.referenceImageUrl,
       observations,
-      undefined,
+      format === "stories" ? "9:16" : "1:1",
       directionInput,
     );
 
