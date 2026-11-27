@@ -4,10 +4,12 @@ import { useQuery } from "@tanstack/react-query";
 import { Search, Radar, HelpCircle, ChevronDown, ChevronLeft, ChevronRight, ArrowRight, CalendarDays, Megaphone, BriefcaseBusiness, HardHat, Package, Store, ChartNoAxesCombined, Bot, Settings, Headphones, Layers3, LogOut, Users, MessageSquare, ShoppingBag, UserRound, ShieldCheck, Plug, SlidersHorizontal, BookOpen, CircleHelp, Building2, Check, Loader2 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { NovidadesBell } from "@/components/NovidadesBell";
+import { Input } from "@/components/ui/input";
+import { SidebarLayout } from "@/components/layout/SidebarLayout";
 import { resolveTadLauncherModules, type LauncherAudience, type LauncherModule } from "@/lib/adaptiveModuleLauncher";
 
 /**
- * TAD — selectable ecosystem start screen (neon dark).
+ * TAD — Central de Ambientes no shell padrão do sistema.
  * Tenant users receive only verified entitlements and effective permissions.
  * Platform Superadmin may inspect the full launcher catalog. This is a UI
  * navigation rule, not a bypass for authorization checks in destination APIs.
@@ -309,106 +311,90 @@ export default function TadCentral({ audience, enabledModules, permittedModules,
   };
 
   return (
-    <main className="min-h-screen w-full bg-[#050b14] bg-[radial-gradient(ellipse_at_top,rgba(34,211,238,.08),transparent_55%)] font-sans text-slate-100" aria-label="TAD Central do ecossistema">
-      {/* ── Barra superior ───────────────────────────────────────────── */}
-      <header className="sticky top-0 z-30 flex h-[66px] items-center justify-between gap-2 border-b border-white/[.07] bg-[#070f1a]/90 px-3 backdrop-blur-md sm:gap-3 md:px-7">
-        <div className="flex min-w-0 flex-1 items-center gap-4">
-          <Link href="/tad" className={"shrink-0 rounded-md " + FOCUS} aria-label="Vendor.ai — início do TAD">
-            <img src="/logo-full-dark.svg" alt="Vendor.ai" className="h-8 w-auto max-w-[132px] object-contain sm:h-9 sm:max-w-[176px]" />
-          </Link>
-          <div className="relative hidden w-full max-w-[520px] md:block">
-            <Search size={16} className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
-            <input id="tad-search" type="search" value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar no TAD..." aria-label="Buscar serviço" className="w-full rounded-xl border border-white/10 bg-[#0e1b2c] py-2.5 pl-11 pr-16 text-sm text-slate-100 outline-none placeholder:text-slate-500 focus:border-cyan-400/60 focus:shadow-[0_0_0_3px_rgba(34,211,238,.12)]" />
-            <kbd className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 rounded-md border border-white/10 bg-white/[.04] px-2 py-0.5 font-sans text-[10px] font-medium text-slate-400">Ctrl + K</kbd>
-          </div>
-        </div>
-        <div className="flex shrink-0 items-center gap-1 sm:gap-2 md:gap-3">
-          <CompanySwitcher companyName={companyName} />
-          <Link href="/faq" className={"hidden rounded-lg p-2 text-slate-300 hover:bg-white/5 sm:block " + FOCUS} aria-label="Ajuda e perguntas frequentes"><HelpCircle size={18} /></Link>
-          <NovidadesBell variant="icon" />
-          <div ref={menuRef} className="relative">
-            <button type="button" onClick={() => setMenuOpen(o => !o)} className={"flex items-center gap-2 rounded-xl border border-white/10 p-1 hover:bg-white/5 md:py-1.5 md:pl-1.5 md:pr-2 " + FOCUS} aria-haspopup="menu" aria-expanded={menuOpen} aria-label="Menu da conta">
-              <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-cyan-400 to-blue-600 text-xs font-bold text-white">{initials}</span>
-              <span className="hidden text-left leading-tight md:block"><span className="block max-w-[140px] truncate text-xs font-semibold text-white">{user?.name ?? "Usuário"}</span><span className="block text-[10px] text-slate-400">{roleLabel}</span></span>
-              <ChevronDown size={14} className="hidden text-slate-400 md:block" />
-            </button>
-            {menuOpen && (
-              <div role="menu" className="absolute right-0 top-[calc(100%+8px)] z-40 w-52 overflow-hidden rounded-xl border border-white/10 bg-[#0c1829] shadow-2xl">
-                <div className="border-b border-white/10 px-4 py-3"><p className="truncate text-sm font-semibold text-white">{user?.name ?? "Usuário"}</p><p className="truncate text-[11px] text-slate-400">{roleLabel}</p></div>
-                <Link href="/faq" role="menuitem" onClick={() => setMenuOpen(false)} className="flex w-full items-center gap-2 px-4 py-3 text-left text-sm text-slate-200 hover:bg-white/5"><HelpCircle size={15} /> Ajuda</Link>
-                <button type="button" role="menuitem" onClick={() => { setMenuOpen(false); logout(); setLocation("/"); }} className="flex w-full items-center gap-2 px-4 py-3 text-left text-sm text-slate-200 hover:bg-white/5"><LogOut size={15} /> Sair</button>
+    <SidebarLayout>
+      <main className="min-h-screen bg-muted/30" aria-label="Central de ambientes">
+        <div className="mx-auto max-w-7xl space-y-6 p-4 md:p-8">
+          <header className="space-y-2">
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Vendor.ai · Central de ambientes</p>
+            <div className="flex flex-wrap items-end justify-between gap-3">
+              <div>
+                <h1 className="text-2xl font-semibold tracking-tight text-foreground md:text-3xl">Escolha onde trabalhar</h1>
+                <p className="mt-1 max-w-2xl text-sm text-muted-foreground">Cada ambiente reúne as ferramentas do seu dia. Selecione um módulo para começar.</p>
               </div>
-            )}
-          </div>
-        </div>
-      </header>
+              <span className="rounded-full border bg-card px-3 py-1 text-xs text-muted-foreground">{listed.length} ambiente(s)</span>
+            </div>
+          </header>
 
-      <div className="mx-auto max-w-[1520px] px-3 pb-12 pt-4 sm:px-4 md:px-7 md:pt-5">
-        {/* Central de Ambientes: cabeçalho compacto, sem banner de setor específico. */}
-        <section className="mb-5 rounded-2xl border border-white/10 bg-[#0b1726] px-5 py-6 md:px-8 md:py-7" aria-labelledby="tad-welcome-title">
-          <p className="text-[11px] font-semibold uppercase tracking-[.16em] text-slate-400">Vendor.ai · Central de Ambientes</p>
-          <h1 id="tad-welcome-title" className={DISPLAY + " mt-2 text-2xl font-semibold tracking-tight text-white md:text-3xl"}>Escolha onde trabalhar</h1>
-          <p className="mt-2 max-w-2xl text-sm leading-relaxed text-slate-300">Cada ambiente reúne suas ferramentas e funcionalidades. Selecione um módulo abaixo para começar.</p>
-        </section>
-
-        {/* ── Busca (mobile) + filtro ────────────────────────────────── */}
-        <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div className="relative w-full md:hidden">
-            <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-            <input id="tad-search-mobile" type="search" value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar no TAD..." aria-label="Buscar serviço" className="w-full rounded-xl border border-white/10 bg-[#0e1b2c] py-2.5 pl-10 pr-3 text-sm text-slate-100 outline-none placeholder:text-slate-500 focus:border-cyan-400/60" />
-          </div>
-          <div className="flex items-center justify-between gap-3 sm:w-full">
-            <h2 className={DISPLAY + " text-sm font-semibold text-white"}>{isPlatformSuperAdmin ? "Todos os módulos do ecossistema" : "Seus ambientes"}</h2>
-            <select aria-label="Filtrar por área" value={section} onChange={e => setSection(e.target.value)} className="rounded-lg border border-white/10 bg-[#0e1b2c] px-3 py-2 text-xs text-slate-200 outline-none focus:border-cyan-400/60">
-              {sections.map(group => <option key={group} value={group}>{group}</option>)}
+          <section className="flex flex-col gap-3 rounded-xl border bg-card p-3 shadow-sm sm:flex-row sm:items-center">
+            <div className="relative flex-1">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
+              <Input
+                id="tad-search"
+                type="search"
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder="Buscar ambiente, módulo ou assunto..."
+                aria-label="Buscar ambiente"
+                className="pl-9"
+              />
+            </div>
+            <select
+              aria-label="Filtrar por área"
+              value={section}
+              onChange={(event) => setSection(event.target.value)}
+              className="h-10 rounded-md border bg-background px-3 text-sm"
+            >
+              {sections.map((group) => <option key={group} value={group}>{group}</option>)}
             </select>
-          </div>
-        </div>
+            <Link href="/faq" className="inline-flex h-10 items-center justify-center rounded-md border px-3 text-sm hover:bg-muted">Ajuda</Link>
+          </section>
 
-        {/* ── Grade de serviços ──────────────────────────────────────── */}
-        <section aria-label="Serviços" className="grid grid-cols-2 gap-2.5 sm:gap-3.5 xl:grid-cols-3">
-          {visible.map(module => {
-            const info = TAD_LABELS[module.key];
-            const sectionName = info?.section ?? "Serviço";
-            const tone = MODULE_TONE[module.key] ?? TONES.cyan;
-            const Icon = ICON_MAP[module.key] ?? Layers3;
-            const canOpen = authorized.some(m => m.key === module.key) && !!module.route;
-            const wide = WIDE_MODULES.has(module.key);
-            const title = titleFor(module.key, module.title);
-            return (
-              <article
-                key={module.key}
-                aria-disabled={canOpen ? undefined : true}
-                className={"group relative flex gap-3 overflow-hidden rounded-2xl border bg-gradient-to-br via-[#0a1524] to-[#08111d] p-3.5 transition-all duration-200 sm:min-h-[190px] sm:gap-4 sm:p-5 motion-safe:hover:-translate-y-0.5 " + tone.card + (wide ? " col-span-2 min-h-[120px] sm:min-h-[132px]" : " min-h-[150px]") + (canOpen ? "" : " opacity-60")}
-              >
-                <div className="flex min-w-0 flex-1 flex-col">
-                  <div className="flex items-start gap-2.5 sm:gap-3.5">
-                    <span className={"flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br text-white sm:h-14 sm:w-14 sm:rounded-2xl " + tone.tile}>
-                      <Icon className="h-5 w-5 sm:h-7 sm:w-7" strokeWidth={1.9} aria-hidden="true" />
+          <section aria-label="Ambientes" className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+            {visible.map((module) => {
+              const info = TAD_LABELS[module.key];
+              const sectionName = info?.section ?? "Serviço";
+              const Icon = ICON_MAP[module.key] ?? Layers3;
+              const canOpen = authorized.some((item) => item.key === module.key) && Boolean(module.route);
+              const title = titleFor(module.key, module.title);
+              return (
+                <article key={module.key} className="flex min-h-[190px] flex-col rounded-xl border bg-card p-5 shadow-sm transition-shadow hover:shadow-md">
+                  <div className="flex items-start gap-3">
+                    <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                      <Icon className="h-5 w-5" aria-hidden="true" />
                     </span>
                     <div className="min-w-0">
-                      <span className={"block text-[10px] font-semibold uppercase tracking-wide sm:text-[11px] " + tone.label}>{sectionName}</span>
-                      <h3 className={DISPLAY + " mt-0.5 text-[15px] font-semibold leading-tight tracking-tight text-white sm:text-xl"}>{title}</h3>
+                      <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{sectionName}</p>
+                      <h2 className="mt-0.5 text-lg font-semibold leading-tight text-foreground">{title}</h2>
                     </div>
                   </div>
-                  <p className="mt-2 line-clamp-2 text-xs leading-snug text-slate-400 sm:mt-3 sm:text-[13px] sm:leading-relaxed">{info?.description ?? "Ambiente do ecossistema"}</p>
-                  <div className="mt-auto pt-3 sm:pt-4">
+                  <p className="mt-3 line-clamp-2 text-sm leading-relaxed text-muted-foreground">{info?.description ?? "Ambiente do ecossistema"}</p>
+                  <div className="mt-auto pt-5">
                     {canOpen ? (
-                      <Link href={module.route ?? "/tad"} aria-label={"Acessar " + title} className={"inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/[.05] px-4 py-2 text-xs font-semibold text-white transition after:absolute after:inset-0 after:rounded-2xl after:content-[''] group-hover:border-cyan-300/60 group-hover:text-cyan-100 " + FOCUS}>
-                        Acessar<ArrowRight size={14} aria-hidden="true" />
+                      <Link href={module.route ?? "/tad"} className="inline-flex items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90">
+                        Acessar <ArrowRight className="h-4 w-4" aria-hidden="true" />
                       </Link>
                     ) : (
-                      <span className="inline-flex cursor-not-allowed items-center gap-2 rounded-full border border-white/10 px-3 py-2 text-[11px] font-semibold text-slate-400">{isPlatformSuperAdmin && module.route === null ? "Tela em integração" : "Acesso em validação"}</span>
+                      <span className="inline-flex items-center gap-2 rounded-md border px-3 py-2 text-xs text-muted-foreground">
+                        {isPlatformSuperAdmin && module.route === null ? "Tela em integração" : "Acesso em validação"}
+                      </span>
                     )}
                   </div>
-                </div>
-                <div className={"hidden shrink-0 overflow-hidden rounded-xl sm:block " + (wide ? "w-[48%] max-w-[420px]" : "w-[42%] max-w-[230px]")}>{renderPreview(module.key, tone, canOpen)}</div>
-              </article>
-            );
-          })}
-        </section>
-        {visible.length === 0 && <p role="status" className="mt-10 text-center text-sm text-slate-400">{listed.length === 0 ? "Nenhum serviço habilitado para este perfil. Solicite acesso ao administrador." : "Nenhum serviço corresponde à sua busca."}</p>}
-      </div>
-    </main>
+                </article>
+              );
+            })}
+          </section>
+
+          {visible.length === 0 && (
+            <section className="rounded-xl border bg-card p-8 text-center text-sm text-muted-foreground" role="status">
+              {listed.length === 0 ? "Nenhum ambiente habilitado para este perfil. Solicite acesso ao administrador." : "Nenhum ambiente corresponde à busca."}
+            </section>
+          )}
+
+          <footer className="rounded-xl border bg-card p-4 text-sm text-muted-foreground">
+            Precisa de ajuda para escolher? <Link href="/faq" className="font-medium text-primary hover:underline">Consulte as perguntas frequentes</Link>.
+          </footer>
+        </div>
+      </main>
+    </SidebarLayout>
   );
 }
