@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { buildJourneySteps, deriveJourneyPhase } from "@/lib/marketingJourney";
-import { deriveOperationalState } from "@workspace/vendor-brain/media-plan-execution";
+import { deriveOperationalState, derivePieceAction, derivePieceMediaState } from "@workspace/vendor-brain/media-plan-execution";
 import {
   AlertTriangle,
   CheckCircle2,
@@ -333,6 +333,25 @@ function operationalCode(item: CalendarItem) {
     hasGeneration: Boolean(item.contentGenerationId),
     isVideo: ["reels", "tiktok", "youtube_short", "youtube_video"].includes(item.tipo),
   }).code;
+}
+
+/**
+ * Mídia e ação vêm da máquina de estados (vendor-brain): a fila não decide
+ * sozinha se pode aprovar; ela pergunta ao contrato e mostra o motivo.
+ */
+function pieceMediaFor(item: CalendarItem, generation?: ContentGeneration) {
+  const isVideo = ["reels", "tiktok", "youtube_short", "youtube_video"].includes(item.tipo);
+  return derivePieceMediaState({
+    calendarStatus: item.status,
+    hasGeneration: Boolean(item.contentGenerationId) && !String(item.contentGenerationId).startsWith("producing:"),
+    isVideo,
+    hasFinalVideo: generationHasFinalVideo(generation),
+    hasVisual: true,
+  });
+}
+
+function pieceActionFor(item: CalendarItem, generation?: ContentGeneration) {
+  return derivePieceAction(operationalCode(item), pieceMediaFor(item, generation));
 }
 
 function statusClass(tone: ReturnType<typeof derivedStatus>["tone"]) {
@@ -1077,14 +1096,15 @@ export default function ContentProductionQueue({ tenantId }: { tenantId: string 
 
   async function approveSelectedContent() {
     if (approvableSelectedItems.length === 0 || batchApproving) return;
-    const blockedByVideo = approvableSelectedItems.filter(
-      (item) => VIDEO_GENERATOR_TYPES.has(item.tipo) && !generationHasFinalVideo(generationById.get(item.contentGenerationId ?? "")),
-    );
-    const targets = approvableSelectedItems.filter((item) => !blockedByVideo.includes(item));
+    const blockedByMedia = approvableSelectedItems.filter((item) => {
+      const action = pieceActionFor(item, generationById.get(item.contentGenerationId ?? ""));
+      return action.code !== "approve" || !action.enabled;
+    });
+    const targets = approvableSelectedItems.filter((item) => !blockedByMedia.includes(item));
     if (targets.length === 0) {
       toast({
-        title: "Nenhum vídeo pronto para aprovar",
-        description: "Os itens selecionados são vídeos e ainda não têm arquivo final. A montagem acontece automaticamente; aguarde e tente de novo.",
+        title: "Nenhuma peça pronta para aprovar",
+        description: "As peças selecionadas ainda não têm mídia final. Gere ou monte a mídia e tente de novo.",
         variant: "destructive",
       });
       return;
@@ -1108,8 +1128,8 @@ export default function ContentProductionQueue({ tenantId }: { tenantId: string 
       await load();
       toast({
         title: "Conteúdos aprovados",
-        description: blockedByVideo.length > 0
-          ? `${approved} conteúdo(s) aprovados. ${blockedByVideo.length} vídeo(s) continuam aguardando a montagem do arquivo final.`
+        description: blockedByMedia.length > 0
+          ? `${approved} conteúdo(s) aprovados. ${blockedByMedia.length} peça(s) continuam aguardando a mídia final.`
           : `${approved} conteúdo(s) aprovados em lote.`,
       });
     } catch (error) {
@@ -1545,7 +1565,8 @@ export default function ContentProductionQueue({ tenantId }: { tenantId: string 
           const reviewWarning = project?.context?.["lastReviewStatus"] === "warning";
           const isDirect = DIRECT_GENERATOR_TYPES.has(item.tipo);
           const generation = item.contentGenerationId ? generationById.get(item.contentGenerationId) : undefined;
-          const videoBlocked = VIDEO_GENERATOR_TYPES.has(item.tipo) && !generationHasFinalVideo(generation);
+          const approveAction = pieceActionFor(item, generation);
+          const approveBlocked = approveAction.code !== "approve" || !approveAction.enabled;
           const preview = previewData(generation, item.variationIdx ?? 0);
           const expanded = expandedItemId === item.id;
           const itemCampaign = campaignForItem(plan, item);
@@ -1596,8 +1617,8 @@ export default function ContentProductionQueue({ tenantId }: { tenantId: string 
                       size="sm"
                       variant="outline"
                       className="h-7 text-xs"
-                      disabled={actionBusy === item.id || videoBlocked}
-                      title={videoBlocked ? "Aguarde a montagem do vídeo antes de aprovar" : undefined}
+                      disabled={actionBusy === item.id || approveBlocked}
+                      title={approveBlocked ? approveAction.reason ?? "Ação indisponível para o estado atual" : undefined}
                       onClick={() => void approveContent(item)}
                     >
                       {actionBusy === item.id ? <Loader2 className="h-3 w-3 mr-1 animate-spin" /> : <CheckCircle2 className="h-3 w-3 mr-1" />}Aprovar
