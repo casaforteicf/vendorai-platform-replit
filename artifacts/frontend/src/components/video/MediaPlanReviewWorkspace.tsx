@@ -176,6 +176,7 @@ export default function MediaPlanReviewWorkspace() {
   const [approving, setApproving] = useState(false);
   const [buildingVideo, setBuildingVideo] = useState(false);
   const [applyingVideoText, setApplyingVideoText] = useState(false);
+  const [generatingCopy, setGeneratingCopy] = useState(false);
   const [generatedMedia, setGeneratedMedia] = useState<ReferenceMedia | null>(null);
   const [productionState, setProductionState] = useState<"idle" | "processing" | "ready" | "failed">("idle");
   const [productionDetail, setProductionDetail] = useState("");
@@ -256,6 +257,36 @@ export default function MediaPlanReviewWorkspace() {
       .catch(() => { if (!cancelled) setBrandColor((current) => current || "#A78BFA"); });
     return () => { cancelled = true; };
   }, [execution?.tenantId]);
+
+  async function generateCopyWithAi() {
+    const tenantId = execution?.tenantId;
+    const itemId = execution?.calendarItem?.id;
+    if (!tenantId || !itemId || generatingCopy) return;
+    setGeneratingCopy(true);
+    try {
+      const response = await fetch(`/api/tenants/${tenantId}/content-calendar/${itemId}/ai-copy`, {
+        method: "POST",
+        headers: { ...authHeaders(), "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      const payload = await response.json().catch(() => ({})) as { headline?: string; supportingText?: string; cta?: string; error?: string };
+      if (!response.ok || !payload.headline) {
+        throw new Error(payload.error ?? "Não foi possível gerar o texto com IA.");
+      }
+      setHeadline(payload.headline);
+      setSupportingText(payload.supportingText ?? "");
+      setCta(payload.cta ?? "Fale com nossa equipe");
+      toast({ title: "Texto gerado pela IA", description: "Revise e clique em Salvar ajustes para aplicar na peça." });
+    } catch (error) {
+      toast({
+        title: "Falha ao gerar texto",
+        description: error instanceof Error ? error.message : "Tente novamente em instantes.",
+        variant: "destructive",
+      });
+    } finally {
+      setGeneratingCopy(false);
+    }
+  }
 
   useEffect(() => {
     if (!execution?.tenantId) return;
@@ -611,7 +642,7 @@ export default function MediaPlanReviewWorkspace() {
           </section>
 
           <section ref={quickEditRef} className="rounded-3xl border bg-card p-5 shadow-sm scroll-mt-24">
-<div className="flex items-center justify-between"><h3 className="text-lg font-semibold">Ajustes rápidos</h3><Button size="sm" variant="ghost" onClick={() => {
+<div className="flex items-center justify-between"><h3 className="text-lg font-semibold">Ajustes rápidos</h3><div className="flex items-center gap-1.5"><Button size="sm" variant="outline" onClick={() => void generateCopyWithAi()} disabled={generatingCopy}><Sparkles className="mr-1.5 h-4 w-4" />{generatingCopy ? "Gerando…" : "Gerar texto com IA"}</Button><Button size="sm" variant="ghost" onClick={() => {
                 if (aiCopy) {
                   setHeadline(aiCopy.headline);
                   setSupportingText(aiCopy.supporting);
@@ -621,7 +652,7 @@ export default function MediaPlanReviewWorkspace() {
                 setHeadline(defaultHeadline(execution));
                 setSupportingText(cleanSupportingText(execution.campaign?.mensagemCentral || ""));
                 setCta(execution.campaign?.oferta || "Reserve agora");
-              }}><RefreshCw className="mr-1.5 h-4 w-4" />Redefinir</Button></div>
+              }}><RefreshCw className="mr-1.5 h-4 w-4" />Redefinir</Button></div></div>
             <div className="mt-4 space-y-3">
               <label className="block"><span className="text-xs font-medium text-muted-foreground">Headline principal</span><textarea value={headline} onChange={(event) => setHeadline(event.target.value)} rows={2} className="mt-1.5 w-full rounded-xl border bg-background px-3 py-2.5 text-sm" /><span className="mt-1 block text-right text-[11px] text-muted-foreground">{headline.length}/80</span></label>
               <label className="block"><span className="text-xs font-medium text-muted-foreground">Texto de apoio</span><textarea value={supportingText} onChange={(event) => setSupportingText(event.target.value)} rows={3} className="mt-1.5 w-full rounded-xl border bg-background px-3 py-2.5 text-sm" /><span className="mt-1 block text-right text-[11px] text-muted-foreground">{supportingText.length}/140</span></label>
