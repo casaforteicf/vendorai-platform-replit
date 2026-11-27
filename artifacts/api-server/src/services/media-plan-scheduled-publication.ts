@@ -11,6 +11,7 @@ import { createFacebookOrganicPublication } from "./facebook-organic-publication
 import { createInstagramOrganicPublication } from "./instagram-organic-publication.js";
 import { createSocialPublication } from "./social-platforms.js";
 import { resolvePieceCta } from "./marketing-piece-cta.js";
+import { validatePieceForChannel } from "@workspace/vendor-brain/channel-playbook";
 import { generationHasFinalVideo, isVideoCalendarType } from "./content-final-media.js";
 import { selectRoundRobinByTenant } from "@workspace/vendor-brain/media-plan-execution";
 
@@ -156,6 +157,18 @@ async function createScheduledPublication(input: {
     : text;
   const primaryVideo = preview.videoUrls[0];
   const primaryMedia = primaryVideo || preview.mediaUrls[0];
+
+  const channelIssues = validatePieceForChannel({
+    canal: item.canal,
+    tipo: item.tipo,
+    mediaCount: Math.max(1, preview.mediaUrls.length + preview.videoUrls.length),
+    hasVideo: Boolean(primaryVideo),
+    destination: (cta?.destination as "landing_page" | "whatsapp" | "formulario_lead" | "site" | null) ?? null,
+  });
+  const blockingIssue = channelIssues.find((issue) => issue.code !== "destino_obrigatorio");
+  if (blockingIssue) {
+    throw new Error(`channel_rule_violation:${blockingIssue.code}:${blockingIssue.message}`);
+  }
 
   if ((provider === "instagram" || provider === "facebook") && !primaryMedia) {
     throw new Error("scheduled_publication_missing_media");
