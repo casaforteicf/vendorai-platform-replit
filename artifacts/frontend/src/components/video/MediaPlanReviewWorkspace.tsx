@@ -68,6 +68,19 @@ type StoredDesign = {
   };
 };
 
+type ContentGeneration = {
+  id: string;
+  result?: {
+    variations?: Array<Record<string, unknown>>;
+    design?: {
+      headline?: string;
+      supportingText?: string;
+      cta?: string;
+      brandColor?: string;
+    };
+  };
+};
+
 type MediaProject = {
   id: string;
   context?: Record<string, unknown> | null;
@@ -200,6 +213,15 @@ export default function MediaPlanReviewWorkspace() {
       .then((body: { items?: ContentGeneration[] }) => {
         if (!active) return;
         const generation = (body.items ?? []).find((item) => item.id === generationId);
+        const savedDesign = generation?.result?.design;
+        if (savedDesign) {
+          // Design salvo na peça é a fonte de verdade (sobrevive a reload/troca de aba).
+          if (savedDesign.headline) setHeadline(savedDesign.headline);
+          if (savedDesign.supportingText !== undefined) setSupportingText(savedDesign.supportingText);
+          if (savedDesign.cta) setCta(savedDesign.cta);
+          if (savedDesign.brandColor) setBrandColor(savedDesign.brandColor);
+          return;
+        }
         const variation = generation?.result?.variations?.[0] ?? {};
         const caption = String(variation.caption ?? variation.text ?? "").trim();
         const hook = String(variation.hook ?? "").trim();
