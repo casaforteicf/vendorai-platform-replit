@@ -8,6 +8,7 @@ import {
   mediaPlansTable,
   mediaProjectsTable,
   socialPublicationsTable,
+  tenantsTable,
   usersTable,
   dealsTable,
   leadsTable,
@@ -19,6 +20,10 @@ import { generationHasFinalVideo, isVideoCalendarType } from "../services/conten
 import { selectTenantImageAssetIds } from "../services/media-plan-auto-production.js";
 import { startVendorAiPhotoVideo } from "../services/vendorai-photo-video.js";
 import { emitMarketingFunnelEvent } from "../services/marketing-funnel-events.js";
+import { ObjectStorageService } from "../lib/objectStorage.js";
+import { captureGeneratedMedia } from "../services/media-library.js";
+import { renderMarketingOverlay } from "../services/marketingCreativeFrame.js";
+import { burnOverlayOnVideo } from "../services/marketingVideoOverlay.js";
 import {
   deriveOperationalState,
   derivePieceAction,
@@ -751,6 +756,147 @@ router.patch("/content-calendar/:id", async (req, res) => {
  * Plano de Mídia. Ação explícita do usuário — não depende de provedor de IA de
  * vídeo nem da varredura automática do worker.
  */
+async function readObjectBuffer(url: string): Promise<Buffer> {
+  let target = url;
+  if (target.startsWith("/api/storage")) target = target.slice("/api/storage".length);
+  if (target.startsWith("/objects/")) {
+    target = await new ObjectStorageService().getObjectEntitySignedUrl(target, 120);
+  }
+  const response = await fetch(target);
+  if (!response.ok) throw new Error(`Falha ao ler mídia (${response.status})`);
+  return Buffer.from(await response.arrayBuffer());
+}
+
+/**
+ * Grava o design (headline/CTA/logo/cor) no MP4 final. Diferente da prévia da
+ * revisão, aqui o texto fica queimado no arquivo publicado.
+ */
+router.post("/tenants/:tenantId/content-calendar/:id/apply-video-brand", async (req, res) => {
+  const tenantId = String(req.params.tenantId);
+  if (!canAccess(req, tenantId)) {
+    res.status(403).json({ error: "Access denied to this tenant" });
+    return;
+  }
+  if (!(await canReleaseMarketingBatch(req, tenantId))) {
+    res.status(403).json({ error: "Permissão de Marketing necessária para alterar esta peça.", code: "MARKETING_BATCH_PERMISSION_REQUIRED" });
+    return;
+  }
+
+  const [item] = await db
+    .select({
+      id: contentCalendarItemsTable.id,
+      tipo: contentCalendarItemsTable.tipo,
+      temaSugerido: contentCalendarItemsTable.temaSugerido,
+      mediaPlanId: contentCalendarItemsTable.mediaPlanId,
+      contentGenerationId: contentCalendarItemsTable.contentGenerationId,
+    })
+    .from(contentCalendarItemsTable)
+    .where(and(eq(contentCalendarItemsTable.id, String(req.params.id)), eq(contentCalendarItemsTable.tenantId, tenantId)))
+    .limit(1);
+  if (!item) { res.status(404).json({ error: "Item não encontrado." }); return; }
+  if (!isVideoCalendarType(item.tipo)) { res.status(422).json({ error: "Este item não é um formato de vídeo." }); return; }
+  if (!item.contentGenerationId) { res.status(422).json({ error: "Esta peça ainda não tem geração de vídeo." }); return; }
+
+  const [generation] = await db
+    .select({ id: contentGenerationsTable.id, result: contentGenerationsTable.result })
+    .from(contentGenerationsTable)
+    .where(and(eq(contentGenerationsTable.id, item.contentGenerationId), eq(contentGenerationsTable.tenantId, tenantId)))
+    .limit(1);
+  if (!generation) { res.status(404).json({ error: "Geração não encontrada." }); return; }
+
+  const result = (generation.result ?? {}) as Record<string, unknown>;
+  const automation = result["automation"] && typeof result["automation"] === "object" && !Array.isArray(result["automation"])
+    ? result["automation"] as Record<string, unknown>
+    : {};
+  const variations = Array.isArray(result["variations"]) ? result["variations"] as Array<Record<string, unknown>> : [];
+  const variation = variations[0] ?? {};
+  const videoUrl = String(automation["videoUrl"] ?? variation["videoUrl"] ?? "").trim();
+  if (!videoUrl) { res.status(422).json({ error: "O vídeo final ainda não existe. Monte o vídeo antes de aplicar o texto." }); return; }
+
+  const [tenant] = await db
+    .select({ name: tenantsTable.name, nomeEmpresa: tenantsTable.nomeEmpresa, corPrimaria: tenantsTable.corPrimaria, logoUrl: tenantsTable.logoUrl })
+    .from(tenantsTable)
+    .where(eq(tenantsTable.id, tenantId))
+    .limit(1);
+
+  const design = (result["design"] ?? {}) as Record<string, string | undefined>;
+  const audit = (result["contextAudit"] ?? {}) as { visualBrief?: Record<string, string | null> };
+  const brief = audit.visualBrief ?? {};
+  const headline = design.headline || brief["productName"] || brief["message"] || item.temaSugerido;
+  const cta = design.cta || brief["offer"] || "Reserve agora";
+  const brandColor = design.brandColor || tenant?.corPrimaria || "#A78BFA";
+  const brandName = tenant?.nomeEmpresa?.trim() || tenant?.name?.trim() || "";
+
+  try {
+    const logo = tenant?.logoUrl ? await readObjectBuffer(tenant.logoUrl).catch(() => null) : null;
+    const overlay = await renderMarketingOverlay({ format: "stories", brandName, headline, cta, brandColor, logo });
+    const source = await readObjectBuffer(videoUrl);
+    const burned = await burnOverlayOnVideo(source, overlay);
+
+    const [project] = await db
+      .select({ id: mediaProjectsTable.id, context: mediaProjectsTable.context })
+      .from(mediaProjectsTable)
+      .where(and(
+        eq(mediaProjectsTable.tenantId, tenantId),
+        sql`${mediaProjectsTable.context}->>'calendarItemId' = ${item.id}`,
+      ))
+      .limit(1);
+
+    const captured = await captureGeneratedMedia({
+      tenantId,
+      userId: req.user?.sub ?? null,
+      title: `${headline} — vídeo com marca`,
+      operation: "video_brand_overlay",
+      buffer: burned,
+      mimeType: "video/mp4",
+      type: "video",
+      originalFilename: `video-brand-${item.id}.mp4`,
+      kind: "video",
+      projectId: project?.id,
+      metadata: {
+        source: "deterministic_video_overlay",
+        contentGenerationId: generation.id,
+        calendarItemId: item.id,
+        headline,
+        cta,
+      },
+    });
+
+    const nextVariation = { ...variation, videoUrl: captured.storageUrl, textOverlay: true };
+    await db.update(contentGenerationsTable).set({
+      result: {
+        ...result,
+        variations: variations.length > 0 ? [nextVariation, ...variations.slice(1)] : [nextVariation],
+        automation: {
+          ...automation,
+          videoUrl: captured.storageUrl,
+          textOverlay: true,
+          textOverlayAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        },
+      } as never,
+    }).where(and(eq(contentGenerationsTable.id, generation.id), eq(contentGenerationsTable.tenantId, tenantId)));
+
+    if (project) {
+      await db.update(mediaProjectsTable).set({
+        status: "ready",
+        updatedAt: new Date(),
+        context: {
+          ...(project.context ?? {}),
+          executorOutputUrl: captured.storageUrl,
+          materializationStatus: "ready",
+          textOverlay: true,
+        },
+      }).where(and(eq(mediaProjectsTable.id, project.id), eq(mediaProjectsTable.tenantId, tenantId)));
+    }
+
+    res.json({ success: true, videoUrl: captured.storageUrl, previewUrl: `/api/storage${captured.storageUrl}`, headline, cta });
+  } catch (error) {
+    req.log.error({ err: error, tenantId, calendarItemId: item.id }, "apply-video-brand falhou");
+    res.status(502).json({ error: error instanceof Error ? error.message : "Não foi possível gravar o texto no vídeo." });
+  }
+});
+
 router.post("/tenants/:tenantId/content-calendar/:id/photo-video", async (req, res) => {
   const tenantId = String(req.params.tenantId);
   if (!canAccess(req, tenantId)) {
