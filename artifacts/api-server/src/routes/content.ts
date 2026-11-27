@@ -42,6 +42,7 @@ import type { ChannelId } from "@workspace/vendor-brain/platform-foundation";
 import { applyBrandFrame, generateHighlightCover } from "../services/brandFrame.js";
 import { renderMarketingCreative } from "../services/marketingCreativeFrame.js";
 import { captureGeneratedMedia } from "../services/media-library.js";
+import { generateMarketingCopy } from "../services/marketingCopyGenerator.js";
 import { ObjectStorageService } from "../lib/objectStorage.js";
 import {
   normalizeInstagramCoverSource,
@@ -91,6 +92,7 @@ type ValidatedPlannerContext = {
     regiao?: string | null;
     oferta: string;
     mensagemCentral: string;
+    kpiPrincipal?: string | null;
   };
 };
 
@@ -491,6 +493,50 @@ router.post("/tenants/:tenantId/content/generate", async (req, res) => {
         .set({ contentGenerationsThisMonth: used + 1 })
         .where(eq(agentConfigsTable.id, configId));
     }
+  // Produção do plano já nasce com copy pronta para a revisão. Falha de IA de
+  // texto nunca invalida a peça: a revisão ainda pode gerar/salvar manualmente.
+  if (saved && plannerContext) {
+    const currentResult = (saved.result ?? {}) as Record<string, unknown>;
+    if (!currentResult["design"]) {
+      try {
+        const copy = await generateMarketingCopy({
+          tenantId,
+          campaign: {
+            nome: plannerContext.campaign.nome,
+            objetivo: plannerContext.campaign.objetivo,
+            produtoServico: plannerContext.campaign.produtoServico,
+            publico: plannerContext.campaign.publico,
+            regiao: plannerContext.campaign.regiao ?? null,
+            oferta: plannerContext.campaign.oferta,
+            mensagemCentral: plannerContext.campaign.mensagemCentral,
+            kpiPrincipal: plannerContext.campaign.kpiPrincipal ?? null,
+          },
+          item: {
+            temaSugerido: plannerContext.temaSugerido,
+            canal: plannerContext.canal,
+            tipo: plannerContext.tipo,
+          },
+        });
+        if (copy) {
+          const [updated] = await db.update(contentGenerationsTable).set({
+            result: {
+              ...currentResult,
+              design: {
+                ...copy,
+                ...(brandColor ? { brandColor } : {}),
+                copySource: "ai_auto",
+                updatedAt: new Date().toISOString(),
+              },
+            } as never,
+          }).where(eq(contentGenerationsTable.id, saved.id)).returning();
+          if (updated) saved = updated;
+        }
+      } catch (copyError) {
+        req.log.warn({ err: copyError, tenantId, contentId: saved.id }, "content: copy automática falhou; peça segue sem design");
+      }
+    }
+  }
+
   } catch (dbErr) {
     req.log.error({ err: dbErr }, "content: failed to persist generation — returning result without saving");
   }
