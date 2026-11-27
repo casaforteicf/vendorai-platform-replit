@@ -11,9 +11,7 @@ import { MediaAiBaseWorkspaceNav } from "../media/MediaAiBaseWorkspaceNav";
 import { MediaDeleteSelectionBridge } from "../media/MediaDeleteSelectionBridge";
 import { MediaLibraryWorkflowBridge } from "../media/MediaLibraryWorkflowBridge";
 import { MediaIntelligenceIndexBridge } from "../media/MediaIntelligenceIndexBridge";
-import { ContentGeneratorQueueUxBridge } from "../marketing/ContentGeneratorQueueUxBridge";
 import { ContentContextSourcesBridge } from "../marketing/ContentContextSourcesBridge";
-import { ContentApprovalClarityBridge } from "../marketing/ContentApprovalClarityBridge";
 import { MarketingOverviewBridge } from "../marketing/MarketingOverviewBridge";
 import { CampaignWorkspaceClarityBridge } from "../marketing/CampaignWorkspaceClarityBridge";
 import { PlanningReviewBridge } from "../marketing/PlanningReviewBridge";
@@ -85,9 +83,7 @@ export default function WorkspaceEnhancements() {
 
       {isMarketing && (
         <>
-          <ContentGeneratorQueueUxBridge />
           <ContentContextSourcesBridge />
-          <ContentApprovalClarityBridge />
           <MarketingOverviewBridge />
           <CampaignWorkspaceClarityBridge />
           <PlanningReviewBridge />
