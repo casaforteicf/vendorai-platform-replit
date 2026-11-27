@@ -138,10 +138,11 @@ export function buildImageDirection(input: ImageDirectionInput): ImageDirection 
     subject,
     style: [
       "photorealistic editorial photography, natural light, realistic colors, shallow depth of field when appropriate",
+      "full-bleed edge-to-edge composition (not a framed print or poster)",
       palette ? `context: ${palette}` : "",
       "do not invent amenities, rooms or products that the business does not have",
     ].filter(Boolean).join("; "),
-    avoid: "no text, no watermark, no logo overlay, no collage, no split screen, no distorted faces or hands, no stock-photo posing",
+    avoid: "no text, no watermark, no logo overlay, no border, no frame, no white margin, no poster or print mockup, no collage, no split screen, no distorted faces or hands, no stock-photo posing",
     scenes: SCENES[kind],
   };
 }
