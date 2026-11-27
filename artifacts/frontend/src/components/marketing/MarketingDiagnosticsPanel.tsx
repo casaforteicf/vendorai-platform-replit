@@ -36,6 +36,7 @@ function authHeaders(): Record<string, string> {
 
 export function MarketingDiagnosticsPanel({ tenantId }: { tenantId: string }) {
   const [pieces, setPieces] = useState<Piece[]>([]);
+  const [pieceAttribution, setPieceAttribution] = useState<Array<{ pieceId: string; temaSugerido: string | null; canal: string | null; tipo: string | null; leads: number; won: number; revenue: number }>>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -44,10 +45,17 @@ export function MarketingDiagnosticsPanel({ tenantId }: { tenantId: string }) {
     setLoading(true);
     setError("");
     try {
-      const piecesResponse = await fetch(`/api/tenants/${tenantId}/marketing/pieces`, { headers: authHeaders(), cache: "no-store" });
+      const [piecesResponse, attributionResponse] = await Promise.all([
+        fetch(`/api/tenants/${tenantId}/marketing/pieces`, { headers: authHeaders(), cache: "no-store" }),
+        fetch(`/api/tenants/${tenantId}/marketing/attribution-pieces`, { headers: authHeaders(), cache: "no-store" }),
+      ]);
       if (!piecesResponse.ok) throw new Error(`HTTP ${piecesResponse.status}`);
       const body = await piecesResponse.json() as { pieces?: Piece[] };
       setPieces(Array.isArray(body.pieces) ? body.pieces : []);
+      const attributionBody = attributionResponse.ok
+        ? await attributionResponse.json() as { pieces?: Array<{ pieceId: string; temaSugerido: string | null; canal: string | null; tipo: string | null; leads: number; won: number; revenue: number }> }
+        : {};
+      setPieceAttribution(Array.isArray(attributionBody.pieces) ? attributionBody.pieces : []);
     } catch {
       setError("Não foi possível carregar o diagnóstico. Atualize para tentar de novo.");
       setPieces([]);
@@ -139,6 +147,25 @@ export function MarketingDiagnosticsPanel({ tenantId }: { tenantId: string }) {
               ) : null}
               <span className="text-muted-foreground">Clique em “Atualizar” após uma produção para ver o funil mudar.</span>
             </div>
+
+            {pieceAttribution.length > 0 ? (
+              <div className="rounded-lg border bg-background px-3 py-2">
+                <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Peças que geraram negócios</p>
+                <div className="mt-1 divide-y text-[11px]">
+                  {pieceAttribution.slice(0, 5).map((row) => (
+                    <div key={row.pieceId} className="flex items-center justify-between gap-2 py-0.5">
+                      <span className="min-w-0 truncate text-muted-foreground">
+                        {row.temaSugerido || row.pieceId}{row.canal ? ` · ${row.canal}` : ""}
+                      </span>
+                      <span className="shrink-0 tabular-nums">
+                        {row.leads} lead(s) · {row.won} venda(s) · {row.revenue.toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 })}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+                <p className="mt-1 text-[10px] text-muted-foreground">Ligação pelo utm_content do link publicado (peça → lead → negócio).</p>
+              </div>
+            ) : null}
 
             {topReasons.length > 0 ? (
               <div className="rounded-lg border bg-background px-3 py-2">
