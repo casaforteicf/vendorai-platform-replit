@@ -21,6 +21,7 @@ import { selectTenantImageAssetIds } from "../services/media-plan-auto-productio
 import { startVendorAiPhotoVideo } from "../services/vendorai-photo-video.js";
 import { emitMarketingFunnelEvent } from "../services/marketing-funnel-events.js";
 import { resolvePieceCta } from "../services/marketing-piece-cta.js";
+import { validatePieceForChannel } from "@workspace/vendor-brain/channel-playbook";
 import { ObjectStorageService } from "../lib/objectStorage.js";
 import { captureGeneratedMedia } from "../services/media-library.js";
 import { renderMarketingOverlay } from "../services/marketingCreativeFrame.js";
@@ -318,6 +319,16 @@ function generationHasVisual(result: unknown): boolean {
   return false;
 }
 
+
+function generationMediaCount(result: unknown): number {
+  const payload = result && typeof result === "object" && !Array.isArray(result) ? result as Record<string, unknown> : {};
+  const variations = Array.isArray(payload["variations"]) ? payload["variations"] : [];
+  const variation = variations[0] && typeof variations[0] === "object" ? variations[0] as Record<string, unknown> : {};
+  const images = Array.isArray(variation["imageUrls"]) ? variation["imageUrls"].filter(Boolean).length : variation["imageUrl"] ? 1 : 0;
+  const video = variation["videoUrl"] ? 1 : 0;
+  return Math.max(1, images + video);
+}
+
 type PieceRow = {
   id: string;
   tipo: string;
@@ -465,7 +476,16 @@ async function loadPieceContext(tenantId: string, pieceId?: string) {
       item: { id: row.id, canal: row.canal, tipo: row.tipo, temaSugerido: row.temaSugerido },
       medium: "organic",
     }).catch(() => null);
-    return { ...view, cta };
+    const channelIssues = validatePieceForChannel({
+      canal: row.canal,
+      tipo: row.tipo,
+      mediaCount: generationMediaCount(row.generationResult),
+      hasVideo: isVideoCalendarType(row.tipo)
+        ? generationHasFinalVideo(row.generationResult as { variations?: unknown; automation?: unknown } | null)
+        : undefined,
+      destination: (cta?.destination as "landing_page" | "whatsapp" | "formulario_lead" | "site" | null) ?? null,
+    });
+    return { ...view, cta, channelIssues };
   }));
 }
 

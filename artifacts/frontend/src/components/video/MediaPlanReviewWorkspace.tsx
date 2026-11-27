@@ -172,6 +172,7 @@ export default function MediaPlanReviewWorkspace() {
   const [cta, setCta] = useState("");
   const [aiCopy, setAiCopy] = useState<{ headline: string; supporting: string; cta: string } | null>(null);
   const [ctaDestination, setCtaDestination] = useState<{ label: string; destination: string; url: string | null } | null>(null);
+  const [channelIssues, setChannelIssues] = useState<Array<{ code: string; message: string }>>([]);
   const [brandColor, setBrandColor] = useState("");
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [approving, setApproving] = useState(false);
@@ -211,8 +212,10 @@ export default function MediaPlanReviewWorkspace() {
     let active = true;
     fetch(`/api/tenants/${tenantId}/marketing/pieces/${itemId}`, { headers: authHeaders(), cache: "no-store" })
       .then((response) => response.ok ? response.json() : null)
-      .then((body: { piece?: { cta?: { label: string; destination: string; url: string | null } | null } } | null) => {
-        if (active) setCtaDestination(body?.piece?.cta ?? null);
+      .then((body: { piece?: { cta?: { label: string; destination: string; url: string | null } | null; channelIssues?: Array<{ code: string; message: string }> } } | null) => {
+        if (!active) return;
+        setCtaDestination(body?.piece?.cta ?? null);
+        setChannelIssues(Array.isArray(body?.piece?.channelIssues) ? body!.piece!.channelIssues! : []);
       })
       .catch(() => undefined);
     return () => { active = false; };
@@ -667,6 +670,14 @@ export default function MediaPlanReviewWorkspace() {
         <div className="space-y-4">
           <section className="rounded-3xl border bg-card p-5 shadow-sm">
             <h3 className="text-lg font-semibold">Qualidade do material</h3>
+            {channelIssues.length > 0 ? (
+              <div className="mt-2 rounded-xl border border-amber-300 bg-amber-50 p-2.5 text-[11px] text-amber-900">
+                <p className="font-semibold">Ajustes necessários para o canal</p>
+                <ul className="mt-1 list-disc space-y-0.5 pl-4">
+                  {channelIssues.map((issue) => <li key={issue.code}>{issue.message}</li>)}
+                </ul>
+              </div>
+            ) : null}
             <div className="mt-4 grid gap-5 sm:grid-cols-[150px_1fr]">
               <div className="flex h-36 w-36 items-center justify-center rounded-full" style={{ background: `conic-gradient(#10b981 ${score * 3.6}deg, #e5e7eb 0)` }}><div className="flex h-28 w-28 flex-col items-center justify-center rounded-full bg-card"><span className="text-4xl font-semibold">{score}</span><span className="text-sm text-muted-foreground">/ 100</span></div></div>
               <div className="space-y-3">
