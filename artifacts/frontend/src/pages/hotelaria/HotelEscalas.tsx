@@ -9,6 +9,7 @@ import {
   cobertura,
   custoExtras,
   diaSemana,
+  diasNoMes,
   estadoInicial,
   fmtHoras,
   gerarEscala,
@@ -17,6 +18,7 @@ import {
   normalizarEstado,
   paraCsv,
   rotuloDia,
+  semanaDoMes,
   tipoTarifa,
   trocarPeriodo,
   validar,
@@ -75,6 +77,9 @@ export default function HotelEscalas() {
         setEstado(estadoInicial(inicioDoMes()));
         setVersao(null);
       }
+      const inicioCarregado = body.config?.state && typeof body.config.state.start === "string" ? body.config.state.start : inicioDoMes();
+      setSemana(semanaDoMes(inicioCarregado));
+      setDiaCobertura(0);
     } catch (falha) {
       setErro(falha instanceof Error ? falha.message : String(falha));
     } finally {
@@ -98,6 +103,8 @@ export default function HotelEscalas() {
     const rotulo = rotuloPeriodo(novoInicio);
     if (!window.confirm(`Mudar o período para ${rotulo}? A ocupação e as metas serão zeradas; equipe, horários, folgas, tarifas e pares são mantidos. Salve para gravar como nova versão.`)) return;
     setEstado((atual) => trocarPeriodo(atual, novoInicio));
+    setSemana(semanaDoMes(novoInicio));
+    setDiaCobertura(0);
     setMensagem(`Período alterado para ${rotulo}. Revise folgas e metas e salve para gravar.`);
     setErro(null);
   }
@@ -141,6 +148,9 @@ export default function HotelEscalas() {
     const body = await resposta.json();
     if (!resposta.ok) { setErro(body?.error ?? "Falha ao restaurar"); return; }
     if (body.config?.state) setEstado(normalizarEstado(body.config.state, estado.start));
+    const inicioRestaurado = typeof body.config?.state?.start === "string" ? body.config.state.start : estado.start;
+    setSemana(semanaDoMes(inicioRestaurado));
+    setDiaCobertura(0);
     setVersao(body.config?.version ?? null);
     setMensagem("Versão restaurada.");
   }
@@ -167,6 +177,8 @@ export default function HotelEscalas() {
       const normalizado = normalizarEstado(bruto, estado.start);
       if (normalizado.staff.length > 500) throw new Error("Backup grande demais");
       setEstado(normalizado);
+      setSemana(semanaDoMes(normalizado.start));
+      setDiaCobertura(0);
       setMensagem("Backup importado. Revise e salve.");
     } catch (falha) {
       setErro(`Backup inválido: ${falha instanceof Error ? falha.message : String(falha)}`);
@@ -186,6 +198,8 @@ export default function HotelEscalas() {
         return;
       }
       setEstado(novo);
+      setSemana(semanaDoMes(novo.start));
+      setDiaCobertura(0);
       setMensagem(`Planilha importada: ${resumo.colaboradores} colaborador(es), ${resumo.diasComOcupacao} dias de ocupação. Revise e salve.${ignoradas}`);
     } catch (falha) {
       setMensagem(null);
@@ -193,14 +207,20 @@ export default function HotelEscalas() {
     }
   }
 
-  const semanaAtual = semana * 7;
-  const diasVisiveis = estado.days.slice(semanaAtual, semanaAtual + 7);
+  const totalDiasMes = diasNoMes(estado.start);
+  const semanasDoMes = Math.ceil(totalDiasMes / 7);
+  const semanaEfetiva = Math.min(semana, semanasDoMes - 1);
+  const semanaAtual = semanaEfetiva * 7;
+  const diasVisiveis = estado.days.slice(semanaAtual, Math.min(semanaAtual + 7, totalDiasMes));
   const staffDetalhe = detalhe === null ? null : estado.staff[detalhe] ?? null;
   const staffVisivel = estado.staff.map((s, i) => ({ s, i })).filter(({ s }) => filtroSetor === "Todos" || s.sector === filtroSetor);
 
   const contagem = contar(estado);
-  const totalExtras = contagem.reduce((a, b) => a + b.totalExtras, 0);
-  const custo = custoExtras(estado);
+  const contagemMes = contagem.slice(0, totalDiasMes);
+  const estadoMes = { ...estado, days: estado.days.slice(0, totalDiasMes), staff: estado.staff.map((s) => ({ ...s, schedule: s.schedule.slice(0, totalDiasMes) })) };
+  const totalExtras = contagemMes.reduce((a, b) => a + b.totalExtras, 0);
+  const custo = custoExtras(estadoMes);
+  const diaCoberturaEfetivo = Math.min(diaCobertura, totalDiasMes - 1);
 
   return (
     <main className="min-h-screen bg-[#0b0b0b] p-4 text-[#f7f1df] sm:p-8">
@@ -241,10 +261,10 @@ export default function HotelEscalas() {
         <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
           {[
             ["Colaboradores", estado.staff.length],
-            ["Extras no período", totalExtras],
-            ["Pico de extras/dia", Math.max(0, ...contagem.map((c) => c.totalExtras))],
+            ["Extras no mês", totalExtras],
+            ["Pico de extras/dia", Math.max(0, ...contagemMes.map((c) => c.totalExtras))],
             ["Custo previsto extras", custo.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })],
-            ["Menor equipe fixa", Math.min(...contagem.map((c) => c.total))],
+            ["Menor equipe fixa", Math.min(...contagemMes.map((c) => c.total))],
           ].map(([label, valor]) => (
             <div key={String(label)} className={card}>
               <p className="text-xs uppercase tracking-wide text-[#b9ae91]">{label}</p>
@@ -268,15 +288,15 @@ export default function HotelEscalas() {
               </div>
               <div className="flex flex-wrap items-center gap-2">
                 <span className="text-xs uppercase tracking-wide text-[#b9ae91]">Semana</span>
-                {Array.from({ length: 5 }, (_, s) => (
+                {Array.from({ length: semanasDoMes }, (_, s) => (
                   <button
                     key={s}
                     type="button"
                     onClick={() => setSemana(s)}
-                    className={`rounded-md border px-3 py-1.5 text-sm ${semana === s ? ouro : "border-[#d8c88d]/60 text-[#f7f1df] hover:bg-[#211d10]"}`}
+                    className={`rounded-md border px-3 py-1.5 text-sm ${semanaEfetiva === s ? ouro : "border-[#d8c88d]/60 text-[#f7f1df] hover:bg-[#211d10]"}`}
                   >
                     {s + 1}
-                    <span className="ml-1 text-xs opacity-80">{rotuloDia(estado, s * 7)}–{rotuloDia(estado, s * 7 + 6)}</span>
+                    <span className="ml-1 text-xs opacity-80">{rotuloDia(estado, s * 7)}–{rotuloDia(estado, Math.min(s * 7 + 6, totalDiasMes - 1))}</span>
                   </button>
                 ))}
               </div>
@@ -353,15 +373,15 @@ export default function HotelEscalas() {
                     </tr>
                   ))}
                   {staffVisivel.length === 0 && (
-                    <tr><td colSpan={11} className="p-6 text-center text-[#b9ae91]">Nenhum colaborador neste setor.</td></tr>
+                    <tr><td colSpan={4 + diasVisiveis.length} className="p-6 text-center text-[#b9ae91]">Nenhum colaborador neste setor.</td></tr>
                   )}
                 </tbody>
                 <tfoot>
                   {[
                     ["Pax noite", diasVisiveis.map((d) => d.pax)],
                     ["Pax manhã", diasVisiveis.map((d) => d.morning)],
-                    ["Efetivos", contagem.slice(semanaAtual, semanaAtual + 7).map((c) => c.total)],
-                    ["Extras", contagem.slice(semanaAtual, semanaAtual + 7).map((c) => c.totalExtras)],
+                    ["Efetivos", contagem.slice(semanaAtual, semanaAtual + diasVisiveis.length).map((c) => c.total)],
+                    ["Extras", contagem.slice(semanaAtual, semanaAtual + diasVisiveis.length).map((c) => c.totalExtras)],
                     ["Tarifa", diasVisiveis.map((_, d) => valorTarifa(estado, semanaAtual + d))],
                   ].map(([label, valores]) => (
                     <tr key={String(label)}>
@@ -384,7 +404,7 @@ export default function HotelEscalas() {
             <div className="overflow-auto">
               <table className="w-full text-xs">
                 <thead><tr className="bg-[#2a2104]"><th className="border p-2">Data</th><th className="border p-2">Pax manhã</th><th className="border p-2">Pax noite</th>{GRUPOS.map((g) => <th key={g} className="border p-2">{g}</th>)}</tr></thead>
-                <tbody>{estado.days.map((day, d) => <tr key={day.date}><td className="border p-2">{day.date}</td>{(["morning", "pax"] as const).map((key) => <td key={key} className="border p-1"><input type="number" min={0} className="w-20 rounded border border-[#d8c88d]/50 bg-[#181818] p-1 text-[#f7f1df]" value={day[key]} onChange={(event) => atualizar((c) => { c.days[d]![key] = Number(event.target.value) || 0; })} /></td>)}{day.targets.map((v, g) => <td key={g} className="border p-1"><input type="number" min={0} className="w-16 rounded border border-[#d8c88d]/50 bg-[#181818] p-1 text-center text-[#f7f1df]" value={v} onChange={(event) => atualizar((c) => { c.days[d]!.targets[g] = Number(event.target.value) || 0; })} /></td>)}</tr>)}</tbody>
+                <tbody>{estado.days.slice(0, totalDiasMes).map((day, d) => <tr key={day.date}><td className="border p-2">{day.date}<br/><span className="text-[10px] text-[#b9ae91]">{diaSemana(estado, d)}</span></td>{(["morning", "pax"] as const).map((key) => <td key={key} className="border p-1"><input type="number" min={0} className="w-20 rounded border border-[#d8c88d]/50 bg-[#181818] p-1 text-[#f7f1df]" value={day[key]} onChange={(event) => atualizar((c) => { c.days[d]![key] = Number(event.target.value) || 0; })} /></td>)}{day.targets.map((v, g) => <td key={g} className="border p-1"><input type="number" min={0} className="w-16 rounded border border-[#d8c88d]/50 bg-[#181818] p-1 text-center text-[#f7f1df]" value={v} onChange={(event) => atualizar((c) => { c.days[d]!.targets[g] = Number(event.target.value) || 0; })} /></td>)}</tr>)}</tbody>
               </table>
             </div>
           </section>
@@ -415,7 +435,7 @@ export default function HotelEscalas() {
             <div className={card}>
               <h2 className="text-lg font-semibold text-[#ffd12a]">Reforços e tarifas</h2>
               <div className="mt-3 grid gap-2 sm:grid-cols-3">{(['weekday', 'weekend', 'holiday'] as const).map((key) => <label key={key} className="text-xs">{key === "weekday" ? "Dia útil" : key === "weekend" ? "Fim de semana" : "Feriado"} (R$)<input type="number" className="mt-1 w-full rounded border border-[#d8c88d]/50 bg-[#181818] p-2" value={estado.rates[key]} onChange={(e) => atualizar((c) => { c.rates[key] = Number(e.target.value) || 0; })} /></label>)}</div>
-              <div className="mt-3 overflow-auto"><table className="w-full text-xs"><thead><tr className="bg-[#2a2104]"><th className="border p-2">Data</th><th className="border p-2">Setor</th><th className="border p-2">Meta</th><th className="border p-2">Fixos</th><th className="border p-2">Extras</th><th className="border p-2">Janela</th></tr></thead><tbody>{contagem.map((c, d) => c.extras.map((n, g) => n > 0 ? <tr key={`${d}-${g}`}><td className="border p-2">{rotuloDia(estado, d)}</td><td className="border p-2">{GRUPOS[g]}</td><td className="border p-2">{estado.days[d]!.targets[g]}</td><td className="border p-2">{c.ativos[g]}</td><td className="border p-2 font-semibold text-[#ffd12a]">{n}</td><td className="border p-2">{JANELAS[g]}</td></tr> : null))}</tbody></table></div>
+              <div className="mt-3 overflow-auto"><table className="w-full text-xs"><thead><tr className="bg-[#2a2104]"><th className="border p-2">Data</th><th className="border p-2">Setor</th><th className="border p-2">Meta</th><th className="border p-2">Fixos</th><th className="border p-2">Extras</th><th className="border p-2">Janela</th></tr></thead><tbody>{contagem.slice(0, totalDiasMes).map((c, d) => c.extras.map((n, g) => n > 0 ? <tr key={`${d}-${g}`}><td className="border p-2">{rotuloDia(estado, d)}</td><td className="border p-2">{GRUPOS[g]}</td><td className="border p-2">{estado.days[d]!.targets[g]}</td><td className="border p-2">{c.ativos[g]}</td><td className="border p-2 font-semibold text-[#ffd12a]">{n}</td><td className="border p-2">{JANELAS[g]}</td></tr> : null))}</tbody></table></div>
             </div>
             <div className={card}>
               <h2 className="text-lg font-semibold text-[#ffd12a]">Banco de extras</h2>
@@ -428,8 +448,8 @@ export default function HotelEscalas() {
         {aba === "Cobertura" && (
           <section className={card}>
             <h2 className="text-lg font-semibold text-[#ffd12a]">Cobertura horária</h2>
-            <div className="mt-2 flex flex-wrap gap-2">{estado.days.map((_, d) => <button key={d} type="button" className={`rounded border px-2 py-1 text-xs ${diaCobertura === d ? ouro : "border-[#d8c88d]/50"}`} onClick={() => setDiaCobertura(d)}>{rotuloDia(estado, d)}</button>)}</div>
-            <div className="mt-3 overflow-auto"><table className="w-full text-xs"><thead><tr className="bg-[#2a2104]"><th className="border p-2">Hora</th>{["Cozinha", "Salão", "Confeitaria", "Quiosque"].map((s) => <th key={s} className="border p-2">{s}</th>)}</tr></thead><tbody>{cobertura(estado, diaCobertura).map((row) => <tr key={row.hora}><td className="border p-2">{row.hora}</td>{row.setores.map((n, i) => <td key={i} className="border p-2 text-center">{n}</td>)}</tr>)}</tbody></table></div>
+            <div className="mt-2 flex flex-wrap gap-2">{estado.days.slice(0, totalDiasMes).map((_, d) => <button key={d} type="button" className={`rounded border px-2 py-1 text-xs ${diaCoberturaEfetivo === d ? ouro : "border-[#d8c88d]/50"}`} onClick={() => setDiaCobertura(d)}>{rotuloDia(estado, d)}</button>)}</div>
+            <div className="mt-3 overflow-auto"><table className="w-full text-xs"><thead><tr className="bg-[#2a2104]"><th className="border p-2">Hora</th>{["Cozinha", "Salão", "Confeitaria", "Quiosque"].map((s) => <th key={s} className="border p-2">{s}</th>)}</tr></thead><tbody>{cobertura(estado, diaCoberturaEfetivo).map((row) => <tr key={row.hora}><td className="border p-2">{row.hora}</td>{row.setores.map((n, i) => <td key={i} className="border p-2 text-center">{n}</td>)}</tr>)}</tbody></table></div>
           </section>
         )}
 
@@ -439,7 +459,7 @@ export default function HotelEscalas() {
             <label className="mt-2 block text-xs text-[#b9ae91]">Pares críticos (um por linha, nomes separados por vírgula)
               <textarea className="mt-1 h-24 w-full rounded border border-[#d8c88d]/50 bg-[#181818] p-2 text-sm" value={estado.criticalPairs.map((p) => p.join(", ")).join("\n")} onChange={(e) => atualizar((c) => { c.criticalPairs = e.target.value.split(/\n/).map((linha) => linha.split(",").map((v) => v.trim()).filter(Boolean)).filter((p) => p.length > 0); })} />
             </label>
-            <div className="mt-3 overflow-auto"><table className="w-full text-xs"><thead><tr className="bg-[#2a2104]"><th className="border p-2">Colaborador / regra</th><th className="border p-2">Alertas</th></tr></thead><tbody>{validar(estado).map((row, i) => <tr key={i}><td className="border p-2">{row.nome}</td><td className={`border p-2 ${row.alertas === "OK" ? "text-emerald-300" : "text-amber-200"}`}>{row.alertas}</td></tr>)}</tbody></table></div>
+            <div className="mt-3 overflow-auto"><table className="w-full text-xs"><thead><tr className="bg-[#2a2104]"><th className="border p-2">Colaborador / regra</th><th className="border p-2">Alertas</th></tr></thead><tbody>{validar(estadoMes).map((row, i) => <tr key={i}><td className="border p-2">{row.nome}</td><td className={`border p-2 ${row.alertas === "OK" ? "text-emerald-300" : "text-amber-200"}`}>{row.alertas}</td></tr>)}</tbody></table></div>
             {historico.length > 0 && <div className="mt-4"><h3 className="font-semibold text-[#ffd12a]">Histórico</h3><div className="mt-2 space-y-1 text-xs">{historico.map((v) => <div key={v.id} className="flex justify-between border-b border-[#d8c88d]/20 py-1"><span>v{v.version}{v.inicio ? ` · ${rotuloPeriodo(v.inicio)}` : ""} · {new Date(v.createdAt).toLocaleString("pt-BR")}</span><button type="button" className="text-[#ffd12a]" onClick={() => void restaurar(v.id)}>Restaurar</button></div>)}</div></div>}
           </section>
         )}
@@ -468,7 +488,7 @@ export default function HotelEscalas() {
               </div>
 
               <div className="mt-5 rounded-lg border border-[#d8c88d]/30 p-3">
-                <p className="text-sm font-semibold text-[#ffd12a]">Semana {semana + 1} · {rotuloDia(estado, semanaAtual)}–{rotuloDia(estado, semanaAtual + 6)}</p>
+                <p className="text-sm font-semibold text-[#ffd12a]">Semana {semanaEfetiva + 1} · {rotuloDia(estado, semanaAtual)}–{rotuloDia(estado, Math.min(semanaAtual + 6, totalDiasMes - 1))}</p>
                 <div className="mt-2 grid grid-cols-7 gap-1">
                   {diasVisiveis.map((_, d) => {
                     const dia = semanaAtual + d;
@@ -481,7 +501,7 @@ export default function HotelEscalas() {
                     );
                   })}
                 </div>
-                <p className="mt-2 text-xs text-[#b9ae91]">{staffDetalhe.schedule.slice(0, 30).filter((v) => v === "T").length} dias trabalhados · {30 - staffDetalhe.schedule.slice(0, 30).filter((v) => v === "T").length} folgas no mês</p>
+                <p className="mt-2 text-xs text-[#b9ae91]">{staffDetalhe.schedule.slice(0, totalDiasMes).filter((v) => v === "T").length} dias trabalhados · {totalDiasMes - staffDetalhe.schedule.slice(0, totalDiasMes).filter((v) => v === "T").length} folgas no mês</p>
               </div>
             </div>
           </div>
