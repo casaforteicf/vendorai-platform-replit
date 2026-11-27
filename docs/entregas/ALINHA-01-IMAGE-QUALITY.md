@@ -51,3 +51,27 @@ de toalhas e sais de banho — com texto embutido, embora o prompt pedisse "no t
    automaticamente (custo por imagem; habilitar por plano).
 4. **Série coerente**: uma imagem "hero" por campanha, reaproveitada como referência das
    demais para manter paleta e cenário.
+
+
+## Bloqueio real encontrado ao regenerar (2026-11-27)
+
+Ao executar a regeneração das peças do AJ, todos os modelos de imagem falharam. Diagnóstico
+direto no provedor: **`OPENAI_API_KEY` sem créditos** (`429 You have no credits remaining`), e
+**não há `REPLICATE_API_TOKEN`** nem Vertex configurado no container. Ou seja: geração de
+imagem por IA está temporariamente indisponível para qualquer tenant, independentemente do
+prompt.
+
+Correção de resiliência implementada:
+
+- **Regeneração (`/content/:id/variations/:idx/regenerate-image`)**: se a IA falhar, usa até N
+  fotos reais da Biblioteca do tenant (a referência escolhida primeiro) e devolve
+  `fallback: true` com aviso; marca `imageSource: "upload"`. Só retorna 502 se não houver
+  nenhuma foto real.
+- **Produção automática do worker**: mesma estratégia — em vez de derrubar a produção, usa
+  fotos reais da Biblioteca e registra `warn` no log.
+- Isso evita criativos genéricos/desconexos enquanto não houver créditos; quando o provedor
+  voltar, o caminho de IA é retomado automaticamente (a direção visual já está pronta).
+
+**Decisão necessária:** para voltar a gerar imagens por IA, é preciso adicionar créditos na
+OpenAI ou configurar um provedor alternativo (Replicate/Vertex). Nenhum serviço pago foi
+contratado.
