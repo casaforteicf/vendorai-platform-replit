@@ -38,6 +38,7 @@ describe("direção visual por tipo de negócio", () => {
     expect(prompt).toContain("Pacote fim de semana");
     expect(prompt).toContain("no text");
     expect(prompt).toContain("no watermark");
+    expect(prompt).toContain("no frame");
   });
 
   it("prompt de hotelaria não usa conceito de produto nem 'Improve this image'", () => {
