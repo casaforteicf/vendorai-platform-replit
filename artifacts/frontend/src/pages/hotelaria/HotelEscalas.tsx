@@ -17,6 +17,7 @@ import {
   paraCsv,
   rotuloDia,
   tipoTarifa,
+  trocarPeriodo,
   validar,
   valorTarifa,
   type EscalaState,
@@ -72,6 +73,17 @@ export default function HotelEscalas() {
   }, [base, headers, tenantId, token]);
 
   useEffect(() => { void carregar(); }, [carregar]);
+
+  function mudarPeriodo(valor: string) {
+    if (!/^\d{4}-\d{2}$/.test(valor)) return;
+    const novoInicio = `${valor}-01`;
+    if (novoInicio === estado.start) return;
+    const rotulo = new Date(`${novoInicio}T12:00:00`).toLocaleDateString("pt-BR", { month: "long", year: "numeric" });
+    if (!window.confirm(`Mudar o período para ${rotulo}? A ocupação e as metas serão zeradas; equipe, horários, folgas, tarifas e pares são mantidos. Salve para gravar como nova versão.`)) return;
+    setEstado((atual) => trocarPeriodo(atual, novoInicio));
+    setMensagem(`Período alterado para ${rotulo}. Revise folgas e metas e salve para gravar.`);
+    setErro(null);
+  }
 
   function atualizar(alteracao: (copia: EscalaState) => void) {
     setEstado((atual) => {
@@ -160,6 +172,16 @@ export default function HotelEscalas() {
             <p className="text-sm text-[#d9d2bf]">Escala 5x2, 12x36 e parcial, ocupação, metas, extras e cobertura.</p>
           </div>
           <div className="flex flex-wrap gap-2">
+            <label className="flex items-center gap-2 rounded-md border border-[#d8c88d] bg-[#181818] px-3 py-2 text-sm [color-scheme:dark]">
+              <span className="text-xs uppercase tracking-wide text-[#b9ae91]">Período</span>
+              <input
+                type="month"
+                aria-label="Período da escala"
+                className="bg-transparent text-[#f7f1df] outline-none"
+                value={estado.start.slice(0, 7)}
+                onChange={(event) => mudarPeriodo(event.target.value)}
+              />
+            </label>
             <button type="button" className={`rounded-md border px-3 py-2 text-sm font-semibold ${ouro}`} onClick={() => { gerarMetas(estado); gerarEscala(estado); setEstado({ ...estado, days: [...estado.days], staff: [...estado.staff] }); }}>Gerar / melhorar escala</button>
             <button type="button" className="rounded-md border border-[#d8c88d] px-3 py-2 text-sm" onClick={() => void salvar()} disabled={salvando}>{salvando ? "Salvando..." : `Salvar${versao ? ` v${versao}` : ""}`}</button>
             <button type="button" className="rounded-md border border-[#d8c88d] px-3 py-2 text-sm" onClick={exportarCsv}>CSV</button>

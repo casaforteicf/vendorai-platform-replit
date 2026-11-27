@@ -471,3 +471,37 @@ export function transitionPiece(from: OperationalStateCode, to: OperationalState
   }
   return to;
 }
+
+// ─── CTA com destino (P1) ────────────────────────────────────────────────────
+
+export interface PieceCta {
+  label: string;
+  destination: MarketingAdDestination;
+  url: string | null;
+}
+
+export function pieceCtaLabel(destination: MarketingAdDestination, objective?: string | null): string {
+  if (destination === "whatsapp") return "Falar no WhatsApp";
+  if (destination === "formulario_lead") return "Receber proposta";
+  if (destination === "produto") return "Ver produto";
+  return normalizeLabel(objective ?? "").includes("venda") ? "Ver oferta" : "Saiba mais";
+}
+
+export function appendUtm(
+  url: string,
+  params: { source?: string | null; medium?: string | null; campaign?: string | null; content?: string | null },
+): string {
+  try {
+    const parsed = new URL(url);
+    const set = (key: string, value?: string | null) => {
+      if (value && !parsed.searchParams.has(key)) parsed.searchParams.set(key, value);
+    };
+    set("utm_source", params.source);
+    set("utm_medium", params.medium);
+    set("utm_campaign", params.campaign);
+    set("utm_content", params.content);
+    return parsed.toString();
+  } catch {
+    return url;
+  }
+}

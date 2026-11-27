@@ -59,6 +59,25 @@ export function estadoInicial(start: string): EscalaState {
   };
 }
 
+/**
+ * Muda a janela de 35 dias para outro período mantendo equipe, horários,
+ * regimes, tarifas, pares críticos e extras. Ocupação, metas e feriados do
+ * período anterior são zerados; as folgas (T/F) são preservadas para ajuste.
+ */
+export function trocarPeriodo(state: EscalaState, novoInicio: string): EscalaState {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(novoInicio)) return state;
+  return {
+    ...state,
+    start: novoInicio,
+    days: estadoInicial(novoInicio).days,
+    staff: state.staff.map((s) => ({ ...s, schedule: [...s.schedule] })),
+    criticalPairs: state.criticalPairs.map((p) => [...p]),
+    rates: { ...state.rates },
+    holidays: {},
+    extraPeople: state.extraPeople.map((e) => ({ ...e, days: [...e.days] })),
+  };
+}
+
 export function normalizarEstado(input: unknown, fallbackStart: string): EscalaState {
   const raw = (input && typeof input === "object" ? input : {}) as Partial<EscalaState>;
   const base = estadoInicial(typeof raw.start === "string" ? raw.start : fallbackStart);
