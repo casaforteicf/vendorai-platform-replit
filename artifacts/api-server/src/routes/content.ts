@@ -7,6 +7,7 @@ import {
   contentStudioUploadsTable,
   contentLibraryTable,
   mediaAssetsTable,
+  mediaProjectsTable,
   agentConfigsTable,
   businessProfilesTable,
   produtosCatalogoTable,
@@ -39,6 +40,8 @@ import { resolveTenantCreativePlan } from "../services/creativeDesignBridge.js";
 import { campaignNameFromPilar, normalizeLabel as normalizeMediaPlanLabel } from "@workspace/vendor-brain/media-plan-execution";
 import type { ChannelId } from "@workspace/vendor-brain/platform-foundation";
 import { applyBrandFrame, generateHighlightCover } from "../services/brandFrame.js";
+import { renderMarketingCreative } from "../services/marketingCreativeFrame.js";
+import { captureGeneratedMedia } from "../services/media-library.js";
 import { ObjectStorageService } from "../lib/objectStorage.js";
 import {
   normalizeInstagramCoverSource,
@@ -1448,6 +1451,152 @@ async function tenantPhotoFallbackUrls(
     .slice(0, Math.max(1, count))
     .map((url) => (url.startsWith("/api/storage") ? url : `/api/storage${url}`));
 }
+
+/** Lê bytes de uma imagem do Storage (privado) ou de uma URL pública. */
+async function readStorageImage(url: string): Promise<Buffer> {
+  let target = url;
+  if (target.startsWith("/api/storage/objects/")) target = target.slice("/api/storage".length);
+  if (target.startsWith("/objects/")) {
+    target = await new ObjectStorageService().getObjectEntitySignedUrl(target, 120);
+  }
+  const response = await fetch(target);
+  if (!response.ok) throw new Error(`Falha ao ler imagem (${response.status})`);
+  return Buffer.from(await response.arrayBuffer());
+}
+
+/**
+ * Aplica a camada de design determinística: logo, headline e CTA por código,
+ * sobre a foto gerada. A IA não escreve texto — evita texto torto/embolado.
+ */
+router.post("/tenants/:tenantId/content/:contentId/variations/:idx/apply-brand-frame", async (req, res) => {
+  const tenantId = String(req.params["tenantId"]);
+  const contentId = String(req.params["contentId"]);
+  const idx = Number.parseInt(String(req.params["idx"]), 10);
+  if (req.user?.platformRole !== "super_admin" && req.user?.tenantId !== tenantId) {
+    res.status(403).json({ error: "Acesso negado" });
+    return;
+  }
+  const parsed = z.object({
+    headline: z.string().trim().max(120).optional(),
+    cta: z.string().trim().max(60).optional(),
+  }).safeParse(req.body ?? {});
+  if (!parsed.success) {
+    res.status(422).json({ error: parsed.error.message });
+    return;
+  }
+
+  const [generation] = await db
+    .select()
+    .from(contentGenerationsTable)
+    .where(and(eq(contentGenerationsTable.id, contentId), eq(contentGenerationsTable.tenantId, tenantId)))
+    .limit(1);
+  if (!generation) { res.status(404).json({ error: "Conteúdo não encontrado" }); return; }
+
+  const result = generation.result as {
+    variations?: Array<Record<string, unknown>>;
+    contextAudit?: { calendarItemId?: string; visualBrief?: Record<string, string | null> };
+  };
+  const variation = result.variations?.[idx];
+  if (!variation) { res.status(400).json({ error: "Variação inválida" }); return; }
+
+  const [tenant] = await db
+    .select({ name: tenantsTable.name, nomeEmpresa: tenantsTable.nomeEmpresa, corPrimaria: tenantsTable.corPrimaria, logoUrl: tenantsTable.logoUrl })
+    .from(tenantsTable)
+    .where(eq(tenantsTable.id, tenantId))
+    .limit(1);
+
+  const brief = result.contextAudit?.visualBrief ?? {};
+  const headline = parsed.data.headline
+    || brief["message"]
+    || brief["productName"]
+    || generation.productName
+    || String(generation.theme ?? "").split("\n")[0]
+    || "Novidade para você";
+  const cta = parsed.data.cta || brief["offer"] || "Saiba mais";
+  const brandName = tenant?.nomeEmpresa?.trim() || tenant?.name?.trim() || "";
+  const brandColor = tenant?.corPrimaria || "#A78BFA";
+
+  const originalUrls = (Array.isArray(variation["originalImageUrls"]) && (variation["originalImageUrls"] as string[]).length > 0
+    ? variation["originalImageUrls"] as string[]
+    : Array.isArray(variation["imageUrls"]) && (variation["imageUrls"] as string[]).length > 0
+      ? variation["imageUrls"] as string[]
+      : variation["imageUrl"] ? [String(variation["imageUrl"])] : []
+  ).filter(Boolean);
+  if (originalUrls.length === 0) {
+    res.status(422).json({ error: "Esta peça ainda não tem imagem para receber a marca." });
+    return;
+  }
+
+  const calendarItemId = result.contextAudit?.calendarItemId;
+  const [project] = calendarItemId
+    ? await db.select({ id: mediaProjectsTable.id }).from(mediaProjectsTable)
+        .where(and(
+          eq(mediaProjectsTable.tenantId, tenantId),
+          sql`${mediaProjectsTable.context}->>'calendarItemId' = ${calendarItemId}`,
+        )).limit(1)
+    : [];
+
+  let logo: Buffer | null = null;
+  if (tenant?.logoUrl) {
+    logo = await readStorageImage(tenant.logoUrl).catch(() => null);
+  }
+
+  try {
+    const format = generation.type === "stories" ? "stories" : originalUrls.length > 1 ? "carousel" : "feed";
+    const styledUrls: string[] = [];
+    for (const url of originalUrls.slice(0, 6)) {
+      const source = await readStorageImage(url);
+      const rendered = await renderMarketingCreative({
+        source,
+        format,
+        brandName,
+        headline,
+        cta,
+        brandColor,
+        logo,
+      });
+      const captured = await captureGeneratedMedia({
+        tenantId,
+        userId: req.user?.id ?? null,
+        title: `${headline} — peça com marca`,
+        operation: "marketing_brand_frame",
+        buffer: rendered,
+        mimeType: "image/jpeg",
+        type: "image",
+        originalFilename: `${generation.id}-${styledUrls.length + 1}.jpg`,
+        kind: format === "stories" ? "story" : "feed",
+        projectId: project?.id,
+        metadata: {
+          source: "deterministic_frame",
+          contentGenerationId: generation.id,
+          calendarItemId: calendarItemId ?? null,
+          headline,
+          cta,
+        },
+      });
+      styledUrls.push(`/api/storage${captured.storageUrl}`);
+    }
+
+    const variations = [...(result.variations ?? [])];
+    variations[idx] = {
+      ...variation,
+      imageStyled: true,
+      originalImageUrl: variation["originalImageUrl"] ?? variation["imageUrl"],
+      originalImageUrls: originalUrls,
+      imageUrl: styledUrls[0],
+      imageUrls: styledUrls.length > 1 ? styledUrls : undefined,
+      design: { headline, cta, brandColor, appliedAt: new Date().toISOString() },
+    };
+    await db.update(contentGenerationsTable)
+      .set({ result: { ...result, variations } as never })
+      .where(eq(contentGenerationsTable.id, contentId));
+
+    res.json({ success: true, imageUrls: styledUrls, headline, cta });
+  } catch (error) {
+    req.log.error({ err: error, tenantId, contentId }, "apply-brand-frame falhou");
+    res.status(502).json({ error: error instanceof Error ? error.message : "Não foi possível aplicar a marca na peça." });
+  }
+});
 
 // POST /tenants/:tenantId/content/:contentId/variations/:idx/regenerate-image — regenera com estilo
 router.post("/tenants/:tenantId/content/:contentId/variations/:idx/regenerate-image", async (req, res) => {
